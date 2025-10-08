@@ -14,7 +14,7 @@ using Hl7.Fhir.Specification;
 using Hl7.FhirPath;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Health.Fhir.Extensions.Schema;
-using Microsoft.Health.Fhir.Extensions.Serialization;
+using Microsoft.Health.Fhir.SourceNodeSerialization;
 using Microsoft.Health.Fhir.Search.Extensions.Data;
 using Microsoft.Health.Fhir.Search.Extensions.Indexing;
 using Microsoft.Health.Fhir.Specification.Extensions.Schema;
@@ -44,7 +44,7 @@ public class SearchTests
     {
         var schema = new FhirJsonSchemaStructureDefinitionSummaryProvider(fhirSpecification);
 
-        return (SearchIndexerFactory.CreateInstance(schema, NullLoggerFactory.Instance), schema);
+        return (SearchIndexerFactory.CreateInstance(schema, NullLoggerFactory.Instance).Result, schema);
     }
 
     [Fact]

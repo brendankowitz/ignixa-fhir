@@ -12,7 +12,6 @@ using Json.Schema;
 using Microsoft.Health.Fhir.Extensions;
 using Microsoft.Health.Fhir.Extensions.Schema;
 using Microsoft.Health.Fhir.Specification.Extensions.Data;
-using IValidatableObject = Hl7.Fhir.Validation.IValidatableObject;
 using ValidationContext = System.ComponentModel.DataAnnotations.ValidationContext;
 
 namespace Microsoft.Health.Fhir.Specification.Extensions.Schema;
@@ -343,6 +342,8 @@ public class FhirJsonSchemaStructureDefinitionSummaryProvider : IStructureDefini
         public bool IsChoiceElement { get; }
 
         public bool IsResource { get; }
+
+        public bool IsModifier { get; }
 
         public ITypeSerializationInfo[] Type { get; }
 

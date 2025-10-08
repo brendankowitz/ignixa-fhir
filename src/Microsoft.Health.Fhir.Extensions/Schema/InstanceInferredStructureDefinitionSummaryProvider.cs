@@ -74,6 +74,8 @@ public class InstanceInferredStructureDefinitionSummaryProvider : IStructureDefi
 
         public bool IsResource { get; }
 
+        public bool IsModifier { get; }
+
         public ITypeSerializationInfo[] Type => new ITypeSerializationInfo[] { new GenericStructureDefinitionSummary(_typedElement) };
 
         public string DefaultTypeName { get; }

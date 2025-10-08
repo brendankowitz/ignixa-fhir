@@ -12,11 +12,10 @@ using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Specification;
 using Hl7.FhirPath;
 using Microsoft.Health.Fhir.Extensions.Schema;
-using Microsoft.Health.Fhir.Extensions.Serialization;
-using Microsoft.Health.Fhir.Extensions.Serialization.DynamicSourceNodeTypes;
+using Microsoft.Health.Fhir.SourceNodeSerialization;
+using Microsoft.Health.Fhir.SourceNodeSerialization.SourceNodes;
 using Microsoft.Health.Fhir.Specification.Extensions.Schema;
 using Xunit;
-using IValidatableObject = Hl7.Fhir.Validation.IValidatableObject;
 
 namespace Microsoft.Health.Fhir.Extensions.Tests;
 
@@ -75,30 +74,14 @@ public class FhirJsonTextNodeTests
     }
 
     [Fact]
-    public void WithJsonDoc()
-    {
-        var jsonDoc = JsonDocument.Parse(_patientJson);
-        ISourceNode sourceNode = jsonDoc.CreateSourceNode();
-
-        var meta = new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
-
-        ITypedElement node = sourceNode.ToTypedElement(meta);
-        ITypedElement familyType = node.Select("Patient.name.family").Single();
-
-        IReadOnlyCollection<IElementDefinitionSummary> definitions = familyType.ChildDefinitions(meta);
-    }
-
-    [Fact]
     public void ValidateObject()
     {
-        var jsonDoc = JsonDocument.Parse(_patientJson);
-
         var meta = new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
-        ISourceNode node = jsonDoc.CreateSourceNode();
+        ISourceNode node = JsonSourceNodeFactory.Parse(_patientJson);
 
         var summary = meta.Provide(node.GetResourceTypeIndicator()) as IValidatableObject;
 
-        ValidationResult[] results = summary.Validate(new ValidationContext(jsonDoc)).ToArray();
+        ValidationResult[] results = summary.Validate(new ValidationContext(node)).ToArray();
 
 
         var sourceNode = JsonDocument.Parse("{ \"resourceType\": \"Boo\" }");
@@ -134,7 +117,8 @@ public class FhirJsonTextNodeTests
     [Fact]
     public void WithJsonNode()
     {
-        var sourceNode = JsonNodeSourceNode.FromRoot(JsonNode.Parse(_patientJson));
+        
+        var sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
         var meta = new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
 
         ITypedElement node = sourceNode.ToTypedElement(meta);
@@ -145,8 +129,5 @@ public class FhirJsonTextNodeTests
         Assert.Equal("a2", familyId);
 
         ITypedElement familyNodes = node.Select("Patient.name.family").Single();
-        if (familyNodes is ScopedNode sn && sn.Current is JsonNodeSourceNode jsonFamilyNode)
-        {
-        }
     }
 }
