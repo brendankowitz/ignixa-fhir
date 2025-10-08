@@ -14,7 +14,12 @@
       "Bash(cat:*)",
       "Bash(rm:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(dotnet nuget search:*)"
+      "Bash(dotnet nuget search:*)",
+      "WebFetch(domain:www.nuget.org)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(mv:*)",
+      "WebFetch(domain:docs.fire.ly)"
     ],
     "deny": [],
     "ask": []
