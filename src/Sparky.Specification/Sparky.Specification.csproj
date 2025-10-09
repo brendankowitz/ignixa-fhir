@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Data\R5\fhir.schema.json"/>
+    <EmbeddedResource Include="Data\R5\fhir.schema.json"/>
+    <None Remove="Data\R4B\fhir.schema.json"/>
+    <EmbeddedResource Include="Data\R4B\fhir.schema.json"/>
+    <None Remove="Data\R4\fhir.schema.json"/>
+    <EmbeddedResource Include="Data\R4\fhir.schema.json"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hl7.Fhir.R4" />
+    <PackageReference Include="JsonSchema.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparky.Extensions\Sparky.Extensions.csproj"/>
+  </ItemGroup>
+
+</Project>

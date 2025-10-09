@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core packages - versions managed in Directory.Packages.props -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Hl7.Fhir.R4" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
+    <PackageReference Include="Medino" />
+    <PackageReference Include="Autofac" />
+    <PackageReference Include="Autofac.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Features\Patient\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
+    <ProjectReference Include="..\Sparky.Application\Sparky.Application.csproj" />
+    <ProjectReference Include="..\Sparky.DataLayer.FileSystem\Sparky.DataLayer.FileSystem.csproj" />
+    <ProjectReference Include="..\Sparky.DataLayer.InMemoryIndex\Sparky.DataLayer.InMemoryIndex.csproj" />
+  </ItemGroup>
+
+</Project>

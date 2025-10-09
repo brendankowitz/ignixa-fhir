@@ -1,0 +1,43 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Firely SDK 6.0.0-rc1 (latest with multi-version support) -->
+    <PackageVersion Include="Hl7.Fhir.R4" Version="6.0.0-rc1" />
+    <PackageVersion Include="Hl7.Fhir.R4B" Version="6.0.0-rc1" />
+    <PackageVersion Include="Hl7.Fhir.R5" Version="6.0.0-rc1" />
+    <PackageVersion Include="Hl7.Fhir.STU3" Version="6.0.0-rc1" />
+    <PackageVersion Include="Firely.Fhir.Packages" Version="4.9.1" />
+
+    <!-- Legacy 4.3.0 packages removed - SDK 6.0 has unified package structure -->
+
+    <!-- Messaging -->
+    <PackageVersion Include="Medino" Version="2.0.1" />
+
+    <!-- Memory Management -->
+    <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+
+    <!-- ASP.NET Core -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
+
+    <!-- Microsoft.Health legacy dependencies - using 7.1.5 from Directory.Build.props -->
+    <PackageVersion Include="Ensure.That" Version="10.1.0" />
+    <PackageVersion Include="Microsoft.Health.Core" Version="7.1.5" />
+    <PackageVersion Include="Microsoft.Health.Extensions.DependencyInjection" Version="7.1.5" />
+    <PackageVersion Include="System.Collections.Immutable" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="7.2.3" />
+    <PackageVersion Include="Autofac" Version="8.2.0" />
+    <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
+
+    <!-- Testing -->
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="FluentAssertions" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+  </ItemGroup>
+</Project>
