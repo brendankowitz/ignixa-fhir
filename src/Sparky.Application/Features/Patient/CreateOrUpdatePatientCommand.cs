@@ -11,4 +11,5 @@ namespace Sparky.Application.Features.Patient;
 
 public record CreateOrUpdatePatientCommand(
     string PatientId,
-    ISourceNode Resource) : IRequest<ResourceKey>;
+    ISourceNode Resource,
+    string RawJson) : IRequest<ResourceKey>;

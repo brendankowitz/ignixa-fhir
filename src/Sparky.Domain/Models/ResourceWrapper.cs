@@ -20,4 +20,10 @@ public record ResourceWrapper(
     /// In production, serialize from Resource as needed.
     /// </summary>
     public string? RawJson { get; init; }
+
+    /// <summary>
+    /// Optional: Raw JSON bytes for zero-copy serialization.
+    /// Enables streaming without parsing/re-serializing JSON.
+    /// </summary>
+    public ReadOnlyMemory<byte>? RawJsonBytes { get; init; }
 }

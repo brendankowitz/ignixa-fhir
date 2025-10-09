@@ -561,6 +561,9 @@ public class AuthenticationHandler : IAuthorizationHandler
 
 ### Week 3 Implementation Plan (~16 Claude Code hours)
 
+**NOTE**: Expression tree infrastructure already in place at `Sparky.Search.Expressions/` (relocated October 2025).
+See `docs/investigations/search-query-parsing.md` for query parsing implementation details.
+
 #### 1. Port InMemory Search (8 hours)
 
 **Tasks**:
@@ -568,6 +571,8 @@ public class AuthenticationHandler : IAuthorizationHandler
 - Copy ComparisonValueVisitor.cs
 - Copy InMemoryIndex.cs
 - Adapt to Sparky namespaces and patterns
+- **Use existing** `Sparky.Search.Expressions.Parsers.ExpressionParser` for query parsing
+- **Implement** `SearchOptionsBuilder` (simplified vs legacy SearchOptionsFactory)
 - Create SearchHandler (Medino)
 - Create SearchEndpoints
 
@@ -634,9 +639,11 @@ public class AuthenticationHandler : IAuthorizationHandler
 ## References
 
 - Investigation: `docs/investigations/phase1-file-based-storage-with-search.md`
+- Investigation: `docs/investigations/search-query-parsing.md` - **Query parsing implementation (October 2025)**
 - Investigation: `docs/investigations/dynamic-capability-statement-generation.md`
 - Investigation: `docs/investigations/rbac-authorization-with-capability-enforcement.md`
 - microsoft/fhir-server InMemory search: https://github.com/microsoft/fhir-server/tree/feature/subscription-engine/src/Microsoft.Health.Fhir.Core/Features/Search/InMemory
+- Expression tree classes: `src/Sparky.Search/Expressions/` - **Relocated October 2025**
 - ADR-2500: Master Implementation Roadmap
 - ADR-2501: Prototype Phase
 - ADR-2502: Phase 1.1 - Bundle Processing

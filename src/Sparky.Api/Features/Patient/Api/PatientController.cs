@@ -3,12 +3,17 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text;
 using System.Text.Json;
-using Hl7.Fhir.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IO;
 using Sparky.Domain.Models;
 using Sparky.Application.Features.Patient;
+using Sparky.SourceNodeSerialization;
+using Sparky.Search.Models;
+using Sparky.Search.Parsing;
+using Sparky.Api.Infrastructure;
 
 namespace Sparky.Api.Features.Patient.Api;
 
@@ -18,13 +23,63 @@ public class PatientController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ILogger<PatientController> _logger;
+    private readonly RecyclableMemoryStreamManager _memoryStreamManager;
+    private readonly IQueryParameterParser _queryParameterParser;
+    private readonly ISearchOptionsBuilder _searchOptionsBuilder;
 
     public PatientController(
         IMediator mediator,
-        ILogger<PatientController> logger)
+        ILogger<PatientController> logger,
+        RecyclableMemoryStreamManager memoryStreamManager,
+        IQueryParameterParser queryParameterParser,
+        ISearchOptionsBuilder searchOptionsBuilder)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
+        _queryParameterParser = queryParameterParser ?? throw new ArgumentNullException(nameof(queryParameterParser));
+        _searchOptionsBuilder = searchOptionsBuilder ?? throw new ArgumentNullException(nameof(searchOptionsBuilder));
+    }
+
+    /// <summary>
+    /// GET /Patient
+    /// Searches for Patient resources based on query parameters.
+    /// Uses streaming serialization for memory-efficient response generation.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Search(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("GET /Patient?{QueryString}", Request.QueryString);
+
+        // Parse query parameters
+        var queryParameters = _queryParameterParser.Parse(Request.Query);
+
+        // Build SearchOptions
+        var searchOptions = _searchOptionsBuilder.Build("Patient", queryParameters);
+
+        // Send search query
+        var searchQuery = new SearchPatientQuery(searchOptions);
+        SearchPatientResult result = await _mediator.SendAsync(searchQuery, cancellationToken);
+
+        // Build self link
+        string selfLink = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
+
+        // Set response headers
+        Response.ContentType = "application/fhir+json; charset=utf-8";
+
+        // Stream Bundle response directly to HTTP response body
+        await BundleSerializer.SerializeAsync(
+            outputStream: Response.Body,
+            bundleType: "searchset",
+            total: result.Total,
+            entries: result.Resources, // BundleSerializer accepts IEnumerable<ResourceWrapper>
+            selfLink: selfLink,
+            nextLink: null, // TODO: Implement pagination continuation
+            pretty: false,
+            cancellationToken: cancellationToken);
+
+        return new EmptyResult();
     }
 
     /// <summary>
@@ -46,6 +101,10 @@ public class PatientController : ControllerBase
             return NotFound();
         }
 
+        // Add ETag and Last-Modified headers
+        Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
+        Response.Headers.Append("Last-Modified", result.LastModified.ToString("R")); // RFC 7231 format
+
         // Return raw JSON (stored by FileBasedFhirRepository for prototype simplicity)
         string json = result.RawJson ?? throw new InvalidOperationException("RawJson not available");
 
@@ -65,12 +124,18 @@ public class PatientController : ControllerBase
     {
         _logger.LogInformation("PUT /Patient/{Id}", id);
 
-        // Read request body
-        using var reader = new StreamReader(Request.Body);
-        string json = await reader.ReadToEndAsync(cancellationToken);
+        // Read request body using RecyclableMemoryStream
+        string json;
+        using (var memoryStream = _memoryStreamManager.GetStream("request-body"))
+        {
+            await Request.Body.CopyToAsync(memoryStream, cancellationToken);
+            memoryStream.Position = 0;
+            using var reader = new StreamReader(memoryStream, Encoding.UTF8);
+            json = await reader.ReadToEndAsync(cancellationToken);
+        }
 
-        // Parse JSON to ISourceNode
-        var sourceNode = await FhirJsonNode.ParseAsync(json);
+        // Parse JSON to ISourceNode using JsonSourceNodeFactory (System.Text.Json, fast)
+        var sourceNode = JsonSourceNodeFactory.Parse(json);
 
         // Validate resource type matches
         if (!string.Equals(sourceNode.Name, "Patient", StringComparison.Ordinal))
@@ -78,9 +143,12 @@ public class PatientController : ControllerBase
             return BadRequest(new { error = $"Resource type must be 'Patient', got '{sourceNode.Name}'" });
         }
 
-        // Send command
-        var command = new CreateOrUpdatePatientCommand(id, sourceNode);
+        // Send command (pass raw JSON for fast storage)
+        var command = new CreateOrUpdatePatientCommand(id, sourceNode, json);
         ResourceKey result = await _mediator.SendAsync(command, cancellationToken);
+
+        // Add ETag header (Last-Modified would require fetching the resource, skip for now)
+        Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
 
         // Determine if created or updated (version 1 = created)
         bool isCreated = result.VersionId == "1";

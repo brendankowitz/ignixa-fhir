@@ -20,6 +20,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sparky.DataLayer.FileSystem
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sparky.DataLayer.InMemoryIndex", "src\Sparky.DataLayer.InMemoryIndex\Sparky.DataLayer.InMemoryIndex.csproj", "{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sparky.Specification", "src\Sparky.Specification\Sparky.Specification.csproj", "{D8408542-07AD-492E-AD47-332DF415BAE3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -138,6 +140,18 @@ Global
 		{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B}.Release|x64.Build.0 = Release|Any CPU
 		{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B}.Release|x86.ActiveCfg = Release|Any CPU
 		{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B}.Release|x86.Build.0 = Release|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Debug|x64.Build.0 = Debug|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Debug|x86.Build.0 = Debug|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Release|x64.ActiveCfg = Release|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Release|x64.Build.0 = Release|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Release|x86.ActiveCfg = Release|Any CPU
+		{D8408542-07AD-492E-AD47-332DF415BAE3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -152,5 +166,6 @@ Global
 		{999C64CD-7D66-4F0D-A74C-BCC043176DF4} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{6E30F2C0-2751-4D2A-8697-E43AE77018F1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{D8408542-07AD-492E-AD47-332DF415BAE3} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

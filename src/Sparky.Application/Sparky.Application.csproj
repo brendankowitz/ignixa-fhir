@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
+    <ProjectReference Include="..\Sparky.Search\Sparky.Search.csproj" />
   </ItemGroup>
 
   <ItemGroup>

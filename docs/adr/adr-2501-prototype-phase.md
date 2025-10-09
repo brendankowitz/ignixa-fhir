@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (with architectural variation - see Project Organization below)
 
 ## Context
 
@@ -45,41 +45,75 @@ Based on investigations in `phase1-file-based-storage-with-search.md` and `stora
 **0. Project Organization and Naming**
 
 This is a **side project** called **"Sparky"**, not "Microsoft.Health". Project naming follows this pattern:
-- `Sparky.*` namespace (e.g., `Sparky.Api`, `Sparky.Core`)
-- Feature folder organization (not technical layers)
+- `Sparky.*` namespace (e.g., `Sparky.Api`, `Sparky.Domain`, `Sparky.Application`)
+- Layered architecture with separate projects for each architectural layer
 
-**Feature Folder Structure** (organized by capability, not technical layer):
+**Implemented Architecture: Layered Projects** (organized by architectural layer):
+
 ```
-src/
-  Sparky.Api/
-    Features/
-      Patient/
-        PatientEndpoints.cs          # API endpoints
-        PatientHandler.cs            # Medino handler
-        PatientRepository.cs         # Data access
-        PatientValidator.cs          # Validation
-      Search/
-        SearchEndpoints.cs
-        SearchHandler.cs
-        SearchIndexBuilder.cs
-      Bundle/
-        BundleEndpoints.cs
-        BundleHandler.cs
-    Shared/
-      Models/
-        ResourceWrapper.cs
-        ResourceKey.cs
-      Abstractions/
-        IFhirRepository.cs
-        ISearchIndexBuilder.cs
-      Infrastructure/
-        FileSystemStorage.cs
-        MedinoMessaging.cs
+All.sln (9 projects)
+├── 1. Sparky.Domain              # Domain models and abstractions (no dependencies)
+│   ├── Abstractions/
+│   │   └── IFhirRepository.cs
+│   └── Models/
+│       ├── ResourceKey.cs
+│       ├── ResourceWrapper.cs
+│       ├── ResourceRequest.cs
+│       └── TransactionId.cs
+│
+├── 2. Sparky.Application         # Medino handlers and business logic (→ Domain)
+│   └── Features/
+│       └── Patient/
+│           ├── CreateOrUpdatePatientCommand.cs
+│           ├── CreateOrUpdatePatientHandler.cs
+│           ├── GetPatientQuery.cs
+│           └── GetPatientHandler.cs
+│
+├── 3. Sparky.DataLayer.*         # Data storage implementations (→ Domain)
+│   ├── Sparky.DataLayer.FileSystem
+│   │   └── FileSystem/
+│   │       └── FileBasedFhirRepository.cs
+│   └── Sparky.DataLayer.InMemoryIndex
+│       └── InMemoryIndex/
+│           ├── IResourceLocationIndex.cs
+│           └── InMemoryResourceLocationIndex.cs
+│
+├── 4. Sparky.Api                 # ASP.NET Core API (→ all layers)
+│   ├── Features/
+│   │   ├── Patient/
+│   │   │   └── Api/
+│   │   │       └── PatientController.cs
+│   │   └── Metadata/
+│   │       └── Api/
+│   │           └── MetadataController.cs
+│   ├── Services/
+│   │   └── IndexLoaderService.cs
+│   ├── Middleware/
+│   │   └── FhirExceptionMiddleware.cs
+│   ├── Infrastructure/
+│   │   └── AutofacMediatorServiceProvider.cs
+│   └── Program.cs
+│
+└── Supporting Libraries
+    ├── Sparky.Extensions         # FHIR extensions and utilities
+    ├── Sparky.Search             # Search functionality
+    └── Sparky.SourceNodeSerialization # Serialization utilities
 ```
 
-**Rationale**: Feature folders keep related code together (endpoints, handlers, repositories for a feature), improving discoverability and reducing coupling. This follows vertical slice architecture principles.
+**Architecture Principles**:
+1. **Domain** has no dependencies (pure models and abstractions)
+2. **Application** depends only on Domain (business logic, CQRS handlers)
+3. **DataLayer** depends only on Domain (storage implementations - file, SQL, Cosmos)
+4. **API** depends on all layers (HTTP concerns, controllers, middleware)
 
-**Reference**: https://medium.com/@ikonija.bogojevic/organizing-project-folder-structure-function-based-vs-feature-based-168596b6d169
+**Rationale**:
+- **Clean Architecture**: Clear separation between domain logic, application logic, and infrastructure
+- **Multi-DataLayer Support**: Easy to add new storage implementations (Sparky.DataLayer.SqlServer, Sparky.DataLayer.CosmosDB)
+- **Feature Folders Within Layers**: Each layer uses feature folders (e.g., Application/Features/Patient/)
+- **Testability**: Each layer can be tested independently
+- **Scalability**: Supports Isolation Mode (single data layer) and Distributed Mode (multiple data layers)
+
+**Note**: This differs from the original ADR proposal (single project with feature folders), but provides better separation of concerns and aligns with Clean Architecture principles. The vertical slice philosophy is maintained within each layer via feature folders.
 
 **1. File-Based Storage with Metadata Sidecar**
 
@@ -120,25 +154,39 @@ Implement a complete vertical slice with **only** `PUT /Patient/{id}` and `GET /
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Prototype Phase Architecture                │
+│                 Prototype Phase Architecture (Implemented)       │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. API Layer (ASP.NET Core Minimal APIs)                       │
-│     - PUT /Patient/{id}                                         │
-│     - GET /Patient/{id}                                         │
+│  1. API Layer (ASP.NET Core Controllers)                        │
+│     Sparky.Api                                                   │
+│     - PatientController: PUT /Patient/{id}, GET /Patient/{id}   │
+│     - MetadataController: GET /metadata                         │
+│     - IndexLoaderService: IHostedService for startup loading    │
+│     - FhirExceptionMiddleware: FHIR error responses             │
 │                                                                  │
-│  2. Application Layer (Medino Handlers)                         │
-│     - CreateOrUpdatePatientCommand                              │
-│     - GetPatientQuery                                           │
+│  2. Application Layer (Medino CQRS Handlers)                    │
+│     Sparky.Application                                           │
+│     - CreateOrUpdatePatientCommand / Handler                    │
+│     - GetPatientQuery / Handler                                 │
 │                                                                  │
-│  3. Models Layer (Resource Models)                              │
-│     - ResourceWrapper                                           │
-│     - ResourceKey                                               │
+│  3. Domain Layer (Models & Abstractions)                        │
+│     Sparky.Domain                                                │
+│     - IFhirRepository interface                                 │
+│     - ResourceWrapper, ResourceKey, ResourceRequest             │
+│     - TransactionId                                             │
 │                                                                  │
-│  4. DataLayer Layer (File Storage + Index)                      │
-│     - FileBasedFhirRepository                                   │
-│     - InMemoryIndex (basic location tracking)                   │
+│  4. Data Layer (Storage Implementations)                        │
+│     Sparky.DataLayer.FileSystem                                  │
+│     - FileBasedFhirRepository: NDJSON storage with metadata     │
+│     Sparky.DataLayer.InMemoryIndex                               │
+│     - InMemoryResourceLocationIndex: Resource location tracking │
 │                                                                  │
-│  5. Tests (xUnit + NSubstitute, 80% coverage)                   │
+│  5. Supporting Libraries                                        │
+│     - Sparky.Extensions: FHIR utilities                         │
+│     - Sparky.Search: Search parameters                          │
+│     - Sparky.SourceNodeSerialization: Custom serialization      │
+│                                                                  │
+│  6. Tests (xUnit + NSubstitute)                                 │
+│     Sparky.Api.Tests                                             │
 │     - Unit tests for all layers                                 │
 │     - Integration tests for PUT/GET                             │
 └─────────────────────────────────────────────────────────────────┘
@@ -150,84 +198,127 @@ Implement a complete vertical slice with **only** `PUT /Patient/{id}` and `GET /
 
 #### 1. Project Structure Setup (2 hours)
 
-**Feature Folder Organization** (capability-based, not layer-based):
+**Layered Project Organization** (separation by architectural layer):
 
 ```
+All.sln
 src/
-  Sparky.Api/
+  Sparky.Domain/                     # Core domain (no dependencies)
+    Abstractions/
+      IFhirRepository.cs
+    Models/
+      ResourceWrapper.cs
+      ResourceKey.cs
+      ResourceRequest.cs
+      TransactionId.cs
+
+  Sparky.Application/                # Business logic (→ Domain)
     Features/
       Patient/
-        PatientEndpoints.cs          # API endpoints for Patient resource
-        PutPatientHandler.cs         # Medino handler for PUT
-        GetPatientHandler.cs         # Medino handler for GET
+        CreateOrUpdatePatientCommand.cs
+        CreateOrUpdatePatientHandler.cs
+        GetPatientQuery.cs
+        GetPatientHandler.cs
+
+  Sparky.DataLayer.FileSystem/       # File storage (→ Domain)
+    FileSystem/
+      FileBasedFhirRepository.cs
+
+  Sparky.DataLayer.InMemoryIndex/    # Index tracking (→ Domain)
+    InMemoryIndex/
+      IResourceLocationIndex.cs
+      InMemoryResourceLocationIndex.cs
+
+  Sparky.Api/                        # HTTP API (→ all layers)
+    Features/
+      Patient/
+        Api/
+          PatientController.cs
       Metadata/
-        MetadataEndpoints.cs         # GET /metadata capability statement
-    Shared/
-      Models/
-        ResourceWrapper.cs
-        ResourceKey.cs
-      Abstractions/
-        IFhirRepository.cs
-        IFhirSchemaProvider.cs
-      Infrastructure/
-        FileSystemRepository.cs      # File-based IFhirRepository implementation
-        MedinoMessaging/
-          MessageBus.cs
-          IMessageHandler.cs
+        Api/
+          MetadataController.cs
+    Services/
+      IndexLoaderService.cs
+    Middleware/
+      FhirExceptionMiddleware.cs
+    Infrastructure/
+      AutofacMediatorServiceProvider.cs
+    Program.cs
+
+  Sparky.Extensions/                 # FHIR utilities
+  Sparky.Search/                     # Search parameters
+  Sparky.SourceNodeSerialization/    # Custom serialization
 
 test/
   Sparky.Api.Tests/
     Features/
       Patient/
-        PatientEndpointsTests.cs
-        PutPatientHandlerTests.cs
+        PatientControllerTests.cs
+        CreateOrUpdatePatientHandlerTests.cs
         GetPatientHandlerTests.cs
-    Shared/
-      Infrastructure/
-        FileSystemRepositoryTests.cs
+    DataLayer/
+      FileBasedFhirRepositoryTests.cs
 ```
 
-**Key Differences from Traditional Layering**:
-- ✅ Each feature folder contains ALL related code (endpoints, handlers, repositories)
-- ✅ Shared code in `Shared/` for cross-cutting concerns
-- ✅ Tests mirror feature structure
-- ❌ No separate Controllers/, Services/, Repositories/ folders
+**Key Characteristics**:
+- ✅ Separate projects for Domain, Application, DataLayer, API
+- ✅ Clear dependency flow: API → Application → Domain ← DataLayer
+- ✅ Feature folders within each layer (e.g., Application/Features/Patient/)
+- ✅ Multiple DataLayer projects for different storage backends
+- ✅ Easy to test each layer independently
 
 #### 2. Core Abstractions (4 hours)
 
 ```csharp
-// Sparky.Api/Shared/Abstractions/IFhirRepository.cs
-namespace Sparky.Shared.Abstractions;
+// Sparky.Domain/Abstractions/IFhirRepository.cs
+namespace Sparky.Domain.Abstractions;
 
 public interface IFhirRepository
 {
-    ValueTask<ResourceWrapper?> GetAsync(ResourceKey key, CancellationToken ct = default);
-    ValueTask<ResourceKey> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default);
+    Task<ResourceWrapper?> GetAsync(ResourceKey key, CancellationToken ct = default);
+    Task<ResourceKey> CreateOrUpdateAsync(ResourceWrapper resource, ResourceRequest request, CancellationToken ct = default);
+    IEnumerable<string> GetAllMetadataFiles();
 }
 
-// Sparky.Api/Shared/Models/ResourceWrapper.cs
-namespace Sparky.Shared.Models;
+// Sparky.Domain/Models/ResourceWrapper.cs
+namespace Sparky.Domain.Models;
 
-public record ResourceWrapper(
-    string ResourceType,
-    string ResourceId,
-    string VersionId,
-    DateTimeOffset LastModified,
-    ISourceNode Resource,
-    ResourceRequest Request,
-    bool IsDeleted = false);
+public class ResourceWrapper
+{
+    public string ResourceType { get; set; } = string.Empty;
+    public string ResourceId { get; set; } = string.Empty;
+    public int VersionId { get; set; }
+    public DateTimeOffset LastModified { get; set; }
+    public string RawJson { get; set; } = string.Empty;  // Stored for prototype simplicity
+    public bool IsDeleted { get; set; }
+}
 
 public record ResourceKey(
     string ResourceType,
     string Id,
-    string? VersionId = null);
+    int? VersionId = null);
 
-public record ResourceRequest(
-    string Method,        // PUT, POST, etc.
-    string Url,          // Patient/123
-    string? IfMatch,
-    string? IfNoneExist,
-    string? IfModifiedSince);
+public class ResourceRequest
+{
+    public string Method { get; set; } = string.Empty;        // PUT, POST, etc.
+    public string Url { get; set; } = string.Empty;           // Patient/123
+    public string? IfMatch { get; set; }
+    public string? IfNoneExist { get; set; }
+    public string? IfModifiedSince { get; set; }
+    public Dictionary<string, string> Headers { get; set; } = new();
+}
+
+public class TransactionId
+{
+    public string Value { get; }
+
+    private TransactionId(string value) => Value = value;
+
+    public static TransactionId Generate() =>
+        new(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
+
+    public override string ToString() => Value;
+}
 ```
 
 #### 3. File-Based Repository (6 hours)
@@ -479,77 +570,94 @@ public class GetPatientQueryHandler : IQueryHandler<GetPatientQuery, ResourceWra
 
 #### 6. API Layer (2 hours)
 
-**Decision**: Use ASP.NET Core Minimal APIs (not Controllers, not OWIN)
+**Implementation**: ASP.NET Core MVC Controllers
 
 **Rationale**:
-- OWIN is legacy middleware abstraction (pre-ASP.NET Core)
-- ASP.NET Core uses OWIN concepts internally but provides modern APIs
-- Minimal APIs are cleaner than Controllers for FHIR's resource-centric design
-- Less overhead, easier to test, better for microservices patterns
+- Traditional MVC pattern familiar to most developers
+- Easy to extend with additional resource types
+- Good tooling support and documentation
+- Works well with Autofac dependency injection
 
 ```csharp
-// Program.cs or endpoint registration
-var app = builder.Build();
+// Sparky.Api/Features/Patient/Api/PatientController.cs
+namespace Sparky.Api.Features.Patient.Api;
 
-app.MapPut("/{resourceType}/{id}", async (
-    string resourceType,
-    string id,
-    HttpContext httpContext,
-    IBus bus,
-    CancellationToken ct) =>
+[ApiController]
+[Route("[controller]")]
+public class PatientController : ControllerBase
 {
-    // Currently only supports Patient
-    if (resourceType != "Patient")
+    private readonly IMediator _mediator;
+    private readonly ILogger<PatientController> _logger;
+    private readonly RecyclableMemoryStreamManager _memoryStreamManager;
+
+    public PatientController(
+        IMediator mediator,
+        ILogger<PatientController> logger,
+        RecyclableMemoryStreamManager memoryStreamManager)
     {
-        return Results.NotFound();
+        _mediator = mediator;
+        _logger = logger;
+        _memoryStreamManager = memoryStreamManager;
     }
 
-    // 1. Parse request body
-    using var stream = RecyclableMemoryStreamManager.Shared.GetStream("PutPatient");
-    await httpContext.Request.Body.CopyToAsync(stream, ct);
-
-    stream.Position = 0;
-    var sourceNode = await FhirJsonNode.ReadAsync(stream, ct);
-
-    // 2. Send command
-    var command = new CreateOrUpdatePatientCommand(id, sourceNode);
-    var resourceKey = await bus.SendAsync(command, ct);
-
-    // 3. Return response
-    httpContext.Response.Headers.ETag = $"\"{resourceKey.VersionId}\"";
-    httpContext.Response.Headers.LastModified = DateTimeOffset.UtcNow.ToString("R");
-
-    return Results.Ok(sourceNode);
-});
-
-app.MapGet("/{resourceType}/{id}", async (
-    string resourceType,
-    string id,
-    HttpContext httpContext,
-    IBus bus,
-    CancellationToken ct) =>
-{
-    // Currently only supports Patient
-    if (resourceType != "Patient")
+    [HttpGet("{id}")]
+    public async Task<IActionResult> Get(
+        string id,
+        CancellationToken cancellationToken)
     {
-        return Results.NotFound();
+        var query = new GetPatientQuery(id);
+        var result = await _mediator.SendAsync(query, cancellationToken);
+
+        if (result == null)
+        {
+            return NotFound();
+        }
+
+        // Add FHIR headers
+        Response.Headers.ETag = $"W/\"{result.VersionId}\"";
+        Response.Headers.LastModified = result.LastModified.ToString("R");
+
+        return Content(result.RawJson, "application/fhir+json");
     }
 
-    // 1. Send query
-    var query = new GetPatientQuery(id);
-    var resource = await bus.QueryAsync(query, ct);
-
-    if (resource == null)
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Put(
+        string id,
+        CancellationToken cancellationToken)
     {
-        return Results.NotFound();
+        // 1. Read request body using RecyclableMemoryStream
+        using var stream = _memoryStreamManager.GetStream("put-patient");
+        await Request.Body.CopyToAsync(stream, cancellationToken);
+
+        stream.Position = 0;
+        string json;
+        using (var reader = new StreamReader(stream, leaveOpen: true))
+        {
+            json = await reader.ReadToEndAsync(cancellationToken);
+        }
+
+        // 2. Parse FHIR resource
+        stream.Position = 0;
+        var sourceNode = await FhirJsonNode.ParseAsync(stream, cancellationToken);
+
+        // 3. Create request metadata
+        var request = new ResourceRequest
+        {
+            Method = "PUT",
+            Url = $"Patient/{id}",
+            Headers = Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString())
+        };
+
+        // 4. Send command via Medino
+        var command = new CreateOrUpdatePatientCommand(id, json, request);
+        var resourceKey = await _mediator.SendAsync(command, cancellationToken);
+
+        // 5. Return response with FHIR headers
+        Response.Headers.ETag = $"W/\"{resourceKey.VersionId}\"";
+
+        return StatusCode(resourceKey.VersionId == 1 ? 201 : 200);
     }
-
-    // 2. Return response
-    httpContext.Response.Headers.ETag = $"\"{resource.VersionId}\"";
-    httpContext.Response.Headers.LastModified = resource.LastModified.ToString("R");
-
-    return Results.Ok(resource.Resource);
-});
+}
 ```
 
 #### 7. Index Loader Service (1 hour)

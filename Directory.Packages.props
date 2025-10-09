@@ -21,6 +21,7 @@
 
     <!-- ASP.NET Core -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
 
     <!-- Microsoft.Health legacy dependencies - using 7.1.5 from Directory.Build.props -->
     <PackageVersion Include="Ensure.That" Version="10.1.0" />

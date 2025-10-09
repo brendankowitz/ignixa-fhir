@@ -36,7 +36,10 @@ public class CreateOrUpdatePatientHandler : IRequestHandler<CreateOrUpdatePatien
             DateTimeOffset.UtcNow,
             command.Resource,
             request,
-            false);
+            false)
+        {
+            RawJson = command.RawJson
+        };
 
         ResourceKey key = await _repository.CreateOrUpdateAsync(wrapper, cancellationToken);
 

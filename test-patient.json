@@ -1,0 +1,22 @@
+{
+  "resourceType": "Patient",
+  "id": "example-ndjson-test",
+  "meta": {
+    "versionId": "1",
+    "lastUpdated": "2025-10-09T10:00:00Z"
+  },
+  "identifier": [
+    {
+      "system": "http://hospital.example.org",
+      "value": "12345"
+    }
+  ],
+  "name": [
+    {
+      "family": "Doe",
+      "given": ["John", "Michael"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-01-01"
+}
