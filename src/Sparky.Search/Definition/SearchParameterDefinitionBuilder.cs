@@ -130,6 +130,13 @@ internal static class SearchParameterDefinitionBuilder
 
             try
             {
+                // Skip search parameters with null or empty URLs
+                if (string.IsNullOrWhiteSpace(searchParameter.Url))
+                {
+                    AddIssue(Resources.SearchParameterDefinitionInvalidDefinitionUri, entryIndex);
+                    continue;
+                }
+
                 SearchParameterInfo searchParameterInfo = GetOrCreateSearchParameterInfo(searchParameter, uriDictionary);
                 uriDictionary.Add(new Uri(searchParameter.Url), searchParameterInfo);
             }

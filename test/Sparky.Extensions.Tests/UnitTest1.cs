@@ -11,10 +11,11 @@ using System.Text.Json.Nodes;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Specification;
 using Hl7.FhirPath;
-using Microsoft.Health.Fhir.Extensions.Schema;
-using Microsoft.Health.Fhir.SourceNodeSerialization;
-using Microsoft.Health.Fhir.SourceNodeSerialization.SourceNodes;
-using Microsoft.Health.Fhir.Specification.Extensions.Schema;
+using Sparky.Extensions;
+using Sparky.Extensions.Schema;
+using Sparky.SourceNodeSerialization;
+using Sparky.SourceNodeSerialization.SourceNodes;
+using Sparky.Specification.Schema;
 using Xunit;
 
 namespace Microsoft.Health.Fhir.Extensions.Tests;

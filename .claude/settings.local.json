@@ -39,7 +39,21 @@
       "Bash(for:*)",
       "Bash(do echo \"\")",
       "Bash(echo \"=== $dir ===\")",
-      "Bash(while read dir)"
+      "Bash(while read dir)",
+      "Bash(dotnet list:*)",
+      "WebFetch(domain:www.hl7.org)",
+      "Bash(test:*)",
+      "Bash(Select-String -Pattern \"(Passed|Failed|Error Message|Stack Trace)\" -Context 0,3)",
+      "Bash(taskkill:*)",
+      "Bash($env:DOTNET_LOGGING__LOGLEVEL__DEFAULT=\"Trace\")",
+      "Bash(Select-Object -First 80)",
+      "Bash(Select-Object -First 100)",
+      "Bash(Select-Object -First 200)",
+      "Bash(/dev/null)",
+      "Bash(ls:*)",
+      "Bash(echo:*)",
+      "Read(//c/**)",
+      "Bash(Get-Content \"C:\\Src\\fhir-server-contrib\\src\\Sparky.Search\\Data\\R4\\search-parameters.json\")"
     ],
     "deny": [],
     "ask": []

@@ -13,6 +13,8 @@
     <EmbeddedResource Include="Data\R4B\fhir.schema.json"/>
     <None Remove="Data\R4\fhir.schema.json"/>
     <EmbeddedResource Include="Data\R4\fhir.schema.json"/>
+    <None Remove="Data\Stu3\fhir.schema.json" />
+    <EmbeddedResource Include="Data\Stu3\fhir.schema.json" />
   </ItemGroup>
 
   <ItemGroup>

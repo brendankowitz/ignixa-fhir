@@ -18,7 +18,7 @@ This master ADR provides the complete implementation roadmap for FHIR Server v2,
 
 ### Investigation Summary
 
-See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 investigation documents covering:
+See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 29 investigation documents covering:
 - Architecture patterns
 - Storage strategies (File, SQL, Cosmos)
 - Performance optimizations (50-70% allocation reduction)
@@ -31,6 +31,11 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 - Custom structures and R6 extensibility (extensions, Additional Resources, dynamic IG loading)
 - Background jobs with DurableTask (orchestrations, activities, fault tolerance)
 - Multi-tenancy data partitioning modes (Isolation vs Distributed, pass-through optimization, fanout/union strategy)
+- **Dynamic FHIR routing** (endpoint routing eliminates 145+ controllers - see `dynamic-fhir-routing.md`)
+- **Bundle streaming** (IAsyncEnumerable + FhirJsonWriter reduces memory by 95% - see `bundle-streaming.md`)
+- **Search query parsing** (simplified 800-line factory to 250 lines - see `search-query-parsing.md`)
+- **Bundle deferred writes** (two-phase channel architecture with TaskCompletionSource - see `bundle-deferred-writes.md`) - **IMPLEMENTED in Phase 1.1a**
+- **Bundle streaming parser** (Utf8JsonReader with state machine, 99% memory reduction - see `bundle-streaming-parser.md`) - **IMPLEMENTED in Phase 1.1a**
 
 ## Phase Overview
 
@@ -47,22 +52,40 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 1: Search Foundation (Weeks 2-4)
+### Phase 1: Search Foundation (Weeks 2-8)
 
-#### Phase 1.1: Bundle Processing (Week 2) - ADR-2502
-**Goal**: Transaction bundle support with parallel execution
+#### Phase 1.1: Bundle Processing (Weeks 2-6) - ADR-2502
+**Goal**: Transaction bundle support with parallel execution + streaming optimization
 
-**Deliverables**:
+**Original Deliverables** (Week 2, 16 hours):
 - POST / with transaction bundles
 - ASP.NET Core pipeline routing (no switch statements!)
 - System.Threading.Channels for parallel execution
 - Reference resolution for urn:uuid:
 
-**Key Innovation**: Mini HttpContext + pipeline routing for automatic handler discovery
+**Phase 1.1a Enhancement** (Weeks 3-6, 76 hours):
+- Two-phase channel architecture with deferred writes (DeferredWriteCoordinator)
+- Streaming bundle parser with Utf8JsonReader (99% memory reduction)
+- ArrayPool<byte> buffer management for zero-copy parsing
+- Prefer: streaming HTTP header support
+- IFhirRepository.BatchWriteAsync for future SQL/Cosmos bulk operations
+
+**Key Innovations**:
+1. Mini HttpContext + pipeline routing for automatic handler discovery
+2. TaskCompletionSource pattern for deferred write completion
+3. Utf8JsonReader state machine for wire-to-database streaming
+4. Manifest-based atomic commits for transaction bundles
 
 **E2E Tests**: `BundleTransactionTests.cs`, `BundleBatchTests.cs` (ALL tests)
 
-#### Phase 1.2: Search Implementation (Week 3) - ADR-2503
+**Performance Gains**:
+- File-based: +5-10% throughput, atomic commits
+- Memory: 99% reduction for large bundles (<1MB vs 100MB for 1000 entries)
+- Latency: 840x faster time to first entry (50ms vs 42s)
+- Future SQL: +50-70% via BatchWriteAsync with SqlBulkCopy
+- Future Cosmos: +60-80% via BatchWriteAsync with batch API
+
+#### Phase 1.2: Search Implementation (Week 7) - ADR-2503
 **Goal**: Complete InMemory search from microsoft/fhir-server + Capability Statement + Authorization
 
 **Deliverables**:
@@ -77,7 +100,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 **E2E Tests**: `Search/BasicSearchTests.cs`, `Search/StringSearchTests.cs`
 
-#### Phase 1.3: Search Parameter Types (Week 4) - ADR-2504
+#### Phase 1.3: Search Parameter Types (Week 8) - ADR-2504
 **Goal**: Support all basic search parameter types
 
 **Deliverables**:
@@ -89,7 +112,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 2: Multi-Resource CRUD (Weeks 5-7) - ADR-2505
+### Phase 2: Multi-Resource CRUD (Weeks 9-11) - ADR-2505
 **Goal**: Extend to Observation, Encounter with reference validation
 
 **Deliverables**:
@@ -99,9 +122,11 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 **E2E Tests**: All CRUD tests for multiple resource types
 
+**Note**: Start week shifted by +4 due to Phase 1.1a enhancement
+
 ---
 
-### Phase 3: Validation (Weeks 8-10) - ADR-2506
+### Phase 3: Validation (Weeks 12-14) - ADR-2506
 **Goal**: Two-tier validation architecture + Capability Enforcement
 
 **Deliverables**:
@@ -117,7 +142,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 4: Advanced Search (Weeks 11-14) - ADR-2507
+### Phase 4: Advanced Search (Weeks 15-18) - ADR-2507
 **Goal**: Chaining, _include, _revinclude, composite parameters
 
 **Deliverables**:
@@ -130,7 +155,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 5: Multi-Version Support (Weeks 15-19) - ADR-2508
+### Phase 5: Multi-Version Support (Weeks 19-23) - ADR-2508
 **Goal**: STU3, R4, R4B, R5, R6 from single deployment with path-based routing
 
 **Deliverables**:
@@ -149,7 +174,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 6: Multi-Tenant (Weeks 20-23) - ADR-2509
+### Phase 6: Multi-Tenant (Weeks 24-27) - ADR-2509
 **Goal**: Tenant isolation and routing
 
 **Deliverables**:
@@ -162,7 +187,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 7: Distributed Infrastructure (Weeks 24-29) - ADR-2510
+### Phase 7: Distributed Infrastructure (Weeks 28-33) - ADR-2510
 **Goal**: Web farm deployment with Redis
 
 **Deliverables**:
@@ -175,7 +200,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 8: Legacy SQL Server Storage (Weeks 30-35) - ADR-2511
+### Phase 8: Legacy SQL Server Storage (Weeks 34-39) - ADR-2511
 **Goal**: EF-based data layer compatible with existing legacy schema
 
 **Deliverables**:
@@ -192,7 +217,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 8a: Optimized SQL Server Storage (Weeks 36-41) - ADR-2511a
+### Phase 8a: Optimized SQL Server Storage (Weeks 40-45) - ADR-2511a
 **Goal**: Optimized database storage with decoupled resource/index storage
 
 **Deliverables**:
@@ -209,7 +234,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 9: Cosmos DB Storage (Weeks 42-49) - ADR-2512
+### Phase 9: Cosmos DB Storage (Weeks 46-53) - ADR-2512
 **Goal**: Planet-scale storage
 
 **Deliverables**:
@@ -220,7 +245,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 10: SMART on FHIR (Weeks 50-55) - ADR-2513
+### Phase 10: SMART on FHIR (Weeks 54-59) - ADR-2513
 **Goal**: OAuth 2.0 authorization with multi-provider identity
 
 **Deliverables**:
@@ -233,7 +258,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 11: Implementation Guides (Weeks 56-61) - ADR-2514
+### Phase 11: Implementation Guides (Weeks 60-65) - ADR-2514
 **Goal**: US Core and custom IG support
 
 **Deliverables**:
@@ -244,7 +269,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 12: Custom Search Parameters (Weeks 62-65) - ADR-2515
+### Phase 12: Custom Search Parameters (Weeks 66-69) - ADR-2515
 **Goal**: Client-posted search parameters with lifecycle management and reindexing
 
 **Deliverables**:
@@ -263,7 +288,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 13: Bulk Operations (Weeks 66-71) - ADR-2516
+### Phase 13: Bulk Operations (Weeks 70-75) - ADR-2516
 **Goal**: $export and $import with channels
 
 **Deliverables**:
@@ -278,7 +303,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 14: Advanced Operations (Weeks 72-77) - ADR-2517
+### Phase 14: Advanced Operations (Weeks 76-81) - ADR-2517
 **Goal**: $bulk-delete, $bulk-update (HIGH priority from gap analysis)
 
 **Deliverables**:
@@ -288,7 +313,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 15: US Core Operations (Weeks 78-83) - ADR-2518
+### Phase 15: US Core Operations (Weeks 82-87) - ADR-2518
 **Goal**: $docref, $everything (US Core requirements)
 
 **Deliverables**:
@@ -297,7 +322,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 16: Compartment Search (Weeks 84-86) - ADR-2519
+### Phase 16: Compartment Search (Weeks 88-90) - ADR-2519
 **Goal**: FHIR compartment definitions
 
 **Deliverables**:
@@ -307,7 +332,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 17: Patch Operations (Weeks 87-90) - ADR-2520
+### Phase 17: Patch Operations (Weeks 91-94) - ADR-2520
 **Goal**: JSON Patch and FHIRPath Patch
 
 **Deliverables**:
@@ -318,7 +343,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 18: Production Readiness (Weeks 91-96) - ADR-2521
+### Phase 18: Production Readiness (Weeks 95-100) - ADR-2521
 **Goal**: Observability, monitoring, operations
 
 **Deliverables**:
@@ -330,7 +355,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 19: Custom Structures and Extensions (Weeks 97-100) - ADR-2522
+### Phase 19: Custom Structures and Extensions (Weeks 101-104) - ADR-2522
 **Goal**: Production-ready extension and R6 Additional Resource support
 
 **Deliverables**:
@@ -352,7 +377,7 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 
 ---
 
-### Phase 20: Multi-Tenancy Data Partitioning (Weeks 101-112) - ADR-2523
+### Phase 20: Multi-Tenancy Data Partitioning (Weeks 105-116) - ADR-2523
 **Goal**: Complete multi-tenancy data partitioning with Isolation and Distributed modes
 
 **Deliverables**:
@@ -390,31 +415,34 @@ See `docs/investigations/SUMMARY.md` for comprehensive analysis of all 26 invest
 | Phase | Weeks | Claude Code Hours | Cumulative | Key Deliverable |
 |-------|-------|-------------------|------------|-----------------|
 | Prototype | 1 | 20 | 20 | PUT/GET with file storage |
-| 1.1 | 2 | 16 | 36 | Bundle processing |
-| 1.2 | 3 | 16 | 52 | InMemory search |
-| 1.3 | 4 | 16 | 68 | Search parameters |
-| 2 | 5-7 | 48 | 116 | Multi-resource CRUD |
-| 3 | 8-10 | 48 | 164 | Two-tier validation |
-| 4 | 11-14 | 64 | 228 | Advanced search |
-| 5 | 15-19 | 80 | 308 | Multi-version |
-| 6 | 20-23 | 64 | 372 | Multi-tenant |
-| 7 | 24-29 | 96 | 468 | Distributed infra |
-| 8 | 30-35 | 96 | 564 | Legacy SQL Server |
-| 8a | 36-41 | 96 | 660 | Optimized SQL Server |
-| 9 | 42-49 | 128 | 788 | Cosmos DB |
-| 10 | 50-55 | 96 | 884 | SMART on FHIR |
-| 11 | 56-61 | 96 | 980 | Implementation Guides |
-| 12 | 62-65 | 64 | 1044 | Custom search parameters |
-| 13 | 66-71 | 96 | 1140 | Bulk operations |
-| 14 | 72-77 | 96 | 1236 | Advanced operations |
-| 15 | 78-83 | 96 | 1332 | US Core operations |
-| 16 | 84-86 | 48 | 1380 | Compartments |
-| 17 | 87-90 | 64 | 1444 | Patch operations |
-| 18 | 91-96 | 96 | 1540 | Production readiness |
-| 19 | 97-100 | 64 | 1604 | Custom structures & extensions |
-| 20 | 101-112 | 192 | 1796 | Multi-tenancy data partitioning |
+| 1.1 | 2 | 16 | 36 | Bundle processing (original) |
+| 1.1a | 3-6 | 76 | 112 | Streaming & deferred writes |
+| 1.2 | 7 | 16 | 128 | InMemory search |
+| 1.3 | 8 | 16 | 144 | Search parameters |
+| 2 | 9-11 | 48 | 192 | Multi-resource CRUD |
+| 3 | 12-14 | 48 | 240 | Two-tier validation |
+| 4 | 15-18 | 64 | 304 | Advanced search |
+| 5 | 19-23 | 80 | 384 | Multi-version |
+| 6 | 24-27 | 64 | 448 | Multi-tenant |
+| 7 | 28-33 | 96 | 544 | Distributed infra |
+| 8 | 34-39 | 96 | 640 | Legacy SQL Server |
+| 8a | 40-45 | 96 | 736 | Optimized SQL Server |
+| 9 | 46-53 | 128 | 864 | Cosmos DB |
+| 10 | 54-59 | 96 | 960 | SMART on FHIR |
+| 11 | 60-65 | 96 | 1056 | Implementation Guides |
+| 12 | 66-69 | 64 | 1120 | Custom search parameters |
+| 13 | 70-75 | 96 | 1216 | Bulk operations |
+| 14 | 76-81 | 96 | 1312 | Advanced operations |
+| 15 | 82-87 | 96 | 1408 | US Core operations |
+| 16 | 88-90 | 48 | 1456 | Compartments |
+| 17 | 91-94 | 64 | 1520 | Patch operations |
+| 18 | 95-100 | 96 | 1616 | Production readiness |
+| 19 | 101-104 | 64 | 1680 | Custom structures & extensions |
+| 20 | 105-116 | 192 | 1872 | Multi-tenancy data partitioning |
 
-**Total**: 112 weeks, ~1,796 Claude Code hours
+**Total**: 116 weeks, ~1,872 Claude Code hours
+
+**Note**: Phase 1.1a adds 4 weeks and 76 hours to original plan. Timeline shift applies to all subsequent phases.
 
 ## Definition of Done
 
@@ -477,7 +505,7 @@ Each phase has a dedicated ADR with detailed implementation guidance:
 
 ## Key Architectural Decisions
 
-From 26 investigation documents (see `docs/investigations/SUMMARY.md`):
+From 29 investigation documents (see `docs/investigations/SUMMARY.md`):
 
 1. **Vertical Slices**: Complete features end-to-end (not layers)
 2. **Medino Messaging**: In-process abstraction, Redis for distributed
@@ -503,6 +531,11 @@ From 26 investigation documents (see `docs/investigations/SUMMARY.md`):
 22. **Dual-Mode Data Partitioning**: Isolation mode (single repository) vs Distributed mode (fanout/union) as first-class abstractions
 23. **Pass-Through Optimization**: Zero overhead for Isolation mode and Distributed mode with 0-1 layers
 24. **Data Layer Registry**: Centralized registry of data stores with capabilities, participation modes, and health monitoring
+25. **Endpoint Routing Over Controllers**: Zero controllers with generic RequestDelegate handlers (eliminates 145+ controller files - see `dynamic-fhir-routing.md`)
+26. **Streaming Bundle Serialization**: IAsyncEnumerable + FhirJsonWriter for 95% memory reduction (see `bundle-streaming.md`)
+27. **Simplified Search Query Parsing**: 250-line builder vs 800-line legacy factory (70% reduction - see `search-query-parsing.md`)
+28. **Two-Phase Bundle Writes**: DeferredWriteCoordinator with TaskCompletionSource for atomic commits and future bulk operations (Phase 1.1a - see `bundle-deferred-writes.md`)
+29. **Streaming Bundle Parser**: Utf8JsonReader with state machine for wire-to-database streaming, 99% memory reduction (Phase 1.1a - see `bundle-streaming-parser.md`)
 
 ## Consequences
 
@@ -518,10 +551,11 @@ From 26 investigation documents (see `docs/investigations/SUMMARY.md`):
 
 ### Negative
 
-1. **Long Timeline**: 112 weeks (28 months) to full parity
+1. **Extended Timeline**: 116 weeks (29 months) to full parity (was 112 weeks; +4 weeks for Phase 1.1a)
 2. **Coordination**: 24 phase ADRs to maintain (including 8a)
 3. **Late Features**: Some operations deferred to Phase 14-19
 4. **Multi-Version Complexity**: Resource ID must be unique across versions; version routing needs careful design to avoid duplication
+5. **Early Complexity**: Phase 1.1a introduces TaskCompletionSource and state machine patterns early in roadmap
 
 ### Mitigation
 
@@ -529,6 +563,8 @@ From 26 investigation documents (see `docs/investigations/SUMMARY.md`):
 2. **Continuous Integration**: All tests run on every commit
 3. **Performance Benchmarks**: Track from Prototype Phase
 4. **ADR Reviews**: Validate before starting each phase
+5. **Phase 1.1a Justification**: 4-week investment validates patterns early with file storage, yields 50-80% gains in future SQL/Cosmos phases
+6. **Pattern Encapsulation**: State machine complexity isolated in helper classes (BundleParserState), well-documented with investigation documents
 
 ## References
 

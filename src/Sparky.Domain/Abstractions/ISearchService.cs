@@ -37,4 +37,17 @@ public interface ISearchService
         TSearchOptions searchOptions,
         CancellationToken ct = default)
         where TSearchOptions : class;
+
+    /// <summary>
+    /// Counts the number of resources that match the search criteria.
+    /// This is an optimized query that does not retrieve resource data, sort results, or process _include/_revinclude.
+    /// </summary>
+    /// <typeparam name="TSearchOptions">The type of search options (e.g., SearchOptions from Sparky.Search).</typeparam>
+    /// <param name="searchOptions">The search criteria (only filter parameters are used; _sort, _include, _revinclude are ignored).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The count of matching resources.</returns>
+    ValueTask<int> CountAsync<TSearchOptions>(
+        TSearchOptions searchOptions,
+        CancellationToken ct = default)
+        where TSearchOptions : class;
 }

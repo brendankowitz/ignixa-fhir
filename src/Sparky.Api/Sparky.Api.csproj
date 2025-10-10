@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Features\Patient\" />
+    <Folder Include="fhir-data\" />
   </ItemGroup>
 
   <ItemGroup>

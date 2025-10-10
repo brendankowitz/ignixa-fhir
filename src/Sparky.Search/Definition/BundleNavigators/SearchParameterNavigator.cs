@@ -35,9 +35,9 @@ internal class SearchParameterNavigator
         _expression = new Lazy<string>(() => searchParameter.Scalar("expression")?.ToString());
         _type = new Lazy<string>(() => searchParameter.Scalar("type")?.ToString());
 
-        _base = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("base")?.AsStringValues().ToArray());
-        _component = new Lazy<IReadOnlyList<ITypedElement>>(() => searchParameter.Select("component")?.ToArray());
-        _target = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("target")?.AsStringValues().ToArray());
+        _base = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("base")?.AsStringValues().ToArray() ?? Array.Empty<string>());
+        _component = new Lazy<IReadOnlyList<ITypedElement>>(() => searchParameter.Select("component")?.ToArray() ?? Array.Empty<ITypedElement>());
+        _target = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("target")?.AsStringValues().ToArray() ?? Array.Empty<string>());
     }
 
     public string Name => _name.Value;

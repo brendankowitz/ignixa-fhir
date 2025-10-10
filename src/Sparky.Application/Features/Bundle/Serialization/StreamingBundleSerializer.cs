@@ -8,13 +8,13 @@ using System.Text.Json;
 using EnsureThat;
 using Sparky.Domain.Models;
 
-namespace Sparky.Api.Infrastructure;
+namespace Sparky.Application.Features.Bundle.Serialization;
 
 /// <summary>
 /// Streaming FHIR Bundle serializer that writes directly to an output stream.
 /// Uses zero-copy JSON passthrough for optimal performance.
 /// </summary>
-public static class BundleSerializer
+public static class StreamingBundleSerializer
 {
     /// <summary>
     /// Serializes a search result bundle asynchronously, streaming entries as they become available.
@@ -171,5 +171,113 @@ public static class BundleSerializer
             yield return item;
             await Task.Yield(); // Allow cooperative multitasking
         }
+    }
+
+    /// <summary>
+    /// Serializes a bundle response asynchronously with streaming entry responses.
+    /// Writes entries as they become available for optimal memory usage.
+    /// </summary>
+    /// <param name="outputStream">The stream to write JSON to.</param>
+    /// <param name="bundleType">The FHIR bundle type (e.g., "batch-response", "transaction-response").</param>
+    /// <param name="entryResponses">Async stream of bundle entry responses.</param>
+    /// <param name="total">Total number of entries (optional).</param>
+    /// <param name="selfLink">The self link URL (optional).</param>
+    /// <param name="nextLink">The next page URL (optional).</param>
+    /// <param name="pretty">Whether to format JSON with indentation.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public static async Task SerializeStreamAsync(
+        Stream outputStream,
+        string bundleType,
+        IAsyncEnumerable<BundleEntryResponse> entryResponses,
+        int? total = null,
+        string? selfLink = null,
+        string? nextLink = null,
+        bool pretty = false,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureArg.IsNotNull(outputStream, nameof(outputStream));
+        EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
+        EnsureArg.IsNotNull(entryResponses, nameof(entryResponses));
+
+        await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+
+        writer
+            .WriteStartObject()
+            .WriteString("resourceType", "Bundle")
+            .WriteString("type", bundleType)
+            .WriteOptionalNumber("total", total);
+
+        // Write link array if any links are present
+        writer.Condition(
+            !string.IsNullOrEmpty(selfLink) || !string.IsNullOrEmpty(nextLink),
+            w => w
+                .WriteStartArray("link")
+                .Condition(!string.IsNullOrEmpty(selfLink), w2 => w2
+                    .WriteStartObject()
+                    .WriteString("relation", "self")
+                    .WriteString("url", selfLink!)
+                    .WriteEndObject())
+                .Condition(!string.IsNullOrEmpty(nextLink), w2 => w2
+                    .WriteStartObject()
+                    .WriteString("relation", "next")
+                    .WriteString("url", nextLink!)
+                    .WriteEndObject())
+                .WriteEndArray());
+
+        // Write entry array
+        writer.WriteStartArray("entry");
+
+        // Stream entry responses as they become available
+        await foreach (BundleEntryResponse entryResponse in entryResponses.WithCancellation(cancellationToken))
+        {
+            WriteEntryResponse(writer, entryResponse);
+
+            // Flush periodically to stream data to client
+            await writer.FlushAsync(cancellationToken);
+        }
+
+        writer.WriteEndArray(); // end entry array
+        writer.WriteEndObject(); // end bundle
+
+        await writer.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes a single bundle entry response to the JSON writer.
+    /// </summary>
+    private static void WriteEntryResponse(FhirJsonWriter writer, BundleEntryResponse response)
+    {
+        writer.WriteStartObject();
+
+        // Write response
+        writer.WriteStartObject("response");
+        writer.WriteString("status", response.Status ?? response.StatusCode.ToString());
+
+        if (!string.IsNullOrEmpty(response.Location))
+        {
+            writer.WriteString("location", response.Location);
+        }
+
+        if (!string.IsNullOrEmpty(response.ETag))
+        {
+            writer.WriteString("etag", response.ETag);
+        }
+
+        if (response.LastModified.HasValue)
+        {
+            writer.WriteString("lastModified", response.LastModified.Value.ToString("o"));
+        }
+
+        writer.WriteEndObject(); // end response
+
+        // Write resource if present
+        if (!string.IsNullOrEmpty(response.ResourceJson))
+        {
+            // Parse and write resource as raw JSON
+            byte[] resourceBytes = Encoding.UTF8.GetBytes(response.ResourceJson);
+            writer.WriteRawProperty("resource", resourceBytes);
+        }
+
+        writer.WriteEndObject(); // end entry
     }
 }

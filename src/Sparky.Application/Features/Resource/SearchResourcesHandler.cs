@@ -6,30 +6,32 @@
 using Medino;
 using Microsoft.Extensions.Logging;
 using Sparky.Domain.Abstractions;
+using Sparky.Search.Models;
 
-namespace Sparky.Application.Features.Patient;
+namespace Sparky.Application.Features.Resource;
 
 /// <summary>
-/// Handler for SearchPatientQuery.
+/// Generic handler for searching any FHIR resource type.
+/// Replaces resource-specific handlers like SearchPatientHandler.
 /// </summary>
-public class SearchPatientHandler : IRequestHandler<SearchPatientQuery, SearchPatientResult>
+public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, SearchResourcesResult>
 {
     private readonly ISearchService _searchService;
-    private readonly ILogger<SearchPatientHandler> _logger;
+    private readonly ILogger<SearchResourcesHandler> _logger;
 
-    public SearchPatientHandler(
+    public SearchResourcesHandler(
         ISearchService searchService,
-        ILogger<SearchPatientHandler> logger)
+        ILogger<SearchResourcesHandler> logger)
     {
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<SearchPatientResult> HandleAsync(
-        SearchPatientQuery request,
+    public Task<SearchResourcesResult> HandleAsync(
+        SearchResourcesQuery request,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Searching for Patient resources (streaming)");
+        _logger.LogInformation("Searching for {ResourceType} resources (streaming)", request.ResourceType);
 
         // Use streaming search for memory-efficient processing
         var resourceStream = _searchService.SearchStreamAsync(request.SearchOptions, cancellationToken);
@@ -40,14 +42,15 @@ public class SearchPatientHandler : IRequestHandler<SearchPatientQuery, SearchPa
         // 2. Buffering all results (defeats streaming purpose)
         // 3. Return null total (current approach)
         int? total = null;
-        if (request.SearchOptions.Total != Search.Models.TotalType.None)
+        if (request.SearchOptions.Total != TotalType.None)
         {
             // For now, return null - will implement separate count query in Phase 1.2a
-            _logger.LogWarning("Total count requested but not yet supported with streaming");
+            _logger.LogWarning("Total count requested but not yet supported with streaming for {ResourceType}",
+                request.ResourceType);
             total = null;
         }
 
-        var result = new SearchPatientResult(
+        var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
             ContinuationToken: null); // TODO: Implement paging in Phase 1.2a

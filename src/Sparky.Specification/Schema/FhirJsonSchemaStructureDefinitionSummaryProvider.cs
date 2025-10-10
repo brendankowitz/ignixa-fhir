@@ -75,7 +75,16 @@ public class FhirJsonSchemaStructureDefinitionSummaryProvider : IStructureDefini
 
     public IStructureDefinitionSummary Provide(string canonical)
     {
-        return Types[canonical];
+        // Handle full canonical URLs like "http://hl7.org/fhir/StructureDefinition/Patient"
+        // Extract the type name (last segment after the last '/')
+        string typeName = canonical;
+        if (canonical.Contains('/', StringComparison.Ordinal))
+        {
+            typeName = canonical.Substring(canonical.LastIndexOf('/') + 1);
+        }
+
+        // Return null if the type is not found (rather than throwing KeyNotFoundException)
+        return Types.TryGetValue(typeName, out var summary) ? summary : null;
     }
 
     private class Context

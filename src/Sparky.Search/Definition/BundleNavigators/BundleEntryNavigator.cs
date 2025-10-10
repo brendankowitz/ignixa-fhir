@@ -5,7 +5,6 @@
 
 using EnsureThat;
 using Hl7.Fhir.ElementModel;
-using Hl7.FhirPath;
 
 namespace Sparky.Search.Definition.BundleNavigators;
 
@@ -17,7 +16,8 @@ internal class BundleEntryNavigator
     {
         EnsureArg.IsNotNull(entry, nameof(entry));
 
-        _entry = new Lazy<ITypedElement>(() => entry.Select("resource").FirstOrDefault());
+        // SDK 6.0 fix: Use Children() instead of Select() to avoid POCO conversion issues
+        _entry = new Lazy<ITypedElement>(() => entry.Children("resource").FirstOrDefault());
     }
 
     public ITypedElement Resource => _entry.Value;

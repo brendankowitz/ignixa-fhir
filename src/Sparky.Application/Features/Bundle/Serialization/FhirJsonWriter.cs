@@ -6,13 +6,13 @@
 using System.Text.Json;
 using EnsureThat;
 
-namespace Sparky.Api.Infrastructure;
+namespace Sparky.Application.Features.Bundle.Serialization;
 
 /// <summary>
 /// A fluent wrapper around Utf8JsonWriter for streaming FHIR JSON serialization.
 /// Provides a clean, chainable API for writing JSON with conditional logic support.
 /// </summary>
-public class FhirJsonWriter : IDisposable, IAsyncDisposable
+internal class FhirJsonWriter : IDisposable, IAsyncDisposable
 {
     private readonly JsonWriterOptions _writerOptions = new()
     {

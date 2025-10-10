@@ -26,4 +26,16 @@ public record ResourceWrapper(
     /// Enables streaming without parsing/re-serializing JSON.
     /// </summary>
     public ReadOnlyMemory<byte>? RawJsonBytes { get; init; }
+
+    /// <summary>
+    /// Optional: FHIR version of the resource (e.g., "4.0" for R4, "5.0" for R5).
+    /// Defaults to "4.0" (R4) if not specified.
+    /// </summary>
+    public string FhirVersion { get; init; } = "4.0";
+
+    /// <summary>
+    /// Optional: Search index entries extracted from the resource.
+    /// Used for search parameter indexing.
+    /// </summary>
+    public IReadOnlyCollection<object>? SearchIndices { get; init; }
 }

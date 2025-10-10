@@ -5,7 +5,6 @@
 
 using EnsureThat;
 using Hl7.Fhir.ElementModel;
-using Hl7.FhirPath;
 using Sparky.Extensions.Models;
 
 namespace Sparky.Search.Definition.BundleNavigators;
@@ -19,7 +18,17 @@ internal class BundleNavigator
         EnsureArg.IsNotNull(bundle, nameof(bundle));
         EnsureArg.Is(KnownResourceTypes.Bundle, bundle.InstanceType, StringComparison.Ordinal, nameof(bundle));
 
-        _entries = new Lazy<IReadOnlyList<BundleEntryNavigator>>(() => bundle.Select("entry").Select(x => new BundleEntryNavigator(x)).ToArray());
+        // SDK 6.0 fix: Use Children() instead of Select() to avoid POCO conversion issues
+        // Select("entry") tries to convert to Bundle.EntryComponent which is abstract
+        _entries = new Lazy<IReadOnlyList<BundleEntryNavigator>>(() =>
+        {
+            var entries = new List<BundleEntryNavigator>();
+            foreach (var child in bundle.Children("entry"))
+            {
+                entries.Add(new BundleEntryNavigator(child));
+            }
+            return entries;
+        });
     }
 
     public IReadOnlyList<BundleEntryNavigator> Entries => _entries.Value;

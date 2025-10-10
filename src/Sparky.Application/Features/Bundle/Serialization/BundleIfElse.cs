@@ -3,13 +3,13 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Sparky.Api.Infrastructure;
+namespace Sparky.Application.Features.Bundle.Serialization;
 
 /// <summary>
 /// Helper class for conditional serialization chains in FhirJsonWriter.
 /// Enables if-elseif-else patterns for conditional JSON property writing.
 /// </summary>
-public sealed class BundleIfElse
+internal sealed class BundleIfElse
 {
     private readonly FhirJsonWriter _writer;
     private readonly bool _hasRun;

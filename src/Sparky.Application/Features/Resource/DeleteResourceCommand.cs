@@ -4,12 +4,13 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Sparky.Search.Models;
 
-namespace Sparky.Application.Features.Patient;
+namespace Sparky.Application.Features.Resource;
 
 /// <summary>
-/// Query to search for Patient resources.
+/// Generic command to delete any FHIR resource.
+/// Works for all resource types (Patient, Observation, Condition, etc.).
 /// </summary>
-/// <param name="SearchOptions">The search options parsed from query parameters.</param>
-public record SearchPatientQuery(SearchOptions SearchOptions) : IRequest<SearchPatientResult>;
+/// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
+/// <param name="Id">The resource ID.</param>
+public record DeleteResourceCommand(string ResourceType, string Id) : IRequest<bool>;

@@ -8,6 +8,13 @@ Proposed
 
 Following Bundle processing in Phase 1.1, we add complete search functionality using the proven InMemory search architecture from microsoft/fhir-server. This phase also introduces the Capability Statement service and basic authorization.
 
+**Related Investigations**:
+- `phase1-file-based-storage-with-search.md` - InMemory search architecture from microsoft/fhir-server
+- `search-query-parsing.md` - Simplified SearchOptionsBuilder (250 lines vs 800-line legacy factory)
+- `bundle-streaming.md` - IAsyncEnumerable + FhirJsonWriter for streaming Bundle responses (95% memory reduction)
+- `dynamic-capability-statement-generation.md` - Segmented capability statement with caching
+- `rbac-authorization-with-capability-enforcement.md` - 5-layer authorization pipeline
+
 ### Key Innovation: Reuse microsoft/fhir-server InMemory Search
 
 **Problem**: Search is complex - expression parsing, type-specific comparisons, indexing strategy.
@@ -572,13 +579,20 @@ See `docs/investigations/search-query-parsing.md` for query parsing implementati
 - Copy InMemoryIndex.cs
 - Adapt to Sparky namespaces and patterns
 - **Use existing** `Sparky.Search.Expressions.Parsers.ExpressionParser` for query parsing
-- **Implement** `SearchOptionsBuilder` (simplified vs legacy SearchOptionsFactory)
+- **Implement** `SearchOptionsBuilder` (simplified vs legacy SearchOptionsFactory - see `search-query-parsing.md`)
+  - 250 lines vs 800-line legacy factory (70% reduction)
+  - QueryParameterParser for structured parameter parsing
+  - SearchOptionsBuilder for SearchOptions creation
+- **Implement** streaming Bundle responses (see `bundle-streaming.md`)
+  - IAsyncEnumerable + FhirJsonWriter for 95% memory reduction
+  - BundleSerializer for streaming serialization
 - Create SearchHandler (Medino)
 - Create SearchEndpoints
 
 **Testing**:
 - Unit tests for SearchQueryInterpreter
 - Unit tests for InMemoryIndex
+- Unit tests for SearchOptionsBuilder
 - E2E tests: BasicSearchTests.cs, StringSearchTests.cs
 
 #### 2. Index Loading Service (3 hours)
@@ -638,10 +652,11 @@ See `docs/investigations/search-query-parsing.md` for query parsing implementati
 
 ## References
 
-- Investigation: `docs/investigations/phase1-file-based-storage-with-search.md`
-- Investigation: `docs/investigations/search-query-parsing.md` - **Query parsing implementation (October 2025)**
-- Investigation: `docs/investigations/dynamic-capability-statement-generation.md`
-- Investigation: `docs/investigations/rbac-authorization-with-capability-enforcement.md`
+- Investigation: `docs/investigations/phase1-file-based-storage-with-search.md` - InMemory search architecture
+- Investigation: `docs/investigations/search-query-parsing.md` - **Simplified SearchOptionsBuilder (250 lines vs 800-line legacy)**
+- Investigation: `docs/investigations/bundle-streaming.md` - **IAsyncEnumerable + FhirJsonWriter streaming (95% memory reduction)**
+- Investigation: `docs/investigations/dynamic-capability-statement-generation.md` - Segmented capability statement
+- Investigation: `docs/investigations/rbac-authorization-with-capability-enforcement.md` - 5-layer authorization pipeline
 - microsoft/fhir-server InMemory search: https://github.com/microsoft/fhir-server/tree/feature/subscription-engine/src/Microsoft.Health.Fhir.Core/Features/Search/InMemory
 - Expression tree classes: `src/Sparky.Search/Expressions/` - **Relocated October 2025**
 - ADR-2500: Master Implementation Roadmap

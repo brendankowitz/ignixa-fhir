@@ -13,11 +13,12 @@ using Hl7.Fhir.Serialization;
 using Hl7.Fhir.Specification;
 using Hl7.FhirPath;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Health.Fhir.Extensions.Schema;
-using Microsoft.Health.Fhir.SourceNodeSerialization;
-using Microsoft.Health.Fhir.Search.Extensions.Data;
-using Microsoft.Health.Fhir.Search.Extensions.Indexing;
-using Microsoft.Health.Fhir.Specification.Extensions.Schema;
+using Sparky.Extensions;
+using Sparky.Extensions.Schema;
+using Sparky.SourceNodeSerialization;
+using Sparky.Search.Data;
+using Sparky.Search.Indexing;
+using Sparky.Specification.Schema;
 using Xunit;
 
 namespace Microsoft.Health.Fhir.Extensions.Tests.Search;

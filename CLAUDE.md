@@ -14,6 +14,28 @@ This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR s
 **Test Status**: ✅ All tests passing
 **Endpoints**: ✅ PUT /Patient/{id}, GET /Patient/{id}, GET /metadata
 
+### Recent Investigations (October 9, 2025)
+
+Three new investigation documents completed to address architectural gaps:
+
+1. **Dynamic FHIR Routing** (`docs/investigations/dynamic-fhir-routing.md`)
+   - **Problem**: Current PatientController approach doesn't scale to 145+ FHIR resource types
+   - **Solution**: Generic endpoint routing with RequestDelegate handlers
+   - **Impact**: Zero controllers, automatic support for all resource types, 14% performance improvement
+   - **Status**: Ready for Phase 1.1 implementation
+
+2. **Bundle Streaming** (`docs/investigations/bundle-streaming.md`)
+   - **Problem**: Current buffered Bundle responses load entire result set into memory (50 MB for 1000 resources)
+   - **Solution**: IAsyncEnumerable + FhirJsonWriter streaming serialization
+   - **Impact**: 95% memory reduction (50 MB → 2-3 MB), 50-200ms time-to-first-byte
+   - **Status**: ✅ **ALREADY IMPLEMENTED** - BundleSerializer, FhirJsonWriter, streaming infrastructure complete
+
+3. **Search Query Parsing** (`docs/investigations/search-query-parsing.md`)
+   - **Problem**: Legacy SearchOptionsFactory is 800 lines of complex parameter parsing logic
+   - **Solution**: Simplified 3-stage pipeline (QueryParameterParser → ExpressionBuilder → SearchOptionsBuilder)
+   - **Impact**: 70% code reduction (800 → 250 lines), easier to maintain and extend
+   - **Status**: Design complete, ready for Phase 1.2 implementation
+
 ## Solution Architecture
 
 The solution follows a **layered architecture** with **separate projects** for each layer:
@@ -363,8 +385,23 @@ fhir-data/
 
 The prototype phase is **COMPLETE**. Ready to proceed with:
 
-1. **Phase 2: Search Implementation**
-   - Implement search parameter parsing
+1. **Phase 1.1: Bundle Processing & Dynamic Routing** (Week 2)
+   - **NEW**: Migrate from PatientController to generic endpoint routing (see `dynamic-fhir-routing.md`)
+     - Eliminates need for 145+ resource-specific controllers
+     - Generic RequestDelegate handlers for all resource types
+     - Zero controllers, automatic support for all FHIR resources
+   - Implement POST / for transaction bundles
+   - Channel-based parallel execution
+   - Reference resolution for urn:uuid:
+
+2. **Phase 1.2: Search Implementation** (Week 3)
+   - **NEW**: Implement simplified SearchOptionsBuilder (see `search-query-parsing.md`)
+     - 250 lines vs 800-line legacy factory (70% reduction)
+     - QueryParameterParser for structured parsing
+   - **NEW**: Implement streaming Bundle responses (see `bundle-streaming.md`)
+     - IAsyncEnumerable + FhirJsonWriter for 95% memory reduction
+     - BundleSerializer for zero-copy JSON serialization
+   - Port InMemory search from microsoft/fhir-server
    - Add GET /Patient?name=... support
    - Integrate Sparky.Search indexing
 

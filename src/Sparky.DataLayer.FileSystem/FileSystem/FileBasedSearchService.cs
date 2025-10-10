@@ -170,4 +170,46 @@ public class FileBasedSearchService : ISearchService
             "Streaming search completed: {Count} resources streamed",
             streamed);
     }
+
+    public ValueTask<int> CountAsync<TSearchOptions>(
+        TSearchOptions searchOptions,
+        CancellationToken ct = default)
+        where TSearchOptions : class
+    {
+        if (searchOptions is not SearchOptions options)
+        {
+            throw new ArgumentException($"Expected SearchOptions, got {typeof(TSearchOptions).Name}", nameof(searchOptions));
+        }
+
+        _logger.LogInformation(
+            "Counting {ResourceType} resources (Expression: {HasExpression})",
+            options.ResourceType,
+            options.Expression != null);
+
+        // Phase 1.2: Simple implementation - count files on disk
+        // Ignores _sort, _include, _revinclude (as per spec - count only considers filters)
+        // TODO Phase 1.2a: Use search index for optimized counting
+
+        var resourceType = options.ResourceType;
+        var resourceDir = Path.Combine(_baseDirectory, resourceType);
+
+        if (!Directory.Exists(resourceDir))
+        {
+            _logger.LogDebug("Resource directory not found: {ResourceDir}", resourceDir);
+            return ValueTask.FromResult(0);
+        }
+
+        // Count resource files (exclude .meta.json files)
+        var count = Directory.GetFiles(resourceDir, "*.json")
+            .Count(f => !f.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase));
+
+        _logger.LogInformation(
+            "Count query for {ResourceType}: {Count} resources",
+            resourceType,
+            count);
+
+        // TODO: Apply expression filtering when search indexing is implemented
+        // For now, return total count (Phase 1.2 prototype behavior)
+        return ValueTask.FromResult(count);
+    }
 }
