@@ -3,26 +3,22 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Nodes;
+#pragma warning disable CA1707 // Identifiers should not contain underscores (standard xUnit naming pattern)
+#pragma warning disable SDK0001 // Evaluation API usage
+
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Hl7.Fhir.Specification;
 using Hl7.FhirPath;
-using Microsoft.Health.Fhir.Core.Extensions;
-using Microsoft.Health.Fhir.Core.Models;
-using Microsoft.Health.Fhir.SourceNodeSerialization.Extensions;
-using Microsoft.Health.Fhir.SourceNodeSerialization.SourceNodes.Models;
-using Microsoft.Health.Fhir.Tests.Common;
-using Microsoft.Health.Test.Utilities;
+using Sparky.SourceNodeSerialization.Extensions;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
+using Sparky.SourceNodeSerialization.Tests.TestData;
+using Sparky.Specification.Extensions;
+using Sparky.Specification.Generated;
 using Xunit;
 
-namespace Microsoft.Health.Fhir.SourceNodeSerialization.UnitTests;
+namespace Sparky.SourceNodeSerialization.Tests;
 
 public class MetaJsonNodeTests
 {
@@ -75,11 +71,12 @@ public class MetaJsonNodeTests
   }
 }";
 
+    private readonly R4StructureDefinitionSummaryProvider _r4StructureDefinitionSummaryProvider = new R4StructureDefinitionSummaryProvider();
+
     public MetaJsonNodeTests()
     {
-        ModelExtensions.SetModelInfoProvider();
         _currentDate = DateTimeOffset.UtcNow;
-        _patientPoco = Samples.GetDefaultPatient().ToPoco<Patient>();
+        _patientPoco = Samples.GetDefaultPatient();
         _patientPoco.Meta = new Meta
         {
             LastUpdated = _currentDate,
@@ -96,9 +93,9 @@ public class MetaJsonNodeTests
         _patientJsonNode.Meta.LastUpdated = _currentDate;
         _patientJsonNode.Meta.VersionId = "-1";
 
-        var newJson = _patientJsonNode.SerializeToString().Replace("\\u002B", "+");
+        var newJson = _patientJsonNode.SerializeToString().Replace("\\u002B", "+", StringComparison.Ordinal);
 
-        var deserializer = new FhirJsonPocoDeserializer();
+        var deserializer = new FhirJsonDeserializer();
         Resource deserializedPatient = deserializer.DeserializeResource(newJson);
 
         Assert.Equal(_currentDate, deserializedPatient.Meta.LastUpdated);
@@ -109,7 +106,7 @@ public class MetaJsonNodeTests
     public void ReadShadowProperty()
     {
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
-        ITypedElement node = sourceNode.ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        ITypedElement node = sourceNode.ToTypedElement(ModelInfo.ModelInspector);
 
         object familyName = node.Scalar("Patient.name.family");
         object familyId = node.Scalar("Patient.name.family.id");
@@ -131,9 +128,9 @@ public class MetaJsonNodeTests
     public void ReadExtension()
     {
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson);
-        ITypedElement node = sourceNode.ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
 
-        var compare = FhirJsonNode.Parse(_patientMinExtJson).ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        var compare = FhirJsonNode.Parse(_patientMinExtJson).ToTypedElement(_r4StructureDefinitionSummaryProvider);
 
         var path = "Resource.meta.extension.where(url = 'http://example.com/deleted-state').where(value = 'soft-deleted')";
 
@@ -162,10 +159,10 @@ public class MetaJsonNodeTests
     {
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
 
-        ITypedElement node = sourceNode.ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
         ITypedElement familyType = node.Select("Patient.name.family").Single();
 
-        IReadOnlyCollection<IElementDefinitionSummary> definitions = familyType.ChildDefinitions(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        IReadOnlyCollection<IElementDefinitionSummary> definitions = familyType.ChildDefinitions(_r4StructureDefinitionSummaryProvider);
     }
 
     [Fact]
@@ -173,7 +170,7 @@ public class MetaJsonNodeTests
     {
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
 
-        ITypedElement node = sourceNode.ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
         ITypedElement id = node.Select("Resource.id").Single();
         Assert.Equal("example",  id.Value);
     }
@@ -181,22 +178,21 @@ public class MetaJsonNodeTests
     [Fact]
     public void CanFindReferenceValuesInSourceNode()
     {
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(Samples.GetDefaultObservation().Poco.Value.ToJson());
+        var sourceNode = JsonSourceNodeFactory.ParseJsonNode<ResourceJsonNode>(Samples.GetDefaultObservation().ToJson());
 
-        IEnumerable<(string Path, string ReferenceValue)> references = sourceNode
-            .ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider)
-            .GetReferenceValues();
+        var references = sourceNode
+            .GetReferences();
 
         var reference = Assert.Single(references);
 
-        Assert.Contains("Observation.subject[0]", reference.Path);
-        Assert.Contains("Patient/example", reference.ReferenceValue);
+        Assert.Contains("subject", reference.ElementPath, StringComparison.Ordinal);
+        Assert.Contains("Patient/example", reference.Value, StringComparison.Ordinal);
     }
 
     [Fact]
     public void ExtractEffectiveDateTime()
     {
-        var poco = (Observation)Samples.GetDefaultObservation().Poco.Value;
+        var poco = Samples.GetDefaultObservation();
         poco.Effective = new FhirDateTime(_currentDate.Year);
 
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson());
@@ -205,7 +201,7 @@ public class MetaJsonNodeTests
 
         var effectiveExpected = poco.ToTypedElement().Select(effectiveDatePath).Single();
 
-        ITypedElement node = sourceNode.ToTypedElement(ModelInfoProvider.StructureDefinitionSummaryProvider);
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
         ITypedElement effectiveActual = node.Select(effectiveDatePath).Single();
 
         Assert.Equal(effectiveExpected.Value, effectiveActual.Value);

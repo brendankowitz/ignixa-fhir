@@ -16,8 +16,4 @@
     <Folder Include="ValueSets" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
-  </ItemGroup>
-
 </Project>

@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hl7.Fhir.R4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -16,7 +17,9 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Sparky.Extensions\Sparky.Extensions.csproj" />
     <ProjectReference Include="..\..\src\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
+    <ProjectReference Include="..\..\src\Sparky.Specification\Sparky.Specification.csproj" />
   </ItemGroup>
 
 </Project>

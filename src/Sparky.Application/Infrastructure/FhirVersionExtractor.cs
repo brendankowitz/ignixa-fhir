@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
+using Sparky.Extensions;
 
 namespace Sparky.Application.Infrastructure;
 
@@ -17,15 +18,15 @@ public static class FhirVersionExtractor
     /// <summary>
     /// Default FHIR version when not specified in headers.
     /// </summary>
-    public const string DefaultFhirVersion = "4.0"; // R4
+    public const FhirSpecification DefaultFhirVersion = FhirSpecification.R4;
 
     /// <summary>
     /// Extracts FHIR version from Content-Type or Accept headers.
-    /// Returns DefaultFhirVersion (4.0/R4) if not specified.
+    /// Returns DefaultFhirVersion (R4) if not specified.
     /// </summary>
     /// <param name="context">The HTTP context containing the request headers.</param>
-    /// <returns>FHIR version string (e.g., "4.0", "5.0", "3.0").</returns>
-    public static string ExtractFhirVersion(HttpContext? context)
+    /// <returns>FHIR version enum (e.g., FhirSpecification.R4).</returns>
+    public static FhirSpecification ExtractFhirVersion(HttpContext? context)
     {
         if (context == null)
         {
@@ -36,9 +37,9 @@ public static class FhirVersionExtractor
         if (context.Request.Headers.TryGetValue("Content-Type", out StringValues contentType))
         {
             var version = ParseFhirVersionFromMediaType(contentType.ToString());
-            if (version != null)
+            if (version.HasValue)
             {
-                return version;
+                return version.Value;
             }
         }
 
@@ -46,9 +47,9 @@ public static class FhirVersionExtractor
         if (context.Request.Headers.TryGetValue("Accept", out StringValues accept))
         {
             var version = ParseFhirVersionFromMediaType(accept.ToString());
-            if (version != null)
+            if (version.HasValue)
             {
-                return version;
+                return version.Value;
             }
         }
 
@@ -57,12 +58,12 @@ public static class FhirVersionExtractor
     }
 
     /// <summary>
-    /// Parses fhirVersion parameter from media type string.
-    /// Example: "application/fhir+json; fhirVersion=5.0" → "5.0"
+    /// Parses fhirVersion parameter from media type string and converts to enum.
+    /// Example: "application/fhir+json; fhirVersion=5.0" → FhirSpecification.R5
     /// </summary>
     /// <param name="mediaType">Media type string with optional parameters.</param>
-    /// <returns>FHIR version if found, null otherwise.</returns>
-    private static string? ParseFhirVersionFromMediaType(string? mediaType)
+    /// <returns>FHIR version enum if found and valid, null otherwise.</returns>
+    private static FhirSpecification? ParseFhirVersionFromMediaType(string? mediaType)
     {
         if (string.IsNullOrEmpty(mediaType))
         {
@@ -82,13 +83,32 @@ public static class FhirVersionExtractor
             var trimmed = part.Trim();
             if (trimmed.StartsWith("fhirVersion=", StringComparison.OrdinalIgnoreCase))
             {
-                var version = trimmed.Substring("fhirVersion=".Length).Trim();
+                var versionString = trimmed.Substring("fhirVersion=".Length).Trim();
                 // Remove quotes if present
-                version = version.Trim('"', '\'');
-                return version;
+                versionString = versionString.Trim('"', '\'');
+
+                // Parse string to enum
+                return ParseVersionString(versionString);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Parses FHIR version string to FhirSpecification enum.
+    /// </summary>
+    /// <param name="versionString">FHIR version string (e.g., "4.0", "5.0", "3.0").</param>
+    /// <returns>FhirSpecification enum value if valid, null otherwise.</returns>
+    private static FhirSpecification? ParseVersionString(string versionString)
+    {
+        return versionString switch
+        {
+            "3.0" => FhirSpecification.Stu3,
+            "4.0" => FhirSpecification.R4,
+            "4.3" => FhirSpecification.R4B,
+            "5.0" => FhirSpecification.R5,
+            _ => null
+        };
     }
 }

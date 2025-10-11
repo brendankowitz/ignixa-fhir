@@ -167,6 +167,16 @@ dotnet run --project src/Sparky.Api/Sparky.Api.csproj
 - **Using Directives**: System usings first, placed outside namespace
 - **Nullable Reference Types**: Enabled in new projects (Domain, Application, DataLayer, Api)
 
+### Testing Standards
+
+- **Test Framework**: xUnit
+- **Test Naming Convention**: Use BDD-style naming with underscores separating Given/When/Then clauses
+  - Format: `Given[Context]_When[Action]_Then[Result]`
+  - Example: `GivenAPatientPoco_WhenConvertingToJsonNode_ThenMetaIsPopulated`
+  - This naming style improves readability and clearly documents test intent
+- **Test Organization**: Use `#region` blocks to group related tests (e.g., "GetReferences Tests", "UpdateReference Tests")
+- **Arrange-Act-Assert Pattern**: Structure all test methods using the standard AAA pattern with comments
+
 ## Key Dependencies
 
 ### Centralized Package Management
@@ -196,6 +206,87 @@ Embedded JSON files in `Sparky.Search/Data/{Version}/`:
 - `BaseCapabilities.json` - Capability statement
 - `compartment.json` - Compartment definitions
 - `resourcepath-codesystem-mappings.json` - Code system mappings
+
+## Code Generation
+
+### IStructureDefinitionSummaryProvider Generation
+
+The project includes a build-time code generator for creating `IStructureDefinitionSummaryProvider` implementations for different FHIR versions (R4, R4B, R5, STU3). This ensures reliable, correct structure definitions from official FHIR packages.
+
+**Location**: `codegen/` folder
+**Solution**: `codegen/SparkyCodegen.sln` (separate from main All.sln)
+**Output**: `src/Sparky.Specification/Generated/` folder
+
+#### Architecture
+
+```
+codegen/
+├── SparkyCodegen.sln                   # Separate solution for code generation
+├── Sparky.Specification.Generators/    # Custom ILanguage implementation
+│   ├── Program.cs                      # Console app entry point
+│   └── CSharpStructureProviderLanguage.cs
+├── fhir-codegen/                       # Git submodule (Microsoft fhir-codegen)
+├── generate.ps1                        # PowerShell generation script
+├── generate.sh                         # Bash generation script
+├── Directory.Build.props               # Disables CPM for codegen
+└── README.md                           # Code generation documentation
+```
+
+#### Why a Separate Solution?
+
+The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `SparkyCodegen.sln`, we:
+
+1. Keep the main solution simple and fast to build
+2. Avoid CPM conflicts with third-party dependencies
+3. Generate files on-demand rather than on every build
+4. Make the build process more transparent
+
+#### Usage
+
+**Generate all FHIR versions:**
+
+```bash
+cd codegen
+./generate.ps1        # PowerShell
+./generate.sh         # Bash
+```
+
+**Generate specific version:**
+
+```bash
+./generate.ps1 -FhirVersion R4   # PowerShell
+./generate.sh R4                 # Bash
+```
+
+Supported versions: `R4`, `R4B`, `R5`, `STU3`, `All`
+
+#### Generated Files
+
+Generated files are placed in `src/Sparky.Specification/Generated/`:
+- `R4StructureDefinitionSummaryProvider.g.cs`
+- `R4BStructureDefinitionSummaryProvider.g.cs`
+- `R5StructureDefinitionSummaryProvider.g.cs`
+- `STU3StructureDefinitionSummaryProvider.g.cs`
+
+These files are marked as `linguist-generated=true` in `.gitattributes`.
+
+#### How It Works
+
+1. Scripts build both fhir-codegen and Sparky.Specification.Generators
+2. fhir-codegen downloads and parses FHIR packages (e.g., `hl7.fhir.r4.core#4.0.1`)
+3. fhir-codegen creates a `DefinitionCollection` with all FHIR structures
+4. Our custom `CSharpStructureProviderLanguage` traverses the collection
+5. Generated C# code is written to `src/Sparky.Specification/Generated/`
+
+#### Key Classes
+
+- **CSharpStructureProviderLanguage**: Implements `ILanguage` interface from fhir-codegen
+- **CSharpStructureProviderConfig**: Configuration for output directory and namespace
+- **Program.cs**: Console application orchestrating package loading and generation
+
+#### Package Versions
+
+The code generator uses Firely SDK 5.10.2 (from fhir-codegen submodule), **not** 6.0.0-rc1 used in the main solution. This is intentional to avoid API compatibility issues with fhir-codegen's LoaderOptions.
 
 ## Development Guidelines
 

@@ -1,0 +1,7 @@
+<Project>
+  <!-- Explicitly disable Central Package Management for codegen folder -->
+  <!-- This overrides the root Directory.Packages.props -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

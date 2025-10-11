@@ -44,28 +44,6 @@ public static class SourceNodeExtensions
         }
     }
 
-    // returns the string value of every "reference" element
-    public static IEnumerable<string> GetReferenceValues(this ISourceNode node)
-    {
-        EnsureArg.IsNotNull(node, nameof(node));
-
-        return node.AllDescendants()
-            .Where(n => string.Equals(n.Name, "reference", StringComparison.Ordinal))
-            .Select(n => n.Text)
-            .Where(v => !string.IsNullOrWhiteSpace(v));
-    }
-
-    public static IEnumerable<(string Path, string ReferenceValue)> GetReferenceValues(this ITypedElement root)
-    {
-        return root
-            .AllDescendants()
-            .Where(e => e.InstanceType == "Reference")
-            .Select(e => (
-                path: e.Location, // e.g. "Patient.contact.organization"
-                referenceText: e.Children("reference")
-                    .FirstOrDefault()?.Value?.ToString()));
-    }
-
     public static bool RemoveExtension(this MetaJsonNode node, string url)
     {
         EnsureArg.IsNotNull(node, nameof(node));

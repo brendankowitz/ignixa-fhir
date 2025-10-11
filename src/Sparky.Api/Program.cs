@@ -24,7 +24,7 @@ using Sparky.Search.Expressions.Parsers;
 using Sparky.Search.Definition;
 using Sparky.Search.Indexing.SearchValues;
 using Sparky.Extensions.Schema;
-using Sparky.Specification.Schema;
+using Sparky.Specification.Generated;
 using Sparky.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -119,7 +119,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Register ExpressionParser dependencies (still needed for search query parsing)
     containerBuilder.Register(c =>
     {
-        return new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
+        return new R4StructureDefinitionSummaryProvider();
     }).As<IFhirSchemaProvider>().SingleInstance();
 
     containerBuilder.RegisterType<SearchParameterDefinitionManager>()

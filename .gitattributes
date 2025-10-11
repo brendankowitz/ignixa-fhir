@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Mark generated files so GitHub recognizes them
+src/Sparky.Specification/Generated/*.g.cs linguist-generated=true

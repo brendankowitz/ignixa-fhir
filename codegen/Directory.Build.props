@@ -1,0 +1,13 @@
+<Project>
+  <!-- This Directory.Build.props is for the codegen folder only -->
+  <!-- Import the parent Directory.Build.props AFTER we set our properties -->
+
+  <PropertyGroup>
+    <!-- Explicitly disable CPM BEFORE any imports happen -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <EnableCentralPackageVersions>false</EnableCentralPackageVersions>
+  </PropertyGroup>
+
+  <!-- Import parent Directory.Build.props but skip Directory.Packages.props -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" Condition="false" />
+</Project>

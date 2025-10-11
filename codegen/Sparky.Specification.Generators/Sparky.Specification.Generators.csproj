@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Console application for generating C# IStructureDefinitionSummaryProvider from FHIR packages -->
+    <Description>Console application for generating C# IStructureDefinitionSummaryProvider from FHIR packages</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Project references to fhir-codegen projects -->
+    <!-- Note: fhir-codegen uses Firely SDK 5.10.2, not 6.0.0-rc1 -->
+    <ProjectReference Include="..\fhir-codegen\src\Microsoft.Health.Fhir.CodeGen\Microsoft.Health.Fhir.CodeGen.csproj" />
+    <ProjectReference Include="..\fhir-codegen\src\Microsoft.Health.Fhir.CodeGenCommon\Microsoft.Health.Fhir.CodeGenCommon.csproj" />
+  </ItemGroup>
+
+</Project>

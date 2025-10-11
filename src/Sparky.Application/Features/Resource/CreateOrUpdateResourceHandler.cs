@@ -11,6 +11,7 @@ using Sparky.Application.Features.Bundle;
 using Sparky.Application.Infrastructure;
 using Sparky.Domain.Abstractions;
 using Sparky.Domain.Models;
+using Sparky.Extensions;
 using Sparky.Search.Indexing;
 
 namespace Sparky.Application.Features.Resource;
@@ -110,12 +111,12 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     {
         var request = new ResourceRequest("PUT", $"{command.ResourceType}/{command.Id}");
 
-        // Extract FHIR version from headers (defaults to 4.0/R4)
-        var fhirVersion = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+        // Extract FHIR version from headers (defaults to R4)
+        var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
 
         // Get version-specific schema provider and search indexer from context
-        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
-        var searchIndexer = await _fhirVersionContext.GetSearchIndexerAsync(fhirVersion, cancellationToken);
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
+        var searchIndexer = await _fhirVersionContext.GetSearchIndexerAsync(fhirVersionEnum, cancellationToken);
 
         // Extract search indices using version-specific indexer
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
@@ -131,7 +132,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 searchIndices.Count,
                 command.ResourceType,
                 command.Id,
-                fhirVersion);
+                fhirVersionEnum);
         }
         catch (Exception ex)
         {
@@ -141,7 +142,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 "Failed to extract search indices for {ResourceType}/{Id} (FHIR {Version})",
                 command.ResourceType,
                 command.Id,
-                fhirVersion);
+                fhirVersionEnum);
         }
 
         return new ResourceWrapper(
@@ -154,7 +155,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             false) // isDeleted
         {
             RawJson = command.RawJson,
-            FhirVersion = fhirVersion,
+            FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
             SearchIndices = searchIndices
         };
     }

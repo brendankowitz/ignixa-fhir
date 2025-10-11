@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Sparky.Extensions;
 using Sparky.Extensions.Schema;
 using Sparky.Search.Indexing;
 
@@ -18,15 +19,15 @@ public interface IFhirVersionContext
     /// <summary>
     /// Gets the schema provider for the specified FHIR version.
     /// </summary>
-    /// <param name="fhirVersion">FHIR version string (e.g., "4.0", "5.0", "3.0").</param>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
     /// <returns>Schema provider for the specified version.</returns>
-    IFhirSchemaProvider GetSchemaProvider(string fhirVersion);
+    IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion);
 
     /// <summary>
     /// Gets the search indexer for the specified FHIR version.
     /// </summary>
-    /// <param name="fhirVersion">FHIR version string (e.g., "4.0", "5.0", "3.0").</param>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Search indexer for the specified version.</returns>
-    ValueTask<ISearchIndexer> GetSearchIndexerAsync(string fhirVersion, CancellationToken cancellationToken = default);
+    ValueTask<ISearchIndexer> GetSearchIndexerAsync(FhirSpecification fhirVersion, CancellationToken cancellationToken = default);
 }

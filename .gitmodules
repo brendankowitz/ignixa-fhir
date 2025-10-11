@@ -1,0 +1,3 @@
+[submodule "third-party/fhir-codegen"]
+	path = codegen/fhir-codegen
+	url = https://github.com/microsoft/fhir-codegen.git

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Sparky.Extensions;
 using Sparky.Extensions.Schema;
 using Sparky.Search.Indexing;
-using Sparky.Specification.Schema;
+using Sparky.Specification.Generated;
 
 namespace Sparky.Application.Infrastructure;
 
@@ -18,8 +18,8 @@ namespace Sparky.Application.Infrastructure;
 /// </summary>
 public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 {
-    private readonly ConcurrentDictionary<string, IFhirSchemaProvider> _schemaProviders = new();
-    private readonly ConcurrentDictionary<string, ISearchIndexer> _searchIndexers = new();
+    private readonly ConcurrentDictionary<FhirSpecification, IFhirSchemaProvider> _schemaProviders = new();
+    private readonly ConcurrentDictionary<FhirSpecification, ISearchIndexer> _searchIndexers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
     private readonly ILoggerFactory _loggerFactory;
     private bool _disposed;
@@ -30,17 +30,23 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public IFhirSchemaProvider GetSchemaProvider(string fhirVersion)
+    public IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion)
     {
         return _schemaProviders.GetOrAdd(fhirVersion, version =>
         {
-            var fhirSpec = ParseFhirVersion(version);
-            return new FhirJsonSchemaStructureDefinitionSummaryProvider(fhirSpec);
+            return version switch
+            {
+                FhirSpecification.Stu3 => throw new NotImplementedException("STU3 provider not yet generated"),
+                FhirSpecification.R4 => new R4StructureDefinitionSummaryProvider(),
+                FhirSpecification.R4B => throw new NotImplementedException("R4B provider not yet generated"),
+                FhirSpecification.R5 => throw new NotImplementedException("R5 provider not yet generated"),
+                _ => throw new ArgumentException($"Unsupported FHIR version: {version}")
+            };
         });
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ISearchIndexer> GetSearchIndexerAsync(string fhirVersion, CancellationToken cancellationToken = default)
+    public async ValueTask<ISearchIndexer> GetSearchIndexerAsync(FhirSpecification fhirVersion, CancellationToken cancellationToken = default)
     {
         // Fast path: check if already cached
         if (_searchIndexers.TryGetValue(fhirVersion, out var cachedIndexer))
@@ -70,23 +76,6 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         {
             _indexerLock.Release();
         }
-    }
-
-    /// <summary>
-    /// Parses FHIR version string to FhirSpecification enum.
-    /// </summary>
-    /// <param name="fhirVersion">FHIR version string (e.g., "4.0", "5.0", "3.0").</param>
-    /// <returns>FhirSpecification enum value.</returns>
-    private static FhirSpecification ParseFhirVersion(string fhirVersion)
-    {
-        return fhirVersion switch
-        {
-            "3.0" => FhirSpecification.Stu3,
-            "4.0" => FhirSpecification.R4,
-            "4.3" => FhirSpecification.R4B,
-            "5.0" => FhirSpecification.R5,
-            _ => FhirSpecification.R4 // Default to R4
-        };
     }
 
     /// <summary>
