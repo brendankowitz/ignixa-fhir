@@ -8,12 +8,38 @@ using Microsoft.Health.Fhir.CodeGen.Loader;
 using Microsoft.Health.Fhir.CodeGen.Models;
 using Sparky.Specification.Generators;
 
-Console.WriteLine("Sparky FHIR Structure Definition Provider Generator");
-Console.WriteLine("====================================================");
-
 // Parse command line arguments
-string fhirVersion = args.Length > 0 ? args[0] : "R4";
-string outputDir = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Specification", "Generated");
+string mode = args.Length > 0 ? args[0].ToLowerInvariant() : "structure";
+mode = mode switch
+{
+    "search" => "search",
+    "compartment" => "compartment",
+    "codesystem" => "codesystem",
+    _ => "structure"
+};
+
+string fhirVersion = (mode != "structure" && args.Length > 1) ? args[1] : (args.Length > 0 && mode == "structure") ? args[0] : "R4";
+
+string defaultOutputDir = mode switch
+{
+    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Search", "Generated"),
+    _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Specification", "Generated")
+};
+
+string outputDir = args.Length > 2 ? args[2] :
+                   args.Length > 1 && mode == "structure" ? args[1] :
+                   defaultOutputDir;
+
+string title = mode switch
+{
+    "search" => "Sparky FHIR Search Parameter Generator",
+    "compartment" => "Sparky FHIR Compartment Definition Generator",
+    "codesystem" => "Sparky FHIR Code System Mappings Generator",
+    _ => "Sparky FHIR Structure Definition Provider Generator"
+};
+
+Console.WriteLine(title);
+Console.WriteLine("====================================================");
 
 // Map FHIR version to package name
 string packageId = fhirVersion.ToUpperInvariant() switch
@@ -53,16 +79,53 @@ Console.WriteLine($"Loaded {definitions.ComplexTypesByName.Count} complex types"
 Console.WriteLine($"Loaded {definitions.PrimitiveTypesByName.Count} primitive types");
 Console.WriteLine();
 
-// Generate the provider
-Console.WriteLine("Generating provider code...");
-var language = new CSharpStructureProviderLanguage();
-var providerConfig = new CSharpStructureProviderConfig
+// Generate the output
+switch (mode)
 {
-    OutputDirectory = Path.GetFullPath(outputDir),
-    Namespace = "Sparky.Specification.Generated"
-};
+    case "search":
+        Console.WriteLine("Generating search parameter code...");
+        var searchLanguage = new CSharpSearchParameterLanguage();
+        var searchConfig = new CSharpSearchParameterConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Sparky.Search.Generated"
+        };
+        searchLanguage.Export(searchConfig, definitions);
+        break;
 
-language.Export(providerConfig, definitions);
+    case "compartment":
+        Console.WriteLine("Generating compartment definition code...");
+        var compartmentLanguage = new CSharpCompartmentLanguage();
+        var compartmentConfig = new CSharpCompartmentConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Sparky.Search.Generated"
+        };
+        compartmentLanguage.Export(compartmentConfig, definitions);
+        break;
+
+    case "codesystem":
+        Console.WriteLine("Generating code system mappings code...");
+        var codeSystemLanguage = new CSharpCodeSystemResolverLanguage();
+        var codeSystemConfig = new CSharpCodeSystemResolverConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Sparky.Search.Generated"
+        };
+        codeSystemLanguage.Export(codeSystemConfig, definitions);
+        break;
+
+    default: // structure
+        Console.WriteLine("Generating provider code...");
+        var structureLanguage = new CSharpStructureProviderLanguage();
+        var providerConfig = new CSharpStructureProviderConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Sparky.Specification.Generated"
+        };
+        structureLanguage.Export(providerConfig, definitions);
+        break;
+}
 
 Console.WriteLine();
 Console.WriteLine("✓ Generation complete!");

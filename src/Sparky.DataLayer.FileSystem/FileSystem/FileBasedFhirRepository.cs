@@ -81,8 +81,10 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             // Convert to UTF-8 bytes for zero-copy serialization
             byte[] resourceJsonBytes = Encoding.UTF8.GetBytes(resourceJson);
 
-            // Parse using JsonSourceNodeFactory
-            ISourceNode sourceNode = JsonSourceNodeFactory.Parse(resourceJson, key.ResourceType);
+            // Parse to ResourceJsonNode to enable caching
+            // Using cached ToSourceNode() prevents repeated ReflectedSourceNode allocations
+            var resourceNode = ResourceJsonNode.Parse(resourceJson);
+            ISourceNode sourceNode = resourceNode.ToSourceNode();
 
             var wrapper = new ResourceWrapper(
                 key.ResourceType,

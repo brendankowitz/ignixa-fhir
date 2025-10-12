@@ -1,0 +1,136 @@
+### Test 1: Valid Patient (should succeed with 201 Created)
+PUT http://localhost:5000/Patient/test-valid-patient
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-valid-patient",
+  "active": true,
+  "name": [
+    {
+      "use": "official",
+      "family": "Smith",
+      "given": ["John", "Michael"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-05-15"
+}
+
+### Test 2: Invalid Patient - Missing required element (should fail with 400 Bad Request)
+PUT http://localhost:5000/Patient/test-invalid-missing-element
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-invalid-missing-element"
+}
+
+### Test 3: Invalid Patient - Bad ID format (should fail with 400 Bad Request)
+PUT http://localhost:5000/Patient/test-invalid-id-format!!!
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-invalid-id-format!!!",
+  "active": true
+}
+
+### Test 4: Invalid Patient - Bad date format (should fail with 400 Bad Request)
+PUT http://localhost:5000/Patient/test-invalid-date
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-invalid-date",
+  "active": true,
+  "birthDate": "not-a-date"
+}
+
+### Test 5: Invalid Patient - Bad reference format (should fail with 400 Bad Request)
+PUT http://localhost:5000/Patient/test-invalid-reference
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-invalid-reference",
+  "active": true,
+  "managingOrganization": {
+    "reference": "invalid reference format"
+  }
+}
+
+### Test 6: Valid Patient with narrative (should succeed)
+PUT http://localhost:5000/Patient/test-valid-narrative
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-valid-narrative",
+  "text": {
+    "status": "generated",
+    "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Patient John Smith</div>"
+  },
+  "active": true,
+  "name": [
+    {
+      "family": "Smith",
+      "given": ["John"]
+    }
+  ]
+}
+
+### Test 7: Invalid Patient - Narrative without status (should fail with 400 Bad Request)
+PUT http://localhost:5000/Patient/test-invalid-narrative
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "test-invalid-narrative",
+  "text": {
+    "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Missing status</div>"
+  },
+  "active": true
+}
+
+### Test 8: GET valid patient (should return 200 with NO validation)
+GET http://localhost:5000/Patient/test-valid-patient
+
+### Test 9: Valid Observation (testing different resource type)
+PUT http://localhost:5000/Observation/test-valid-observation
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "test-valid-observation",
+  "status": "final",
+  "code": {
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "15074-8",
+        "display": "Glucose [Moles/volume] in Blood"
+      }
+    ]
+  },
+  "subject": {
+    "reference": "Patient/test-valid-patient"
+  }
+}
+
+### Test 10: Invalid Observation - Missing required status (should fail with 400)
+PUT http://localhost:5000/Observation/test-invalid-observation
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "test-invalid-observation",
+  "code": {
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "15074-8"
+      }
+    ]
+  }
+}

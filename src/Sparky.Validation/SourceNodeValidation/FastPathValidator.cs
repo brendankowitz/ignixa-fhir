@@ -5,20 +5,26 @@
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Specification;
-using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
-namespace Sparky.Validation;
+namespace Sparky.Validation.SourceNodeValidation;
 
 /// <summary>
-/// Fast-path validator using generated IStructureDefinitionSummaryProvider metadata.
-/// Performs lightweight validation (10-50ms) before delegating to full Firely SDK validation.
+/// Fast-path validator using ISourceNode for unified property access.
+/// Performs lightweight validation (15-60ms estimated) before delegating to full Firely SDK validation.
 /// Version-agnostic - works with any FHIR version (R4, R4B, R5, STU3).
+/// Solves the missing property issue by using ISourceNode's unified view of all properties.
+/// Thread-safe singleton that caches validation rules per (tenant, resourceType, provider) tuple.
+/// Phase 1: Single-tenant mode (tenant is always TenantContext.Default).
+/// Phase 2+: Multi-tenant mode with custom structure definitions per tenant.
 /// </summary>
 public sealed class FastPathValidator
 {
-    private readonly IStructureDefinitionSummaryProvider _provider;
-    private readonly ConcurrentDictionary<string, ValidationRuleSet> _ruleCache;
+    // Cache validation rules by (tenant, resourceType, provider identity)
+    // Phase 1: Tenant is always TenantContext.Default
+    // Phase 2+: Separate rules per tenant to support custom structure definitions
+    private readonly ConcurrentDictionary<(Sparky.Extensions.TenantContext Tenant, string ResourceType, IStructureDefinitionSummaryProvider Provider), ValidationRuleSet> _ruleCache;
 
     // Regex patterns for primitive type validation
     private static readonly Regex IdPattern = new(@"^[A-Za-z0-9\-\.]{1,64}$", RegexOptions.Compiled);
@@ -29,24 +35,28 @@ public sealed class FastPathValidator
     /// <summary>
     /// Initializes a new instance of the <see cref="FastPathValidator"/> class.
     /// </summary>
-    /// <param name="provider">The structure definition provider for metadata.</param>
-    public FastPathValidator(IStructureDefinitionSummaryProvider provider)
+    public FastPathValidator()
     {
-        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _ruleCache = new ConcurrentDictionary<string, ValidationRuleSet>(StringComparer.Ordinal);
+        _ruleCache = new ConcurrentDictionary<(Sparky.Extensions.TenantContext, string, IStructureDefinitionSummaryProvider), ValidationRuleSet>();
     }
 
     /// <summary>
-    /// Validates a resource using its JSON representation.
-    /// Fast: O(n) where n = number of elements, typically 10-50ms.
+    /// Validates a resource using ISourceNode with version-specific schema provider.
+    /// Fast: O(n) where n = number of elements, typically 15-60ms.
+    /// Thread-safe - caches rules per (resourceType, provider) pair.
     /// </summary>
-    /// <param name="resource">The resource to validate.</param>
+    /// <param name="node">The source node to validate.</param>
+    /// <param name="provider">Version-specific structure definition provider (from FhirVersionContext).</param>
     /// <returns>A validation result with any issues found.</returns>
-    public ValidationResult Validate(ResourceJsonNode resource)
+    public ValidationResult Validate(ISourceNode node, IStructureDefinitionSummaryProvider provider)
     {
-        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(provider);
 
-        if (string.IsNullOrEmpty(resource.ResourceType))
+        // Get resourceType from IResourceTypeSupplier annotation or Name
+        string? resourceType = (node as IResourceTypeSupplier)?.ResourceType ?? node.Name;
+
+        if (string.IsNullOrEmpty(resourceType))
         {
             return ValidationResult.Failure(new ValidationIssue(
                 IssueSeverity.Error,
@@ -54,46 +64,50 @@ public sealed class FastPathValidator
                 "Resource must have a resourceType property"));
         }
 
-        // Get or build cached validation rules for this resource type
-        if (!_ruleCache.TryGetValue(resource.ResourceType, out var rules))
+        // Get or build cached validation rules for this (tenant, resourceType, provider) combination
+        // Phase 1: Always use TenantContext.Default for single-tenant mode
+        // Phase 2+: Extract tenant from HttpContext for multi-tenant mode
+        var tenant = Sparky.Extensions.TenantContext.Default;
+        var cacheKey = (tenant, resourceType, provider);
+        if (!_ruleCache.TryGetValue(cacheKey, out var rules))
         {
-            var newRules = BuildValidationRules(resource.ResourceType);
+            var newRules = BuildValidationRules(resourceType, provider);
             if (newRules is null)
             {
                 return ValidationResult.Failure(new ValidationIssue(
                     IssueSeverity.Error,
                     "resourceType",
-                    $"Unknown resource type: {resource.ResourceType}"));
+                    $"Unknown resource type: {resourceType}"));
             }
 
-            rules = _ruleCache.GetOrAdd(resource.ResourceType, newRules);
+            rules = _ruleCache.GetOrAdd(cacheKey, newRules);
         }
 
         var issues = new List<ValidationIssue>();
 
         // 1. Required elements validation
-        ValidateRequiredElements(resource, rules.RequiredElements, issues);
+        ValidateRequiredElements(node, rules.RequiredElements, issues);
 
         // 2. Cardinality validation
-        ValidateCardinality(resource, rules.CardinalityRules, issues);
+        ValidateCardinality(node, rules.CardinalityRules, issues);
 
         // 3. ID format validation
-        ValidateIdFormat(resource, issues);
+        ValidateIdFormat(node, issues);
 
         // 4. Reference format validation
-        ValidateReferenceFormat(resource, rules.ReferenceFields, issues);
+        ValidateReferenceFormat(node, rules.ReferenceFields, issues);
 
         // 5. Reference targets validation (using Phase 4 metadata)
-        ValidateReferenceTargets(resource, rules.ReferenceTargetRules, issues);
+        ValidateReferenceTargets(node, rules.ReferenceTargetRules, issues);
 
         // 6. Primitive type formats validation
-        ValidatePrimitiveFormats(resource, rules.PrimitiveFormatRules, issues);
+        ValidatePrimitiveFormats(node, rules.PrimitiveFormatRules, issues);
 
         // 7. Coding structure validation
-        ValidateCodingStructure(resource, rules.CodingFields, issues);
+        ValidateCodingStructure(node, rules.CodingFields, issues);
 
         // 8. Narrative basics validation
-        ValidateNarrativeBasics(resource, issues);
+        ValidateNarrativeBasics(node, issues);
 
         // Determine if valid (no errors or fatal issues)
         bool isValid = !issues.Any(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal);
@@ -103,11 +117,11 @@ public sealed class FastPathValidator
 
     /// <summary>
     /// Builds validation rules from IStructureDefinitionSummaryProvider metadata.
-    /// Called once per resource type, then cached forever.
+    /// Called once per (resourceType, provider) combination, then cached.
     /// </summary>
-    private ValidationRuleSet? BuildValidationRules(string resourceType)
+    private ValidationRuleSet? BuildValidationRules(string resourceType, IStructureDefinitionSummaryProvider provider)
     {
-        var summary = _provider.Provide(resourceType);
+        var summary = provider.Provide(resourceType);
         if (summary is null)
         {
             return null;
@@ -192,13 +206,13 @@ public sealed class FastPathValidator
         };
 
     private void ValidateRequiredElements(
-        ResourceJsonNode resource,
+        ISourceNode node,
         IReadOnlyList<RequiredElementRule> rules,
         List<ValidationIssue> issues)
     {
         foreach (var rule in rules)
         {
-            if (!resource.ExtensionData.ContainsKey(rule.Path))
+            if (!node.Children(rule.Path).Any())
             {
                 issues.Add(new ValidationIssue(
                     IssueSeverity.Error,
@@ -209,13 +223,15 @@ public sealed class FastPathValidator
     }
 
     private void ValidateCardinality(
-        ResourceJsonNode resource,
+        ISourceNode node,
         IReadOnlyList<CardinalityRule> rules,
         List<ValidationIssue> issues)
     {
         foreach (var rule in rules)
         {
-            if (!resource.ExtensionData.TryGetValue(rule.Path, out var element))
+            var children = node.Children(rule.Path).ToList();
+
+            if (children.Count == 0)
             {
                 // Element not present - min cardinality check
                 if (rule.Min > 0)
@@ -229,48 +245,33 @@ public sealed class FastPathValidator
                 continue;
             }
 
-            // Check if it's an array
-            if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
+            int count = children.Count;
+
+            if (count < rule.Min)
             {
-                int count = element.GetArrayLength();
-
-                if (count < rule.Min)
-                {
-                    issues.Add(new ValidationIssue(
-                        IssueSeverity.Error,
-                        rule.Path,
-                        $"Element '{rule.Path}' requires minimum {rule.Min} occurrence(s), found {count}"));
-                }
-
-                if (rule.Max.HasValue && count > rule.Max.Value)
-                {
-                    issues.Add(new ValidationIssue(
-                        IssueSeverity.Error,
-                        rule.Path,
-                        $"Element '{rule.Path}' allows maximum {rule.Max} occurrence(s), found {count}"));
-                }
+                issues.Add(new ValidationIssue(
+                    IssueSeverity.Error,
+                    rule.Path,
+                    $"Element '{rule.Path}' requires minimum {rule.Min} occurrence(s), found {count}"));
             }
-            else
+
+            if (rule.Max.HasValue && count > rule.Max.Value)
             {
-                // Single value - check max cardinality
-                if (rule.Max.HasValue && rule.Max.Value < 1)
-                {
-                    issues.Add(new ValidationIssue(
-                        IssueSeverity.Error,
-                        rule.Path,
-                        $"Element '{rule.Path}' does not allow values (max cardinality 0)"));
-                }
+                issues.Add(new ValidationIssue(
+                    IssueSeverity.Error,
+                    rule.Path,
+                    $"Element '{rule.Path}' allows maximum {rule.Max} occurrence(s), found {count}"));
             }
         }
     }
 
-    private void ValidateIdFormat(ResourceJsonNode resource, List<ValidationIssue> issues)
+    private void ValidateIdFormat(ISourceNode node, List<ValidationIssue> issues)
     {
-        if (resource.ExtensionData.TryGetValue("id", out var idElement) &&
-            idElement.ValueKind == System.Text.Json.JsonValueKind.String)
+        var idNode = node.Children("id").FirstOrDefault();
+        if (idNode is not null)
         {
-            string? id = idElement.GetString();
-            if (id is not null && !IdPattern.IsMatch(id))
+            string? id = idNode.Text;
+            if (!string.IsNullOrEmpty(id) && !IdPattern.IsMatch(id))
             {
                 issues.Add(new ValidationIssue(
                     IssueSeverity.Error,
@@ -281,52 +282,30 @@ public sealed class FastPathValidator
     }
 
     private void ValidateReferenceFormat(
-        ResourceJsonNode resource,
+        ISourceNode node,
         IReadOnlyList<string> referenceFields,
         List<ValidationIssue> issues)
     {
         foreach (var field in referenceFields)
         {
-            if (!resource.ExtensionData.TryGetValue(field, out var refElement))
+            var fieldNodes = node.Children(field);
+            foreach (var fieldNode in fieldNodes)
             {
-                continue;
+                ValidateReferenceNode(field, fieldNode, issues);
             }
-
-            // Handle both single reference and array of references
-            ValidateReferenceElement(field, refElement, issues);
         }
     }
 
-    private void ValidateReferenceElement(
+    private void ValidateReferenceNode(
         string path,
-        System.Text.Json.JsonElement element,
+        ISourceNode referenceNode,
         List<ValidationIssue> issues)
     {
-        if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
+        var referenceChild = referenceNode.Children("reference").FirstOrDefault();
+        if (referenceChild is not null)
         {
-            int index = 0;
-            foreach (var item in element.EnumerateArray())
-            {
-                ValidateSingleReference($"{path}[{index}]", item, issues);
-                index++;
-            }
-        }
-        else if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
-        {
-            ValidateSingleReference(path, element, issues);
-        }
-    }
-
-    private void ValidateSingleReference(
-        string path,
-        System.Text.Json.JsonElement refObject,
-        List<ValidationIssue> issues)
-    {
-        if (refObject.TryGetProperty("reference", out var refValue) &&
-            refValue.ValueKind == System.Text.Json.JsonValueKind.String)
-        {
-            string? reference = refValue.GetString();
-            if (reference is not null && !IsValidReferenceFormat(reference))
+            string? reference = referenceChild.Text;
+            if (!string.IsNullOrEmpty(reference) && !IsValidReferenceFormat(reference))
             {
                 issues.Add(new ValidationIssue(
                     IssueSeverity.Error,
@@ -367,7 +346,7 @@ public sealed class FastPathValidator
     }
 
     private void ValidateReferenceTargets(
-        ResourceJsonNode resource,
+        ISourceNode node,
         IReadOnlyList<ReferenceTargetRule> rules,
         List<ValidationIssue> issues)
     {
@@ -376,94 +355,63 @@ public sealed class FastPathValidator
     }
 
     private void ValidatePrimitiveFormats(
-        ResourceJsonNode resource,
+        ISourceNode node,
         IReadOnlyList<PrimitiveFormatRule> rules,
         List<ValidationIssue> issues)
     {
         foreach (var rule in rules)
         {
-            if (!resource.ExtensionData.TryGetValue(rule.Path, out var element))
+            var children = node.Children(rule.Path);
+            foreach (var child in children)
             {
-                continue;
-            }
+                string? value = child.Text;
+                if (string.IsNullOrEmpty(value))
+                {
+                    continue;
+                }
 
-            if (element.ValueKind != System.Text.Json.JsonValueKind.String)
-            {
-                continue; // Not a string, type validation will catch this
-            }
+                string? errorMessage = rule.PrimitiveType switch
+                {
+                    "id" => !IdPattern.IsMatch(value) ? $"Invalid id format: '{value}'" : null,
+                    "date" => !DatePattern.IsMatch(value) ? $"Invalid date format: '{value}'. Expected YYYY-MM-DD" : null,
+                    "dateTime" => !DateTimePattern.IsMatch(value) ? $"Invalid dateTime format: '{value}'" : null,
+                    "time" => !TimePattern.IsMatch(value) ? $"Invalid time format: '{value}'. Expected HH:MM:SS" : null,
+                    "boolean" => value is not "true" and not "false" ? $"Invalid boolean value: '{value}'. Expected 'true' or 'false'" : null,
+                    _ => null, // Other primitive types not validated yet
+                };
 
-            string? value = element.GetString();
-            if (string.IsNullOrEmpty(value))
-            {
-                continue;
-            }
-
-            string? errorMessage = rule.PrimitiveType switch
-            {
-                "id" => !IdPattern.IsMatch(value) ? $"Invalid id format: '{value}'" : null,
-                "date" => !DatePattern.IsMatch(value) ? $"Invalid date format: '{value}'. Expected YYYY-MM-DD" : null,
-                "dateTime" => !DateTimePattern.IsMatch(value) ? $"Invalid dateTime format: '{value}'" : null,
-                "time" => !TimePattern.IsMatch(value) ? $"Invalid time format: '{value}'. Expected HH:MM:SS" : null,
-                "boolean" => value is not "true" and not "false" ? $"Invalid boolean value: '{value}'. Expected 'true' or 'false'" : null,
-                _ => null, // Other primitive types not validated yet
-            };
-
-            if (errorMessage is not null)
-            {
-                issues.Add(new ValidationIssue(IssueSeverity.Error, rule.Path, errorMessage));
+                if (errorMessage is not null)
+                {
+                    issues.Add(new ValidationIssue(IssueSeverity.Error, rule.Path, errorMessage));
+                }
             }
         }
     }
 
     private void ValidateCodingStructure(
-        ResourceJsonNode resource,
+        ISourceNode node,
         IReadOnlyList<string> codingFields,
         List<ValidationIssue> issues)
     {
         foreach (var field in codingFields)
         {
-            if (!resource.ExtensionData.TryGetValue(field, out var element))
+            var fieldNodes = node.Children(field);
+            foreach (var fieldNode in fieldNodes)
             {
-                continue;
-            }
-
-            if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                // Could be a Coding or CodeableConcept
-                // CodeableConcept has a 'coding' array property
-                if (element.TryGetProperty("coding", out var codingArray) &&
-                    codingArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+                // Check if this is a CodeableConcept (has 'coding' child) or a Coding directly
+                var codingChildren = fieldNode.Children("coding").ToList();
+                if (codingChildren.Count > 0)
                 {
                     // This is a CodeableConcept - validate each Coding in the array
-                    int index = 0;
-                    foreach (var item in codingArray.EnumerateArray())
+                    foreach (var coding in codingChildren)
                     {
-                        if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
-                        {
-                            ValidateSingleCoding($"{field}.coding[{index}]", item, issues);
-                        }
-
-                        index++;
+                        ValidateSingleCoding($"{field}.coding", coding, issues);
                     }
                 }
                 else
                 {
                     // This is a Coding directly
-                    ValidateSingleCoding(field, element, issues);
-                }
-            }
-            else if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                // Array of Coding objects
-                int index = 0;
-                foreach (var item in element.EnumerateArray())
-                {
-                    if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        ValidateSingleCoding($"{field}[{index}]", item, issues);
-                    }
-
-                    index++;
+                    ValidateSingleCoding(field, fieldNode, issues);
                 }
             }
         }
@@ -471,11 +419,11 @@ public sealed class FastPathValidator
 
     private void ValidateSingleCoding(
         string path,
-        System.Text.Json.JsonElement codingObject,
+        ISourceNode codingNode,
         List<ValidationIssue> issues)
     {
-        bool hasSystem = codingObject.TryGetProperty("system", out _);
-        bool hasCode = codingObject.TryGetProperty("code", out _);
+        bool hasSystem = codingNode.Children("system").Any();
+        bool hasCode = codingNode.Children("code").Any();
 
         if (!hasSystem && !hasCode)
         {
@@ -486,21 +434,17 @@ public sealed class FastPathValidator
         }
     }
 
-    private void ValidateNarrativeBasics(ResourceJsonNode resource, List<ValidationIssue> issues)
+    private void ValidateNarrativeBasics(ISourceNode node, List<ValidationIssue> issues)
     {
-        if (!resource.ExtensionData.TryGetValue("text", out var textElement))
+        var textNode = node.Children("text").FirstOrDefault();
+        if (textNode is null)
         {
             return; // No narrative present (optional)
         }
 
-        if (textElement.ValueKind != System.Text.Json.JsonValueKind.Object)
-        {
-            return;
-        }
-
         // Check for status field (required if text present)
-        if (!textElement.TryGetProperty("status", out var statusElement) ||
-            statusElement.ValueKind != System.Text.Json.JsonValueKind.String)
+        var statusNode = textNode.Children("status").FirstOrDefault();
+        if (statusNode is null)
         {
             issues.Add(new ValidationIssue(
                 IssueSeverity.Error,
@@ -509,7 +453,7 @@ public sealed class FastPathValidator
             return;
         }
 
-        string? status = statusElement.GetString();
+        string? status = statusNode.Text;
         if (status is not ("generated" or "extensions" or "additional" or "empty"))
         {
             issues.Add(new ValidationIssue(
@@ -519,7 +463,7 @@ public sealed class FastPathValidator
         }
 
         // Check for div field (required if status is not 'empty')
-        if (status != "empty" && !textElement.TryGetProperty("div", out _))
+        if (status != "empty" && !textNode.Children("div").Any())
         {
             issues.Add(new ValidationIssue(
                 IssueSeverity.Error,

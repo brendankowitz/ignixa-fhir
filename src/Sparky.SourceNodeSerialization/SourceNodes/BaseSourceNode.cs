@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
 using Hl7.Fhir.ElementModel;
@@ -15,7 +16,7 @@ namespace Sparky.SourceNodeSerialization.SourceNodes;
 public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IAnnotated
     where T : IExtensionData
 {
-    private IList<(string Name, Lazy<IEnumerable<ISourceNode>> Node)> _cachedNodes;
+    private ReadOnlyDictionary<string, Lazy<IEnumerable<ISourceNode>>> _cachedNodes;
 
     protected BaseSourceNode(T resource)
     {
@@ -48,12 +49,13 @@ public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IA
         {
             _cachedNodes = PropertySourceNodes()
                 .Concat(ExtensionSourceNodes())
-                .ToList();
+                .ToDictionary(x => x.Name, x => x.Node)
+                .AsReadOnly();
         }
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            return _cachedNodes.SelectMany(x => x.Node.Value);
+            return _cachedNodes.SelectMany(x => x.Value.Value);
         }
 
         if (name.EndsWith(JsonElementSourceNode.ChoiceTypeSuffix))
@@ -61,14 +63,17 @@ public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IA
             // e.g. value* which should return valueString etc.
             string matchPrefix = name.TrimEnd(JsonElementSourceNode.ChoiceTypeSuffix);
             return _cachedNodes
-                .Where(x => x.Name.StartsWith(matchPrefix, StringComparison.Ordinal))
-                .SelectMany(x => x.Node.Value)
+                .Where(x => x.Key.StartsWith(matchPrefix, StringComparison.Ordinal))
+                .SelectMany(x => x.Value.Value)
                 .ToArray();
         }
 
-        return _cachedNodes
-            .Where(x => string.Equals(name, x.Name, StringComparison.Ordinal))
-            .SelectMany(x => x.Node.Value);
+        // can we have duplicate values?
+        //return _cachedNodes
+        //    .Where(x => string.Equals(name, x.Name, StringComparison.Ordinal))
+        //    .SelectMany(x => x.Node.Value);
+
+        return _cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNode>> cachedNodes) ? cachedNodes.Value : [];
     }
 
     private List<(string Name, Lazy<IEnumerable<ISourceNode>> Node)> ExtensionSourceNodes()

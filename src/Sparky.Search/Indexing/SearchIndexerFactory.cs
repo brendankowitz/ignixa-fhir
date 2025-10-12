@@ -15,7 +15,7 @@ namespace Sparky.Search.Indexing;
 
 public static class SearchIndexerFactory
 {
-    public static async Task<ISearchIndexer> CreateInstance(IFhirSchemaProvider fhirSchemaProvider, ILoggerFactory loggerProvider)
+    public static ISearchIndexer CreateInstance(IFhirSchemaProvider fhirSchemaProvider, ILoggerFactory loggerProvider)
     {
         var definitionManager = new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());
 
@@ -30,7 +30,7 @@ public static class SearchIndexerFactory
             .Select(x => (ITypedElementToSearchValueConverter)CreateTypeWithArguments(x, fhirSchemaProvider, referenceParser, elementResolver, codesystems, fhirSchemaProvider.Version))
             .ToArray();
 
-        await definitionManager.Start();
+        // Manager is now initialized synchronously in constructor with pre-generated search parameters
 
         return new TypedElementSearchIndexer(
             new SupportedSearchParameterDefinitionManager(definitionManager),

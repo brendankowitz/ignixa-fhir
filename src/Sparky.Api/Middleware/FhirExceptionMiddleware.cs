@@ -5,6 +5,8 @@
 
 using System.Net;
 using System.Text.Json;
+using Hl7.Fhir.Serialization;
+using Sparky.Application.Features.Resource;
 
 namespace Sparky.Api.Middleware;
 
@@ -38,6 +40,19 @@ public class FhirExceptionMiddleware
 
     private static Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        // Handle ValidationException with proper FHIR OperationOutcome
+        if (exception is ValidationException validationException)
+        {
+            context.Response.ContentType = "application/fhir+json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+
+            // Use Firely SDK serializer for proper FHIR OperationOutcome (SDK 6.0 API)
+            var serializer = new FhirJsonSerializer();
+            var operationOutcomeJson = serializer.SerializeToString(validationException.OperationOutcome);
+            return context.Response.WriteAsync(operationOutcomeJson);
+        }
+
+        // Handle other exceptions with generic OperationOutcome
         var statusCode = HttpStatusCode.InternalServerError;
         var severity = "error";
         var code = "exception";

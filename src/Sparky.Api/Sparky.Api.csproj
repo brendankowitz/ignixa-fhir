@@ -27,6 +27,7 @@
     <ProjectReference Include="..\Sparky.DataLayer.InMemoryIndex\Sparky.DataLayer.InMemoryIndex.csproj" />
     <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
     <ProjectReference Include="..\Sparky.Specification\Sparky.Specification.csproj" />
+    <ProjectReference Include="..\Sparky.Validation\Sparky.Validation.csproj" />
   </ItemGroup>
 
 </Project>

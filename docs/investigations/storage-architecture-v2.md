@@ -246,211 +246,386 @@ COMMIT TRANSACTION
 
 ---
 
-## File System Architecture (NDJSON with Transaction Bundles)
+## File System Architecture (Separated Transaction Logs)
 
 ### Directory Structure
+
+The file system implementation uses **three separate directory trees** for separation of concerns:
 
 ```
 /data/
   {ResourceType}/
-    {year}/
-      {month}/
-        {day}/
-          {transactionId}.ndjson
+    {YYYY}/{MM}/{DD}/
+      tx-{transactionId}.ndjson              # Resources only (pure NDJSON, no bundle header)
+  _internal/
+    {ResourceType}/
+      {resourceId}/
+        {transactionId}.metadata.json        # Sparse metadata sidecars (one per version)
+  _transactions/
+    {YYYY}/{MM}/{DD}/
+      tx-{transactionId}.lock.ndjson         # Transaction manifest (during processing)
+      tx-{transactionId}.ndjson              # Committed transaction log
 ```
 
 **Example**:
 ```
 /data/
   Patient/
-    2025/
-      01/
-        15/
-          tx-1234567890.ndjson
-          tx-1234567891.ndjson
-          tx-1234567892.ndjson
-      16/
-        ...
+    2025/01/15/
+      tx-1234567890.ndjson                   # Contains Patient resources (NDJSON)
+      tx-1234567891.ndjson
   Observation/
-    2025/
-      01/
-        15/
-          tx-1234567893.ndjson
-          ...
+    2025/01/15/
+      tx-1234567893.ndjson                   # Contains Observation resources
+  _internal/
+    Patient/
+      example-123/
+        1234567890.metadata.json             # Version 1 metadata
+        1234567899.metadata.json             # Version 2 metadata
+      example-456/
+        1234567891.metadata.json
+  _transactions/
+    2025/01/15/
+      tx-1234567890.lock.ndjson              # Lock file (during transaction)
+      tx-1234567891.ndjson                   # Committed transaction
 ```
 
-### NDJSON File Format
+### File Formats
 
-Each transaction creates ONE file containing:
-1. **First line**: Bundle with transaction metadata
-2. **Subsequent lines**: Resource entries (one JSON object per line)
+#### Resource Files (Pure NDJSON)
+
+Resource files contain **only resources**, one JSON object per line (no bundle header):
 
 **File Example** (`/data/Patient/2025/01/15/tx-1234567890.ndjson`):
 ```ndjson
-{"resourceType":"Bundle","id":"tx-1234567890","type":"transaction","timestamp":"2025-01-15T10:30:00Z","entry":[{"request":{"method":"POST","url":"Patient"}},{"request":{"method":"PUT","url":"Patient/abc123"}}]}
 {"resourceType":"Patient","id":"def456","meta":{"versionId":"1","lastUpdated":"2025-01-15T10:30:00Z"},"name":[{"family":"Smith","given":["John"]}],"birthDate":"1990-01-01"}
 {"resourceType":"Patient","id":"abc123","meta":{"versionId":"2","lastUpdated":"2025-01-15T10:30:00Z"},"name":[{"family":"Doe","given":["Jane"]}],"birthDate":"1985-05-15"}
 ```
 
-**Line 1** (Transaction Bundle Metadata):
+**Benefits**:
+- Pure NDJSON (no mixed formats)
+- Compresses well (gzip ~70% reduction)
+- Streamable (process line-by-line)
+- Append-friendly (multi-batch transactions)
+
+#### Transaction Lock Files (Bundle Manifest)
+
+Transaction lock files store the **transaction manifest** during processing:
+
+**Lock File Example** (`/_transactions/2025/01/15/tx-1234567890.lock.ndjson`):
 ```json
 {
   "resourceType": "Bundle",
-  "id": "tx-1234567890",
   "type": "transaction",
+  "id": "tx-1234567890",
   "timestamp": "2025-01-15T10:30:00Z",
   "entry": [
-    {
-      "request": {
-        "method": "POST",
-        "url": "Patient"
-      }
-    },
-    {
-      "request": {
-        "method": "PUT",
-        "url": "Patient/abc123"
-      }
-    }
+    {"request": {"method": "PUT", "url": "Patient/def456"}},
+    {"request": {"method": "PUT", "url": "Patient/abc123"}}
   ]
 }
 ```
 
-**Lines 2-N** (Resources):
+**For multi-batch transactions**, subsequent batches append operation entries:
 ```json
-{"resourceType":"Patient","id":"def456",...}
-{"resourceType":"Patient","id":"abc123",...}
+{"request": {"method": "PUT", "url": "Patient/xyz789"}}
+{"request": {"method": "PUT", "url": "Observation/obs-001"}}
 ```
 
-### Write Pattern
+**Commit**: Lock file is renamed from `.lock.ndjson` → `.ndjson` when transaction commits.
+
+#### Metadata Sidecars (Sparse Index)
+
+Metadata sidecars store **per-version metadata** for fast lookups:
+
+**Metadata Example** (`/_internal/Patient/example-123/1234567890.metadata.json`):
+```json
+{
+  "TransactionId": "1234567890",
+  "ResourceType": "Patient",
+  "ResourceId": "example-123",
+  "VersionId": "1",
+  "LastModified": "2025-01-15T10:30:00Z",
+  "IsDeleted": false,
+  "Request": {
+    "Method": "PUT",
+    "Url": "Patient/example-123"
+  },
+  "SearchIndexes": [
+    {"Name": "name", "Type": "string", "Value": "Smith"},
+    {"Name": "birthdate", "Type": "date", "Value": "1990-01-01"}
+  ]
+}
+```
+
+**Benefits**:
+- **Sparse**: One file per resource (not per transaction)
+- **Fast Lookups**: Organized by resourceId (no scanning)
+- **Search Integration**: Contains extracted search indices
+- **Version History**: Multiple metadata files per resourceId
+
+### Write Pattern (BatchWriteAsync)
+
+The `BatchWriteAsync` method handles **multi-batch transactions** with separate files for resources, metadata, and transaction logs:
 
 ```csharp
-public async Task WriteTransactionAsync(
+public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
     TransactionId transactionId,
-    IEnumerable<ResourceWrapper> resources,
-    CancellationToken cancellationToken)
+    IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson)> operations,
+    CancellationToken ct = default)
 {
-    // Group by resource type
-    var groupedResources = resources.GroupBy(r => r.ResourceType);
-
-    foreach (var group in groupedResources)
+    await _writeLock.WaitAsync(ct);
+    try
     {
-        var resourceType = group.Key;
-        var date = DateTimeOffset.UtcNow;
+        var timestamp = DateTimeOffset.UtcNow;
 
-        // Create directory path
-        var dirPath = Path.Combine(
-            _basePath,
-            resourceType,
-            date.ToString("yyyy"),
-            date.ToString("MM"),
-            date.ToString("dd"));
+        // Step 1: Create lock file directory (_transactions/YYYY/MM/DD/)
+        string transactionDir = Path.Combine(
+            _baseDirectory, "_transactions",
+            timestamp.Year.ToString("D4"),
+            timestamp.Month.ToString("D2"),
+            timestamp.Day.ToString("D2"));
+        Directory.CreateDirectory(transactionDir);
 
-        Directory.CreateDirectory(dirPath);
+        string lockFilePath = Path.Combine(transactionDir, $"tx-{transactionId}.lock.ndjson");
 
-        // Create NDJSON file
-        var filePath = Path.Combine(dirPath, $"tx-{transactionId}.ndjson");
+        // Step 2: Write or append to lock file with transaction manifest
+        bool lockFileExists = File.Exists(lockFilePath);
+        await WriteLockFileAsync(lockFilePath, transactionId, timestamp, operations,
+            append: lockFileExists, ct);
 
-        using var writer = new StreamWriter(filePath, append: false);
+        // Step 3: Group operations by resource type
+        var operationsByType = operations.GroupBy(op => op.resourceType);
 
-        // Line 1: Transaction Bundle metadata
-        var bundle = new Bundle
+        // Step 4: Write resource files (ResourceType/YYYY/MM/DD/tx-{transactionId}.ndjson)
+        foreach (var group in operationsByType)
         {
-            Id = transactionId.ToString(),
-            Type = Bundle.BundleType.Transaction,
-            Timestamp = date,
-            Entry = group.Select(r => new Bundle.EntryComponent
-            {
-                Request = new Bundle.RequestComponent
-                {
-                    Method = DetermineMethod(r),
-                    Url = $"{r.ResourceType}/{r.ResourceId}"
-                }
-            }).ToList()
-        };
+            string resourceTypeDir = GetDateDirectory(group.Key, timestamp);
+            Directory.CreateDirectory(resourceTypeDir);
 
-        await writer.WriteLineAsync(
-            JsonSerializer.Serialize(bundle, _jsonOptions));
+            string resourceFilePath = Path.Combine(resourceTypeDir, $"tx-{transactionId}.ndjson");
+            bool fileExists = File.Exists(resourceFilePath);
 
-        // Lines 2-N: Resources
-        foreach (var resource in group)
-        {
-            var json = SerializeResource(resource);
-            await writer.WriteLineAsync(json);
+            // Append if file exists (multi-batch transaction)
+            await WriteResourceFileAsync(resourceFilePath, transactionId, timestamp,
+                group.ToList(), append: fileExists, ct);
         }
+
+        // Step 5: Write sparse metadata sidecars (_internal/ResourceType/{resourceId}/{transactionId}.metadata.json)
+        foreach (var operation in operations)
+        {
+            int newVersion = await GetNextVersionAsync(
+                new ResourceKey(operation.resourceType, operation.resourceId), ct);
+
+            var metadata = new ResourceMetadata
+            {
+                TransactionId = transactionId.ToString(),
+                ResourceType = operation.resourceType,
+                ResourceId = operation.resourceId,
+                VersionId = newVersion.ToString(),
+                LastModified = timestamp,
+                IsDeleted = false,
+                Request = new ResourceRequest("PUT", $"{operation.resourceType}/{operation.resourceId}"),
+                SearchIndexes = new List<SearchIndexMetadata>() // Populated by indexer
+            };
+
+            string metadataDir = Path.Combine(_baseDirectory, "_internal",
+                metadata.ResourceType, metadata.ResourceId);
+            Directory.CreateDirectory(metadataDir);
+
+            string metadataPath = Path.Combine(metadataDir, $"{metadata.TransactionId}.metadata.json");
+            await File.WriteAllTextAsync(metadataPath,
+                JsonSerializer.Serialize(metadata, _jsonOptions), ct);
+        }
+
+        // Lock file remains until CommitTransactionAsync is called
+        return results;
+    }
+    finally
+    {
+        _writeLock.Release();
     }
 }
 ```
 
-### Read Pattern (Rehydration)
+**Key Features**:
+1. **Lock File**: Created/appended with Bundle manifest (request metadata only)
+2. **Resource Files**: Written/appended by resource type (pure NDJSON)
+3. **Metadata Sidecars**: Written per resource version in `_internal/`
+4. **Multi-Batch Support**: Same transactionId can span multiple BatchWriteAsync calls
+5. **Atomic Commit**: CommitTransactionAsync renames `.lock.ndjson` → `.ndjson`
+
+### Read Pattern (GetAsync)
+
+The `GetAsync` method uses **metadata-first lookup** for fast resource retrieval:
 
 ```csharp
-public async Task<TransactionContext> RehydrateTransactionAsync(
-    string resourceType,
-    DateTime date,
-    TransactionId transactionId,
-    CancellationToken cancellationToken)
+public async ValueTask<ResourceWrapper?> GetAsync(ResourceKey key, CancellationToken ct = default)
 {
-    var filePath = Path.Combine(
-        _basePath,
-        resourceType,
-        date.ToString("yyyy"),
-        date.ToString("MM"),
-        date.ToString("dd"),
-        $"tx-{transactionId}.ndjson");
-
-    using var reader = new StreamReader(filePath);
-
-    // Line 1: Read transaction Bundle
-    var bundleLine = await reader.ReadLineAsync();
-    var bundle = JsonSerializer.Deserialize<Bundle>(bundleLine, _jsonOptions);
-
-    // Lines 2-N: Read resources
-    var resources = new List<ResourceWrapper>();
-    string line;
-    while ((line = await reader.ReadLineAsync()) != null)
+    // Step 1: Find the latest metadata file for this resource
+    // Location: _internal/ResourceType/{resourceId}/*.metadata.json
+    string metadataDir = Path.Combine(_baseDirectory, "_internal", key.ResourceType, key.Id);
+    if (!Directory.Exists(metadataDir))
     {
-        var resource = DeserializeResource(line);
-        resources.Add(resource);
+        return null; // Resource not found
     }
 
-    return new TransactionContext
+    var metadataFiles = Directory.GetFiles(metadataDir, "*.metadata.json");
+    string? latestFile = null;
+    DateTimeOffset latestTimestamp = DateTimeOffset.MinValue;
+
+    // Find most recent version
+    foreach (var file in metadataFiles)
     {
-        TransactionId = transactionId,
-        Timestamp = bundle.Timestamp.Value,
-        RequestMetadata = bundle.Entry.Select(e => e.Request).ToList(),
-        Resources = resources
+        var metadata = await ReadMetadataFileAsync(file, ct);
+        if (metadata.LastModified > latestTimestamp)
+        {
+            latestTimestamp = metadata.LastModified;
+            latestFile = file;
+        }
+    }
+
+    // Step 2: Read metadata
+    var resourceMetadata = await ReadMetadataFileAsync(latestFile, ct);
+
+    // Step 3: Locate resource in date-sharded NDJSON file
+    // Extract transaction ID and timestamp from metadata
+    var transactionTimestamp = resourceMetadata.LastModified;
+    string resourceTypeDir = GetDateDirectory(key.ResourceType, transactionTimestamp);
+    string ndjsonPath = Path.Combine(resourceTypeDir, $"tx-{resourceMetadata.TransactionId}.ndjson");
+
+    // Step 4: Read resource from NDJSON file by ID
+    string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, key.Id, ct);
+
+    // Step 5: Convert to UTF-8 bytes for zero-copy serialization
+    byte[] resourceJsonBytes = Encoding.UTF8.GetBytes(resourceJson);
+
+    // Step 6: Parse to ResourceJsonNode and cache ToSourceNode()
+    // Caching prevents repeated ReflectedSourceNode allocations (15-60ms per call)
+    var resourceNode = ResourceJsonNode.Parse(resourceJson);
+    ISourceNode sourceNode = resourceNode.ToSourceNode(); // Cached inside ResourceJsonNode
+
+    // Step 7: Build ResourceWrapper
+    var wrapper = new ResourceWrapper(
+        key.ResourceType,
+        key.Id,
+        resourceMetadata.VersionId,
+        resourceMetadata.LastModified,
+        sourceNode,
+        resourceMetadata.Request,
+        resourceMetadata.IsDeleted)
+    {
+        RawJson = resourceJson,
+        RawJsonBytes = new ReadOnlyMemory<byte>(resourceJsonBytes)
     };
+
+    return wrapper;
+}
+```
+
+**Key Optimizations**:
+1. **Metadata-First Lookup**: Sparse index in `_internal/` avoids scanning transaction files
+2. **ISourceNode Caching**: ResourceJsonNode caches ToSourceNode() to prevent repeated allocations
+3. **Zero-Copy Bytes**: RawJsonBytes for streaming serialization without re-encoding
+4. **RecyclableMemoryStream**: Used for NDJSON file reading to reduce GC pressure
+
+### Search Index Integration
+
+The file-based repository integrates with the search indexing system through **metadata sidecars**:
+
+#### Metadata Structure with Search Indices
+
+```json
+{
+  "TransactionId": "1234567890",
+  "ResourceType": "Patient",
+  "ResourceId": "example-123",
+  "VersionId": "1",
+  "LastModified": "2025-01-15T10:30:00Z",
+  "IsDeleted": false,
+  "Request": {"Method": "PUT", "Url": "Patient/example-123"},
+  "SearchIndexes": [
+    {"Name": "name", "Type": "string", "Value": "Smith"},
+    {"Name": "given", "Type": "string", "Value": "John"},
+    {"Name": "birthdate", "Type": "date", "Value": "1990-01-01"},
+    {"Name": "gender", "Type": "token", "Value": "male"}
+  ]
+}
+```
+
+#### IndexLoaderService Integration
+
+The `GetAllMetadataFiles()` method enables **startup indexing**:
+
+```csharp
+// Get all metadata files for a resource type (or all types)
+public IEnumerable<string> GetAllMetadataFiles(string? resourceType = null)
+{
+    string searchDir = resourceType != null
+        ? Path.Combine(_baseDirectory, "_internal", resourceType)
+        : Path.Combine(_baseDirectory, "_internal");
+
+    return Directory.GetFiles(searchDir, "*.metadata.json", SearchOption.AllDirectories);
+}
+```
+
+**IndexLoaderService** scans metadata files on startup to populate the in-memory search index:
+
+```csharp
+// Startup: Load all search indices from metadata
+var metadataFiles = _repository.GetAllMetadataFiles();
+foreach (var file in metadataFiles)
+{
+    var metadata = await ReadMetadataAsync(file);
+    _searchIndex.AddIndices(metadata.ResourceType, metadata.ResourceId, metadata.SearchIndexes);
 }
 ```
 
 ### Benefits
 
-1. **Replay Capability**: First line contains full transaction metadata for replay/audit
-2. **Efficient Sharding**: Date-based sharding spreads I/O across many directories
-3. **Compression-Friendly**: NDJSON compresses well (gzip entire file, ~70% reduction)
-4. **Streaming**: Can process large transactions without loading entire file
-5. **Simple Cleanup**: Delete old date directories for TTL-based archival
-6. **Atomic Writes**: Single file per transaction, no partial state
-7. **Resource-Type Isolation**: Each type in separate directory tree for parallel scans
+1. **Separated Concerns**: Transaction logs, resources, and metadata in separate directory trees
+2. **Sparse Metadata**: One metadata file per resource version (not per transaction)
+3. **Fast Lookups**: Metadata organized by resourceId eliminates scanning
+4. **Multi-Batch Transactions**: Large transactions span multiple BatchWriteAsync calls with append mode
+5. **Search Index Storage**: Metadata sidecars contain extracted search indices
+6. **Replay Capability**: Transaction lock files contain full manifest for audit/replay
+7. **Efficient Sharding**: Date-based sharding spreads I/O across many directories
+8. **Compression-Friendly**: Pure NDJSON (no mixed Bundle + resources)
+9. **Streaming**: Process resources line-by-line without loading entire file
+10. **Atomic Commit**: Lock file rename ensures transaction consistency
+11. **Resource-Type Isolation**: Each type in separate directory tree for parallel scans
+12. **ISourceNode Caching**: Prevents repeated ReflectedSourceNode allocations (15-60ms saved per read)
 
 ### Storage Characteristics
 
 **For 1M transactions/month, avg 3 resources each**:
+
+| Component | Files | Size (uncompressed) | Size (compressed) | Notes |
+|-----------|-------|---------------------|-------------------|-------|
+| Resource files | ~1M files | ~4.5 GB | ~1.4 GB | Pure NDJSON (3x 1.5KB resources) |
+| Transaction logs | ~1M files | ~1.5 GB | ~0.5 GB | Bundle manifests only |
+| Metadata sidecars | ~3M files | ~1.0 GB | ~0.3 GB | One per resource version |
+| **Total** | **~5M files** | **~7.0 GB** | **~2.2 GB** | **68% compression ratio** |
+
+**Directory Structure**:
 ```
-Files created: 1M files
-Avg file size: ~6KB (2KB bundle + 3x 1.5KB resources, NDJSON)
-Monthly storage: ~6GB uncompressed, ~2GB compressed
-Directory count: ~100 (Patient, Observation, etc. x 31 days)
+~100 date directories (Patient, Observation, etc. x 31 days)
+~1M resource directories in _internal/ (sparse, organized by resourceId)
+~30 transaction directories (date-based)
 ```
 
 **Archival Strategy**:
 ```bash
-# Compress directories older than 30 days
-find /data -type f -name "*.ndjson" -mtime +30 -exec gzip {} \;
+# Compress resource files older than 30 days
+find /data/{ResourceType}/ -type f -name "*.ndjson" -mtime +30 -exec gzip {} \;
+
+# Compress transaction logs older than 30 days
+find /data/_transactions/ -type f -name "*.ndjson" -mtime +30 -exec gzip {} \;
 
 # Move to cold storage after 90 days
 find /data -type f -name "*.ndjson.gz" -mtime +90 -exec mv {} /archive/ \;
+
+# Keep metadata sidecars in hot storage for fast lookups (small files)
 ```
 
 ---
@@ -609,10 +784,13 @@ EXEC sp_rename 'Resource_Legacy', 'Resource_Backup'
    - Cleaner schema with no NULL columns
    - Better history isolation
 
-2. **File System**: Use NDJSON sharding in Phase 5
-   - Simple, efficient, transaction-aware
-   - Bundle metadata enables rehydration
+2. **File System**: ✅ Implemented in Phase 1 (Prototype)
+   - Three-directory separation (resources, metadata, transactions)
+   - Sparse metadata sidecars for fast lookups
+   - Multi-batch transaction support with append mode
+   - Search index integration via metadata
    - Excellent for local dev (F5 principle)
+   - ISourceNode caching prevents repeated allocations
 
 3. **Cosmos DB**: Evaluate alternatives in cosmos-10pb-storage-architecture-more-options.md
    - Choose separated containers for clean design

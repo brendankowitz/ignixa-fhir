@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using EnsureThat;
 using Sparky.Extensions;
 using Sparky.Search.Data;
-using Newtonsoft.Json;
+using Sparky.Search.Generated;
 
 namespace Sparky.Search.Indexing;
 
@@ -17,9 +17,17 @@ public sealed class CodeSystemResolver : ICodeSystemResolver
 
     public CodeSystemResolver(FhirSpecification fhirSpecification)
     {
-        using Stream file = DataLoader.OpenVersionedFileStream(fhirSpecification, "resourcepath-codesystem-mappings.json");
-        using var reader = new StreamReader(file);
-        _dictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(reader.ReadToEnd());
+        // Use pre-generated code system mappings to eliminate runtime JSON parsing overhead.
+        // These mappings come from the FHIR specification and map resource paths like
+        // "Account.status" to their canonical code system URLs like "http://hl7.org/fhir/account-status".
+        _dictionary = fhirSpecification switch
+        {
+            FhirSpecification.R4 => R4CodeSystemMappings.GetMappings(),
+            FhirSpecification.R4B => R4BCodeSystemMappings.GetMappings(),
+            FhirSpecification.R5 => R5CodeSystemMappings.GetMappings(),
+            FhirSpecification.Stu3 => STU3CodeSystemMappings.GetMappings(),
+            _ => throw new NotSupportedException($"FHIR version {fhirSpecification} is not supported")
+        };
     }
 
     public string ResolveSystem(string shortPath)

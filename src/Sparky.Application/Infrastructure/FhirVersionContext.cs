@@ -36,17 +36,17 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         {
             return version switch
             {
-                FhirSpecification.Stu3 => throw new NotImplementedException("STU3 provider not yet generated"),
+                FhirSpecification.Stu3 => new Stu3StructureDefinitionSummaryProvider(),
                 FhirSpecification.R4 => new R4StructureDefinitionSummaryProvider(),
-                FhirSpecification.R4B => throw new NotImplementedException("R4B provider not yet generated"),
-                FhirSpecification.R5 => throw new NotImplementedException("R5 provider not yet generated"),
+                FhirSpecification.R4B => new R4BStructureDefinitionSummaryProvider(),
+                FhirSpecification.R5 => new R5StructureDefinitionSummaryProvider(),
                 _ => throw new ArgumentException($"Unsupported FHIR version: {version}")
             };
         });
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ISearchIndexer> GetSearchIndexerAsync(FhirSpecification fhirVersion, CancellationToken cancellationToken = default)
+    public ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion)
     {
         // Fast path: check if already cached
         if (_searchIndexers.TryGetValue(fhirVersion, out var cachedIndexer))
@@ -54,8 +54,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return cachedIndexer;
         }
 
-        // Slow path: create new indexer (async factory requires lock)
-        await _indexerLock.WaitAsync(cancellationToken);
+        // Slow path: create new indexer (synchronous factory with lock)
+        _indexerLock.Wait();
         try
         {
             // Double-check after acquiring lock
@@ -65,8 +65,9 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             }
 
             // Create new search indexer
+            // Factory initializes synchronously using pre-generated search parameters
             var schemaProvider = GetSchemaProvider(fhirVersion);
-            var indexer = await SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory);
+            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory);
 
             // Cache and return
             _searchIndexers.TryAdd(fhirVersion, indexer);

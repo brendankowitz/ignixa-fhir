@@ -8,12 +8,16 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Hl7.Fhir.ElementModel;
+using Hl7.Fhir.Specification;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
 public class ResourceJsonNode : IExtensionData, IResourceNode
 {
+    private ISourceNode _sourceNode;
+    private ITypedElement _typedElement;
+
     [JsonPropertyName("resourceType")]
     public string ResourceType { get; set; }
 
@@ -33,7 +37,17 @@ public class ResourceJsonNode : IExtensionData, IResourceNode
     /// </summary>
     public ISourceNode ToSourceNode()
     {
-        return new ReflectedSourceNode(this, null);
+        _sourceNode ??= new ReflectedSourceNode(this, null);
+
+        return _sourceNode;
+    }
+    
+    public ITypedElement ToTypedElement(IStructureDefinitionSummaryProvider provider)
+    {
+        _typedElement ??= ToSourceNode().ToTypedElement(provider);
+
+        // should check/cache on fhir version here.
+        return _typedElement;
     }
 
     /// <summary>

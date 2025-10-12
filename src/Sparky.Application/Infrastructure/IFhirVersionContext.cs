@@ -25,9 +25,9 @@ public interface IFhirVersionContext
 
     /// <summary>
     /// Gets the search indexer for the specified FHIR version.
+    /// Initializes synchronously using pre-generated search parameters.
     /// </summary>
     /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Search indexer for the specified version.</returns>
-    ValueTask<ISearchIndexer> GetSearchIndexerAsync(FhirSpecification fhirVersion, CancellationToken cancellationToken = default);
+    ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion);
 }

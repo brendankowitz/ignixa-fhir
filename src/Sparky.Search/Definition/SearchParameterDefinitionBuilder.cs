@@ -25,21 +25,6 @@ namespace Sparky.Search.Definition;
 
 internal static class SearchParameterDefinitionBuilder
 {
-    private static readonly ISet<Uri> _knownBrokenR5 = new HashSet<Uri>
-    {
-        new("http://hl7.org/fhir/SearchParameter/EvidenceVariable-topic"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/ImagingStudy-reason"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/Medication-form"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-packaging-cost"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/MedicationKnowledge-packaging-cost-concept"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/Subscription-payload"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/Subscription-type"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/Subscription-payload"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/Subscription-url"), // expression is null or empty.
-        new("http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-phase"), // referencing non existing search param.
-        new("http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-conformance") // referencing non existing search param.
-    };
-
     internal static void Build(
         IReadOnlyCollection<ITypedElement> searchParameters,
         ConcurrentDictionary<Uri, SearchParameterInfo> uriDictionary,
@@ -168,8 +153,6 @@ internal static class SearchParameterDefinitionBuilder
             // If this is a composite search parameter, then make sure components are defined.
             if (string.Equals(searchParameter.Type, SearchParamType.Composite.GetLiteral(), StringComparison.OrdinalIgnoreCase))
             {
-                if (modelInfoProvider.Version == FhirSpecification.R5 && _knownBrokenR5.Contains(new Uri(searchParameter.Url))) continue;
-
                 IReadOnlyList<ITypedElement> composites = searchParameter.Component;
                 if (composites.Count == 0)
                 {
@@ -232,8 +215,7 @@ internal static class SearchParameterDefinitionBuilder
 
                 // Make sure the expression is not empty unless they are known to have empty expression.
                 // These are special search parameters that searches across all properties and needs to be handled specially.
-                if (ShouldExcludeEntry(baseResourceType, searchParameter.Name, modelInfoProvider)
-                    || modelInfoProvider.Version == FhirSpecification.R5 && _knownBrokenR5.Contains(new Uri(searchParameter.Url)))
+                if (ShouldExcludeEntry(baseResourceType, searchParameter.Name, modelInfoProvider))
                 {
                     continue;
                 }

@@ -26,6 +26,10 @@ using Sparky.Search.Indexing.SearchValues;
 using Sparky.Extensions.Schema;
 using Sparky.Specification.Generated;
 using Sparky.Extensions;
+using Sparky.Validation.SourceNodeValidation;
+using Hl7.Fhir.Specification;
+using Sparky.Application.Infrastructure;
+using static Sparky.Extensions.Schema.FhirSchemaProviderResolver;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -105,10 +109,13 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IQueryParameterParser>()
         .InstancePerDependency();
 
-    // Register search options builder (requires ExpressionParser)
-    containerBuilder.RegisterType<SearchOptionsBuilder>()
-        .As<ISearchOptionsBuilder>()
-        .InstancePerDependency();
+    // Register SearchOptionsBuilderFactory for version-aware search options builders
+    // Factory creates and caches builders per (tenant, FHIR version) pair
+    // Phase 1: Single-tenant mode (uses TenantContext.Default)
+    // Phase 2+: Multi-tenant mode with custom search parameters per tenant
+    containerBuilder.RegisterType<SearchOptionsBuilderFactory>()
+        .As<ISearchOptionsBuilderFactory>()
+        .SingleInstance();
 
     // Register FhirVersionContext (provides version-specific schema providers and search indexers)
     // Similar to HAPI FHIR's FhirContext pattern - caches instances per FHIR version
@@ -116,14 +123,18 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<Sparky.Application.Infrastructure.IFhirVersionContext>()
         .SingleInstance();
 
-    // Register ExpressionParser dependencies (still needed for search query parsing)
-    containerBuilder.Register(c =>
+    // Register FhirSchemaProviderResolver - enables version-aware components to resolve
+    // the correct provider at runtime based on request FHIR version
+    containerBuilder.Register<FhirSchemaProviderResolver>(c =>
     {
-        return new R4StructureDefinitionSummaryProvider();
-    }).As<IFhirSchemaProvider>().SingleInstance();
+        var versionContext = c.Resolve<IFhirVersionContext>();
+        return (FhirSpecification version) => versionContext.GetSchemaProvider(version);
+    }).SingleInstance();
 
-    containerBuilder.RegisterType<SearchParameterDefinitionManager>()
+    // Register version-aware wrapper that caches SearchParameterDefinitionManager per FHIR version
+    containerBuilder.RegisterType<VersionAwareSearchParameterDefinitionManager>()
         .As<ISearchParameterDefinitionManager>()
+        .AsSelf() // Also register as self for version-aware access
         .SingleInstance();
 
     containerBuilder.Register<ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver>(c =>
@@ -132,18 +143,16 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         return () => manager;
     }).SingleInstance();
 
-    // Register ReferenceSearchValueParser (required by SearchParameterExpressionParser)
-    containerBuilder.RegisterType<ReferenceSearchValueParser>()
-        .As<IReferenceSearchValueParser>()
-        .InstancePerDependency();
+    // NOTE: ReferenceSearchValueParser, SearchParameterExpressionParser, ExpressionParser, and SearchOptionsBuilder
+    // are now created by SearchOptionsBuilderFactory with version-specific dependencies
+    // No longer registered in DI container - factory creates them per (tenant, version) pair
 
-    containerBuilder.RegisterType<SearchParameterExpressionParser>()
-        .As<ISearchParameterExpressionParser>()
-        .InstancePerDependency();
-
-    containerBuilder.RegisterType<ExpressionParser>()
-        .As<IExpressionParser>()
-        .InstancePerDependency();
+    // Register FastPathValidator (SourceNodeValidation version - fixes missing property bug)
+    // Registered as singleton - caches rules per (resourceType, provider) pair
+    // Provider is passed at runtime via Validate(node, provider) to support multi-version requests
+    containerBuilder.RegisterType<FastPathValidator>()
+        .AsSelf()
+        .SingleInstance();
 
     // Register bundle processing services
     containerBuilder.RegisterType<BundleReferencePreProcessor>()

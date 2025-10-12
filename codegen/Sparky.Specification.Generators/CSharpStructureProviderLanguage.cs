@@ -42,13 +42,13 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
             throw new ArgumentException($"Configuration must be of type {nameof(CSharpStructureProviderConfig)}", nameof(config));
         }
 
-        // Get the FHIR version
+        // Get the FHIR version (use Stu3 to match FhirSpecification enum casing)
         string fhirVersion = definitions.FhirSequence switch
         {
             FhirReleases.FhirSequenceCodes.R4 => "R4",
             FhirReleases.FhirSequenceCodes.R4B => "R4B",
             FhirReleases.FhirSequenceCodes.R5 => "R5",
-            FhirReleases.FhirSequenceCodes.STU3 => "STU3",
+            FhirReleases.FhirSequenceCodes.STU3 => "Stu3",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
 
@@ -91,6 +91,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("using Hl7.Fhir.Specification;");
         sb.AppendLine("using Sparky.Extensions;");
         sb.AppendLine("using Sparky.Extensions.Schema;");
+        sb.AppendLine("using Sparky.Specification;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();
@@ -604,36 +605,6 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("        /// <summary>Maximum cardinality (\"*\" for unbounded).</summary>");
         sb.AppendLine("        public string? Max { get; }");
         sb.AppendLine("    }");
-        sb.AppendLine();
-
-        // Generate metadata record types
-        GenerateMetadataRecords(sb);
-    }
-
-    private void GenerateMetadataRecords(StringBuilder sb)
-    {
-        // BindingMetadata record
-        sb.AppendLine("    /// <summary>ValueSet binding metadata.</summary>");
-        sb.AppendLine("    private sealed record BindingMetadata(");
-        sb.AppendLine("        string ValueSetUrl,");
-        sb.AppendLine("        string Strength);");
-        sb.AppendLine();
-
-        // ConstraintMetadata record
-        sb.AppendLine("    /// <summary>FHIRPath constraint metadata.</summary>");
-        sb.AppendLine("    private sealed record ConstraintMetadata(");
-        sb.AppendLine("        string Key,");
-        sb.AppendLine("        string Severity,");
-        sb.AppendLine("        string Human,");
-        sb.AppendLine("        string Expression);");
-        sb.AppendLine();
-
-        // SlicingMetadata record
-        sb.AppendLine("    /// <summary>Slicing definition metadata.</summary>");
-        sb.AppendLine("    private sealed record SlicingMetadata(");
-        sb.AppendLine("        string[] Discriminators,");
-        sb.AppendLine("        string Rules,");
-        sb.AppendLine("        bool Ordered);");
     }
 
     private string GetSafeMethodName(string typeName)

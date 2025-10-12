@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Hl7.Fhir.ElementModel;
+using Hl7.Fhir.Specification;
 using Medino;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,9 @@ using Sparky.Application.Infrastructure;
 using Sparky.Domain.Abstractions;
 using Sparky.Domain.Models;
 using Sparky.Extensions;
+using Sparky.Extensions.Schema;
 using Sparky.Search.Indexing;
+using Sparky.Validation.SourceNodeValidation;
 
 namespace Sparky.Application.Features.Resource;
 
@@ -27,17 +30,20 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirRepository _repository;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly FastPathValidator _validator;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
         IFhirRepository repository,
         IHttpContextAccessor httpContextAccessor,
         IFhirVersionContext fhirVersionContext,
+        FastPathValidator validator,
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -49,8 +55,44 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.ResourceType,
             command.Id);
 
+        // Extract FHIR version from headers (defaults to R4) - needed for version-specific validation
+        var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+
+        // VALIDATE INCOMING RESOURCE (fast-path validation)
+        // Uses cached ToSourceNode() from command.Resource (ResourceJsonNode)
+        // This prevents repeated ReflectedSourceNode allocations (15-60ms per validation)
+        // Uses version-specific schema provider from FhirVersionContext
+        _logger.LogDebug(
+            "Validating incoming resource {ResourceType}/{Id} with FastPathValidator (FHIR {Version})",
+            command.ResourceType,
+            command.Id,
+            fhirVersionEnum);
+
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
+        var validationResult = _validator.Validate(command.Resource, schemaProvider);
+
+        if (!validationResult.IsValid)
+        {
+            _logger.LogWarning(
+                "Validation failed for {ResourceType}/{Id}: {ErrorCount} error(s), {WarningCount} warning(s)",
+                command.ResourceType,
+                command.Id,
+                validationResult.Issues.Count(i => i.Severity == Validation.IssueSeverity.Error || i.Severity == Validation.IssueSeverity.Fatal),
+                validationResult.Issues.Count(i => i.Severity == Validation.IssueSeverity.Warning));
+
+            // Throw ValidationException which will be caught by FhirExceptionMiddleware
+            // and converted to HTTP 400 with OperationOutcome
+            throw new ValidationException(validationResult);
+        }
+
+        _logger.LogDebug(
+            "Validation passed for {ResourceType}/{Id} (FHIR {Version})",
+            command.ResourceType,
+            command.Id,
+            fhirVersionEnum);
+
         // Create wrapper (needed for both paths now)
-        var wrapper = await CreateResourceWrapperAsync(command, cancellationToken);
+        var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider);
 
         ResourceKey key;
 
@@ -103,20 +145,18 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// <summary>
     /// Creates a ResourceWrapper from the command.
     /// Single place for wrapper construction logic.
-    /// Extracts FHIR version from headers and search indices from resource.
+    /// Uses provided FHIR version and schema provider to extract search indices from resource.
     /// </summary>
-    private async Task<ResourceWrapper> CreateResourceWrapperAsync(
+    private ResourceWrapper CreateResourceWrapper(
         CreateOrUpdateResourceCommand command,
-        CancellationToken cancellationToken)
+        FhirSpecification fhirVersionEnum,
+        IFhirSchemaProvider schemaProvider)
     {
         var request = new ResourceRequest("PUT", $"{command.ResourceType}/{command.Id}");
 
-        // Extract FHIR version from headers (defaults to R4)
-        var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
-
-        // Get version-specific schema provider and search indexer from context
-        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
-        var searchIndexer = await _fhirVersionContext.GetSearchIndexerAsync(fhirVersionEnum, cancellationToken);
+        // Get version-specific search indexer from context
+        // Factory initializes synchronously using pre-generated search parameters
+        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersionEnum);
 
         // Extract search indices using version-specific indexer
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;

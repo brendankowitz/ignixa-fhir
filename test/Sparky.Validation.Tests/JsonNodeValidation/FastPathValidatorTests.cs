@@ -7,9 +7,9 @@ using System.Text.Json;
 using FluentAssertions;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.Specification.Generated;
-using Sparky.Validation;
+using Sparky.Validation.JsonNodeValidation;
 
-namespace Sparky.Validation.Tests;
+namespace Sparky.Validation.Tests.JsonNodeValidation;
 
 /// <summary>
 /// Unit tests for FastPathValidator.

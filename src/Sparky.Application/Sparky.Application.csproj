@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
     <ProjectReference Include="..\Sparky.Search\Sparky.Search.csproj" />
     <ProjectReference Include="..\Sparky.Specification\Sparky.Specification.csproj" />
+    <ProjectReference Include="..\Sparky.Validation\Sparky.Validation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

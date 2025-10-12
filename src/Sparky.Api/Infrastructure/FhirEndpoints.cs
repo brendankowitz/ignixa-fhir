@@ -143,8 +143,10 @@ public static class FhirEndpoints
             json = await reader.ReadToEndAsync(ct);
         }
 
-        // Parse JSON to ISourceNode
-        var sourceNode = JsonSourceNodeFactory.Parse(json);
+        // Parse to ResourceJsonNode to enable caching
+        // Using cached ToSourceNode() prevents repeated ReflectedSourceNode allocations
+        var resourceNode = Sparky.SourceNodeSerialization.SourceNodes.Models.ResourceJsonNode.Parse(json);
+        var sourceNode = resourceNode.ToSourceNode();
 
         // Validate resource type matches
         if (!string.Equals(sourceNode.Name, resourceType, StringComparison.Ordinal))

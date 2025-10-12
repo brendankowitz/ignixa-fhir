@@ -3,20 +3,11 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Globalization;
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Utility;
-using Hl7.FhirPath;
 using Sparky.Extensions;
-using Sparky.Extensions.Exceptions;
 using Sparky.Extensions.Models;
-using Sparky.Extensions.Schema;
-using Sparky.SourceNodeSerialization;
-using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.Extensions.ValueSets;
-using Sparky.Search.Data;
-using Sparky.Search.Indexing.Converters;
+using Sparky.Search.Generated;
 
 namespace Sparky.Search.Definition;
 
@@ -25,15 +16,27 @@ namespace Sparky.Search.Definition;
 /// </summary>
 public class CompartmentDefinitionManager : ICompartmentDefinitionManager
 {
-    private readonly FhirSpecification _fhirSpecification;
-    private Dictionary<CompartmentType, HashSet<string>> _compartmentResourceTypesLookup;
+    private readonly Dictionary<CompartmentType, HashSet<string>> _compartmentResourceTypesLookup;
 
     // This data structure stores the lookup of compartmentSearchParams (in the hash set) by ResourceType and CompartmentType.
-    private Dictionary<string, Dictionary<CompartmentType, HashSet<string>>> _compartmentSearchParamsLookup;
+    private readonly Dictionary<string, Dictionary<CompartmentType, HashSet<string>>> _compartmentSearchParamsLookup;
 
     public CompartmentDefinitionManager(FhirSpecification fhirSpecification)
     {
-        _fhirSpecification = fhirSpecification;
+        // Load pre-generated compartment definitions to eliminate runtime JSON parsing overhead.
+        // The compartment definitions are compiled from the official HL7 definitions available at
+        // https://www.hl7.org/fhir/compartmentdefinition.html.
+        Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> compartments =
+            fhirSpecification switch
+            {
+                FhirSpecification.R4 => R4CompartmentDefinitions.GetCompartments(),
+                FhirSpecification.R4B => R4BCompartmentDefinitions.GetCompartments(),
+                FhirSpecification.R5 => R5CompartmentDefinitions.GetCompartments(),
+                FhirSpecification.Stu3 => STU3CompartmentDefinitions.GetCompartments(),
+                _ => throw new NotSupportedException($"FHIR version {fhirSpecification} is not supported")
+            };
+
+        (_compartmentSearchParamsLookup, _compartmentResourceTypesLookup) = BuildFromGenerated(compartments);
     }
 
     public static Dictionary<string, CompartmentType> ResourceTypeToCompartmentType { get; } = new()
@@ -63,106 +66,27 @@ public class CompartmentDefinitionManager : ICompartmentDefinitionManager
         return false;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
-    {
-        // The json file is a bundle compiled from the compartment definitions currently defined by HL7.
-        // The definitions are available at https://www.hl7.org/fhir/compartmentdefinition.html.
-        using Stream stream = DataLoader.OpenVersionedFileStream(_fhirSpecification, "compartment.json");
-        BundleJsonNode bundle = await JsonSourceNodeFactory.Parse<BundleJsonNode>(stream);
-        Build(bundle);
-    }
-
     public static string CompartmentTypeToResourceType(string compartmentType)
     {
         EnsureArg.IsTrue(Enum.IsDefined(typeof(CompartmentType), compartmentType), nameof(compartmentType));
         return compartmentType;
     }
 
-    internal void Build(BundleJsonNode bundle)
+    /// <summary>
+    /// Builds lookup dictionaries from pre-generated compartment definitions.
+    /// </summary>
+    private (Dictionary<string, Dictionary<CompartmentType, HashSet<string>>> SearchParams, Dictionary<CompartmentType, HashSet<string>> ResourceTypes) BuildFromGenerated(
+        Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> compartmentLookup)
     {
-        Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> compartmentLookup = ValidateAndGetCompartmentDict(bundle);
-        _compartmentSearchParamsLookup = BuildResourceTypeLookup(compartmentLookup.Values);
-        _compartmentResourceTypesLookup = new Dictionary<CompartmentType, HashSet<string>>();
-        foreach ((CompartmentType key, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources) value) in compartmentLookup) _compartmentResourceTypesLookup[key] = value.Resources.Where(x => x.Params.Any()).Select(x => x.Resource).ToHashSet();
-    }
+        var searchParams = BuildResourceTypeLookup(compartmentLookup.Values);
+        var resourceTypes = new Dictionary<CompartmentType, HashSet<string>>();
 
-    private static Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> ValidateAndGetCompartmentDict(BundleJsonNode bundle)
-    {
-        EnsureArg.IsNotNull(bundle, nameof(bundle));
-
-        var issues = new List<OperationOutcomeIssue>();
-        var validatedCompartments = new Dictionary<CompartmentType, (CompartmentType, Uri, IList<(string, IList<string>)>)>();
-
-        IList<BundleComponentJsonNode> entries = bundle.Entry;
-
-        for (int entryIndex = 0; entryIndex < entries.Count; entryIndex++)
+        foreach ((CompartmentType key, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources) value) in compartmentLookup)
         {
-            // Make sure resources are not null and they are Compartment.
-            BundleComponentJsonNode entry = entries[entryIndex];
-
-            ISourceNode sourceNode = JsonSourceNodeFactory.Create(entry.Resource);
-            ITypedElement compartment = sourceNode.ToTypedElement(InstanceInferredStructureDefinitionSummaryProvider.CreateFrom(sourceNode));
-
-            if (compartment == null || !string.Equals(KnownResourceTypes.CompartmentDefinition, compartment.InstanceType, StringComparison.Ordinal))
-            {
-                AddIssue(Resources.CompartmentDefinitionInvalidResource, entryIndex);
-                continue;
-            }
-
-            string code = compartment.Scalar("code")?.ToString();
-            string url = compartment.Scalar("url")?.ToString();
-
-            if (code == null)
-            {
-                AddIssue(Resources.CompartmentDefinitionInvalidCompartmentType, entryIndex);
-                continue;
-            }
-
-            CompartmentType typeCode = EnumUtility.ParseLiteral<CompartmentType>(code).GetValueOrDefault();
-
-            if (validatedCompartments.ContainsKey(typeCode))
-            {
-                AddIssue(Resources.CompartmentDefinitionIsDupe, entryIndex);
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(url) || !Uri.IsWellFormedUriString(url, UriKind.Absolute))
-            {
-                AddIssue(Resources.CompartmentDefinitionInvalidUrl, entryIndex);
-                continue;
-            }
-
-            var resources = compartment.Select("resource")
-                .Select(x => (x.Scalar("code")?.ToString(), (IList<string>)x.Select("param").AsStringValues().ToList()))
-                .ToList();
-
-            string[] resourceNames = resources.Select(x => x.Item1).ToArray();
-
-            if (resourceNames.Length != resourceNames.Distinct().Count())
-            {
-                AddIssue(Resources.CompartmentDefinitionDupeResource, entryIndex);
-                continue;
-            }
-
-            validatedCompartments.Add(
-                typeCode,
-                (typeCode, new Uri(url), new List<(string, IList<string>)>(resources)));
+            resourceTypes[key] = value.Resources.Where(x => x.Params.Any()).Select(x => x.Resource).ToHashSet();
         }
 
-        if (issues.Count != 0)
-            throw new InvalidDefinitionException(
-                Resources.CompartmentDefinitionContainsInvalidEntry,
-                issues.ToArray());
-
-        return validatedCompartments;
-
-        void AddIssue(string format, params object[] args)
-        {
-            issues.Add(new OperationOutcomeIssue(
-                OperationOutcomeConstants.IssueSeverity.Fatal,
-                OperationOutcomeConstants.IssueType.Invalid,
-                string.Format(CultureInfo.InvariantCulture, format, args)));
-        }
+        return (searchParams, resourceTypes);
     }
 
     private static Dictionary<string, Dictionary<CompartmentType, HashSet<string>>> BuildResourceTypeLookup(ICollection<(CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> compartmentDefinitions)

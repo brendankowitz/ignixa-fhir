@@ -6,6 +6,7 @@
 using System.Text;
 using Hl7.Fhir.ElementModel;
 using Sparky.SourceNodeSerialization;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Application.Features.Bundle.Serialization;
 
@@ -155,7 +156,10 @@ internal class BundleParserState
         if (_resourceJsonBuilder.Length > 0)
         {
             var resourceJson = _resourceJsonBuilder.ToString();
-            resourceNode = JsonSourceNodeFactory.Parse(resourceJson);
+            // Parse to ResourceJsonNode to enable caching
+            // Using cached ToSourceNode() prevents repeated ReflectedSourceNode allocations
+            var parsedResource = ResourceJsonNode.Parse(resourceJson);
+            resourceNode = parsedResource.ToSourceNode();
             resourceType = resourceNode.Name;
         }
 

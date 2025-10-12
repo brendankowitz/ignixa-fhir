@@ -11,13 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Sparky.Extensions\Sparky.Extensions.csproj"/>
-    <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj"/>
+    <ProjectReference Include="..\Sparky.Extensions\Sparky.Extensions.csproj" />
+    <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Schema\FhirJsonSchemaStructureDefinitionSummaryProvider.cs" />
-    <None Include="Schema\FhirJsonSchemaStructureDefinitionSummaryProvider.cs" />
   </ItemGroup>
 
 </Project>

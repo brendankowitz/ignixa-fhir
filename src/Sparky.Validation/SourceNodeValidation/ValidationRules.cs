@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-namespace Sparky.Validation;
+namespace Sparky.Validation.SourceNodeValidation;
 
 /// <summary>
 /// Cached validation rules for a specific resource type.

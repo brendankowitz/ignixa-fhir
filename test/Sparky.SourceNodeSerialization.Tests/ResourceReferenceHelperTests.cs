@@ -454,18 +454,24 @@ public class ResourceReferenceHelperTests
     /// </summary>
     private class TestReferenceMetadataProvider : IReferenceMetadataProvider
     {
+        private static readonly string[] OrganizationTargets = new[] { "Organization" };
+        private static readonly string[] GeneralPractitionerTargets = new[] { "Organization", "Practitioner", "PractitionerRole" };
+        private static readonly string[] SubjectTargets = new[] { "Patient", "Group", "Device", "Location" };
+        private static readonly string[] PerformerTargets = new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson" };
+        private static readonly string[] BasedOnTargets = new[] { "CarePlan", "DeviceRequest", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "ServiceRequest" };
+
         private readonly Dictionary<string, List<ReferenceFieldMetadata>> _metadata = new()
         {
             ["Patient"] = new List<ReferenceFieldMetadata>
             {
-                new ReferenceFieldMetadata("managingOrganization", 0, "1", new[] { "Organization" }, true),
-                new ReferenceFieldMetadata("generalPractitioner", 0, "*", new[] { "Organization", "Practitioner", "PractitionerRole" }, false),
+                new ReferenceFieldMetadata("managingOrganization", 0, "1", OrganizationTargets, true),
+                new ReferenceFieldMetadata("generalPractitioner", 0, "*", GeneralPractitionerTargets, false),
             },
             ["Observation"] = new List<ReferenceFieldMetadata>
             {
-                new ReferenceFieldMetadata("subject", 0, "1", new[] { "Patient", "Group", "Device", "Location" }, true),
-                new ReferenceFieldMetadata("performer", 0, "*", new[] { "Practitioner", "PractitionerRole", "Organization", "CareTeam", "Patient", "RelatedPerson" }, true),
-                new ReferenceFieldMetadata("basedOn", 0, "*", new[] { "CarePlan", "DeviceRequest", "ImmunizationRecommendation", "MedicationRequest", "NutritionOrder", "ServiceRequest" }, true),
+                new ReferenceFieldMetadata("subject", 0, "1", SubjectTargets, true),
+                new ReferenceFieldMetadata("performer", 0, "*", PerformerTargets, true),
+                new ReferenceFieldMetadata("basedOn", 0, "*", BasedOnTargets, true),
             },
         };
 
