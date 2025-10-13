@@ -8,6 +8,7 @@ using System.Diagnostics;
 using EnsureThat;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.FhirPath;
+using Hl7.Fhir.Introspection;
 using Hl7.FhirPath;
 using Microsoft.Extensions.Logging;
 using Sparky.Extensions.ValueSets;
@@ -60,13 +61,15 @@ public class TypedElementSearchIndexer : ISearchIndexer
 
         var entries = new List<SearchIndexEntry>();
 
-        var context = new FhirEvaluationContext
-        {
-            // TODO: SDK 6.0 - ElementResolver signature may have changed
-            // ElementResolver = _referenceToElementResolver.Resolve,
-            // This allow to resolve %resource FhirPath to provided value.
-            Resource = resource as Hl7.Fhir.Model.PocoNode
-        };
+        var context = new FhirEvaluationContext();
+        context.ElementResolver = str => _referenceToElementResolver.Resolve(str).ToPocoNode();
+
+        // This allows resolving %resource FhirPath to provided value.
+        // NOTE: ToPocoNode() uses SDK's built-in ModelInspector which doesn't know about our custom
+        // BackboneElement definitions from the generated schema provider. This is a known limitation
+        // of Firely SDK 6.0 - it doesn't support pluggable type systems for PocoNode conversion.
+        // TODO: Investigate alternative approach or SDK enhancement request
+        // context.Resource = resource.ToPocoNode();
 
         IEnumerable<SearchParameterInfo> searchParameters = _searchParameterDefinitionManager.GetSearchParameters(resource.InstanceType);
 

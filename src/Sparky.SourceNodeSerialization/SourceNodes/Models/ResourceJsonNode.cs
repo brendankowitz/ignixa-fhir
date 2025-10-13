@@ -17,6 +17,7 @@ public class ResourceJsonNode : IExtensionData, IResourceNode
 {
     private ISourceNode _sourceNode;
     private ITypedElement _typedElement;
+    private IStructureDefinitionSummaryProvider _cachedProvider;
 
     [JsonPropertyName("resourceType")]
     public string ResourceType { get; set; }
@@ -34,6 +35,7 @@ public class ResourceJsonNode : IExtensionData, IResourceNode
 
     /// <summary>
     /// Wraps the JSON representation of the resource in an ISourceNode.
+    /// Cached after first call.
     /// </summary>
     public ISourceNode ToSourceNode()
     {
@@ -41,12 +43,20 @@ public class ResourceJsonNode : IExtensionData, IResourceNode
 
         return _sourceNode;
     }
-    
+
+    /// <summary>
+    /// Converts to ITypedElement using the provided schema provider.
+    /// Caches the result if called with the same provider instance.
+    /// </summary>
     public ITypedElement ToTypedElement(IStructureDefinitionSummaryProvider provider)
     {
-        _typedElement ??= ToSourceNode().ToTypedElement(provider);
+        // Cache only if same provider instance (to support multi-version scenarios)
+        if (_typedElement == null || _cachedProvider != provider)
+        {
+            _typedElement = ToSourceNode().ToTypedElement(provider);
+            _cachedProvider = provider;
+        }
 
-        // should check/cache on fhir version here.
         return _typedElement;
     }
 

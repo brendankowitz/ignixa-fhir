@@ -170,28 +170,36 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("    private static readonly Dictionary<string, IStructureDefinitionSummary> _types = new()");
         sb.AppendLine("    {");
 
-        // Collect all types (primitives, complex types, resources)
-        var allTypes = new List<(string Name, StructureDefinition SD, bool IsResource)>();
+        // Collect all types (primitives, complex types, resources, AND BackboneElements)
+        var allTypes = new List<(string Name, StructureDefinition SD, bool IsResource, string? BackbonePath)>();
 
         foreach (var kvp in definitions.PrimitiveTypesByName)
         {
-            allTypes.Add((kvp.Key, kvp.Value, false));
+            allTypes.Add((kvp.Key, kvp.Value, false, null));
         }
 
         foreach (var kvp in definitions.ComplexTypesByName)
         {
-            allTypes.Add((kvp.Key, kvp.Value, false));
+            allTypes.Add((kvp.Key, kvp.Value, false, null));
         }
 
         foreach (var kvp in definitions.ResourcesByName)
         {
-            allTypes.Add((kvp.Key, kvp.Value, true));
+            allTypes.Add((kvp.Key, kvp.Value, true, null));
+
+            // Extract BackboneElement types from this resource
+            var backboneElements = ExtractBackboneElements(kvp.Value);
+            foreach (var (backboneName, backbonePath) in backboneElements)
+            {
+                // Add BackboneElement as a separate type with qualified name (e.g., "AuditEvent.Agent")
+                allTypes.Add((backboneName, kvp.Value, false, backbonePath));
+            }
         }
 
         // Sort alphabetically
         allTypes = allTypes.OrderBy(t => t.Name).ToList();
 
-        foreach (var (name, sd, isResource) in allTypes)
+        foreach (var (name, sd, isResource, backbonePath) in allTypes)
         {
             bool isAbstract = sd.Abstract ?? false;
 
@@ -207,13 +215,50 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine();
 
         // Generate element factory methods for each type
-        foreach (var (name, sd, _) in allTypes)
+        foreach (var (name, sd, _, backbonePath) in allTypes)
         {
-            GenerateElementsMethod(sb, name, sd, definitions);
+            GenerateElementsMethod(sb, name, sd, definitions, backbonePath);
         }
     }
 
-    private void GenerateElementsMethod(StringBuilder sb, string typeName, StructureDefinition sd, DefinitionCollection definitions)
+    /// <summary>
+    /// Extracts all BackboneElement paths from a structure definition.
+    /// Returns qualified type names (e.g., "AuditEvent.Agent") and their element paths.
+    /// </summary>
+    private List<(string TypeName, string ElementPath)> ExtractBackboneElements(StructureDefinition sd)
+    {
+        var backboneElements = new List<(string TypeName, string ElementPath)>();
+
+        // Get all elements (not just top-level) to find BackboneElements
+        var allElements = sd.cgElements(topLevelOnly: false, includeRoot: false, skipSlices: true);
+
+        foreach (var element in allElements)
+        {
+            // Check if this element is a BackboneElement type
+            if (element.Type.Any(t => t.Code == "BackboneElement"))
+            {
+                // Element path is like "AuditEvent.agent" - we want "AuditEvent.Agent" as type name
+                string elementPath = element.Path;
+
+                // Convert path to type name: "AuditEvent.agent" → "AuditEvent.Agent"
+                // Capitalize the last segment after the last dot
+                int lastDotIndex = elementPath.LastIndexOf('.');
+                if (lastDotIndex > 0)
+                {
+                    string baseName = elementPath.Substring(0, lastDotIndex);
+                    string elementName = elementPath.Substring(lastDotIndex + 1);
+                    string capitalizedElementName = CapitalizeFirstLetter(elementName);
+                    string typeName = $"{baseName}.{capitalizedElementName}";
+
+                    backboneElements.Add((typeName, elementPath));
+                }
+            }
+        }
+
+        return backboneElements;
+    }
+
+    private void GenerateElementsMethod(StringBuilder sb, string typeName, StructureDefinition sd, DefinitionCollection definitions, string? backbonePath = null)
     {
         string safeName = GetSafeMethodName(typeName);
 
@@ -222,8 +267,12 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("        return new IElementDefinitionSummary[]");
         sb.AppendLine("        {");
 
-        // Get all elements for this type (skip the root element)
-        var elements = sd.cgElements(topLevelOnly: true, includeRoot: false, skipSlices: true).ToList();
+        // Get all elements for this type
+        // If backbonePath is provided, get elements for that BackboneElement path
+        // Otherwise, get top-level elements for the resource/type
+        var elements = backbonePath != null
+            ? sd.cgElements(forBackbonePath: backbonePath, topLevelOnly: true, includeRoot: false, skipSlices: true).ToList()
+            : sd.cgElements(topLevelOnly: true, includeRoot: false, skipSlices: true).ToList();
 
         int order = 0;
         foreach (var element in elements)

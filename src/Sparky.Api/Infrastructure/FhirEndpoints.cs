@@ -9,6 +9,7 @@ using Hl7.Fhir.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
+using Sparky.Application.Features;
 using Sparky.Application.Features.Bundle;
 using Sparky.Application.Features.Bundle.Serialization;
 using Sparky.Application.Features.Resource;
@@ -31,61 +32,159 @@ public static class FhirEndpoints
 
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
+    ///
+    /// Route Patterns:
+    /// 1. Tenant-explicit: /tenant/{tenantId:int}/{resourceType}/{id?} - Always supported
+    /// 2. Tenant-agnostic: /{resourceType}/{id?} - Auto-enabled for single-tenant scenarios
+    ///
+    /// Single-Tenant Mode (1 active tenant):
+    ///   - Both /tenant/1/Patient/123 AND /Patient/123 work
+    ///   - Middleware auto-detects and applies the single tenant
+    ///
+    /// Multi-Tenant Mode (2+ active tenants):
+    ///   - Only /tenant/{id}/Patient/123 works
+    ///   - Agnostic routes blocked by middleware (400 Bad Request)
+    ///
+    /// Distributed Mode (future):
+    ///   - Agnostic routes work with transparent sharding
     /// </summary>
     public static IEndpointRouteBuilder MapFhirEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // GET /{resourceType}/{id} - Read resource
-        endpoints.MapGet("/{resourceType}/{id}", HandleGetResource)
+        // TENANT-EXPLICIT ROUTES (always supported, all scenarios)
+
+        // GET /tenant/{tenantId:int}/{resourceType}/{id} - Read resource
+        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/{id}", HandleGetResource)
             .WithName("GetResource")
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status404NotFound);
 
-        // PUT /{resourceType}/{id} - Create or update resource
-        endpoints.MapPut("/{resourceType}/{id}", HandlePutResource)
+        // PUT /tenant/{tenantId:int}/{resourceType}/{id} - Create or update resource
+        endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}/{id}", HandlePutResource)
             .WithName("PutResource")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status201Created);
 
-        // DELETE /{resourceType}/{id} - Delete resource
-        endpoints.MapDelete("/{resourceType}/{id}", HandleDeleteResource)
+        // DELETE /tenant/{tenantId:int}/{resourceType}/{id} - Delete resource
+        endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}/{id}", HandleDeleteResource)
             .WithName("DeleteResource")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
-        // GET /{resourceType} - Search resources
-        endpoints.MapGet("/{resourceType}", HandleSearchResource)
+        // GET /tenant/{tenantId:int}/{resourceType} - Search resources
+        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
             .WithName("SearchResource")
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson);
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
 
-        // POST /{resourceType} - Create resource (server assigns ID)
-        endpoints.MapPost("/{resourceType}", HandlePostResource)
+        // POST /tenant/{tenantId:int}/{resourceType} - Create resource (server assigns ID)
+        endpoints.MapPost("/tenant/{tenantId:int}/{resourceType}", HandlePostResource)
             .WithName("PostResource")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status201Created);
 
-        // POST / - Transaction/Batch bundle
-        endpoints.MapPost("/", HandleBundle)
+        // POST /tenant/{tenantId:int} - Transaction/Batch bundle
+        endpoints.MapPost("/tenant/{tenantId:int}", HandleBundle)
             .WithName("Bundle")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces(StatusCodes.Status501NotImplemented);
+
+        // TENANT-AGNOSTIC ROUTES (FHIR-compliant, single-tenant auto-detection)
+        // Middleware validates: single tenant = auto-apply, multi-tenant = 400 Bad Request
+        // These routes delegate to the same handlers - middleware provides tenant context
+
+        // GET /{resourceType}/{id} - Read resource (agnostic)
+        endpoints.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+            [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleGetResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
+            .WithName("GetResourceAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // PUT /{resourceType}/{id} - Create or update resource (agnostic)
+        endpoints.MapPut("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+            [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePutResource(context, ExtractTenantId(context), resourceType, id, mediator, memoryStreamManager, logger, ct))
+            .WithName("PutResourceAgnostic")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // DELETE /{resourceType}/{id} - Delete resource (agnostic)
+        endpoints.MapDelete("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+            [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleDeleteResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
+            .WithName("DeleteResourceAgnostic")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // GET /{resourceType} - Search resources (agnostic)
+        endpoints.MapGet("/{resourceType}", (HttpContext context, string resourceType,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleSearchResource(context, ExtractTenantId(context), resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
+            .WithName("SearchResourceAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // POST /{resourceType} - Create resource with server-assigned ID (agnostic)
+        endpoints.MapPost("/{resourceType}", (HttpContext context, string resourceType,
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+            [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePostResource(context, ExtractTenantId(context), resourceType, mediator, memoryStreamManager, logger, ct))
+            .WithName("PostResourceAgnostic")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // POST / - Transaction/Batch bundle (agnostic)
+        endpoints.MapPost("/", (HttpContext context, [FromServices] BundleProcessor bundleProcessor,
+            [FromServices] StreamingBundleParser streamingParser, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleBundle(context, ExtractTenantId(context), bundleProcessor, streamingParser, logger, ct))
+            .WithName("BundleAgnostic")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status501NotImplemented);
 
         return endpoints;
     }
 
     /// <summary>
-    /// GET /{resourceType}/{id}
+    /// Extracts tenant ID from HttpContext.Items (populated by TenantResolutionMiddleware).
+    /// Throws if tenant ID not found - should never happen if middleware ran successfully.
+    /// </summary>
+    private static int ExtractTenantId(HttpContext context)
+    {
+        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+        {
+            throw new InvalidOperationException(
+                "TenantId not found in HttpContext.Items. TenantResolutionMiddleware may not have run.");
+        }
+        return tenantId;
+    }
+
+    /// <summary>
+    /// GET /tenant/{tenantId:int}/{resourceType}/{id}
     /// </summary>
     private static async Task<IResult> HandleGetResource(
         HttpContext context,
+        [FromRoute] int tenantId,
         [FromRoute] string resourceType,
         [FromRoute] string id,
         [FromServices] IMediator mediator,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
-        logger.LogInformation("GET /{ResourceType}/{Id}", resourceType, id);
+        logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
 
         // Validate resource type exists
         if (!IsValidResourceType(resourceType, context))
@@ -100,7 +199,7 @@ public static class FhirEndpoints
 
         if (result == null)
         {
-            logger.LogInformation("Resource {ResourceType}/{Id} not found", resourceType, id);
+            logger.LogInformation("Resource {ResourceType}/{Id} not found in tenant {TenantId}", resourceType, id, tenantId);
             return Results.NotFound();
         }
 
@@ -113,10 +212,11 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// PUT /{resourceType}/{id}
+    /// PUT /tenant/{tenantId:int}/{resourceType}/{id}
     /// </summary>
     private static async Task<IResult> HandlePutResource(
         HttpContext context,
+        [FromRoute] int tenantId,
         [FromRoute] string resourceType,
         [FromRoute] string id,
         [FromServices] IMediator mediator,
@@ -124,7 +224,7 @@ public static class FhirEndpoints
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
-        logger.LogInformation("PUT /{ResourceType}/{Id}", resourceType, id);
+        logger.LogInformation("PUT /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
 
         // Validate resource type
         if (!IsValidResourceType(resourceType, context))
@@ -164,7 +264,7 @@ public static class FhirEndpoints
             : null;
 
         // Send generic command with optional coordinator
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, sourceNode, json, coordinator);
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, resourceNode, json, coordinator);
         ResourceKey result = await mediator.SendAsync(command, ct);
 
         // Add ETag header
@@ -175,8 +275,8 @@ public static class FhirEndpoints
 
         if (isCreated)
         {
-            logger.LogInformation("Created {ResourceType}/{Id} (version {Version})", resourceType, result.Id, result.VersionId);
-            return Results.Created($"/{resourceType}/{result.Id}", new
+            logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Id, result.VersionId, tenantId);
+            return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Id}", new
             {
                 resourceType = resourceType,
                 id = result.Id,
@@ -184,7 +284,7 @@ public static class FhirEndpoints
             });
         }
 
-        logger.LogInformation("Updated {ResourceType}/{Id} (version {Version})", resourceType, result.Id, result.VersionId);
+        logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Id, result.VersionId, tenantId);
         return Results.Ok(new
         {
             resourceType = resourceType,
@@ -194,18 +294,19 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// GET /{resourceType} - Search
+    /// GET /tenant/{tenantId:int}/{resourceType} - Search
     /// </summary>
     private static async Task<IResult> HandleSearchResource(
         HttpContext context,
+        [FromRoute] int tenantId,
         [FromRoute] string resourceType,
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
-        [FromServices] ISearchOptionsBuilder searchOptionsBuilder,
+        [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
-        logger.LogInformation("GET /{ResourceType}?{QueryString}", resourceType, context.Request.QueryString);
+        logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}?{QueryString}", tenantId, resourceType, context.Request.QueryString);
 
         // Validate resource type
         if (!IsValidResourceType(resourceType, context))
@@ -213,6 +314,18 @@ public static class FhirEndpoints
             logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
             return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
         }
+
+        // Get tenant configuration to determine FHIR version
+        if (!context.Items.TryGetValue("TenantConfiguration", out var tenantConfigObj) ||
+            tenantConfigObj is not Domain.Models.TenantConfiguration tenantConfig)
+        {
+            logger.LogError("TenantConfiguration not found in HttpContext.Items");
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        // Get version-specific search options builder
+        var fhirSpec = Sparky.Extensions.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
 
         // Parse query parameters
         var queryParameters = queryParser.Parse(context.Request.Query);
@@ -246,39 +359,41 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// POST /{resourceType} - Create (server assigns ID)
+    /// POST /tenant/{tenantId:int}/{resourceType} - Create (server assigns ID)
     /// </summary>
     private static async Task<IResult> HandlePostResource(
         HttpContext context,
+        [FromRoute] int tenantId,
         [FromRoute] string resourceType,
         [FromServices] IMediator mediator,
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
-        logger.LogInformation("POST /{ResourceType}", resourceType);
+        logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}", tenantId, resourceType);
 
         // Generate ID
         string id = Guid.NewGuid().ToString("N");
 
-        logger.LogInformation("Generated ID {Id} for new {ResourceType}", id, resourceType);
+        logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
 
         // Delegate to PUT handler logic
-        return await HandlePutResource(context, resourceType, id, mediator, memoryStreamManager, logger, ct);
+        return await HandlePutResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct);
     }
 
     /// <summary>
-    /// DELETE /{resourceType}/{id}
+    /// DELETE /tenant/{tenantId:int}/{resourceType}/{id}
     /// </summary>
     private static async Task<IResult> HandleDeleteResource(
         HttpContext context,
+        [FromRoute] int tenantId,
         [FromRoute] string resourceType,
         [FromRoute] string id,
         [FromServices] IMediator mediator,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
-        logger.LogInformation("DELETE /{ResourceType}/{Id}", resourceType, id);
+        logger.LogInformation("DELETE /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
 
         // Validate resource type
         if (!IsValidResourceType(resourceType, context))
@@ -302,18 +417,19 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// POST / - Transaction/Batch bundle
+    /// POST /tenant/{tenantId:int} - Transaction/Batch bundle
     /// Always uses streaming parser, buffers when needed for urn:uuid resolution.
     /// Phase 2: Supports true end-to-end streaming for batch bundles without urn:uuid.
     /// </summary>
     private static async Task<IResult> HandleBundle(
         HttpContext context,
+        [FromRoute] int tenantId,
         [FromServices] BundleProcessor bundleProcessor,
         [FromServices] StreamingBundleParser streamingParser,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
-        logger.LogInformation("POST / (Bundle)");
+        logger.LogInformation("POST /tenant/{TenantId} (Bundle)", tenantId);
 
         // ALWAYS parse with streaming parser - returns metadata + streaming entries
         var bundleContext = await streamingParser.ParseStreamAsync(context.Request.Body, ct);

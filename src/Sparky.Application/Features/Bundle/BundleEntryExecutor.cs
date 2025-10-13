@@ -71,6 +71,23 @@ public class BundleEntryExecutor
             if (_httpContextAccessor.HttpContext?.RequestServices != null)
             {
                 httpContext.RequestServices = _httpContextAccessor.HttpContext.RequestServices;
+
+                // CRITICAL: Propagate tenant context from parent HttpContext to bundle entry HttpContext
+                // This ensures DeferredWriteCoordinator can extract tenant context for partition routing
+                // Multi-Tenancy (ADR-2523 Phase 20)
+                if (_httpContextAccessor.HttpContext.Items.TryGetValue("TenantId", out var tenantId))
+                {
+                    httpContext.Items["TenantId"] = tenantId;
+                    _logger.LogDebug(
+                        "Propagated tenant {TenantId} to bundle entry {Index}",
+                        tenantId,
+                        entry.Index);
+                }
+
+                if (_httpContextAccessor.HttpContext.Items.TryGetValue("TenantConfiguration", out var tenantConfig))
+                {
+                    httpContext.Items["TenantConfiguration"] = tenantConfig;
+                }
             }
 
             try

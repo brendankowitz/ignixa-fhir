@@ -7,28 +7,35 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Sparky.Domain.Abstractions;
 using Sparky.Domain.Models;
+using Sparky.Search.InMemory;
+using Sparky.Search.Indexing;
 using Sparky.Search.Models;
 
 namespace Sparky.DataLayer.FileSystem.FileSystem;
 
 /// <summary>
 /// File-based implementation of search service.
-/// Phase 1.2: Simple in-memory filtering (loads all resources, filters in memory).
+/// Phase 1.2: In-memory filtering using SearchQueryInterpreter.
+/// Loads metadata with search indices, applies predicate, then loads matching resources.
 /// </summary>
 public class FileBasedSearchService : ISearchService
 {
-    private readonly IFhirRepository _repository;
+    private readonly FileBasedFhirRepository _repository;
     private readonly ILogger<FileBasedSearchService> _logger;
     private readonly string _baseDirectory;
+    private readonly SearchQueryInterpreter _searchQueryInterpreter;
 
     public FileBasedSearchService(
         IFhirRepository repository,
         ILogger<FileBasedSearchService> logger,
         string baseDirectory)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _repository = (repository as FileBasedFhirRepository) ?? throw new ArgumentException(
+            "FileBasedSearchService requires FileBasedFhirRepository",
+            nameof(repository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _baseDirectory = baseDirectory ?? throw new ArgumentNullException(nameof(baseDirectory));
+        _searchQueryInterpreter = new SearchQueryInterpreter();
     }
 
     public async ValueTask<IReadOnlyList<ResourceWrapper>> SearchAsync<TSearchOptions>(
@@ -46,55 +53,75 @@ public class FileBasedSearchService : ISearchService
             options.ResourceType,
             options.Expression != null);
 
-        // Phase 1.2: Simple implementation - load all resources of the type, filter in memory
-        // TODO Phase 1.2a: Add search indexing and optimized querying
-
         var resourceType = options.ResourceType;
-        var resourceDir = Path.Combine(_baseDirectory, resourceType);
 
-        if (!Directory.Exists(resourceDir))
+        // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+
+        if (allMetadata.Count == 0)
         {
-            _logger.LogDebug("Resource directory not found: {ResourceDir}", resourceDir);
+            _logger.LogDebug("No resources found for type {ResourceType}", resourceType);
             return Array.Empty<ResourceWrapper>();
         }
 
-        // Load all resource IDs
-        var resourceFiles = Directory.GetFiles(resourceDir, "*.json")
-            .Where(f => !f.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase))
+        _logger.LogDebug(
+            "Loaded metadata for {Count} {ResourceType} resources",
+            allMetadata.Count,
+            resourceType);
+
+        // Step 2: Apply search expression filter if provided
+        IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> filteredMetadata = allMetadata;
+
+        if (options.Expression != null)
+        {
+            _logger.LogDebug("Applying search expression filter");
+
+            // Convert expression to predicate using SearchQueryInterpreter
+            var predicate = options.Expression.AcceptVisitor(_searchQueryInterpreter, default);
+
+            // Apply predicate to filter metadata
+            filteredMetadata = predicate(allMetadata);
+
+            _logger.LogDebug(
+                "Search expression filtered {Original} resources to {Filtered} results",
+                allMetadata.Count,
+                filteredMetadata.Count());
+        }
+
+        // Step 3: Apply pagination
+        int skip = 0; // TODO: Parse continuation token
+        int take = options.MaxItemCount;
+
+        var pagedKeys = filteredMetadata
+            .Skip(skip)
+            .Take(take)
+            .Select(m => m.Location)
             .ToList();
 
-        _logger.LogDebug("Found {Count} {ResourceType} resources on disk", resourceFiles.Count, resourceType);
+        _logger.LogDebug(
+            "Pagination: Skip={Skip}, Take={Take}, Results={ResultCount}",
+            skip,
+            take,
+            pagedKeys.Count);
 
+        // Step 4: Load ONLY the matching resources (not all resources)
         var results = new List<ResourceWrapper>();
-
-        // Load each resource
-        foreach (var filePath in resourceFiles)
+        foreach (var key in pagedKeys)
         {
-            var fileName = Path.GetFileNameWithoutExtension(filePath);
-            var resourceKey = new ResourceKey(resourceType, fileName);
-
-            var resource = await _repository.GetAsync(resourceKey, ct);
+            var resource = await _repository.GetAsync(key, ct);
             if (resource != null)
             {
-                // TODO: Apply expression filtering when search indexing is implemented
-                // For now, return all resources (Phase 1.2 prototype behavior)
                 results.Add(resource);
             }
         }
 
-        // Apply pagination
-        int skip = 0; // TODO: Parse continuation token
-        int take = options.MaxItemCount;
-
-        var pagedResults = results.Skip(skip).Take(take).ToList();
-
         _logger.LogInformation(
-            "Search returned {Count} results (total: {Total}, page size: {PageSize})",
-            pagedResults.Count,
+            "Search returned {Count} results (total matching: {Total}, page size: {PageSize})",
             results.Count,
+            filteredMetadata.Count(),
             take);
 
-        return pagedResults;
+        return results;
     }
 
     public async IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>(
@@ -113,65 +140,77 @@ public class FileBasedSearchService : ISearchService
             options.Expression != null);
 
         var resourceType = options.ResourceType;
-        var resourceDir = Path.Combine(_baseDirectory, resourceType);
 
-        if (!Directory.Exists(resourceDir))
+        // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+
+        if (allMetadata.Count == 0)
         {
-            _logger.LogDebug("Resource directory not found: {ResourceDir}", resourceDir);
+            _logger.LogDebug("No resources found for type {ResourceType}", resourceType);
             yield break;
         }
 
-        // Load all resource IDs
-        var resourceFiles = Directory.GetFiles(resourceDir, "*.json")
-            .Where(f => !f.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        _logger.LogDebug(
+            "Loaded metadata for {Count} {ResourceType} resources",
+            allMetadata.Count,
+            resourceType);
 
-        _logger.LogDebug("Found {Count} {ResourceType} resources on disk", resourceFiles.Count, resourceType);
+        // Step 2: Apply search expression filter if provided
+        IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> filteredMetadata = allMetadata;
 
-        // Apply pagination parameters
+        if (options.Expression != null)
+        {
+            _logger.LogDebug("Applying search expression filter");
+
+            // Convert expression to predicate using SearchQueryInterpreter
+            var predicate = options.Expression.AcceptVisitor(_searchQueryInterpreter, default);
+
+            // Apply predicate to filter metadata
+            filteredMetadata = predicate(allMetadata);
+
+            _logger.LogDebug(
+                "Search expression filtered {Original} resources to {Filtered} results",
+                allMetadata.Count,
+                filteredMetadata.Count());
+        }
+
+        // Step 3: Apply pagination
         int skip = 0; // TODO: Parse continuation token
         int take = options.MaxItemCount;
 
-        int streamed = 0;
-        int skipped = 0;
+        var pagedKeys = filteredMetadata
+            .Skip(skip)
+            .Take(take)
+            .Select(m => m.Location)
+            .ToList();
 
-        // Stream each resource as it's loaded
-        foreach (var filePath in resourceFiles)
+        _logger.LogDebug(
+            "Pagination: Skip={Skip}, Take={Take}, Results={ResultCount}",
+            skip,
+            take,
+            pagedKeys.Count);
+
+        // Step 4: Stream ONLY the matching resources
+        int streamed = 0;
+        foreach (var key in pagedKeys)
         {
             ct.ThrowIfCancellationRequested();
 
-            // Skip resources before the page start
-            if (skipped < skip)
-            {
-                skipped++;
-                continue;
-            }
-
-            // Stop after reaching page size limit
-            if (streamed >= take)
-            {
-                break;
-            }
-
-            var fileName = Path.GetFileNameWithoutExtension(filePath);
-            var resourceKey = new ResourceKey(resourceType, fileName);
-
-            var resource = await _repository.GetAsync(resourceKey, ct);
+            var resource = await _repository.GetAsync(key, ct);
             if (resource != null)
             {
-                // TODO: Apply expression filtering when search indexing is implemented
-                // For now, return all resources (Phase 1.2 prototype behavior)
                 streamed++;
                 yield return resource;
             }
         }
 
         _logger.LogInformation(
-            "Streaming search completed: {Count} resources streamed",
-            streamed);
+            "Streaming search completed: {Count} resources streamed (total matching: {Total})",
+            streamed,
+            filteredMetadata.Count());
     }
 
-    public ValueTask<int> CountAsync<TSearchOptions>(
+    public async ValueTask<int> CountAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         CancellationToken ct = default)
         where TSearchOptions : class
@@ -186,30 +225,52 @@ public class FileBasedSearchService : ISearchService
             options.ResourceType,
             options.Expression != null);
 
-        // Phase 1.2: Simple implementation - count files on disk
-        // Ignores _sort, _include, _revinclude (as per spec - count only considers filters)
-        // TODO Phase 1.2a: Use search index for optimized counting
-
         var resourceType = options.ResourceType;
-        var resourceDir = Path.Combine(_baseDirectory, resourceType);
 
-        if (!Directory.Exists(resourceDir))
+        // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+
+        if (allMetadata.Count == 0)
         {
-            _logger.LogDebug("Resource directory not found: {ResourceDir}", resourceDir);
-            return ValueTask.FromResult(0);
+            _logger.LogDebug("No resources found for type {ResourceType}", resourceType);
+            return 0;
         }
 
-        // Count resource files (exclude .meta.json files)
-        var count = Directory.GetFiles(resourceDir, "*.json")
-            .Count(f => !f.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase));
+        _logger.LogDebug(
+            "Loaded metadata for {Count} {ResourceType} resources",
+            allMetadata.Count,
+            resourceType);
+
+        // Step 2: Apply search expression filter if provided
+        int count;
+
+        if (options.Expression != null)
+        {
+            _logger.LogDebug("Applying search expression filter");
+
+            // Convert expression to predicate using SearchQueryInterpreter
+            var predicate = options.Expression.AcceptVisitor(_searchQueryInterpreter, default);
+
+            // Apply predicate to filter metadata
+            var filteredMetadata = predicate(allMetadata);
+
+            count = filteredMetadata.Count();
+
+            _logger.LogDebug(
+                "Search expression filtered {Original} resources to {Filtered} results",
+                allMetadata.Count,
+                count);
+        }
+        else
+        {
+            count = allMetadata.Count;
+        }
 
         _logger.LogInformation(
             "Count query for {ResourceType}: {Count} resources",
             resourceType,
             count);
 
-        // TODO: Apply expression filtering when search indexing is implemented
-        // For now, return total count (Phase 1.2 prototype behavior)
-        return ValueTask.FromResult(count);
+        return count;
     }
 }

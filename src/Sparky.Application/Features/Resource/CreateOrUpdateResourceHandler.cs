@@ -21,26 +21,36 @@ namespace Sparky.Application.Features.Resource;
 
 /// <summary>
 /// Generic handler for creating or updating any FHIR resource.
-/// Replaces resource-specific handlers like CreateOrUpdatePatientHandler.
+/// Multi-tenant enabled: Uses IPartitionStrategy + IFhirRepositoryFactory.
 /// Supports both immediate writes (standalone operations) and deferred writes (bundle operations).
 /// Coordinator can be passed via command parameter OR via HttpContext.Items (pipeline routing).
+///
+/// Flow:
+/// 1. Validate resource
+/// 2. Determine partition using IPartitionStrategy (for write)
+/// 3. Validate single partition (writes always go to one partition)
+/// 4. Get repository from IFhirRepositoryFactory
+/// 5. Execute CreateOrUpdateAsync directly (no execution strategy for CRUD)
 /// </summary>
 public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResourceCommand, ResourceKey>
 {
-    private readonly IFhirRepository _repository;
+    private readonly IPartitionStrategy _partitionStrategy;
+    private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly FastPathValidator _validator;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
-        IFhirRepository repository,
+        IPartitionStrategy partitionStrategy,
+        IFhirRepositoryFactory repositoryFactory,
         IHttpContextAccessor httpContextAccessor,
         IFhirVersionContext fhirVersionContext,
         FastPathValidator validator,
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
+        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
@@ -69,7 +79,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             fhirVersionEnum);
 
         var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
-        var validationResult = _validator.Validate(command.Resource, schemaProvider);
+        var sourceNode = command.Resource.ToSourceNode(); // Use cached ISourceNode
+        var validationResult = _validator.Validate(sourceNode, schemaProvider);
 
         if (!validationResult.IsValid)
         {
@@ -128,8 +139,52 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         }
         else
         {
-            // Standalone path - write immediately to repository
-            key = await _repository.CreateOrUpdateAsync(wrapper, cancellationToken);
+            // Standalone path - write immediately to repository via multi-tenant factory
+            // 1. Extract tenant context from HttpContext.Items
+            var httpContext = _httpContextAccessor.HttpContext
+                ?? throw new InvalidOperationException("HttpContext is null");
+
+            if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+            {
+                throw new InvalidOperationException("TenantId not found in HttpContext.Items");
+            }
+
+            var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
+
+            // Create partition resolution context
+            var partitionContext = new PartitionResolutionContext
+            {
+                TenantId = tenantId,
+                TenantConfiguration = tenantConfig
+            };
+
+            // 2. Determine partition using IPartitionStrategy
+            var partition = _partitionStrategy.DetermineWritePartition(
+                partitionContext,
+                command.Resource.ToSourceNode());
+
+            // 3. Validate single partition (writes always go to one partition)
+            if (partition.PartitionIds.Count != 1)
+            {
+                _logger.LogError(
+                    "Write operation requires exactly 1 partition, received {Count} partition IDs",
+                    partition.PartitionIds.Count);
+                throw new InvalidOperationException(
+                    $"Write operation requires exactly 1 partition, received {partition.PartitionIds.Count} partition IDs");
+            }
+
+            int resolvedTenantId = partition.PartitionIds[0];
+
+            _logger.LogDebug(
+                "Partition determined for write: {TenantId} (Mode: {Mode})",
+                resolvedTenantId,
+                partition.Mode);
+
+            // 4. Get repository from factory
+            var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
+
+            // 5. Write immediately to repository
+            key = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
         }
 
         // Success logging - always runs for both bundle and standalone operations
@@ -162,7 +217,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            // Convert ISourceNode to ITypedElement with version-specific type information
+            // Get cached ITypedElement from ResourceJsonNode (already created with custom schema provider)
+            // ResourceJsonNode.ToTypedElement() caches the conversion, avoiding repeated allocations
             // IFhirSchemaProvider extends IStructureDefinitionSummaryProvider, so we can use it directly
             var typedElement = command.Resource.ToTypedElement(schemaProvider);
             searchIndices = searchIndexer.Extract(typedElement);
@@ -190,13 +246,13 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.Id,
             "1", // Version will be determined by repository
             DateTimeOffset.UtcNow,
-            command.Resource,
+            command.Resource.ToSourceNode(), // Use cached ISourceNode from ResourceJsonNode
             request,
             false) // isDeleted
         {
             RawJson = command.RawJson,
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
-            SearchIndices = searchIndices
+            SearchIndices = searchIndices?.ToArray()
         };
     }
 }

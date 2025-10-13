@@ -5,14 +5,14 @@
 
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
+using Hl7.Fhir.FhirPath;
+using Hl7.FhirPath;
 using Medino;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.IO;
 using Sparky.Api.Infrastructure;
 using Sparky.Api.Middleware;
 using Sparky.Api.Services;
-using System;
+using Sparky.Application.Features;
 using Sparky.Domain.Abstractions;
 using Sparky.DataLayer.FileSystem.FileSystem;
 using Sparky.DataLayer.InMemoryIndex;
@@ -20,18 +20,16 @@ using Sparky.Application.Features.Bundle;
 using Sparky.Application.Features.Bundle.Serialization;
 using Sparky.Application.Features.Resource;
 using Sparky.Search.Parsing;
-using Sparky.Search.Expressions.Parsers;
 using Sparky.Search.Definition;
-using Sparky.Search.Indexing.SearchValues;
 using Sparky.Extensions.Schema;
-using Sparky.Specification.Generated;
 using Sparky.Extensions;
 using Sparky.Validation.SourceNodeValidation;
-using Hl7.Fhir.Specification;
 using Sparky.Application.Infrastructure;
-using static Sparky.Extensions.Schema.FhirSchemaProviderResolver;
+using Sparky.Domain.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+FhirPathCompiler.DefaultSymbolTable.AddFhirExtensions();
 
 // Configure Autofac as the service provider factory
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
@@ -58,16 +56,71 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IResourceLocationIndex>()
         .SingleInstance();
 
-    // Register FileBasedFhirRepository
-    string baseDirectory = builder.Configuration["FhirRepository:BaseDirectory"]
-        ?? Path.Combine(Directory.GetCurrentDirectory(), "fhir-data");
+    // MULTI-TENANCY CONFIGURATION (Phase 20 - ADR-2523)
 
-    containerBuilder.Register(c =>
+    // Register ITenantConfigurationStore (loads tenant configurations from appsettings.json)
+    containerBuilder.RegisterType<AppSettingsTenantConfigurationStore>()
+        .As<ITenantConfigurationStore>()
+        .SingleInstance();
+
+    // Register IFhirRepositoryFactory (creates and caches tenant-specific repositories)
+    containerBuilder.RegisterType<FileBasedFhirRepositoryFactory>()
+        .As<IFhirRepositoryFactory>()
+        .SingleInstance();
+
+    // Register ISearchServiceFactory (creates and caches tenant-specific search services)
+    containerBuilder.RegisterType<FileBasedSearchServiceFactory>()
+        .As<ISearchServiceFactory>()
+        .SingleInstance();
+
+    // Register IPartitionStrategy based on configured TenantMode (Phase 20 - ADR-2523)
+    // Factory pattern allows strategy selection at startup based on appsettings.json Tenants:Mode
+    // - Isolated: Single partition per tenant (multi-tenant SaaS with different customers)
+    // - Distributed: Horizontal sharding for scale (single customer, not yet implemented)
+    containerBuilder.Register<IPartitionStrategy>(c =>
     {
-        var logger = c.Resolve<ILogger<FileBasedFhirRepository>>();
-        var memoryStreamManager = c.Resolve<RecyclableMemoryStreamManager>();
-        return new FileBasedFhirRepository(baseDirectory, logger, memoryStreamManager);
-    }).As<IFhirRepository>().AsSelf().SingleInstance();
+        var configStore = c.Resolve<ITenantConfigurationStore>();
+        var loggerFactory = c.Resolve<ILoggerFactory>();
+
+        return configStore.Mode switch
+        {
+            TenantMode.Isolated => new IsolatedModePartitionStrategy(
+                loggerFactory.CreateLogger<IsolatedModePartitionStrategy>()),
+            TenantMode.Distributed => throw new NotSupportedException(
+                "Distributed mode is not yet implemented (Phase 20.2+). " +
+                "Set Tenants:Mode to 'Isolated' in appsettings.json."),
+            _ => throw new InvalidOperationException(
+                $"Unknown TenantMode: {configStore.Mode}. Valid values: Isolated, Distributed")
+        };
+    }).As<IPartitionStrategy>().SingleInstance();
+
+    // Register IQueryExecutionStrategy based on configured TenantMode (Phase 20 - ADR-2523)
+    // Factory pattern allows strategy selection at startup based on appsettings.json Tenants:Mode
+    // - Isolated: Passthrough (validates single partition, streams directly)
+    // - Distributed: Fanout (parallel queries to multiple shards, not yet implemented)
+    containerBuilder.Register<IQueryExecutionStrategy>(c =>
+    {
+        var configStore = c.Resolve<ITenantConfigurationStore>();
+        var searchServiceFactory = c.Resolve<ISearchServiceFactory>();
+        var loggerFactory = c.Resolve<ILoggerFactory>();
+
+        return configStore.Mode switch
+        {
+            TenantMode.Isolated => new PassthroughExecutionStrategy(
+                searchServiceFactory,
+                loggerFactory.CreateLogger<PassthroughExecutionStrategy>()),
+            TenantMode.Distributed => throw new NotSupportedException(
+                "Distributed mode is not yet implemented (Phase 20.2+). " +
+                "Set Tenants:Mode to 'Isolated' in appsettings.json."),
+            _ => throw new InvalidOperationException(
+                $"Unknown TenantMode: {configStore.Mode}. Valid values: Isolated, Distributed")
+        };
+    }).As<IQueryExecutionStrategy>().SingleInstance();
+
+    // Register IAuditLogger (logs tenant access for security/compliance)
+    containerBuilder.RegisterType<AuditLogger>()
+        .As<IAuditLogger>()
+        .SingleInstance();
 
     // Register Medino service provider
     containerBuilder.Register<IMediatorServiceProvider>(c =>
@@ -81,7 +134,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // Generic resource handlers (replaces Patient-specific handlers)
     containerBuilder.RegisterType<GetResourceHandler>()
-        .As<IRequestHandler<GetResourceQuery, Sparky.Domain.Models.ResourceWrapper?>>()
+        .As<IRequestHandler<GetResourceQuery, ResourceWrapper?>>()
         .InstancePerDependency();
 
     containerBuilder.RegisterType<CreateOrUpdateResourceHandler>()
@@ -96,13 +149,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IRequestHandler<SearchResourcesQuery, SearchResourcesResult>>()
         .InstancePerDependency();
 
-    // Register search services
-    containerBuilder.Register(c =>
-    {
-        var repository = c.Resolve<IFhirRepository>();
-        var logger = c.Resolve<ILogger<FileBasedSearchService>>();
-        return new FileBasedSearchService(repository, logger, baseDirectory);
-    }).As<ISearchService>().SingleInstance();
+    // NOTE: FileBasedSearchService is no longer registered as singleton
+    // It is now created per tenant by FileBasedSearchServiceFactory
 
     // Register query parameter parser
     containerBuilder.RegisterType<QueryParameterParser>()
@@ -193,6 +241,11 @@ var app = builder.Build();
 // Configure the HTTP request pipeline
 app.UseFhirExceptionHandler();
 
+// MULTI-TENANCY MIDDLEWARE (Phase 20 - ADR-2523)
+// Extracts tenantId from route, validates tenant exists and is active
+// Stores tenant context in HttpContext.Items for downstream handlers
+app.UseMiddleware<TenantResolutionMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -202,9 +255,85 @@ app.UseHttpsRedirection();
 app.MapFhirEndpoints();
 app.MapControllers(); // Keep for MetadataController
 
-app.Logger.LogInformation("FHIR Server v2 starting...");
+app.Logger.LogInformation("Sparky FHIR starting...");
 app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",
     builder.Configuration["FhirRepository:BaseDirectory"]
     ?? Path.Combine(Directory.GetCurrentDirectory(), "fhir-data"));
 
-app.Run();
+// MULTI-TENANCY STARTUP VALIDATION (Phase 20 - ADR-2523)
+// Validate tenant configuration and log mode information
+{
+    var configStore = app.Services.GetRequiredService<ITenantConfigurationStore>();
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
+    // Log current mode
+    logger.LogInformation("===== FHIR Server Multi-Tenancy Configuration =====");
+    logger.LogInformation(
+        "Mode: {Mode} ({Description})",
+        configStore.Mode,
+        configStore.Mode == TenantMode.Isolated
+            ? "Multiple separate customers with isolated data stores"
+            : "Single customer with horizontal sharding");
+
+    // Load and log tenant count
+    var tenants = await configStore.GetAllTenantsAsync();
+    logger.LogInformation("Active Tenants: {Count}", tenants.Count);
+
+    foreach (var tenant in tenants)
+    {
+        logger.LogInformation(
+            "  - Tenant {TenantId}: {DisplayName} (FHIR {FhirVersion}, Storage: {StorageType})",
+            tenant.TenantId,
+            tenant.DisplayName,
+            tenant.FhirVersion,
+            tenant.Storage.Type);
+    }
+
+    // Warn if Distributed mode configured (not yet supported)
+    if (configStore.Mode == TenantMode.Distributed)
+    {
+        logger.LogWarning(
+            "WARNING: Distributed mode is configured but not yet implemented (Phase 20.2+). " +
+            "The system will throw NotSupportedException if Distributed features are accessed. " +
+            "For production use, set Tenants:Mode to 'Isolated' in appsettings.json.");
+    }
+
+    // Validate strategy types match mode
+    var partitionStrategy = app.Services.GetRequiredService<IPartitionStrategy>();
+    var executionStrategy = app.Services.GetRequiredService<IQueryExecutionStrategy>();
+
+    logger.LogInformation(
+        "Registered Strategies: IPartitionStrategy={PartitionStrategy}, IQueryExecutionStrategy={ExecutionStrategy}",
+        partitionStrategy.GetType().Name,
+        executionStrategy.GetType().Name);
+
+    // Validate Isolated mode configuration
+    if (configStore.Mode == TenantMode.Isolated)
+    {
+        if (partitionStrategy is not IsolatedModePartitionStrategy)
+        {
+            logger.LogError(
+                "Configuration Error: Mode is Isolated but IPartitionStrategy is {ActualType}. " +
+                "Expected: IsolatedModePartitionStrategy",
+                partitionStrategy.GetType().Name);
+            throw new InvalidOperationException(
+                "Configuration mismatch: Mode is Isolated but wrong partition strategy registered");
+        }
+
+        if (executionStrategy is not PassthroughExecutionStrategy)
+        {
+            logger.LogError(
+                "Configuration Error: Mode is Isolated but IQueryExecutionStrategy is {ActualType}. " +
+                "Expected: PassthroughExecutionStrategy",
+                executionStrategy.GetType().Name);
+            throw new InvalidOperationException(
+                "Configuration mismatch: Mode is Isolated but wrong execution strategy registered");
+        }
+
+        logger.LogInformation("✅ Isolation mode validation passed");
+    }
+
+    logger.LogInformation("===================================================");
+}
+
+await app.RunAsync();

@@ -34,8 +34,14 @@ public record ResourceWrapper(
     public string FhirVersion { get; init; } = "4.0";
 
     /// <summary>
+    /// Optional: Tenant identifier (0, 1, 2, ...) for multi-tenant isolation.
+    /// Null indicates single-tenant/default mode.
+    /// </summary>
+    public int? TenantId { get; init; }
+
+    /// <summary>
     /// Optional: Search index entries extracted from the resource.
     /// Used for search parameter indexing.
     /// </summary>
-    public IReadOnlyCollection<object>? SearchIndices { get; init; }
+    public IReadOnlyList<object>? SearchIndices { get; init; }
 }

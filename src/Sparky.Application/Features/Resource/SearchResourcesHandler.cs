@@ -4,26 +4,40 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Sparky.Domain.Abstractions;
+using Sparky.Domain.Models;
 using Sparky.Search.Models;
 
 namespace Sparky.Application.Features.Resource;
 
 /// <summary>
 /// Generic handler for searching any FHIR resource type.
-/// Replaces resource-specific handlers like SearchPatientHandler.
+/// Multi-tenant enabled: Uses IPartitionStrategy + IQueryExecutionStrategy.
+///
+/// Flow:
+/// 1. Determine partition(s) using IPartitionStrategy (reads tenantId from HttpContext.Items)
+/// 2. Execute using IQueryExecutionStrategy
+///    - PassthroughExecutionStrategy: Validates single partition, direct search service call
+///    - FanoutExecutionStrategy (future): Handles multiple partitions with fanout/merge
 /// </summary>
 public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, SearchResourcesResult>
 {
-    private readonly ISearchService _searchService;
+    private readonly IPartitionStrategy _partitionStrategy;
+    private readonly IQueryExecutionStrategy _executionStrategy;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<SearchResourcesHandler> _logger;
 
     public SearchResourcesHandler(
-        ISearchService searchService,
+        IPartitionStrategy partitionStrategy,
+        IQueryExecutionStrategy executionStrategy,
+        IHttpContextAccessor httpContextAccessor,
         ILogger<SearchResourcesHandler> logger)
     {
-        _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
+        _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
+        _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -31,10 +45,47 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
         SearchResourcesQuery request,
         CancellationToken cancellationToken)
     {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("HttpContext is null");
+
         _logger.LogInformation("Searching for {ResourceType} resources (streaming)", request.ResourceType);
 
-        // Use streaming search for memory-efficient processing
-        var resourceStream = _searchService.SearchStreamAsync(request.SearchOptions, cancellationToken);
+        // Extract tenant context from HttpContext.Items
+        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+        {
+            throw new InvalidOperationException("TenantId not found in HttpContext.Items");
+        }
+
+        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
+
+        // Create partition resolution context
+        var partitionContext = new PartitionResolutionContext
+        {
+            TenantId = tenantId,
+            TenantConfiguration = tenantConfig
+        };
+
+        // 1. Determine partition(s) using IPartitionStrategy
+        // Convert request.SearchOptions query parameters to Dictionary for partition strategy
+        var queryParams = new Dictionary<string, string>(); // TODO: Extract from SearchOptions if needed
+
+        var partition = _partitionStrategy.DetermineReadPartition(
+            partitionContext,
+            request.ResourceType,
+            queryParams);
+
+        _logger.LogDebug(
+            "Partition(s) determined: [{PartitionIds}] (Mode: {Mode})",
+            string.Join(",", partition.PartitionIds),
+            partition.Mode);
+
+        // 2. Execute using IQueryExecutionStrategy
+        //    - PassthroughExecutionStrategy: validates single partition, direct query
+        //    - FanoutExecutionStrategy (future): can handle multiple partitions
+        var resourceStream = _executionStrategy.SearchStreamAsync(
+            partition,
+            request.SearchOptions,
+            cancellationToken);
 
         // TODO: Calculate total count if requested (Phase 1.2a)
         // Note: Calculating total with streaming requires either:

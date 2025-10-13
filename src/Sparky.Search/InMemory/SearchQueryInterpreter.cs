@@ -15,9 +15,13 @@ namespace Sparky.Search.InMemory;
 /// Expression visitor that converts FHIR search parameter expressions into predicates for in-memory filtering.
 /// Ported from microsoft/fhir-server feature/subscription-engine branch.
 /// </summary>
-internal class SearchQueryInterpreter : IExpressionVisitorWithInitialContext<SearchQueryInterpreter.Context, SearchPredicate>
+[CLSCompliant(false)]
+public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContext<SearchQueryInterpreter.Context, SearchPredicate>
 {
-    Context IExpressionVisitorWithInitialContext<Context, SearchPredicate>.InitialContext => default;
+    /// <summary>
+    /// Gets the initial context for expression visiting.
+    /// </summary>
+    public Context InitialContext => default;
 
     public SearchPredicate VisitSearchParameter(SearchParameterExpression expression, Context context)
     {
@@ -127,6 +131,10 @@ internal class SearchQueryInterpreter : IExpressionVisitorWithInitialContext<Sea
                     y.SearchParameter.Name == context.ParameterName &&
                     CompareStringParameter(y, string.Equals))),
 
+                StringOperator.Contains => input => input.Where(x => x.Index.Any(y =>
+                    y.SearchParameter.Name == context.ParameterName &&
+                    CompareStringParameter(y, (a, b, c) => a.Contains(b, c)))),
+
                 _ => throw new NotImplementedException($"StringOperator {expression.StringOperator} not supported")
             };
         }
@@ -212,17 +220,42 @@ internal class SearchQueryInterpreter : IExpressionVisitorWithInitialContext<Sea
     /// <summary>
     /// Context that is passed through the visit.
     /// </summary>
-    internal struct Context
+    public struct Context : IEquatable<Context>
     {
         public string ParameterName { get; set; }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Internal API")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Public API")]
         public Context WithParameterName(string paramName)
         {
             return new Context
             {
                 ParameterName = paramName,
             };
+        }
+
+        public readonly bool Equals(Context other)
+        {
+            return ParameterName == other.ParameterName;
+        }
+
+        public override readonly bool Equals(object obj)
+        {
+            return obj is Context context && Equals(context);
+        }
+
+        public override readonly int GetHashCode()
+        {
+            return ParameterName?.GetHashCode(StringComparison.Ordinal) ?? 0;
+        }
+
+        public static bool operator ==(Context left, Context right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(Context left, Context right)
+        {
+            return !(left == right);
         }
     }
 }

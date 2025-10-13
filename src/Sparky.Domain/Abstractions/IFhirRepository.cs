@@ -37,7 +37,7 @@ public interface IFhirRepository
     /// <returns>List of resource keys with versions.</returns>
     Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, Hl7.Fhir.ElementModel.ISourceNode resource, string rawJson)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, Hl7.Fhir.ElementModel.ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
         CancellationToken ct = default);
 
     /// <summary>

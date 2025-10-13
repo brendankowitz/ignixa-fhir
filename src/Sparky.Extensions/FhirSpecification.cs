@@ -34,4 +34,21 @@ public static class FhirSpecificationExtensions
             _ => "4.0" // Default to R4
         };
     }
+
+    /// <summary>
+    /// Converts version string to FhirSpecification enum.
+    /// </summary>
+    /// <param name="versionString">Version string (e.g., "4.0", "5.0", "3.0").</param>
+    /// <returns>FhirSpecification enum value. Defaults to R4 for unknown versions.</returns>
+    public static FhirSpecification FromVersionString(string versionString)
+    {
+        return versionString switch
+        {
+            "3.0" => FhirSpecification.Stu3,
+            "4.0" => FhirSpecification.R4,
+            "4.3" => FhirSpecification.R4B,
+            "5.0" => FhirSpecification.R5,
+            _ => FhirSpecification.R4 // Default to R4
+        };
+    }
 }

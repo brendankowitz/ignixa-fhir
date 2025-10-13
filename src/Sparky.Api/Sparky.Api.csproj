@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Folder Include="fhir-data\" />
+    <Folder Include="fhir-data\tenants\" />
   </ItemGroup>
 
   <ItemGroup>

@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Sparky.Domain.Abstractions;
 using Sparky.Domain.Models;
+using Sparky.Search.Indexing;
+using Sparky.Search.Serialization;
 using Sparky.SourceNodeSerialization;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
@@ -28,7 +30,11 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
     private readonly string _baseDirectory;
     private readonly ILogger<FileBasedFhirRepository> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = false };
+    private readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        WriteIndented = false,
+        Converters = { new CompactSearchIndexConverter() }
+    };
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
     /// <summary>
@@ -160,7 +166,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                 LastModified = timestamp,
                 IsDeleted = resource.IsDeleted,
                 Request = resource.Request,
-                SearchIndexes = new List<SearchIndexMetadata>() // TODO: Extract search indexes
+                SearchIndexes = resource.SearchIndices?.Cast<SearchIndexEntry>().ToList(),
             };
 
             string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
@@ -246,7 +252,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
     private async ValueTask<ResourceMetadata> ReadMetadataFileAsync(string path, CancellationToken ct)
     {
         string metadataJson = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
-        return JsonSerializer.Deserialize<ResourceMetadata>(metadataJson)
+        return JsonSerializer.Deserialize<ResourceMetadata>(metadataJson, _jsonOptions)
             ?? throw new InvalidOperationException($"Failed to deserialize metadata from {path}");
     }
 
@@ -322,7 +328,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
         CancellationToken ct = default)
     {
         if (operations == null || operations.Count == 0)
@@ -387,7 +393,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                     LastModified = timestamp,
                     IsDeleted = false,
                     Request = new ResourceRequest("PUT", $"{operation.resourceType}/{operation.resourceId}"),
-                    SearchIndexes = new List<SearchIndexMetadata>()
+                    SearchIndexes = operation.searchIndexes?.Cast<SearchIndexEntry>().ToList(),
                 };
 
                 resourceMetadata.Add(metadata);
@@ -482,7 +488,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string path,
         TransactionId transactionId,
         DateTimeOffset timestamp,
-        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
         bool append,
         CancellationToken ct)
     {
@@ -539,7 +545,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string path,
         TransactionId transactionId,
         DateTimeOffset timestamp,
-        List<(string resourceType, string resourceId, ISourceNode resource, string rawJson)> operations,
+        List<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
         bool append,
         CancellationToken ct)
     {
@@ -586,6 +592,103 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         return Directory.GetFiles(searchDir, "*.metadata.json", SearchOption.AllDirectories);
     }
 
+    /// <summary>
+    /// Loads resource metadata with search indices for all resources of a given type.
+    /// Used by FileBasedSearchService to enable search filtering before loading full resources.
+    /// Only loads the LATEST version of each resource (not historical versions).
+    /// </summary>
+    /// <param name="resourceType">Resource type to load metadata for</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Collection of (ResourceKey, SearchIndexEntries) tuples - one per resource ID</returns>
+    public async ValueTask<IReadOnlyList<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)>> GetResourceMetadataAsync(
+        string resourceType,
+        CancellationToken ct = default)
+    {
+        var results = new List<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)>();
+
+        // Get resource type directory (_internal/ResourceType/)
+        string resourceTypeDir = Path.Combine(_baseDirectory, "_internal", resourceType);
+        if (!Directory.Exists(resourceTypeDir))
+        {
+            _logger.LogDebug("No metadata directory found for resource type {ResourceType}", resourceType);
+            return results;
+        }
+
+        // Get all resource ID directories (_internal/ResourceType/[resourceid]/)
+        var resourceIdDirs = Directory.GetDirectories(resourceTypeDir, "*", SearchOption.TopDirectoryOnly);
+
+        _logger.LogDebug(
+            "Found {Count} resource directories for type {ResourceType}",
+            resourceIdDirs.Length,
+            resourceType);
+
+        // For each resource ID directory, find the latest metadata file
+        foreach (var resourceIdDir in resourceIdDirs)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                // Get all metadata files for this resource ID
+                var metadataFiles = Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
+
+                if (metadataFiles.Length == 0)
+                {
+                    continue;
+                }
+
+                // Find the latest metadata file based on LastModified timestamp
+                string? latestFile = null;
+                DateTimeOffset latestTimestamp = DateTimeOffset.MinValue;
+
+                foreach (var file in metadataFiles)
+                {
+                    try
+                    {
+                        var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                        if (metadata.LastModified > latestTimestamp)
+                        {
+                            latestTimestamp = metadata.LastModified;
+                            latestFile = file;
+                        }
+                    }
+                    catch
+                    {
+                        // Skip corrupted metadata files
+                    }
+                }
+
+                // Load the latest metadata file
+                if (latestFile != null)
+                {
+                    var latestMetadata = await ReadMetadataFileAsync(latestFile, ct).ConfigureAwait(false);
+
+                    var key = new ResourceKey(latestMetadata.ResourceType, latestMetadata.ResourceId, latestMetadata.VersionId);
+                    var searchIndices = latestMetadata.SearchIndexes ?? new List<SearchIndexEntry>();
+
+                    results.Add((key, searchIndices));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to load latest metadata from directory {Directory}",
+                    resourceIdDir);
+            }
+        }
+
+        _logger.LogDebug(
+            "Loaded metadata for {Count} {ResourceType} resources (latest versions only)",
+            results.Count,
+            resourceType);
+
+        return results;
+    }
+
     private class ResourceMetadata
     {
         public string TransactionId { get; set; } = string.Empty;
@@ -595,14 +698,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         public DateTimeOffset LastModified { get; set; }
         public bool IsDeleted { get; set; }
         public ResourceRequest Request { get; set; } = new ResourceRequest("PUT", "");
-        public List<SearchIndexMetadata> SearchIndexes { get; set; } = new List<SearchIndexMetadata>();
-    }
-
-    private class SearchIndexMetadata
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty;
-        public string Value { get; set; } = string.Empty;
+        public List<SearchIndexEntry>? SearchIndexes { get; set; } = new List<SearchIndexEntry>();
     }
 
     private class TransactionManifest

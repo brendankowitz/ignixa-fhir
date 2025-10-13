@@ -8,11 +8,20 @@ This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR s
 
 ## Current Status
 
-**Phase**: Prototype Implementation ✅ COMPLETED (ADR-2501)
+**Phase**: Multi-Tenancy Data Partitioning (ADR-2523 Phase 20) - ✅ COMPLETED
 **SDK Version**: Firely SDK 6.0.0-rc1 (unified multi-version support)
-**Build Status**: ✅ All 9 projects build successfully
+**Build Status**: ✅ All projects build successfully (0 warnings, 0 errors)
 **Test Status**: ✅ All tests passing
-**Endpoints**: ✅ PUT /Patient/{id}, GET /Patient/{id}, GET /metadata
+**Endpoints**:
+- ✅ PUT /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
+- ✅ GET /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
+- ✅ GET /tenant/{tenantId}/{resourceType} - Tenant-explicit search (always)
+- ✅ POST /tenant/{tenantId}/ - Tenant-explicit bundles (always)
+- ✅ PUT /{resourceType}/{id} - Tenant-agnostic (single-tenant auto-detect)
+- ✅ GET /{resourceType}/{id} - Tenant-agnostic (single-tenant auto-detect)
+- ✅ GET /{resourceType} - Tenant-agnostic search (single-tenant auto-detect)
+- ✅ POST / - Tenant-agnostic bundles (single-tenant auto-detect)
+- ✅ GET /metadata - No tenant required
 
 ### Recent Investigations (October 9, 2025)
 
@@ -129,6 +138,109 @@ All.sln (9 projects)
 - Use **IRequestHandler<TRequest, TResponse>** for handlers
 - Method name: `HandleAsync` (not Handle)
 - Example: `public record GetPatientQuery(string Id) : IRequest<ResourceWrapper?>`
+
+### 5. Multi-Tenancy Architecture (ADR-2523 Phase 20)
+
+#### Partition 0: System Partition
+- **Partition 0 is RESERVED** for system operations (defined in `SystemConstants.SystemPartitionId`)
+- All transaction IDs allocated from Partition 0 for global uniqueness across entire system
+- Cannot be accessed via `/tenant/0/` API routes (middleware rejects with 400 Bad Request)
+- Filtered from `GetAllTenantsAsync()` enumeration (marked with `IsSystemPartition = true`)
+- Used internally by `DeferredWriteCoordinator` for transaction ID allocation
+
+#### Multi-Tenant Routing
+
+**Two Route Patterns Supported:**
+
+1. **Tenant-Explicit Routes** (always supported):
+   - Pattern: `/tenant/{tenantId:int}/{resourceType}/{id?}`
+   - Used for: Multi-tenant scenarios, explicit tenant selection
+   - Example: `GET /tenant/1/Patient/123` - Mayo Clinic
+
+2. **Tenant-Agnostic Routes** (FHIR-compliant, auto-enabled for single-tenant):
+   - Pattern: `/{resourceType}/{id?}`
+   - Used for: Single-tenant deployments, standard FHIR clients
+   - Example: `GET /Patient/123` - automatically uses the single configured tenant
+
+**Routing Behavior:**
+
+| Scenario | Tenant Count | Agnostic Routes (`/Patient/123`) | Explicit Routes (`/tenant/1/Patient/123`) |
+|----------|--------------|----------------------------------|-------------------------------------------|
+| **Single-Tenant** | 1 active tenant | ✅ Works (auto-detects tenant) | ✅ Works (explicit) |
+| **Multi-Tenant** | 2+ active tenants | ❌ 400 Bad Request (ambiguous) | ✅ Works (required) |
+| **Distributed Mode** (future) | N shards | ✅ Works (transparent sharding) | N/A (no tenant concept) |
+
+**Middleware Logic** (`TenantResolutionMiddleware`):
+- Extracts tenantId from route parameters OR auto-detects single tenant
+- Single-tenant detection: Queries `ITenantConfigurationStore.GetAllTenantsAsync()` at startup
+- Result cached per-process (avoids repeated queries)
+- Multi-tenant scenarios: Agnostic routes blocked with helpful error message
+- Partition 0 (system partition) always rejected from API access
+
+**Examples:**
+```bash
+# Single-tenant deployment (only tenant 1 configured)
+GET /Patient/123              # ✅ Works - auto-detects tenant 1
+GET /tenant/1/Patient/123     # ✅ Works - explicit tenant 1
+GET /metadata                 # ✅ Works - no tenant required
+
+# Multi-tenant deployment (tenants 1, 2, 3, 4 configured)
+GET /Patient/123              # ❌ 400 Bad Request - tenant ambiguous
+GET /tenant/1/Patient/123     # ✅ Works - Mayo Clinic (R4)
+GET /tenant/2/Patient/123     # ✅ Works - Cleveland Clinic (R4)
+GET /tenant/3/Patient/123     # ✅ Works - Johns Hopkins (R4B)
+GET /tenant/4/Patient/123     # ✅ Works - Stanford Health (R5)
+GET /metadata                 # ✅ Works - no tenant required
+```
+
+**Benefits of Agnostic Routes:**
+- ✅ FHIR-compliant standard URLs for single-tenant deployments
+- ✅ Works with standard FHIR client libraries (no custom URL handling)
+- ✅ Easy migration path: Deploy single-tenant, add tenants later without breaking existing URLs
+- ✅ Zero breaking changes: Both route patterns coexist
+
+#### Factory Pattern
+- **IFhirRepositoryFactory**: Creates tenant-specific repository instances, caches per tenant
+- **ISearchServiceFactory**: Creates tenant-specific search services, caches per tenant
+- **Location**: `Sparky.DataLayer.FileSystem` project (moved from Application layer)
+- **Caching**: `ConcurrentDictionary<int, IFhirRepository>` for O(1) lookup after first creation
+
+#### Partition Strategy (HAPI FHIR-Inspired)
+- **IPartitionStrategy**: Determines which partition(s) to read from / write to
+  - `DetermineReadPartition()`: For searches (may return multiple partitions in future Distributed mode)
+  - `DetermineWritePartition()`: For CRUD operations (always returns single partition)
+- **IsolatedModePartitionStrategy**: Current implementation (single partition per tenant)
+- **Future DistributedModePartitionStrategy**: Horizontal sharding with fanout/union (Phase 20.2+)
+
+#### Bundle Processing with Multi-Tenancy
+- **Tenant Context Propagation**: `BundleEntryExecutor` copies `TenantId` from parent HttpContext to bundle entry mini-HttpContext
+- **Transaction ID Allocation**: `DeferredWriteCoordinator.CreateAsync()` allocates transaction ID from Partition 0
+- **Partition-Aware Writes**: `ProcessBatchAsync()` groups operations by partition using `IPartitionStrategy`
+- **Multi-Partition Commits**: Commits transaction across all touched partitions via `_touchedPartitions` tracking
+
+#### Configuration Example
+```json
+{
+  "Tenants": {
+    "Mode": "Isolated",
+    "Configurations": [
+      {
+        "TenantId": 0,
+        "DisplayName": "System Partition (Reserved)",
+        "IsSystemPartition": true,
+        "Storage": { "Type": "FileSystem", "BaseDirectory": "system" }
+      },
+      {
+        "TenantId": 1,
+        "DisplayName": "Mayo Clinic (Example)",
+        "FhirVersion": "4.0",
+        "IsActive": true,
+        "Storage": { "Type": "FileSystem", "BaseDirectory": "tenants/1" }
+      }
+    ]
+  }
+}
+```
 
 ## Common Commands
 
@@ -289,6 +401,37 @@ These files are marked as `linguist-generated=true` in `.gitattributes`.
 The code generator uses Firely SDK 5.10.2 (from fhir-codegen submodule), **not** 6.0.0-rc1 used in the main solution. This is intentional to avoid API compatibility issues with fhir-codegen's LoaderOptions.
 
 ## Development Guidelines
+
+### Key Files for Multi-Tenancy
+
+When working with multi-tenant features, these files are critical:
+
+**Domain Layer**:
+- `Sparky.Domain/Constants/SystemConstants.cs` - Defines Partition 0 as system partition
+- `Sparky.Domain/Models/TenantConfiguration.cs` - Tenant configuration model
+- `Sparky.Domain/Models/TenantMode.cs` - Isolated vs Distributed mode enum
+- `Sparky.Domain/Abstractions/ITenantConfigurationStore.cs` - Tenant config interface
+- `Sparky.Domain/Abstractions/IFhirRepositoryFactory.cs` - Repository factory interface
+- `Sparky.Domain/Abstractions/ISearchServiceFactory.cs` - Search service factory interface
+- `Sparky.Domain/Abstractions/IPartitionStrategy.cs` - Partition determination strategy
+
+**Application Layer**:
+- `Sparky.Application/Infrastructure/AppSettingsTenantConfigurationStore.cs` - Loads tenants from appsettings.json
+
+**Data Layer**:
+- `Sparky.DataLayer.FileSystem/FileBasedFhirRepositoryFactory.cs` - Creates tenant-specific repositories
+- `Sparky.DataLayer.FileSystem/FileBasedSearchServiceFactory.cs` - Creates tenant-specific search services
+- `Sparky.DataLayer.FileSystem/IsolatedModePartitionStrategy.cs` - Isolation mode partition strategy
+
+**API Layer**:
+- `Sparky.Api/Middleware/TenantResolutionMiddleware.cs` - Extracts tenant from route, validates, protects Partition 0
+- `Sparky.Api/appsettings.json` - Tenant configurations for production
+- `Sparky.Api/appsettings.Development.json` - Multi-tenant test configuration
+
+**Bundle Processing**:
+- `Sparky.Application/Features/Bundle/DeferredWriteCoordinator.cs` - Allocates transaction IDs from Partition 0, groups writes by partition
+- `Sparky.Application/Features/Bundle/BundleProcessor.cs` - Creates coordinators with partition strategy
+- `Sparky.Application/Features/Bundle/BundleEntryExecutor.cs` - Propagates tenant context to mini-HttpContext
 
 ### Adding a New Feature (e.g., Observation)
 
@@ -472,9 +615,22 @@ fhir-data/
     └── example-123.meta.json  # Metadata (version, lastModified)
 ```
 
-### Next Steps (Post-Prototype)
+11. **Phase 20: Multi-Tenancy Data Partitioning** (October 13, 2025)
+    - ✅ TenantConfiguration model with IsSystemPartition property
+    - ✅ ITenantConfigurationStore and AppSettingsTenantConfigurationStore
+    - ✅ IFhirRepositoryFactory and FileBasedFhirRepositoryFactory (with caching)
+    - ✅ ISearchServiceFactory and FileBasedSearchServiceFactory
+    - ✅ IPartitionStrategy interface with IsolatedModePartitionStrategy
+    - ✅ TenantResolutionMiddleware for tenant extraction and validation
+    - ✅ Partition 0 system partition reservation (SystemConstants.SystemPartitionId)
+    - ✅ Multi-partition bundle processing with DeferredWriteCoordinator
+    - ✅ Tenant context propagation in BundleEntryExecutor
+    - ✅ Updated all handlers to use factories and partition strategy
+    - ✅ Multi-tenant routing: `/tenant/{tenantId}/{resourceType}/{id?}`
 
-The prototype phase is **COMPLETE**. Ready to proceed with:
+### Next Steps (Post-Phase 20)
+
+The multi-tenancy foundation is **IN PROGRESS**. Remaining work:
 
 1. **Phase 1.1: Bundle Processing & Dynamic Routing** (Week 2)
    - **NEW**: Migrate from PatientController to generic endpoint routing (see `dynamic-fhir-routing.md`)
@@ -508,9 +664,16 @@ The prototype phase is **COMPLETE**. Ready to proceed with:
 
 ## Related Documentation
 
-- **ADR-2500**: Master implementation roadmap (112 weeks, 26 investigations)
-- **ADR-2501**: Prototype phase details (Weeks 1-8, file-based storage, Medino)
-- **ADR-2502+**: Multi-tenancy, data partitioning investigations
+- **ADR-2500**: Master implementation roadmap (116 weeks, 29 investigations)
+- **ADR-2501**: Prototype phase details (Weeks 1-8, file-based storage, Medino) - ✅ COMPLETED
+- **ADR-2523**: Phase 20 - Multi-Tenancy Data Partitioning - IN PROGRESS
+  - Isolation mode with factory pattern
+  - Partition 0 system partition reservation
+  - HAPI FHIR-inspired partition strategy
+- **Investigation**: `docs/investigations/multi-tenancy-data-partitioning-modes.md`
+- **Investigation**: `docs/investigations/dynamic-fhir-routing.md`
+- **Investigation**: `docs/investigations/bundle-streaming.md`
+- **Investigation**: `docs/investigations/search-query-parsing.md`
 
 ## Future Roadmap
 

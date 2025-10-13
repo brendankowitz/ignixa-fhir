@@ -7,6 +7,8 @@ using Hl7.Fhir.ElementModel;
 using Medino;
 using Sparky.Application.Features.Bundle;
 using Sparky.Domain.Models;
+using Sparky.SourceNodeSerialization;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Application.Features.Resource;
 
@@ -16,12 +18,12 @@ namespace Sparky.Application.Features.Resource;
 /// </summary>
 /// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
 /// <param name="Id">The resource ID.</param>
-/// <param name="Resource">The resource as ISourceNode.</param>
+/// <param name="Resource">The resource as ResourceJsonNode (provides cached ISourceNode and ITypedElement).</param>
 /// <param name="RawJson">The raw JSON for fast storage.</param>
 /// <param name="Coordinator">Optional deferred write coordinator for bundle operations. When provided, the handler queues the write for batch processing. When null, the handler writes immediately.</param>
 public record CreateOrUpdateResourceCommand(
     string ResourceType,
     string Id,
-    ISourceNode Resource,
+    ResourceJsonNode Resource,
     string RawJson,
     DeferredWriteCoordinator? Coordinator = null) : IRequest<ResourceKey>;

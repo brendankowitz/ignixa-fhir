@@ -53,7 +53,9 @@
       "Bash(ls:*)",
       "Bash(echo:*)",
       "Read(//c/**)",
-      "Bash(Get-Content \"C:\\Src\\fhir-server-contrib\\src\\Sparky.Search\\Data\\R4\\search-parameters.json\")"
+      "Bash(Get-Content \"C:\\Src\\fhir-server-contrib\\src\\Sparky.Search\\Data\\R4\\search-parameters.json\")",
+      "Bash(awk:*)",
+      "Bash(xargs cat:*)"
     ],
     "deny": [],
     "ask": []

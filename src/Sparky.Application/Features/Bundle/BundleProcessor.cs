@@ -5,6 +5,7 @@
 
 using EnsureThat;
 using Hl7.Fhir.Model;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Sparky.Domain.Abstractions;
 using FhirBundle = Hl7.Fhir.Model.Bundle;
@@ -14,13 +15,16 @@ namespace Sparky.Application.Features.Bundle;
 /// <summary>
 /// Main orchestrator for FHIR bundle processing.
 /// Coordinates parsing, reference resolution, execution, and response building.
+/// Multi-Tenancy: Uses IPartitionStrategy to group resources by partition during batch writes (ADR-2523 Phase 20).
 /// </summary>
 public class BundleProcessor
 {
     private readonly BundleReferencePreProcessor _referencePreProcessor;
     private readonly BundleChannelExecutor _channelExecutor;
     private readonly BundleResponseBuilder _responseBuilder;
-    private readonly IFhirRepository _repository;
+    private readonly IFhirRepositoryFactory _repositoryFactory;
+    private readonly IPartitionStrategy _partitionStrategy;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<BundleProcessor> _logger;
 
@@ -28,14 +32,18 @@ public class BundleProcessor
         BundleReferencePreProcessor referencePreProcessor,
         BundleChannelExecutor channelExecutor,
         BundleResponseBuilder responseBuilder,
-        IFhirRepository repository,
+        IFhirRepositoryFactory repositoryFactory,
+        IPartitionStrategy partitionStrategy,
+        IHttpContextAccessor httpContextAccessor,
         ILoggerFactory loggerFactory,
         ILogger<BundleProcessor> logger)
     {
         _referencePreProcessor = EnsureArg.IsNotNull(referencePreProcessor, nameof(referencePreProcessor));
         _channelExecutor = EnsureArg.IsNotNull(channelExecutor, nameof(channelExecutor));
         _responseBuilder = EnsureArg.IsNotNull(responseBuilder, nameof(responseBuilder));
-        _repository = EnsureArg.IsNotNull(repository, nameof(repository));
+        _repositoryFactory = EnsureArg.IsNotNull(repositoryFactory, nameof(repositoryFactory));
+        _partitionStrategy = EnsureArg.IsNotNull(partitionStrategy, nameof(partitionStrategy));
+        _httpContextAccessor = EnsureArg.IsNotNull(httpContextAccessor, nameof(httpContextAccessor));
         _loggerFactory = EnsureArg.IsNotNull(loggerFactory, nameof(loggerFactory));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
     }
@@ -71,9 +79,13 @@ public class BundleProcessor
         try
         {
             // Create coordinator for Phase 1
+            // Transaction ID allocated from Partition 0 (system partition)
+            // Coordinator uses IPartitionStrategy to group resources by partition
             phase1Coordinator = await DeferredWriteCoordinator.CreateAsync(
                 channelCapacity: options.ChannelCapacity,
-                repository: _repository,
+                repositoryFactory: _repositoryFactory,
+                partitionStrategy: _partitionStrategy,
+                httpContextAccessor: _httpContextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -178,7 +190,9 @@ public class BundleProcessor
                 // Create coordinator for Phase 2
                 var phase2Coordinator = await DeferredWriteCoordinator.CreateAsync(
                     channelCapacity: options.ChannelCapacity,
-                    repository: _repository,
+                    repositoryFactory: _repositoryFactory,
+                    partitionStrategy: _partitionStrategy,
+                    httpContextAccessor: _httpContextAccessor,
                     logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                     cancellationToken: cancellationToken);
 
@@ -301,7 +315,9 @@ public class BundleProcessor
             // Create coordinator for write batching
             coordinator = await DeferredWriteCoordinator.CreateAsync(
                 channelCapacity: options.ChannelCapacity,
-                repository: _repository,
+                repositoryFactory: _repositoryFactory,
+                partitionStrategy: _partitionStrategy,
+                httpContextAccessor: _httpContextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -382,7 +398,9 @@ public class BundleProcessor
             // Create coordinator for write batching
             coordinator = await DeferredWriteCoordinator.CreateAsync(
                 channelCapacity: options.ChannelCapacity,
-                repository: _repository,
+                repositoryFactory: _repositoryFactory,
+                partitionStrategy: _partitionStrategy,
+                httpContextAccessor: _httpContextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -582,7 +600,9 @@ public class BundleProcessor
         // Create coordinator for batch write optimization
         var coordinator = await DeferredWriteCoordinator.CreateAsync(
             channelCapacity: options.ChannelCapacity,
-            repository: _repository,
+            repositoryFactory: _repositoryFactory,
+            partitionStrategy: _partitionStrategy,
+            httpContextAccessor: _httpContextAccessor,
             logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
             cancellationToken: cancellationToken);
 

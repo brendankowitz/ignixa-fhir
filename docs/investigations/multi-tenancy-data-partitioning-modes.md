@@ -8,10 +8,16 @@
 
 This investigation explores implementing **first-class multi-tenancy data partitioning** with two operational modes:
 
-1. **Isolation Mode**: Pure data partitioning with tenant-specific data stores (database per tenant, schema per tenant, or partition key isolation)
-2. **Distributed Mode**: Intelligent fanout/union operations across multiple registered data layers for unified querying and data aggregation
+1. **Isolation Mode**: Multiple separate customers (tenants) with isolated data stores (database per tenant, schema per tenant, or partition key isolation)
+   - Example: SaaS provider hosting Mayo Clinic, Cedars-Sinai, Johns Hopkins as separate customers
+   - API: `/tenant/0/Patient`, `/tenant/1/Patient`, `/tenant/2/Patient`
 
-The goal is to build these patterns as **core abstractions** in Sparky, allowing seamless switching between modes and supporting hybrid deployments where some tenants operate in isolation while others participate in distributed queries.
+2. **Distributed Mode**: Single customer with data sharded across multiple stores for horizontal scale
+   - Example: Acme Hospital with 100M patients sharded across 3 data stores
+   - API: `/Patient` (transparent fanout to all shards, merge results)
+   - Sharding strategies: Hash-based, geography-based, time-based
+
+The goal is to build these patterns using the existing **`IFhirRepository` abstraction** in Sparky, allowing seamless switching between modes.
 
 ## Problem Statement
 
@@ -25,37 +31,35 @@ Traditional FHIR servers handle multi-tenancy through:
 4. **Separate Deployments**: No shared infrastructure
 
 **Limitations**:
-- ❌ No unified query across tenants (cross-organizational research)
-- ❌ Manual data aggregation required for analytics
-- ❌ Cannot mix isolation + distributed modes
+- ❌ No horizontal sharding for single customer at scale
+- ❌ Cannot scale a single customer beyond one data store
+- ❌ Manual data aggregation required when sharding is needed
 - ❌ Tenant migration requires application downtime
-- ❌ Research networks require custom ETL pipelines
 
 ### Sparky's Vision
 
 Support **both** isolation and distributed modes as first-class concepts:
 
 ```csharp
-// Isolation Mode: Query single tenant
-GET /{tenantId}/r4/Patient?name=Smith
-→ Routes to tenant's isolated data store
+// Isolation Mode: Multiple separate customers
+GET /tenant/0/Patient?name=Smith  → Mayo Clinic only
+GET /tenant/1/Patient?name=Smith  → Cedars-Sinai only
+GET /tenant/2/Patient?name=Smith  → Johns Hopkins only
 
-// Distributed Mode: Query across registered tenants
-GET /distributed/r4/Patient?name=Smith&_tenant=tenant1,tenant2,tenant3
-→ Fanout query to multiple data layers, union results
-
-// Hybrid: Some tenants isolated, some participating in distributed
-GET /research/r4/Observation?code=http://loinc.org|8480-6
-→ Fanout to opted-in tenants only
+// Distributed Mode: Single customer with horizontal sharding
+GET /Patient?name=Smith
+→ System determines sharding strategy (e.g., hash on name)
+→ Fanout to relevant shards (0, 1, 2) for same customer
+→ Merge results into unified Bundle
 ```
 
 **Key Requirements**:
-1. ✅ **Data Layer Abstraction**: Same repository interface for both modes
-2. ✅ **Intelligent Query Distribution**: Parallel vs sequential execution strategies
+1. ✅ **IFhirRepository Abstraction**: Same repository interface for both modes
+2. ✅ **Intelligent Query Distribution**: Parallel fanout to multiple shards
 3. ✅ **Result Aggregation**: FHIR-compliant Bundle with continuation tokens
-4. ✅ **Dynamic Registration**: Add/remove data layers without restart
-5. ✅ **Opt-in Participation**: Tenants control distributed query access
-6. ✅ **Consistent Interface**: Same API for both modes (just different endpoints)
+4. ✅ **Sharding Strategies**: Hash-based, geography-based, time-based partitioning
+5. ✅ **Transparent API**: Distributed mode uses standard `/Patient` endpoint (no shard ID)
+6. ✅ **Zero Overhead**: Pass-through optimization for single shard (no fanout penalty)
 
 ## Background Research
 
@@ -120,99 +124,71 @@ FHIR Bundle (with continuation tokens)
 
 ### Real-World Use Cases
 
-#### Use Case 1: Healthcare Research Network
-**Scenario**: 50 hospitals want to participate in COVID-19 research without sharing raw data
+#### Use Case 1: Multi-Tenant SaaS (Isolation Mode)
+**Scenario**: FHIR SaaS provider hosting multiple healthcare organizations
 
 **Requirements**:
-- Each hospital maintains isolated data (HIPAA compliance)
-- Researchers query aggregate data across all hospitals
-- Results are de-identified at source
-- Hospitals can opt-out of specific queries
+- Complete data isolation between organizations
+- Each organization is a separate customer
+- Different FHIR versions per organization
 
 **Sparky Solution**:
 ```csharp
-// Each hospital has isolated tenant
-Tenant: "hospital-mayo" → IsolatedDataStore (SQL Database)
-Tenant: "hospital-cedars" → IsolatedDataStore (SQL Database)
+// Different customers, each with isolated data
+Tenant 0: Mayo Clinic     → fhir-data/tenants/0/  (FHIR R4)
+Tenant 1: Cedars-Sinai    → fhir-data/tenants/1/  (FHIR R4)
+Tenant 2: Johns Hopkins   → fhir-data/tenants/2/  (FHIR R5)
 
-// Research network has distributed layer
-DataLayer: "covid-research-network"
-  → Participants: [hospital-mayo, hospital-cedars, ...]
-  → ParticipationMode: OptIn
-  → DeIdentification: Enabled
-
-// Researcher queries distributed layer
-GET /research/r4/Observation?code=covid-19&_count=1000
-→ Fanout to 50 hospitals
-→ Each hospital applies de-identification filter
-→ Aggregate results (union)
+// API uses explicit tenant ID in URL
+GET /tenant/0/Patient?name=Smith  → Mayo Clinic only
+GET /tenant/1/Patient?name=Smith  → Cedars-Sinai only
+GET /tenant/2/Patient?name=Smith  → Johns Hopkins only
 ```
 
-#### Use Case 2: Multi-Region Deployment
-**Scenario**: Global pharma company with regional deployments (US, EU, APAC)
+#### Use Case 2: Horizontal Sharding (Distributed Mode)
+**Scenario**: Single large hospital with 100M patients needing scale-out storage
 
 **Requirements**:
-- Regional data sovereignty (EU data stays in EU)
-- Global analytics dashboard needs cross-region queries
-- Some regions have strict isolation (China)
+- All data belongs to same customer (Acme Hospital)
+- Shard data across multiple stores for performance
+- Transparent queries (users don't specify shard)
 
 **Sparky Solution**:
 ```csharp
-// Regional isolated tenants
-Tenant: "pharma-us" → IsolatedDataStore (SQL Server US East)
-Tenant: "pharma-eu" → IsolatedDataStore (SQL Server EU West)
-Tenant: "pharma-apac" → IsolatedDataStore (SQL Server APAC Southeast)
+// Single customer, multiple shards (same organization)
+Shard 0: Patients A-M      → fhir-data/0/  (IFhirRepository instance)
+Shard 1: Patients N-Z      → fhir-data/1/  (IFhirRepository instance)
+Shard 2: Old data (2020-2022) → fhir-data/2/  (IFhirRepository instance)
 
-// Global distributed layer (excludes China)
-DataLayer: "pharma-global-analytics"
-  → Participants: [pharma-us, pharma-eu, pharma-apac]
-  → ParticipationMode: AlwaysIncluded
+// API uses transparent endpoint (no tenant/shard ID in URL)
+GET /Patient?name=Smith
+→ ShardingStrategy determines relevant shards (0, 1)
+→ Fanout to IFhirRepository instances for shards 0 and 1 in parallel
+→ Merge results
+→ Return unified Bundle
 
-// Analytics query
-GET /analytics/r4/MedicationAdministration?date=ge2025-01-01
-→ Fanout to US, EU, APAC (in parallel)
-→ Union results with region tag
-```
-
-#### Use Case 3: SaaS with Premium Tier
-**Scenario**: FHIR SaaS startup with 1000 small clinics + 10 enterprise customers
-
-**Requirements**:
-- Small clinics share database (partition key isolation)
-- Enterprise customers demand dedicated databases
-- All participate in anonymous benchmarking analytics
-
-**Sparky Solution**:
-```csharp
-// Small clinics: partition key isolation
-Tenant: "clinic-1" → PartitionedDataStore (TenantId: "clinic-1")
-Tenant: "clinic-2" → PartitionedDataStore (TenantId: "clinic-2")
-...
-
-// Enterprise: dedicated databases
-Tenant: "enterprise-kaiser" → IsolatedDataStore (Dedicated SQL)
-Tenant: "enterprise-anthem" → IsolatedDataStore (Dedicated SQL)
-
-// Benchmarking distributed layer
-DataLayer: "industry-benchmarks"
-  → Participants: [all tenants]
-  → AnonymizationFilter: RemovePII
-  → AggregationLevel: SummaryOnly
-
-// Benchmark query (returns only aggregates, no raw data)
-GET /benchmarks/r4/Observation?code=A1C&_summary=count
-→ Fanout to all tenants
-→ Each returns count only (no resources)
-→ Aggregate: { total: 1234567, avgValue: 7.2 }
+// Different sharding strategies:
+// - Hash-based: Hash(patientId) % shardCount
+// - Geography-based: US East, US West, EU
+// - Time-based: Current year, previous years, archive
 ```
 
 ## Proposed Architecture
 
-### Core Abstractions
+**IMPORTANT NOTE**: This investigation document originally proposed a new `IDataLayer` abstraction. However, based on team feedback, we will use the **existing `IFhirRepository` pattern** instead. The architecture below is preserved for historical context, but the implementation (see ADR-2523) uses `IFhirRepositoryFactory` to create multiple repository instances for sharding, rather than introducing a new abstraction layer.
+
+**Key Simplification**:
+- **Distributed Mode**: Multiple `IFhirRepository` instances (one per shard) + fanout/merge logic
+- **Isolation Mode**: `IFhirRepositoryFactory` creates per-tenant repositories
+- **No new abstractions**: Reuse existing `IFhirRepository` interface
+
+### Core Abstractions (Historical - See ADR-2523 for Updated Design)
 
 #### 1. Data Layer Registry
 
 **Purpose**: Centralized registry of all data stores, their capabilities, and participation modes
+
+**Note**: In the updated design (ADR-2523), this is replaced by simpler sharding configuration without a full registry abstraction.
 
 ```csharp
 public interface IDataLayerRegistry
