@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
     <ProjectReference Include="..\Sparky.Extensions\Sparky.Extensions.csproj" />
     <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
   </ItemGroup>

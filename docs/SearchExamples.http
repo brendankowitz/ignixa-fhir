@@ -1,0 +1,157 @@
+@hostname = localhost:7057
+
+### Setup test data
+# @name batch
+POST https://{{hostname}}
+Content-Type: application/json
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+< ./data/SearchDataBatch.json
+
+### Include
+GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Revinclude
+GET {{hostname}}/Patient?_revinclude=Encounter:subject
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Elements
+GET {{hostname}}/Patient?_elements=identifier,active
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Not modifier
+GET {{hostname}}/Patient?gender:not=female
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Missing modifier
+GET {{hostname}}/Patient?birthdate:missing=true
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Exact modifier
+GET {{hostname}}/Patient?name:exact=Jon
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Contains modifier
+GET {{hostname}}/Patient?address:contains=Meadow
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Chained search 1
+GET {{hostname}}/DiagnosticReport?subject:Patient.name=Sarah
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Chained search 2
+GET {{hostname}}/Encounter?subject=Patient/searchpatient3
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Chained search 3
+GET {{hostname}}/Encounter?subject:Patient.birthdate=1987-02-20
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Chained search 4
+GET {{hostname}}/Patient?general-practitioner:Practitioner.name=Sarah&general-practitioner:Practitioner.address-state=WA
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Reverse chained search 1
+GET {{hostname}}/Patient?_has:Observation:patient:code=527
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Reverse chained search 2
+GET {{hostname}}/Patient?_has:Observation:patient:_has:AuditEvent:entity:agent:Practitioner.name=janedoe
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Composite search
+GET {{hostname}}/DiagnosticReport?result.code-value-quantity=2823-3$lt9.2
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Get continuation token
+# @name largeSearch
+GET {{hostname}}/Patient?_count=2
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Record continuation token
+@continuationToken = {{largeSearch.response.body.link[0].url}}
+
+### Use continuation token
+GET {{continuationToken}}
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Post search 1
+POST {{hostname}}/Patient/_search?_id=searchpatient1
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Post search 2
+POST {{hostname}}/Patient/_search
+Content-Type: application/x-www-form-urlencoded
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+name=Jon
+
+# The following queries and updates support testing _revinclude=*.*
+# this still uses the SearchDataBatch.json above
+
+### RevInclude=*.*
+GET {{hostname}}/Patient?_id=searchpatient3&_revinclude=*:*
+Authorization: Bearer {{bearer.response.body.access_token}}
+
+### Update Good Health Clinic
+PUT {{hostname}}/Organization/good
+Authorization: Bearer {{bearer.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "resourceType": "Organization",
+  "id": "good",
+  "text": {
+    "status": "generated",
+    "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">\n      \n      <p>Good Health Clinic</p>\n    \n    </div>"
+  },
+  "identifier": [
+    {
+      "system": "urn:ietf:rfc:3986",
+      "value": "2.16.840.1.113883.19.5"
+    }
+  ],
+  "name": "Good Health Clinic"
+}
+
+### Update patient 3
+PUT {{hostname}}/Patient/searchpatient3
+Authorization: Bearer {{bearer.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "resourceType": "Patient",
+  "id": "searchpatient3",
+  "meta": {
+    "versionId": "1",
+    "lastUpdated": "2023-11-07T18:23:18.037+00:00"
+  },
+  "active": true,
+  "name": [
+    {
+      "family": "Chalmers",
+      "given": [
+        "jon"
+      ]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1975-01-12",
+  "address": [
+    {
+      "line": [
+        "Dismal Drive"
+      ]
+    }
+  ],
+  "generalPractitioner": [
+    {
+      "reference": "Practitioner/searchpractitioner3"
+    }
+  ],
+  "managingOrganization" : 
+  { 
+    "reference" : "Organization/good"
+  }
+}
