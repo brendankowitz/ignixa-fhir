@@ -6,12 +6,10 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.FhirPath;
-using Hl7.Fhir.Introspection;
-using Hl7.FhirPath;
+using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Sparky.Extensions.ValueSets;
+using Sparky.FhirPath.Evaluation;
 using Sparky.Search.Definition;
 using Sparky.Search.Indexing.Converters;
 using Sparky.Search.Indexing.SearchValues;
@@ -62,14 +60,12 @@ public class TypedElementSearchIndexer : ISearchIndexer
         var entries = new List<SearchIndexEntry>();
 
         var context = new FhirEvaluationContext();
-        context.ElementResolver = str => _referenceToElementResolver.Resolve(str).ToPocoNode();
 
-        // This allows resolving %resource FhirPath to provided value.
-        // NOTE: ToPocoNode() uses SDK's built-in ModelInspector which doesn't know about our custom
-        // BackboneElement definitions from the generated schema provider. This is a known limitation
-        // of Firely SDK 6.0 - it doesn't support pluggable type systems for PocoNode conversion.
-        // TODO: Investigate alternative approach or SDK enhancement request
-        // context.Resource = resource.ToPocoNode();
+        // Our FhirEvaluationContext uses ITypedElement directly - no need for ToPocoNode()
+        context.ElementResolver = str => _referenceToElementResolver.Resolve(str);
+
+        // This allows resolving %resource FhirPath to provided value
+        context.Resource = resource;
 
         IEnumerable<SearchParameterInfo> searchParameters = _searchParameterDefinitionManager.GetSearchParameters(resource.InstanceType);
 

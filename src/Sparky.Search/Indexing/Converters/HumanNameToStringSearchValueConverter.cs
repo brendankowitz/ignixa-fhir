@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Hl7.Fhir.ElementModel;
-using Hl7.FhirPath;
+using Sparky.Domain.ElementModel;
+using Sparky.FhirPath.Evaluation;
 using Sparky.Search.Indexing.SearchValues;
 
 namespace Sparky.Search.Indexing.Converters;

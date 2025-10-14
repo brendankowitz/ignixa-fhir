@@ -5,9 +5,9 @@
 
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using EnsureThat;
-using Newtonsoft.Json;
 
 namespace Sparky.Search.Models;
 
@@ -102,49 +102,49 @@ public class PartialDateTime
     /// <summary>
     /// The year component.
     /// </summary>
-    [JsonProperty("year")]
+    [JsonPropertyName("year")]
     public int Year { get; private set; }
 
     /// <summary>
     /// The optional month component.
     /// </summary>
-    [JsonProperty("month")]
+    [JsonPropertyName("month")]
     public int? Month { get; private set; }
 
     /// <summary>
     /// The optional day component.
     /// </summary>
-    [JsonProperty("day")]
+    [JsonPropertyName("day")]
     public int? Day { get; private set; }
 
     /// <summary>
     /// The optional hour component.
     /// </summary>
-    [JsonProperty("hour")]
+    [JsonPropertyName("hour")]
     public int? Hour { get; private set; }
 
     /// <summary>
     /// The optional minute component.
     /// </summary>
-    [JsonProperty("minute")]
+    [JsonPropertyName("minute")]
     public int? Minute { get; private set; }
 
     /// <summary>
     /// The optional second component.
     /// </summary>
-    [JsonProperty("second")]
+    [JsonPropertyName("second")]
     public int? Second { get; private set; }
 
     /// <summary>
     /// The optional fraction component representing the fraction of second up to 7 digits.
     /// </summary>
-    [JsonProperty("fraction")]
+    [JsonPropertyName("fraction")]
     public decimal? Fraction { get; private set; }
 
     /// <summary>
     /// The optional UTC offset.
     /// </summary>
-    [JsonProperty("utcOffset")]
+    [JsonPropertyName("utcOffset")]
     public TimeSpan? UtcOffset { get; private set; }
 
     /// <summary>

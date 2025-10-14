@@ -4,11 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.Model;
-using Hl7.Fhir.Serialization;
 using Microsoft.Extensions.Logging;
-using FhirBundle = Hl7.Fhir.Model.Bundle;
-using FhirResource = Hl7.Fhir.Model.Resource;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Application.Features.Bundle;
 
@@ -31,7 +28,7 @@ public class BundleResponseBuilder
     /// <param name="responses">List of bundle entry responses.</param>
     /// <param name="bundleType">Bundle type (transaction or batch).</param>
     /// <returns>FHIR Bundle with response entries.</returns>
-    public FhirBundle BuildResponse(
+    public BundleJsonNode BuildResponse(
         IReadOnlyList<BundleEntryResponse> responses,
         BundleType bundleType)
     {
@@ -40,13 +37,13 @@ public class BundleResponseBuilder
         _logger.LogDebug("Building {Type} response bundle with {Count} entries", bundleType, responses.Count);
 
         var responseType = bundleType == BundleType.Transaction
-            ? FhirBundle.BundleType.TransactionResponse
-            : FhirBundle.BundleType.BatchResponse;
+            ? BundleJsonNode.BundleType.TransactionResponse
+            : BundleJsonNode.BundleType.BatchResponse;
 
-        var bundle = new FhirBundle
+        var bundle = new BundleJsonNode
         {
             Type = responseType,
-            Entry = new List<FhirBundle.EntryComponent>()
+            Entry = new List<BundleComponentJsonNode>()
         };
 
         foreach (var response in responses)
@@ -60,11 +57,11 @@ public class BundleResponseBuilder
         return bundle;
     }
 
-    private FhirBundle.EntryComponent BuildEntryComponent(BundleEntryResponse response)
+    private BundleComponentJsonNode BuildEntryComponent(BundleEntryResponse response)
     {
-        var entry = new FhirBundle.EntryComponent
+        var entry = new BundleComponentJsonNode
         {
-            Response = new FhirBundle.ResponseComponent
+            Response = new BundleComponentResponseJsonNode
             {
                 Status = response.Status ?? response.StatusCode.ToString()
             }
@@ -94,9 +91,8 @@ public class BundleResponseBuilder
         {
             try
             {
-                // Parse JSON string back to Resource
-                var deserializer = new FhirJsonDeserializer();
-                var resource = deserializer.Deserialize<FhirResource>(response.ResourceJson);
+                // Parse JSON string back to ResourceJsonNode
+                var resource = ResourceJsonNode.Parse(response.ResourceJson);
                 entry.Resource = resource;
             }
             catch (Exception ex)
@@ -107,18 +103,19 @@ public class BundleResponseBuilder
                     response.StatusCode);
 
                 // Add OperationOutcome if parsing fails
-                entry.Response.Outcome = new OperationOutcome
+                var outcome = new OperationOutcomeJsonNode
                 {
-                    Issue = new List<OperationOutcome.IssueComponent>
+                    Issue = new List<OperationOutcomeJsonNode.IssueComponent>
                     {
-                        new OperationOutcome.IssueComponent
+                        new OperationOutcomeJsonNode.IssueComponent
                         {
-                            Severity = OperationOutcome.IssueSeverity.Warning,
-                            Code = OperationOutcome.IssueType.Invalid,
+                            Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
+                            Code = OperationOutcomeJsonNode.IssueType.Invalid,
                             Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
                         }
                     }
                 };
+                entry.Response.Outcome = outcome;
             }
         }
 

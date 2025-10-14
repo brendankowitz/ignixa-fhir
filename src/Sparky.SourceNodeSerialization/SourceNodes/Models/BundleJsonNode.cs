@@ -6,6 +6,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
+using Sparky.Domain.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes.Models;
 
@@ -19,7 +20,8 @@ public class BundleJsonNode : ResourceJsonNode
     }
 
     [JsonPropertyName("type")]
-    public string Type { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public BundleType? Type { get; set; }
 
     [JsonPropertyName("total")]
     public int? Total { get; set; }
@@ -29,4 +31,37 @@ public class BundleJsonNode : ResourceJsonNode
 
     [JsonPropertyName("entry")]
     public IList<BundleComponentJsonNode> Entry { get; set; }
+
+    /// <summary>
+    /// FHIR Bundle.type value set.
+    /// </summary>
+    public enum BundleType
+    {
+        [EnumLiteral("document")]
+        Document,
+
+        [EnumLiteral("message")]
+        Message,
+
+        [EnumLiteral("transaction")]
+        Transaction,
+
+        [EnumLiteral("transaction-response")]
+        TransactionResponse,
+
+        [EnumLiteral("batch")]
+        Batch,
+
+        [EnumLiteral("batch-response")]
+        BatchResponse,
+
+        [EnumLiteral("history")]
+        History,
+
+        [EnumLiteral("searchset")]
+        Searchset,
+
+        [EnumLiteral("collection")]
+        Collection,
+    }
 }

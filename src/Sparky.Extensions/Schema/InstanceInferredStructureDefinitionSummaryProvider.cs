@@ -3,8 +3,9 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Specification;
+using ISourceNode = Sparky.Domain.ElementModel.ISourceNode;
+using Sparky.Domain.Specification;
+using Sparky.Domain.ElementModel; // For GetResourceTypeIndicator extension method
 
 namespace Sparky.Extensions.Schema;
 
@@ -46,7 +47,7 @@ public class InstanceInferredStructureDefinitionSummaryProvider : IStructureDefi
         {
             var children = new List<IElementDefinitionSummary>();
 
-            foreach ((IGrouping<string, ISourceNode> element, int i) tuple in _typedElement.Children().GroupBy(x => x.Name).Select((element, i) => (element, i))) children.Add(new GenericElementDefinitionSummary(tuple.element.ToArray(), tuple.i));
+            foreach ((IGrouping<string, ISourceNode> element, int i) tuple in _typedElement.SelectMany(x => x.Children()).GroupBy(x => x.Name).Select((element, i) => (element, i))) children.Add(new GenericElementDefinitionSummary(tuple.element.ToArray(), tuple.i));
 
             return children;
         }

@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
-using Hl7.Fhir.Utility;
+using Sparky.Domain.Utility;
 
 namespace Sparky.Extensions.ValueSets;
 

@@ -5,7 +5,7 @@
 
 using System.Globalization;
 using EnsureThat;
-using Hl7.Fhir.Utility;
+using Sparky.Domain.Utility;
 using Sparky.Extensions.Exceptions;
 using Sparky.Extensions.Models;
 using Sparky.Extensions.Schema;

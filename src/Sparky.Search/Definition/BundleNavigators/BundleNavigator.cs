@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Sparky.Extensions.Models;
 
 namespace Sparky.Search.Definition.BundleNavigators;

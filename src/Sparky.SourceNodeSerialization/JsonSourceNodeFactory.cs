@@ -7,7 +7,7 @@ using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 

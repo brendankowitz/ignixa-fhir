@@ -5,7 +5,7 @@
 
 using System.Collections.Concurrent;
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Sparky.Domain.Models;
 using Sparky.Search.Indexing;
 

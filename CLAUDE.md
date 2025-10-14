@@ -9,7 +9,7 @@ This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR s
 ## Current Status
 
 **Phase**: Multi-Tenancy Data Partitioning (ADR-2523 Phase 20) - ✅ COMPLETED
-**SDK Version**: Firely SDK 6.0.0-rc1 (unified multi-version support)
+**SDK Version**: Firely SDK 6.0.0 final (October 14, 2025 - unified multi-version support)
 **Build Status**: ✅ All projects build successfully (0 warnings, 0 errors)
 **Test Status**: ✅ All tests passing
 **Endpoints**:
@@ -294,7 +294,7 @@ dotnet run --project src/Sparky.Api/Sparky.Api.csproj
 ### Centralized Package Management
 All package versions managed in `Directory.Packages.props`:
 
-- **Firely SDK**: Hl7.Fhir.R4 (6.0.0-rc1) - Multi-version FHIR support
+- **Firely SDK**: Hl7.Fhir.R4 (6.0.0) - Multi-version FHIR support
 - **Messaging**: Medino (2.0.1) - In-process messaging
 - **IoC Container**: Autofac (8.2.0) - Dependency injection
 - **Logging**: Microsoft.Extensions.Logging.Abstractions
@@ -398,7 +398,7 @@ These files are marked as `linguist-generated=true` in `.gitattributes`.
 
 #### Package Versions
 
-The code generator uses Firely SDK 5.10.2 (from fhir-codegen submodule), **not** 6.0.0-rc1 used in the main solution. This is intentional to avoid API compatibility issues with fhir-codegen's LoaderOptions.
+The code generator uses Firely SDK 5.10.2 (from fhir-codegen submodule), **not** 6.0.0 used in the main solution. This is intentional to avoid API compatibility issues with fhir-codegen's LoaderOptions.
 
 ## Development Guidelines
 
@@ -495,10 +495,16 @@ string json = resourceWrapper.RawJson; // Stored during read
 - **Status**: Temporarily removed from solution
 - **TODO**: Migrate to new JsonSchema.Net API or replace
 
-### 3. FhirEvaluationContext.ElementResolver
-- **Issue**: SDK 6.0 signature changed
-- **Workaround**: Commented out in TypedElementSearchIndexer.cs:66
-- **TODO**: Determine correct SDK 6.0 signature
+### 3. FhirEvaluationContext.ElementResolver / PocoNode Custom Provider Limitation
+- **Issue**: PocoNode/ToPocoNode doesn't support custom `IStructureDefinitionSummaryProvider` implementations
+- **Root Cause**:
+  - `ElementResolver` requires `PocoNode` return type (not `ITypedElement`)
+  - `ToPocoNode()` accepts `ModelInspector` (concrete class), not `IStructureDefinitionSummaryProvider` (interface)
+  - Our `R4StructureDefinitionSummaryProvider` cannot be converted to `ModelInspector`
+- **Impact**: Custom provider metadata is discarded when converting `ITypedElement` → `PocoNode`
+- **Status**: **Known SDK 6.0.0 architectural limitation** - cannot be resolved without SDK changes
+- **Workaround**: Use `ToTypedElement()` with custom provider where possible (works for search indexing)
+- **Location**: `TypedElementSearchIndexer.cs:71` (documented with detailed comments)
 
 ### 4. ISourceNode Serialization
 - **Issue**: No direct ToJson() method in SDK 6.0
@@ -541,10 +547,12 @@ string json = resourceWrapper.RawJson; // Stored during read
    - ✅ MetadataController with GET /metadata
    - ✅ Feature folder organization
 
-6. **SDK Migration** (Week 1)
-   - ✅ Upgraded to Firely SDK 6.0.0-rc1
+6. **SDK Migration** (Week 1, October 14, 2025)
+   - ✅ Upgraded to Firely SDK 6.0.0-rc1 (August 2025)
+   - ✅ Upgraded to Firely SDK 6.0.0 final (October 14, 2025)
    - ✅ Fixed Sparky.Search nullable compatibility issues
    - ✅ Centralized package management
+   - ✅ Resolved PocoNode/FhirPath issues with SDK 6.0.0 final
 
 7. **Dependency Injection & Wiring** (Week 3-4)
    - ✅ Configured Autofac container with AutofacServiceProviderFactory
@@ -581,7 +589,7 @@ string json = resourceWrapper.RawJson; // Stored during read
 **Technical Stack:**
 - ✅ ASP.NET Core 9.0 with Autofac DI
 - ✅ Medino 2.0.1 for in-process messaging (CQRS pattern)
-- ✅ Firely SDK 6.0.0-rc1 for FHIR support
+- ✅ Firely SDK 6.0.0 final for FHIR support
 - ✅ File-based storage with JSON + metadata sidecars
 - ✅ FHIR-compliant error handling (OperationOutcome)
 

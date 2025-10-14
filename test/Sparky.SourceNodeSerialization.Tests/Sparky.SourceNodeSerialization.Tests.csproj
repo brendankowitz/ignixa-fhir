@@ -18,6 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sparky.Extensions\Sparky.Extensions.csproj" />
+    <ProjectReference Include="..\..\src\Sparky.FhirPath\Sparky.FhirPath.csproj" />
     <ProjectReference Include="..\..\src\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
     <ProjectReference Include="..\..\src\Sparky.Specification\Sparky.Specification.csproj" />
   </ItemGroup>

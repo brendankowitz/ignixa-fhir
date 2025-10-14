@@ -4,8 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.FhirPath;
+using Sparky.Domain.ElementModel;
 using Sparky.Search.Indexing.SearchValues;
 
 namespace Sparky.Search.Indexing.Converters;

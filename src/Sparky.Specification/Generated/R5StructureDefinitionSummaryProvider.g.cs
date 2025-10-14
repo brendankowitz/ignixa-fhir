@@ -8,7 +8,7 @@
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using Hl7.Fhir.Specification;
+using Sparky.Domain.Specification;
 using Sparky.Extensions;
 using Sparky.Extensions.Schema;
 using Sparky.Specification;

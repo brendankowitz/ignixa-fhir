@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Hl7.Fhir.Model;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.Validation;
 
 namespace Sparky.Application.Features.Resource;
@@ -18,21 +18,21 @@ public static class ValidationResultExtensions
     /// </summary>
     /// <param name="validationResult">The validation result to convert.</param>
     /// <returns>An OperationOutcome resource with issues from the validation result.</returns>
-    public static OperationOutcome ToOperationOutcome(this ValidationResult validationResult)
+    public static OperationOutcomeJsonNode ToOperationOutcome(this ValidationResult validationResult)
     {
         ArgumentNullException.ThrowIfNull(validationResult);
 
-        var outcome = new OperationOutcome
+        var outcome = new OperationOutcomeJsonNode
         {
-            Issue = new List<OperationOutcome.IssueComponent>()
+            Issue = new List<OperationOutcomeJsonNode.IssueComponent>()
         };
 
         foreach (var issue in validationResult.Issues)
         {
-            outcome.Issue.Add(new OperationOutcome.IssueComponent
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
                 Severity = MapSeverity(issue.Severity),
-                Code = OperationOutcome.IssueType.Invalid,
+                Code = OperationOutcomeJsonNode.IssueType.Invalid,
                 Diagnostics = issue.Message,
                 Expression = new List<string> { issue.Path }
             });
@@ -41,10 +41,10 @@ public static class ValidationResultExtensions
         // If no issues, add a success message
         if (outcome.Issue.Count == 0)
         {
-            outcome.Issue.Add(new OperationOutcome.IssueComponent
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
-                Severity = OperationOutcome.IssueSeverity.Information,
-                Code = OperationOutcome.IssueType.Informational,
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                Code = OperationOutcomeJsonNode.IssueType.Informational,
                 Diagnostics = "Validation passed with no issues"
             });
         }
@@ -55,15 +55,15 @@ public static class ValidationResultExtensions
     /// <summary>
     /// Maps our internal IssueSeverity to FHIR OperationOutcome.IssueSeverity.
     /// </summary>
-    private static OperationOutcome.IssueSeverity MapSeverity(IssueSeverity severity)
+    private static OperationOutcomeJsonNode.IssueSeverity MapSeverity(IssueSeverity severity)
     {
         return severity switch
         {
-            IssueSeverity.Information => OperationOutcome.IssueSeverity.Information,
-            IssueSeverity.Warning => OperationOutcome.IssueSeverity.Warning,
-            IssueSeverity.Error => OperationOutcome.IssueSeverity.Error,
-            IssueSeverity.Fatal => OperationOutcome.IssueSeverity.Fatal,
-            _ => OperationOutcome.IssueSeverity.Error
+            IssueSeverity.Information => OperationOutcomeJsonNode.IssueSeverity.Information,
+            IssueSeverity.Warning => OperationOutcomeJsonNode.IssueSeverity.Warning,
+            IssueSeverity.Error => OperationOutcomeJsonNode.IssueSeverity.Error,
+            IssueSeverity.Fatal => OperationOutcomeJsonNode.IssueSeverity.Fatal,
+            _ => OperationOutcomeJsonNode.IssueSeverity.Error
         };
     }
 }

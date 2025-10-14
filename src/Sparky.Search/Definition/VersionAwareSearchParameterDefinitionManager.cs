@@ -5,7 +5,7 @@
 
 using System.Collections.Concurrent;
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Sparky.Extensions;
 using Sparky.Extensions.Schema;

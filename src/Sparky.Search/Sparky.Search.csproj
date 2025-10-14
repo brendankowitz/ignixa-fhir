@@ -5,11 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
+    <!-- Suppress CLS-compliance warnings for interfaces from Sparky.Domain -->
+    <NoWarn>$(NoWarn);CS3001;CS3002;CS3027</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
     <ProjectReference Include="..\Sparky.Extensions\Sparky.Extensions.csproj" />
+    <ProjectReference Include="..\Sparky.FhirPath\Sparky.FhirPath.csproj" />
     <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
   </ItemGroup>
 

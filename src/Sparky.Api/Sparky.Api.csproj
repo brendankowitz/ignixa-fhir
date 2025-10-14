@@ -9,7 +9,6 @@
   <ItemGroup>
     <!-- Core packages - versions managed in Directory.Packages.props -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Hl7.Fhir.R4" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
     <PackageReference Include="Medino" />
     <PackageReference Include="Autofac" />

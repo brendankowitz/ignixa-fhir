@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Specification;
+using Sparky.Domain.ElementModel;
+using Sparky.Domain.Specification;
 using Medino;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;

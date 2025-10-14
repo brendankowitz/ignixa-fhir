@@ -4,11 +4,10 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.Model;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Sparky.Domain.Abstractions;
-using FhirBundle = Hl7.Fhir.Model.Bundle;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Application.Features.Bundle;
 
@@ -57,7 +56,7 @@ public class BundleProcessor
     /// <param name="options">Processing options (parallelism, bundle type).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Response bundle with entry results.</returns>
-    public async Task<FhirBundle> ProcessAsync(
+    public async Task<BundleJsonNode> ProcessAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         BundleProcessingOptions options,
         CancellationToken cancellationToken)
@@ -274,7 +273,7 @@ public class BundleProcessor
     /// Processes bundle entries in buffered mode with reference resolution.
     /// Used when urn:uuid or conditional references are detected.
     /// </summary>
-    private async Task<FhirBundle> ProcessBufferedAsync(
+    private async Task<BundleJsonNode> ProcessBufferedAsync(
         List<BundleEntryContext> entries,
         BundleProcessingOptions options,
         CancellationToken cancellationToken)
@@ -380,7 +379,7 @@ public class BundleProcessor
     /// For transactions: validates entries are pre-sorted by verb.
     /// For batch: executes in parallel.
     /// </summary>
-    private async Task<FhirBundle> ProcessStreamingAsync(
+    private async Task<BundleJsonNode> ProcessStreamingAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         BundleProcessingOptions options,
         CancellationToken cancellationToken)
@@ -506,29 +505,29 @@ public class BundleProcessor
         }, cancellationToken);
     }
 
-    private FhirBundle CreateErrorBundle(string message, string details)
+    private BundleJsonNode CreateErrorBundle(string message, string details)
     {
-        var outcome = new OperationOutcome
+        var outcome = new OperationOutcomeJsonNode
         {
-            Issue = new List<OperationOutcome.IssueComponent>
+            Issue = new List<OperationOutcomeJsonNode.IssueComponent>
             {
-                new OperationOutcome.IssueComponent
+                new OperationOutcomeJsonNode.IssueComponent
                 {
-                    Severity = OperationOutcome.IssueSeverity.Error,
-                    Code = OperationOutcome.IssueType.Processing,
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                    Code = OperationOutcomeJsonNode.IssueType.Processing,
                     Diagnostics = $"{message}: {details}"
                 }
             }
         };
 
-        return new FhirBundle
+        return new BundleJsonNode
         {
-            Type = FhirBundle.BundleType.TransactionResponse,
-            Entry = new List<FhirBundle.EntryComponent>
+            Type = BundleJsonNode.BundleType.TransactionResponse,
+            Entry = new List<BundleComponentJsonNode>
             {
-                new FhirBundle.EntryComponent
+                new BundleComponentJsonNode
                 {
-                    Response = new FhirBundle.ResponseComponent
+                    Response = new BundleComponentResponseJsonNode
                     {
                         Status = "500",
                         Outcome = outcome

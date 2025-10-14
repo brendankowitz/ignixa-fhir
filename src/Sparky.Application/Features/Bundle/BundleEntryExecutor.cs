@@ -5,7 +5,6 @@
 
 using System.Text;
 using EnsureThat;
-using Hl7.Fhir.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;

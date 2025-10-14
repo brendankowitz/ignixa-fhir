@@ -5,7 +5,7 @@
 
 using System.Text;
 using System.Text.Json;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Sparky.Domain.Abstractions;

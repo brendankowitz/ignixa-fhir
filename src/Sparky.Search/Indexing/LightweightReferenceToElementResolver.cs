@@ -4,11 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Serialization;
+using ISourceNode = Sparky.Domain.ElementModel.ISourceNode;
+using ITypedElement = Sparky.Domain.ElementModel.ITypedElement;
 using Sparky.Extensions.Schema;
 using Sparky.Search.Indexing.SearchValues;
-using Newtonsoft.Json.Linq;
+using Sparky.Domain.ElementModel; // For ToTypedElement extension method
+using Sparky.SourceNodeSerialization.SourceNodes.Models; // For ResourceJsonNode
 
 namespace Sparky.Search.Indexing;
 
@@ -39,13 +40,9 @@ public class LightweightReferenceToElementResolver : IReferenceToElementResolver
 
         if (parsed == null) return null;
 
-        ISourceNode node = FhirJsonNode.Create(
-            JObject.FromObject(
-                new
-                {
-                    resourceType = parsed.ResourceType,
-                    id = parsed.ResourceId
-                }));
+        // Create a minimal FHIR resource with just resourceType and id
+        string json = $"{{\"resourceType\":\"{parsed.ResourceType}\",\"id\":\"{parsed.ResourceId}\"}}";
+        ISourceNode node = ResourceJsonNode.Parse(json).ToSourceNode();
 
         return node.ToTypedElement(InstanceInferredStructureDefinitionSummaryProvider.CreateFrom(node));
     }

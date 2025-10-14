@@ -7,8 +7,10 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Specification;
+using ISourceNode = Sparky.Domain.ElementModel.ISourceNode;
+using ITypedElement = Sparky.Domain.ElementModel.ITypedElement;
+using Sparky.Domain.Specification;
+using Sparky.Domain.ElementModel; // For ToTypedElement extension method
 
 namespace Sparky.SourceNodeSerialization.SourceNodes.Models;
 

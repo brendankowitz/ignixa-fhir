@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.FhirPath;
+using Sparky.Domain.ElementModel;
 using Sparky.Extensions.Models;
+using Sparky.FhirPath.Evaluation;
 using Sparky.Search.Indexing.Converters;
 
 namespace Sparky.Search.Definition.BundleNavigators;

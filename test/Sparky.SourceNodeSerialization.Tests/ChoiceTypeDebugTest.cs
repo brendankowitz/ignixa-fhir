@@ -5,14 +5,27 @@
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores (standard xUnit naming pattern)
 
-using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
-using Hl7.Fhir.Specification;
-using Hl7.FhirPath;
+using Hl7.Fhir.Serialization;
+using Hl7.Fhir.ElementModel; // SDK ElementModel (ISourceNode, ITypedElement, ToTypedElement extensions)
+using Hl7.FhirPath; // SDK FhirPath extensions
+using Sparky.FhirPath.Evaluation; // Our FhirPath extensions
+using Sparky.Domain.Specification;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
+
+// Namespace aliases to avoid conflicts
+using OurElementModel = Sparky.Domain.ElementModel;
+
+// Static using for our extension methods
+using static Sparky.Domain.ElementModel.TypedElementExtensions;
+
+// SDK type aliases
+using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
+using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
+using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
 
 namespace Sparky.SourceNodeSerialization.Tests;
 
@@ -20,7 +33,7 @@ public class ChoiceTypeDebugTest
 {
     private readonly ITestOutputHelper _output;
     private readonly R4StructureDefinitionSummaryProvider _ourProvider = new();
-    private readonly IStructureDefinitionSummaryProvider _firelyProvider = ModelInfo.ModelInspector;
+    private readonly SdkModelInspector _firelyProvider = ModelInfo.ModelInspector;
 
     public ChoiceTypeDebugTest(ITestOutputHelper output)
     {
@@ -164,13 +177,13 @@ public class ChoiceTypeDebugTest
   }
 }";
 
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(json);
-
         // Try with Firely provider first (should work)
         _output.WriteLine("=== Firely Provider ===");
         try
         {
-            var firelyTyped = sourceNode.ToTypedElement(_firelyProvider);
+            // Use SDK's ISourceNode for SDK testing
+            SdkISourceNode firelySourceNode = Hl7.Fhir.Serialization.FhirJsonNode.Parse(json);
+            SdkITypedElement firelyTyped = firelySourceNode.ToTypedElement(_firelyProvider);
             var firelyPath = "Resource.meta.extension.where(url = 'http://example.com/deleted-state')";
             var firelyResult = firelyTyped.Select(firelyPath).ToArray();
             _output.WriteLine($"Firely: Found {firelyResult.Length} extension(s)");
@@ -192,11 +205,13 @@ public class ChoiceTypeDebugTest
             _output.WriteLine($"Firely FAILED: {ex.Message}");
         }
 
-        // Now try with our provider (currently fails)
+        // Now try with our provider
         _output.WriteLine("\n=== Our Provider ===");
         try
         {
-            var ourTyped = sourceNode.ToTypedElement(_ourProvider);
+            // Use our ISourceNode for our testing
+            OurElementModel.ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(json);
+            OurElementModel.ITypedElement ourTyped = ourSourceNode.ToTypedElement(_ourProvider);
             var ourPath = "Resource.meta.extension.where(url = 'http://example.com/deleted-state')";
             var ourResult = ourTyped.Select(ourPath).ToArray();
             _output.WriteLine($"Ours: Found {ourResult.Length} extension(s)");

@@ -5,8 +5,8 @@
 
 using System.Net;
 using System.Text.Json;
-using Hl7.Fhir.Serialization;
 using Sparky.Application.Features.Resource;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Api.Middleware;
 
@@ -46,9 +46,8 @@ public class FhirExceptionMiddleware
             context.Response.ContentType = "application/fhir+json";
             context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
 
-            // Use Firely SDK serializer for proper FHIR OperationOutcome (SDK 6.0 API)
-            var serializer = new FhirJsonSerializer();
-            var operationOutcomeJson = serializer.SerializeToString(validationException.OperationOutcome);
+            // Serialize OperationOutcomeJsonNode with System.Text.Json
+            var operationOutcomeJson = JsonSerializer.Serialize(validationException.OperationOutcome, JsonOptions);
             return context.Response.WriteAsync(operationOutcomeJson);
         }
 

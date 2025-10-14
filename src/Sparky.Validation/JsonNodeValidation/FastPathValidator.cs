@@ -5,7 +5,7 @@
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using Hl7.Fhir.Specification;
+using Sparky.Domain.Specification;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Validation.JsonNodeValidation;
@@ -135,7 +135,7 @@ public sealed class FastPathValidator
             TypeRules = elements
                 .Select(e => new TypeRule(
                     e.ElementName,
-                    e.Type.Select(t => (t as IStructureDefinitionSummary)?.TypeName ?? e.DefaultTypeName).ToArray(),
+                    e.Type.Select(t => (t as IStructureDefinitionSummary)?.TypeName ?? e.DefaultTypeName).Where(t => t != null).ToArray()!,
                     e.IsChoiceElement))
                 .ToList(),
 
@@ -161,8 +161,8 @@ public sealed class FastPathValidator
 
             // Primitive format rules
             PrimitiveFormatRules = elements
-                .Where(e => IsPrimitiveType(e.DefaultTypeName))
-                .Select(e => new PrimitiveFormatRule(e.ElementName, e.DefaultTypeName))
+                .Where(e => e.DefaultTypeName != null && IsPrimitiveType(e.DefaultTypeName))
+                .Select(e => new PrimitiveFormatRule(e.ElementName, e.DefaultTypeName!))
                 .ToList(),
 
             // Coding fields (CodeableConcept, Coding)
@@ -176,7 +176,7 @@ public sealed class FastPathValidator
                 .Where(e => e.IsChoiceElement)
                 .Select(e => new ChoiceTypeRule(
                     e.ElementName,
-                    e.Type.Select(t => (t as IStructureDefinitionSummary)?.TypeName ?? e.DefaultTypeName).ToArray()))
+                    e.Type.Select(t => (t as IStructureDefinitionSummary)?.TypeName ?? e.DefaultTypeName).Where(t => t != null).ToArray()!))
                 .ToList(),
         };
     }

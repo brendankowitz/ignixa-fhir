@@ -8,9 +8,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json.Serialization;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Serialization;
+using Sparky.Domain.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
+using Sparky.SourceNodeSerialization.Utilities;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes;
 

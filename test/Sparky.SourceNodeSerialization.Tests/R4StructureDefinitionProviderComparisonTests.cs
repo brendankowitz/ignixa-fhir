@@ -5,15 +5,29 @@
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores (standard xUnit naming pattern)
 
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.Specification;
 using Hl7.Fhir.Model;
-using Hl7.Fhir.Specification;
-using Hl7.FhirPath;
+using Hl7.Fhir.Serialization;
+using Hl7.Fhir.ElementModel; // SDK ElementModel (ISourceNode, ITypedElement, ToTypedElement extensions)
+using Hl7.FhirPath; // SDK FhirPath extensions
+using Sparky.FhirPath.Evaluation; // Our FhirPath extensions
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.SourceNodeSerialization.Tests.TestData;
 using Sparky.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
+
+// Namespace aliases to avoid conflicts
+using OurElementModel = Sparky.Domain.ElementModel;
+
+// Static using for our extension methods
+using static Sparky.Domain.ElementModel.TypedElementExtensions;
+
+// SDK type aliases
+using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
+using SdkIStructureDefinitionSummaryProvider = Hl7.Fhir.Specification.IStructureDefinitionSummaryProvider;
+using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
+using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
 
 namespace Sparky.SourceNodeSerialization.Tests;
 
@@ -25,7 +39,7 @@ public class R4StructureDefinitionProviderComparisonTests
 {
     private readonly ITestOutputHelper _output;
     private readonly R4StructureDefinitionSummaryProvider _ourProvider = new();
-    private readonly IStructureDefinitionSummaryProvider _firelyProvider = ModelInfo.ModelInspector;
+    private readonly SdkModelInspector _firelyProvider = ModelInfo.ModelInspector;
 
     public R4StructureDefinitionProviderComparisonTests(ITestOutputHelper output)
     {
@@ -90,14 +104,16 @@ public class R4StructureDefinitionProviderComparisonTests
     {
         // Arrange
         var patientJson = Samples.GetJson("Patient");
-        var sourceNode = JsonSourceNodeFactory.Parse(patientJson);
 
-        // Act
-        var ourTypedElement = sourceNode.ToTypedElement(_ourProvider);
-        var firelyTypedElement = sourceNode.ToTypedElement(_firelyProvider);
+        // Our implementation
+        OurElementModel.ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(patientJson);
+        OurElementModel.ITypedElement ourTypedElement = ourSourceNode.ToTypedElement(_ourProvider);
+        OurElementModel.ITypedElement ourId = ourTypedElement.Select("Patient.id").SingleOrDefault();
 
-        var ourId = ourTypedElement.Select("Patient.id").SingleOrDefault();
-        var firelyId = firelyTypedElement.Select("Patient.id").SingleOrDefault();
+        // SDK implementation
+        SdkISourceNode firelySourceNode = Hl7.Fhir.Serialization.FhirJsonNode.Parse(patientJson);
+        SdkITypedElement firelyTypedElement = firelySourceNode.ToTypedElement(_firelyProvider);
+        SdkITypedElement firelyId = firelyTypedElement.Select("Patient.id").SingleOrDefault();
 
         // Assert
         Assert.NotNull(ourId);

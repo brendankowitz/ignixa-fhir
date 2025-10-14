@@ -5,8 +5,6 @@
 
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
-using Hl7.Fhir.FhirPath;
-using Hl7.FhirPath;
 using Medino;
 using Microsoft.IO;
 using Sparky.Api.Infrastructure;
@@ -28,8 +26,6 @@ using Sparky.Application.Infrastructure;
 using Sparky.Domain.Models;
 
 var builder = WebApplication.CreateBuilder(args);
-
-FhirPathCompiler.DefaultSymbolTable.AddFhirExtensions();
 
 // Configure Autofac as the service provider factory
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());

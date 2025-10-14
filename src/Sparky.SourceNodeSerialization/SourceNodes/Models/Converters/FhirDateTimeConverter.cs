@@ -7,8 +7,7 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Hl7.Fhir.Serialization;
-using Hl7.Fhir.Support;
+using Sparky.SourceNodeSerialization.Utilities;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes.Models.Converters;
 

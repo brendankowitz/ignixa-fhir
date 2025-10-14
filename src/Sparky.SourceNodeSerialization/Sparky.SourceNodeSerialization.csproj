@@ -8,8 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="Ensure.That" />
-    <PackageReference Include="Hl7.Fhir.R4" />
     <PackageReference Include="System.Collections.Immutable" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
   </ItemGroup>
 
 </Project>

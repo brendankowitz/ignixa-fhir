@@ -1,4 +1,4 @@
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 
 namespace Sparky.Domain.Models;
 

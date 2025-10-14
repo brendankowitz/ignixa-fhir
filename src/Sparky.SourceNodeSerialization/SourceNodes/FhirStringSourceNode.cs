@@ -6,8 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Utility;
+using Sparky.Domain.ElementModel;
+using Sparky.Domain.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes;
 

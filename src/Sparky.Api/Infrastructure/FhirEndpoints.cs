@@ -5,7 +5,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
-using Hl7.Fhir.Serialization;
+using System.Text.Json;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
@@ -16,7 +16,7 @@ using Sparky.Application.Features.Resource;
 using Sparky.Domain.Models;
 using Sparky.Search.Parsing;
 using Sparky.SourceNodeSerialization;
-using FhirBundle = Hl7.Fhir.Model.Bundle;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using DeferredWriteCoordinator = Sparky.Application.Features.Bundle.DeferredWriteCoordinator;
 
 namespace Sparky.Api.Infrastructure;
@@ -29,6 +29,13 @@ public static class FhirEndpoints
 {
     private const string _contentTypeApplicationFhirJson = "application/fhir+json";
     private const string _contentTypeApplicationJson = "application/json";
+
+    // Reusable JsonSerializerOptions for FHIR bundle serialization (CA1869 compliance)
+    private static readonly JsonSerializerOptions BundleJsonOptions = new()
+    {
+        WriteIndented = false,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
 
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
@@ -471,15 +478,14 @@ public static class FhirEndpoints
             logger.LogInformation("Using buffered processing (Transaction: {IsTransaction})",
                 options.Type == BundleType.Transaction);
 
-            FhirBundle responseBundle = await bundleProcessor.ProcessAsync(
+            BundleJsonNode responseBundle = await bundleProcessor.ProcessAsync(
                 bundleContext.Entries, options, ct);
 
-            // Serialize response bundle
+            // Serialize response bundle with System.Text.Json
             string responseJson;
             try
             {
-                var serializer = new FhirJsonSerializer();
-                responseJson = serializer.SerializeToString(responseBundle);
+                responseJson = JsonSerializer.Serialize(responseBundle, BundleJsonOptions);
             }
             catch (Exception ex)
             {

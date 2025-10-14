@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Sparky.SourceNodeSerialization;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 

@@ -6,11 +6,11 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Hl7.Fhir.Introspection;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
-using Hl7.Fhir.Specification;
+using Sparky.Domain.Specification;
 using Hl7.FhirPath;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sparky.Extensions;

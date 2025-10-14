@@ -7,8 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Specification;
+using Sparky.Domain.ElementModel;
+using Sparky.Domain.Specification;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.SourceNodeSerialization.Extensions;
@@ -16,7 +16,7 @@ namespace Sparky.SourceNodeSerialization.Extensions;
 public static class SourceNodeExtensions
 {
     // depth-first walk of the node tree
-    private static IEnumerable<ISourceNode> AllDescendants(this ISourceNode node)
+    public static IEnumerable<ISourceNode> Descendants(this ISourceNode node)
     {
         EnsureArg.IsNotNull(node, nameof(node));
 
@@ -30,7 +30,7 @@ public static class SourceNodeExtensions
         }
     }
 
-    private static IEnumerable<ITypedElement> AllDescendants(this ITypedElement node)
+    public static IEnumerable<ITypedElement> Descendants(this ITypedElement node)
     {
         EnsureArg.IsNotNull(node, nameof(node));
 

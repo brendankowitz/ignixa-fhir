@@ -8,8 +8,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Utility;
+using Sparky.Domain.ElementModel;
+using Sparky.Domain.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes;
 

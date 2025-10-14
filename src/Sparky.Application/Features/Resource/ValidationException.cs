@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Hl7.Fhir.Model;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.Validation;
 
 namespace Sparky.Application.Features.Resource;
@@ -33,5 +33,5 @@ public class ValidationException : Exception
     /// <summary>
     /// Gets the OperationOutcome representation of the validation issues.
     /// </summary>
-    public OperationOutcome OperationOutcome { get; }
+    public OperationOutcomeJsonNode OperationOutcome { get; }
 }

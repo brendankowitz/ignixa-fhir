@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Hl7.Fhir.ElementModel;
+using Sparky.Domain.ElementModel;
 using Medino;
 using Sparky.Application.Features.Bundle;
 using Sparky.Domain.Models;

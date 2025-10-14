@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Hl7.Fhir.Model;
 
 namespace Sparky.Extensions.Models;
 
@@ -15,14 +14,14 @@ public class CodableConceptInfo
     /// </summary>
     public CodableConceptInfo()
     {
-        Coding = new List<Coding>();
+        Coding = new List<CodingInfo>();
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CodableConceptInfo"/> class.
     /// </summary>
     /// <param name="coding">The Coding collection.</param>
-    public CodableConceptInfo(IEnumerable<Coding> coding)
+    public CodableConceptInfo(IEnumerable<CodingInfo> coding)
     {
         EnsureArg.IsNotNull(coding);
 
@@ -32,5 +31,5 @@ public class CodableConceptInfo
     /// <summary>
     /// Gets the Coding collection.
     /// </summary>
-    public ICollection<Coding> Coding { get; }
+    public ICollection<CodingInfo> Coding { get; }
 }

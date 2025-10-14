@@ -6,9 +6,8 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using EnsureThat;
-using Hl7.Fhir.ElementModel;
-using Hl7.Fhir.Utility;
-using Hl7.FhirPath;
+using Sparky.Domain.ElementModel;
+using Sparky.Domain.Utility;
 using Sparky.Extensions.ValueSets;
 using Sparky.Search.Definition.BundleNavigators;
 
