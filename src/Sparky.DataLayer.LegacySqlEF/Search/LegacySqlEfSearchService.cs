@@ -98,6 +98,8 @@ public class LegacySqlEfSearchService : ISearchService
         // Build query
         var query = await BuildQueryAsync(options, resourceTypeId.Value, ct);
 
+        _logger.LogInformation("Executing streaming query for {ResourceType}\n{SQL}", options.ResourceType, query.ToQueryString());
+
         // Stream results - return SearchEntryResult directly (raw bytes for zero-copy serialization)
         await foreach (var entity in query.AsAsyncEnumerable().WithCancellation(ct))
         {

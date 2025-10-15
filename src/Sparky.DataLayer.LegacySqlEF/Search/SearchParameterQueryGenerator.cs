@@ -203,7 +203,13 @@ public class SearchParameterQueryGenerator
 
     private IQueryable<long> GenerateDateTimeQuery(short resourceTypeId, BinaryExpression binaryExpr)
     {
-        var value = Convert.ToDateTime(binaryExpr.Value);
+        // Handle both DateTime and DateTimeOffset
+        DateTime value = binaryExpr.Value switch
+        {
+            DateTime dt => dt,
+            DateTimeOffset dto => dto.UtcDateTime,
+            _ => Convert.ToDateTime(binaryExpr.Value)
+        };
 
         var query = _context.DateTimeSearchParams
             .Where(sp => sp.ResourceTypeId == resourceTypeId);

@@ -64,10 +64,13 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
         foreach (var child in _source.Children(name))
         {
             // Try to find definition for this child
+            // We can look up child definitions even when _definition is null,
+            // as long as we have an InstanceType (e.g., root resources have no parent definition)
             IElementDefinitionSummary? childDef = null;
-            if (_definition != null && InstanceType != null)
+            var currentType = InstanceType;
+            if (currentType != null)
             {
-                var structureDef = _provider.Provide(InstanceType);
+                var structureDef = _provider.Provide(currentType);
                 childDef = structureDef?.GetElements().FirstOrDefault(e => e.ElementName == child.Name);
             }
 
