@@ -18,11 +18,12 @@ public static class StreamingBundleSerializer
 {
     /// <summary>
     /// Serializes a search result bundle asynchronously, streaming entries as they become available.
+    /// Uses zero-copy serialization with SearchEntryResult (raw bytes from repository).
     /// </summary>
     /// <param name="outputStream">The stream to write JSON to.</param>
     /// <param name="bundleType">The FHIR bundle type (e.g., "searchset").</param>
     /// <param name="total">Total number of matching resources (optional).</param>
-    /// <param name="entries">Async stream of resource wrappers to include in the bundle.</param>
+    /// <param name="entries">Async stream of search entry results (raw bytes) to include in the bundle.</param>
     /// <param name="selfLink">The self link URL (optional).</param>
     /// <param name="nextLink">The next page URL for pagination (optional).</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
@@ -31,7 +32,7 @@ public static class StreamingBundleSerializer
         Stream outputStream,
         string bundleType,
         int? total,
-        IAsyncEnumerable<ResourceWrapper> entries,
+        IAsyncEnumerable<SearchEntryResult> entries,
         string? selfLink = null,
         string? nextLink = null,
         bool pretty = false,
@@ -69,8 +70,8 @@ public static class StreamingBundleSerializer
         // Write entry array
         writer.WriteStartArray("entry");
 
-        // Stream entries as they become available
-        await foreach (ResourceWrapper resource in entries.WithCancellation(cancellationToken))
+        // Stream entries as they become available (zero-copy from raw bytes)
+        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
         {
             writer.WriteStartObject();
 
@@ -78,41 +79,17 @@ public static class StreamingBundleSerializer
             string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
             writer.WriteString("fullUrl", fullUrl);
 
-            // Write resource - use zero-copy if RawJsonBytes available
-            if (resource.RawJsonBytes.HasValue && resource.RawJsonBytes.Value.Length > 0)
+            // Write resource - use zero-copy with ResourceBytes
+            if (resource.ResourceBytes.Length > 0)
             {
-                // Zero-copy: Parse once, write raw properties
-                // Use the byte array to avoid copying
-                ReadOnlyMemory<byte> jsonMemory = resource.RawJsonBytes.Value;
-
-                using JsonDocument doc = JsonDocument.Parse(jsonMemory);
-                JsonElement root = doc.RootElement;
-
-                // Write each property from the resource using raw text
-                foreach (JsonProperty prop in root.EnumerateObject())
-                {
-                    // Get raw UTF-8 bytes for the property value (zero-copy from JsonDocument)
-                    byte[] propValueBytes = Encoding.UTF8.GetBytes(prop.Value.GetRawText());
-                    writer.WriteRawProperty(prop.Name, propValueBytes);
-                }
-            }
-            else if (!string.IsNullOrEmpty(resource.RawJson))
-            {
-                // Fallback: Parse RawJson string
-                using JsonDocument doc = JsonDocument.Parse(resource.RawJson);
-                JsonElement root = doc.RootElement;
-
-                foreach (JsonProperty prop in root.EnumerateObject())
-                {
-                    byte[] propValueBytes = Encoding.UTF8.GetBytes(prop.Value.GetRawText());
-                    writer.WriteRawProperty(prop.Name, propValueBytes);
-                }
+                writer.WriteRawProperty("resource", resource.ResourceBytes);
             }
             else
             {
-                // Minimal fallback
-                writer.WriteString("resourceType", resource.ResourceType);
-                writer.WriteString("id", resource.ResourceId);
+                // Minimal fallback (should not happen - all SearchEntryResults should have bytes)
+                writer.WriteObject("resource",
+                    w => w.WriteString("resourceType", resource.ResourceType)
+                        .WriteString("id", resource.ResourceId));
             }
 
             // Write search metadata
@@ -133,11 +110,12 @@ public static class StreamingBundleSerializer
 
     /// <summary>
     /// Serializes a search result bundle synchronously (non-streaming).
+    /// Uses zero-copy serialization with SearchEntryResult (raw bytes from repository).
     /// </summary>
     /// <param name="outputStream">The stream to write JSON to.</param>
     /// <param name="bundleType">The FHIR bundle type (e.g., "searchset").</param>
     /// <param name="total">Total number of matching resources (optional).</param>
-    /// <param name="entries">Collection of resource wrappers to include in the bundle.</param>
+    /// <param name="entries">Collection of search entry results (raw bytes) to include in the bundle.</param>
     /// <param name="selfLink">The self link URL (optional).</param>
     /// <param name="nextLink">The next page URL for pagination (optional).</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
@@ -146,7 +124,7 @@ public static class StreamingBundleSerializer
         Stream outputStream,
         string bundleType,
         int? total,
-        IEnumerable<ResourceWrapper> entries,
+        IEnumerable<SearchEntryResult> entries,
         string? selfLink = null,
         string? nextLink = null,
         bool pretty = false,

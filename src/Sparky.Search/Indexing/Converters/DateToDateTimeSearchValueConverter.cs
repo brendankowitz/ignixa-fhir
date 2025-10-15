@@ -3,9 +3,9 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Sparky.Domain.ElementModel;
 using Sparky.Search.Indexing.SearchValues;
 using Sparky.Search.Models;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Indexing.Converters;
 

@@ -7,10 +7,9 @@
  */
 
 
-using Sparky.Domain.Utility;
-using System.Collections.Generic;
+using Sparky.SourceNodeSerialization.Utility;
 
-namespace Sparky.Domain.Specification;
+namespace Sparky.SourceNodeSerialization.Specification;
 
 public interface IElementDefinitionSummary  // ElementDefinition
 {

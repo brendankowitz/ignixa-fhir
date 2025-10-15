@@ -3,8 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Specification;
 using Medino;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -69,7 +67,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
 
         // VALIDATE INCOMING RESOURCE (fast-path validation)
-        // Uses cached ToSourceNode() from command.Resource (ResourceJsonNode)
+        // Uses cached ToSourceNode() from command.JsonNode (ResourceJsonNode)
         // This prevents repeated ReflectedSourceNode allocations (15-60ms per validation)
         // Uses version-specific schema provider from FhirVersionContext
         _logger.LogDebug(
@@ -79,7 +77,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             fhirVersionEnum);
 
         var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
-        var sourceNode = command.Resource.ToSourceNode(); // Use cached ISourceNode
+        var sourceNode = command.JsonNode.ToSourceNode(); // Use cached ISourceNode
         var validationResult = _validator.Validate(sourceNode, schemaProvider);
 
         if (!validationResult.IsValid)
@@ -161,7 +159,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // 2. Determine partition using IPartitionStrategy
             var partition = _partitionStrategy.DetermineWritePartition(
                 partitionContext,
-                command.Resource.ToSourceNode());
+                command.JsonNode);
 
             // 3. Validate single partition (writes always go to one partition)
             if (partition.PartitionIds.Count != 1)
@@ -217,10 +215,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            // Get cached ITypedElement from ResourceJsonNode (already created with custom schema provider)
-            // ResourceJsonNode.ToTypedElement() caches the conversion, avoiding repeated allocations
-            // IFhirSchemaProvider extends IStructureDefinitionSummaryProvider, so we can use it directly
-            var typedElement = command.Resource.ToTypedElement(schemaProvider);
+            var typedElement = command.JsonNode.ToTypedElement(schemaProvider);
             searchIndices = searchIndexer.Extract(typedElement);
 
             _logger.LogDebug(
@@ -246,11 +241,10 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.Id,
             "1", // Version will be determined by repository
             DateTimeOffset.UtcNow,
-            command.Resource.ToSourceNode(), // Use cached ISourceNode from ResourceJsonNode
+            command.JsonNode, // Pass ResourceJsonNode directly (data layer serializes as needed)
             request,
             false) // isDeleted
         {
-            RawJson = command.RawJson,
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
             SearchIndices = searchIndices?.ToArray()
         };

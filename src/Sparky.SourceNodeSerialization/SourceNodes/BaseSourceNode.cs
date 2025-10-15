@@ -8,8 +8,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Utility;
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes;
 

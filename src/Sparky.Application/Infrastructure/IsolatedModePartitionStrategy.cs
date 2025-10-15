@@ -3,10 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Sparky.Domain.Abstractions;
 using Sparky.Domain.Models;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Application.Infrastructure;
 
@@ -48,12 +48,12 @@ public class IsolatedModePartitionStrategy : IPartitionStrategy
 
     public RequestPartition DetermineWritePartition(
         PartitionResolutionContext context,
-        ISourceNode resource)
+        ResourceJsonNode resource)
     {
         _logger.LogDebug(
             "Determined write partition for tenant {TenantId}, resourceType {ResourceType}",
             context.TenantId,
-            resource.Name);
+            resource.ResourceType);
 
         return new RequestPartition
         {

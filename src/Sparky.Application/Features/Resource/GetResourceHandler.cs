@@ -14,6 +14,7 @@ namespace Sparky.Application.Features.Resource;
 /// <summary>
 /// Generic handler for retrieving any FHIR resource by type and ID.
 /// Multi-tenant enabled: Uses IPartitionStrategy + IFhirRepositoryFactory.
+/// Returns SearchEntryResult for zero-copy serialization (read path with raw bytes).
 ///
 /// Flow:
 /// 1. Determine partition using IPartitionStrategy (reads tenantId from HttpContext.Items)
@@ -21,7 +22,7 @@ namespace Sparky.Application.Features.Resource;
 /// 3. Get repository from IFhirRepositoryFactory
 /// 4. Execute GetAsync directly (no execution strategy for CRUD)
 /// </summary>
-public class GetResourceHandler : IRequestHandler<GetResourceQuery, ResourceWrapper?>
+public class GetResourceHandler : IRequestHandler<GetResourceQuery, SearchEntryResult?>
 {
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRepositoryFactory _repositoryFactory;
@@ -40,7 +41,7 @@ public class GetResourceHandler : IRequestHandler<GetResourceQuery, ResourceWrap
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<ResourceWrapper?> HandleAsync(GetResourceQuery query, CancellationToken cancellationToken)
+    public async Task<SearchEntryResult?> HandleAsync(GetResourceQuery query, CancellationToken cancellationToken)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("HttpContext is null");
@@ -88,9 +89,9 @@ public class GetResourceHandler : IRequestHandler<GetResourceQuery, ResourceWrap
         // 3. Get repository from factory
         var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
-        // 4. Execute GetAsync directly
+        // 4. Execute GetAsync directly - returns SearchEntryResult with raw bytes for zero-copy serialization
         var key = new ResourceKey(query.ResourceType, query.Id);
-        ResourceWrapper? result = await repository.GetAsync(key, cancellationToken);
+        SearchEntryResult? result = await repository.GetAsync(key, cancellationToken);
 
         if (result == null)
         {

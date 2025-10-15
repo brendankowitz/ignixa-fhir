@@ -8,9 +8,9 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json;
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Utility;
+using Sparky.SourceNodeSerialization.ElementModel;
 using Sparky.SourceNodeSerialization.Utilities;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes;
 

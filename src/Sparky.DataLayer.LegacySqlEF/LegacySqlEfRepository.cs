@@ -9,9 +9,9 @@ using Sparky.DataLayer.LegacySqlEF.Compression;
 using Sparky.DataLayer.LegacySqlEF.Entities;
 using Sparky.DataLayer.LegacySqlEF.Indexing;
 using Sparky.Domain.Abstractions;
-using Sparky.Domain.ElementModel;
 using Sparky.Domain.Models;
 using Sparky.SourceNodeSerialization;
+using Sparky.SourceNodeSerialization.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.DataLayer.LegacySqlEF;
@@ -47,7 +47,7 @@ public class LegacySqlEfRepository : IFhirRepository
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ResourceWrapper?> GetAsync(ResourceKey key, CancellationToken ct = default)
+    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(key);
 
@@ -94,34 +94,22 @@ public class LegacySqlEfRepository : IFhirRepository
             return null;
         }
 
-        // Decompress RawResource
-        var json = _compressor.Decompress(entity.RawResource);
-
-        // Create ResourceWrapper
-        // Note: We're using a simplified approach - storing JSON and creating a placeholder ResourceRequest
-        var request = new ResourceRequest(
-            Method: entity.RequestMethod ?? "GET",
-            Url: $"{key.ResourceType}/{key.Id}");
-
-        // TODO: Parse JSON to create ISourceNode
-        // For now, we'll create a minimal wrapper with just the required fields
-        // In production, we'd parse the JSON to create a proper ISourceNode
-        var wrapper = new ResourceWrapper(
+        // Decompress RawResource to bytes (no parsing!)
+        // Return SearchEntryResult with raw bytes for zero-copy serialization
+        var result = new SearchEntryResult(
             ResourceType: key.ResourceType,
             ResourceId: entity.ResourceId,
             VersionId: entity.Version.ToString(),
-            LastModified: entity.Transaction?.CreateDate ?? DateTimeOffset.UtcNow, // TODO: Get from transaction or entity metadata
-            Resource: ResourceJsonNode.Parse(json).ToSourceNode(),
-            Request: request,
-            IsDeleted: entity.IsDeleted)
+            LastModified: entity.Transaction?.CreateDate ?? DateTimeOffset.UtcNow,
+            ResourceBytes: _compressor.DecompressBytes(entity.RawResource))
         {
-            RawJson = json,
+            IsDeleted = entity.IsDeleted,
             TenantId = key.TenantId,
         };
 
         _logger.LogDebug("Retrieved resource {ResourceType}/{ResourceId} version {Version}", key.ResourceType, key.Id, entity.Version);
 
-        return wrapper;
+        return result;
     }
 
     /// <inheritdoc/>
@@ -131,9 +119,9 @@ public class LegacySqlEfRepository : IFhirRepository
         ArgumentException.ThrowIfNullOrEmpty(resource.ResourceType);
         ArgumentException.ThrowIfNullOrEmpty(resource.ResourceId);
 
-        if (string.IsNullOrEmpty(resource.RawJson))
+        if (resource.Resource == null)
         {
-            throw new ArgumentException("RawJson is required", nameof(resource));
+            throw new ArgumentException("Resource is required", nameof(resource));
         }
 
         _logger.LogDebug("Creating/updating resource {ResourceType}/{ResourceId}", resource.ResourceType, resource.ResourceId);
@@ -158,8 +146,11 @@ public class LegacySqlEfRepository : IFhirRepository
             // TODO: Set HistoryTransactionId
         }
 
+        // Serialize ResourceJsonNode to JSON string
+        string rawJson = System.Text.Json.JsonSerializer.Serialize(resource.Resource);
+
         // Compress JSON
-        var compressedData = _compressor.Compress(resource.RawJson);
+        var compressedData = _compressor.Compress(rawJson);
 
         // Create new version
         var newEntity = new ResourceEntity
@@ -217,7 +208,7 @@ public class LegacySqlEfRepository : IFhirRepository
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
         CancellationToken ct = default)
     {
         // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense
@@ -227,7 +218,7 @@ public class LegacySqlEfRepository : IFhirRepository
 
         var results = new List<ResourceKey>();
 
-        foreach (var (resourceType, resourceId, resource, rawJson, searchIndexes) in operations)
+        foreach (var (resourceType, resourceId, resource, searchIndexes) in operations)
         {
             // Get ResourceTypeId
             var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
@@ -248,6 +239,9 @@ public class LegacySqlEfRepository : IFhirRepository
                 currentEntity.IsHistory = true;
                 // TODO: Set HistoryTransactionId
             }
+
+            // Serialize ResourceJsonNode to JSON string
+            string rawJson = System.Text.Json.JsonSerializer.Serialize(resource);
 
             // Compress JSON
             var compressedData = _compressor.Compress(rawJson);
@@ -344,17 +338,28 @@ public class LegacySqlEfRepository : IFhirRepository
         // Matches legacy stored procedure pattern from MergeResourcesBeginTransaction
 
         // Get next value from sequence (CACHE 1000000 for optimal performance)
-        var sequenceValue = await _context.Database
-            .SqlQuery<int>($"SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence AS Value")
-            .FirstAsync(ct);
+        // Use FromSqlRaw to execute the sequence query directly
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence";
 
-        // Apply composite ID formula (matches legacy pattern):
-        // surrogateId = (milliseconds since 0001-01-01) * 80000 + sequenceValue
-        // High-order bits: timestamp (ensures time-ordered IDs)
-        // Low-order bits: sequence (0-79999, cycles for high throughput)
-        var millisecondsSinceMinValue = (long)(DateTimeOffset.UtcNow - DateTimeOffset.MinValue).TotalMilliseconds;
-        var surrogateId = millisecondsSinceMinValue * 80000 + sequenceValue;
+        await _context.Database.OpenConnectionAsync(ct);
+        try
+        {
+            var result = await command.ExecuteScalarAsync(ct);
+            var sequenceValue = Convert.ToInt32(result);
 
-        return surrogateId;
+            // Apply composite ID formula (matches legacy pattern):
+            // surrogateId = (milliseconds since 0001-01-01) * 80000 + sequenceValue
+            // High-order bits: timestamp (ensures time-ordered IDs)
+            // Low-order bits: sequence (0-79999, cycles for high throughput)
+            var millisecondsSinceMinValue = (long)(DateTimeOffset.UtcNow - DateTimeOffset.MinValue).TotalMilliseconds;
+            var surrogateId = millisecondsSinceMinValue * 80000 + sequenceValue;
+
+            return surrogateId;
+        }
+        finally
+        {
+            await _context.Database.CloseConnectionAsync();
+        }
     }
 }

@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Sparky.Domain.ElementModel;
 using Sparky.Domain.Models;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Domain.Abstractions;
 
@@ -76,5 +76,5 @@ public interface IPartitionStrategy
     /// <returns>RequestPartition with single partition ID to write to</returns>
     RequestPartition DetermineWritePartition(
         PartitionResolutionContext context,
-        ISourceNode resource);
+        ResourceJsonNode resource);
 }

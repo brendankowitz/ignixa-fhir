@@ -1,0 +1,15 @@
+{
+  "resourceType": "Patient",
+  "id": "test-sql-patient",
+  "meta": {
+    "versionId": "1"
+  },
+  "name": [
+    {
+      "family": "TestSQL",
+      "given": ["John", "SQL"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-05-15"
+}

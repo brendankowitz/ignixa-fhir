@@ -39,8 +39,8 @@ public interface IQueryExecutionStrategy
     /// <param name="partition">The partition(s) determined by IPartitionStrategy</param>
     /// <param name="searchOptions">Parsed search parameters and options</param>
     /// <param name="ct">Cancellation token</param>
-    /// <returns>Stream of matching ResourceWrapper instances</returns>
-    IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>(
+    /// <returns>Stream of matching SearchEntryResult instances (raw bytes for zero-copy serialization)</returns>
+    IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         RequestPartition partition,
         TSearchOptions searchOptions,
         CancellationToken ct = default)

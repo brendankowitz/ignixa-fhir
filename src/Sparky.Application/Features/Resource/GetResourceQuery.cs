@@ -11,7 +11,8 @@ namespace Sparky.Application.Features.Resource;
 /// <summary>
 /// Generic query to retrieve a resource by type and ID.
 /// Works for all FHIR resource types (Patient, Observation, Condition, etc.).
+/// Returns SearchEntryResult for zero-copy serialization (read path with raw bytes).
 /// </summary>
 /// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
 /// <param name="Id">The resource ID.</param>
-public record GetResourceQuery(string ResourceType, string Id) : IRequest<ResourceWrapper?>;
+public record GetResourceQuery(string ResourceType, string Id) : IRequest<SearchEntryResult?>;

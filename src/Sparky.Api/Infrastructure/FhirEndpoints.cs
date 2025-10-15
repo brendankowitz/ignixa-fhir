@@ -202,7 +202,7 @@ public static class FhirEndpoints
 
         // Send generic query
         var query = new GetResourceQuery(resourceType, id);
-        ResourceWrapper? result = await mediator.SendAsync(query, ct);
+        SearchEntryResult? result = await mediator.SendAsync(query, ct);
 
         if (result == null)
         {
@@ -214,8 +214,8 @@ public static class FhirEndpoints
         context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
         context.Response.Headers.Append("Last-Modified", result.LastModified.ToString("R"));
 
-        // Return raw JSON
-        return Results.Content(result.RawJson ?? "{}", _contentTypeApplicationFhirJson);
+        // Return raw JSON bytes (zero-copy serialization)
+        return Results.Bytes(result.ResourceBytes, _contentTypeApplicationFhirJson);
     }
 
     /// <summary>
@@ -241,28 +241,22 @@ public static class FhirEndpoints
         }
 
         // Read request body
-        string json;
-        using (var memoryStream = memoryStreamManager.GetStream("request-body"))
+        ResourceJsonNode jsonNode;
+        await using (RecyclableMemoryStream memoryStream = memoryStreamManager.GetStream("request-body"))
         {
             await context.Request.Body.CopyToAsync(memoryStream, ct);
             memoryStream.Position = 0;
-            using var reader = new StreamReader(memoryStream, Encoding.UTF8);
-            json = await reader.ReadToEndAsync(ct);
+            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
         }
 
-        // Parse to ResourceJsonNode to enable caching
-        // Using cached ToSourceNode() prevents repeated ReflectedSourceNode allocations
-        var resourceNode = Sparky.SourceNodeSerialization.SourceNodes.Models.ResourceJsonNode.Parse(json);
-        var sourceNode = resourceNode.ToSourceNode();
-
         // Validate resource type matches
-        if (!string.Equals(sourceNode.Name, resourceType, StringComparison.Ordinal))
+        if (!string.Equals(jsonNode.ResourceType, resourceType, StringComparison.Ordinal))
         {
             logger.LogWarning(
                 "Resource type mismatch: expected '{ExpectedType}', got '{ActualType}'",
                 resourceType,
-                sourceNode.Name);
-            return Results.BadRequest(new { error = $"Resource type must be '{resourceType}', got '{sourceNode.Name}'" });
+                jsonNode.ResourceType);
+            return Results.BadRequest(new { error = $"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'" });
         }
 
         // Extract deferred write coordinator from HttpContext if in bundle context
@@ -271,7 +265,7 @@ public static class FhirEndpoints
             : null;
 
         // Send generic command with optional coordinator
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, resourceNode, json, coordinator);
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, coordinator);
         ResourceKey result = await mediator.SendAsync(command, ct);
 
         // Add ETag header

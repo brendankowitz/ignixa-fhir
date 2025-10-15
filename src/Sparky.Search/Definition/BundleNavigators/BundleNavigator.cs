@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Sparky.Extensions.Models;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Definition.BundleNavigators;
 

@@ -3,16 +3,15 @@
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <!-- Suppress nullable warnings until code is migrated to proper nullable annotations -->
+    <NoWarn>$(NoWarn);CS8600;CS8603;CS8604;CS8618;CS8625;CS8767</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Ensure.That" />
     <PackageReference Include="System.Collections.Immutable" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
   </ItemGroup>
 
 </Project>

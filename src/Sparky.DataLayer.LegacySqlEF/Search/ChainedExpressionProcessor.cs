@@ -122,8 +122,7 @@ public class ChainedExpressionProcessor
         //   - Filter by matching target surrogate IDs
         var referenceQuery = _context.ReferenceSearchParams
             .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId
-                && targetResourceTypeIds.Contains(rsp.ReferenceResourceTypeId ?? 0)
-                && !rsp.IsHistory)
+                && targetResourceTypeIds.Contains(rsp.ReferenceResourceTypeId ?? 0))
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },
@@ -183,8 +182,7 @@ public class ChainedExpressionProcessor
         var reverseReferenceQuery = _context.ReferenceSearchParams
             .Where(rsp => targetResourceTypeIds.Contains(rsp.ResourceTypeId)
                 && targetResourceIds.Contains(rsp.ResourceSurrogateId)
-                && rsp.ReferenceResourceTypeId == sourceResourceTypeId
-                && !rsp.IsHistory)
+                && rsp.ReferenceResourceTypeId == sourceResourceTypeId)
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },

@@ -19,10 +19,12 @@ using Sparky.Specification.Generated;
 using Xunit;
 
 // Namespace aliases to avoid conflicts
-using OurElementModel = Sparky.Domain.ElementModel;
+using OurElementModel = Sparky.SourceNodeSerialization.ElementModel;
 
 // Static using for our extension methods
-using static Sparky.Domain.ElementModel.TypedElementExtensions;
+using static Sparky.SourceNodeSerialization.ElementModel.TypedElementExtensions;
+using ISourceNode = Sparky.SourceNodeSerialization.ElementModel.ISourceNode;
+using ITypedElement = Sparky.SourceNodeSerialization.ElementModel.ITypedElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
@@ -95,7 +97,7 @@ public class MetaJsonNodeTests
         };
         _updatedJson = _patientPoco.ToJson();
 
-        _patientJsonNode = JsonSourceNodeFactory.ParseJsonNode<ResourceJsonNode>(Samples.GetJson("Patient"));
+        _patientJsonNode = JsonSourceNodeFactory.Parse(Samples.GetJson("Patient"));
     }
 
     [Fact]
@@ -140,8 +142,8 @@ public class MetaJsonNodeTests
     public void ReadExtension()
     {
         // Test our implementation
-        OurElementModel.ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson);
-        OurElementModel.ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
+        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson).ToSourceNode();
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
 
         var path = "Resource.meta.extension.where(url = 'http://example.com/deleted-state').where(value = 'soft-deleted')";
 
@@ -167,9 +169,9 @@ public class MetaJsonNodeTests
     public void SourceNode()
     {
         // Use our implementation
-        OurElementModel.ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
-        OurElementModel.ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
-        OurElementModel.ITypedElement familyType = node.Select("Patient.name.family").Single();
+        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
+        ITypedElement familyType = node.Select("Patient.name.family").Single();
 
         // Note: ChildDefinitions extension method not yet implemented - skipping for now
         // Sparky.Domain.Specification.IElementDefinitionSummary[] definitions = familyType.ChildDefinitions(_r4StructureDefinitionSummaryProvider).ToArray();
@@ -183,16 +185,16 @@ public class MetaJsonNodeTests
     public void FindId()
     {
         // Use our implementation
-        OurElementModel.ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
-        OurElementModel.ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
-        OurElementModel.ITypedElement id = node.Select("Resource.id").Single();
+        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
+        ITypedElement id = node.Select("Resource.id").Single();
         Assert.Equal("example", id.Value);
     }
 
     [Fact]
     public void CanFindReferenceValuesInSourceNode()
     {
-        var sourceNode = JsonSourceNodeFactory.ParseJsonNode<ResourceJsonNode>(Samples.GetDefaultObservation().ToJson());
+        var sourceNode = JsonSourceNodeFactory.Parse(Samples.GetDefaultObservation().ToJson());
 
         var references = sourceNode
             .GetReferences();
@@ -215,9 +217,9 @@ public class MetaJsonNodeTests
         var effectiveExpected = sdkTypedElement.Select(effectiveDatePath).Single();
 
         // Our implementation for JSON
-        OurElementModel.ISourceNode sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson());
-        OurElementModel.ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
-        OurElementModel.ITypedElement effectiveActual = node.Select(effectiveDatePath).Single();
+        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson()).ToSourceNode();
+        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
+        ITypedElement effectiveActual = node.Select(effectiveDatePath).Single();
 
         Assert.Equal(effectiveExpected.Value, effectiveActual.Value);
     }

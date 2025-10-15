@@ -66,13 +66,6 @@ public class ReferenceSearchParamEntity
     [Column("ReferenceResourceVersion")]
     public int? ReferenceResourceVersion { get; set; }
 
-    /// <summary>
-    /// Indicates if this index entry is for a historical resource version.
-    /// </summary>
-    [Required]
-    [Column("IsHistory")]
-    public bool IsHistory { get; set; }
-
     // Navigation properties
 
     /// <summary>

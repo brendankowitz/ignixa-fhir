@@ -7,8 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using EnsureThat;
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Specification;
+using Sparky.SourceNodeSerialization.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.SourceNodeSerialization.Extensions;

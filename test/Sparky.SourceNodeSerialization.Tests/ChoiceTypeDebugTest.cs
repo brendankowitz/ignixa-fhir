@@ -10,17 +10,19 @@ using Hl7.Fhir.Serialization;
 using Hl7.Fhir.ElementModel; // SDK ElementModel (ISourceNode, ITypedElement, ToTypedElement extensions)
 using Hl7.FhirPath; // SDK FhirPath extensions
 using Sparky.FhirPath.Evaluation; // Our FhirPath extensions
-using Sparky.Domain.Specification;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
+using Sparky.SourceNodeSerialization.Specification;
 using Sparky.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
 
 // Namespace aliases to avoid conflicts
-using OurElementModel = Sparky.Domain.ElementModel;
+using OurElementModel = Sparky.SourceNodeSerialization.ElementModel;
 
 // Static using for our extension methods
-using static Sparky.Domain.ElementModel.TypedElementExtensions;
+using static Sparky.SourceNodeSerialization.ElementModel.TypedElementExtensions;
+using ISourceNode = Sparky.SourceNodeSerialization.ElementModel.ISourceNode;
+using ITypedElement = Sparky.SourceNodeSerialization.ElementModel.ITypedElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
@@ -210,8 +212,8 @@ public class ChoiceTypeDebugTest
         try
         {
             // Use our ISourceNode for our testing
-            OurElementModel.ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(json);
-            OurElementModel.ITypedElement ourTyped = ourSourceNode.ToTypedElement(_ourProvider);
+            ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
+            ITypedElement ourTyped = ourSourceNode.ToTypedElement(_ourProvider);
             var ourPath = "Resource.meta.extension.where(url = 'http://example.com/deleted-state')";
             var ourResult = ourTyped.Select(ourPath).ToArray();
             _output.WriteLine($"Ours: Found {ourResult.Length} extension(s)");

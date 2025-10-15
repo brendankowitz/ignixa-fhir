@@ -6,8 +6,8 @@
  */
 
 using System.Collections.Concurrent;
-using Sparky.Domain.ElementModel;
 using Sparky.FhirPath.Expressions;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.FhirPath.Evaluation;
 

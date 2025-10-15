@@ -5,7 +5,6 @@
 
 using System.Text;
 using System.Text.Json;
-using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Sparky.Domain.Abstractions;
@@ -13,6 +12,7 @@ using Sparky.Domain.Models;
 using Sparky.Search.Indexing;
 using Sparky.Search.Serialization;
 using Sparky.SourceNodeSerialization;
+using Sparky.SourceNodeSerialization.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.DataLayer.FileSystem.FileSystem;
@@ -60,7 +60,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public async ValueTask<ResourceWrapper?> GetAsync(ResourceKey key, CancellationToken ct = default)
+    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default)
     {
         try
         {
@@ -84,31 +84,26 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             // Read resource from NDJSON file
             string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, key.Id, ct).ConfigureAwait(false);
 
-            // Convert to UTF-8 bytes for zero-copy serialization
+            // Convert to UTF-8 bytes for zero-copy serialization (no parsing!)
             byte[] resourceJsonBytes = Encoding.UTF8.GetBytes(resourceJson);
 
-            // Parse to ResourceJsonNode to enable caching
-            // Using cached ToSourceNode() prevents repeated ReflectedSourceNode allocations
-            var resourceNode = ResourceJsonNode.Parse(resourceJson);
-            ISourceNode sourceNode = resourceNode.ToSourceNode();
-
-            var wrapper = new ResourceWrapper(
-                key.ResourceType,
-                key.Id,
-                metadata.VersionId,
-                metadata.LastModified,
-                sourceNode,
-                metadata.Request,
-                metadata.IsDeleted)
+            // Return SearchEntryResult with raw bytes for zero-copy serialization
+            var result = new SearchEntryResult(
+                ResourceType: key.ResourceType,
+                ResourceId: key.Id,
+                VersionId: metadata.VersionId,
+                LastModified: metadata.LastModified,
+                ResourceBytes: new ReadOnlyMemory<byte>(resourceJsonBytes))
             {
-                RawJson = resourceJson,
-                RawJsonBytes = new ReadOnlyMemory<byte>(resourceJsonBytes)
+                IsDeleted = metadata.IsDeleted,
+                TenantId = key.TenantId,
+                Request = metadata.Request
             };
 
             _logger.LogDebug("Retrieved resource: {ResourceType}/{Id} version {VersionId}",
                 key.ResourceType, key.Id, metadata.VersionId);
 
-            return wrapper;
+            return result;
         }
         catch (Exception ex)
         {
@@ -328,7 +323,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
         CancellationToken ct = default)
     {
         if (operations == null || operations.Count == 0)
@@ -488,7 +483,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string path,
         TransactionId transactionId,
         DateTimeOffset timestamp,
-        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
         bool append,
         CancellationToken ct)
     {
@@ -545,7 +540,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string path,
         TransactionId transactionId,
         DateTimeOffset timestamp,
-        List<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
+        List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
         bool append,
         CancellationToken ct)
     {
@@ -556,7 +551,9 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         // Transaction metadata is stored in /transactions files
         foreach (var operation in operations)
         {
-            await writer.WriteLineAsync(operation.rawJson).ConfigureAwait(false);
+            // Serialize ResourceJsonNode to JSON string
+            string rawJson = JsonSerializer.Serialize(operation.resource, _jsonOptions);
+            await writer.WriteLineAsync(rawJson).ConfigureAwait(false);
         }
 
         await writer.FlushAsync(ct).ConfigureAwait(false);

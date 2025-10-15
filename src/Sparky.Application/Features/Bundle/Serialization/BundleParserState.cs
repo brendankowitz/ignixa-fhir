@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
-using Sparky.Domain.ElementModel;
 using Sparky.SourceNodeSerialization;
+using Sparky.SourceNodeSerialization.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Application.Features.Bundle.Serialization;

@@ -6,7 +6,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Sparky.Extensions.ValueSets;
 using Sparky.FhirPath.Evaluation;
@@ -14,6 +13,7 @@ using Sparky.Search.Definition;
 using Sparky.Search.Indexing.Converters;
 using Sparky.Search.Indexing.SearchValues;
 using Sparky.Search.Models;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Indexing;
 

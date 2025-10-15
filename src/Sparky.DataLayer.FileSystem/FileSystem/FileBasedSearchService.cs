@@ -38,7 +38,7 @@ public class FileBasedSearchService : ISearchService
         _searchQueryInterpreter = new SearchQueryInterpreter();
     }
 
-    public async ValueTask<IReadOnlyList<ResourceWrapper>> SearchAsync<TSearchOptions>(
+    public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         CancellationToken ct = default)
         where TSearchOptions : class
@@ -61,7 +61,7 @@ public class FileBasedSearchService : ISearchService
         if (allMetadata.Count == 0)
         {
             _logger.LogDebug("No resources found for type {ResourceType}", resourceType);
-            return Array.Empty<ResourceWrapper>();
+            return Array.Empty<SearchEntryResult>();
         }
 
         _logger.LogDebug(
@@ -105,7 +105,7 @@ public class FileBasedSearchService : ISearchService
             pagedKeys.Count);
 
         // Step 4: Load ONLY the matching resources (not all resources)
-        var results = new List<ResourceWrapper>();
+        var results = new List<SearchEntryResult>();
         foreach (var key in pagedKeys)
         {
             var resource = await _repository.GetAsync(key, ct);
@@ -124,7 +124,7 @@ public class FileBasedSearchService : ISearchService
         return results;
     }
 
-    public async IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>(
+    public async IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         [EnumeratorCancellation] CancellationToken ct = default)
         where TSearchOptions : class

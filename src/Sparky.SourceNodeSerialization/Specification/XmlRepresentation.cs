@@ -28,7 +28,7 @@
 
 */
 
-namespace Sparky.Domain.Specification;
+namespace Sparky.SourceNodeSerialization.Specification;
 
 /// <summary>
 /// Xml Serialization used for primitive values

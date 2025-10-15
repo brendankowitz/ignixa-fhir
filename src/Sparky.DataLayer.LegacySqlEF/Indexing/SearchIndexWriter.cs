@@ -169,7 +169,6 @@ public class SearchIndexWriter
             SearchParamId = searchParamId,
             Text = text,
             TextOverflow = textOverflow,
-            IsHistory = isHistory,
             IsMin = value.IsMin,
             IsMax = value.IsMax,
         };
@@ -207,7 +206,6 @@ public class SearchIndexWriter
             SystemId = systemId,
             Code = code,
             CodeOverflow = codeOverflow,
-            IsHistory = isHistory,
         };
 
         _context.TokenSearchParams.Add(entity);
@@ -235,7 +233,6 @@ public class SearchIndexWriter
             SingleValue = singleValue,
             LowValue = value.Low ?? 0,
             HighValue = value.High ?? 0,
-            IsHistory = isHistory,
         };
 
         _context.NumberSearchParams.Add(entity);
@@ -265,7 +262,6 @@ public class SearchIndexWriter
             StartDateTime = startDateTime,
             EndDateTime = endDateTime,
             IsLongerThanADay = isLongerThanADay,
-            IsHistory = isHistory,
             IsMin = value.IsMin,
             IsMax = value.IsMax,
         };
@@ -302,7 +298,6 @@ public class SearchIndexWriter
             SingleValue = singleValue,
             LowValue = value.Low ?? 0,
             HighValue = value.High ?? 0,
-            IsHistory = isHistory,
         };
 
         _context.QuantitySearchParams.Add(entity);
@@ -339,7 +334,6 @@ public class SearchIndexWriter
             ReferenceResourceTypeId = referenceResourceTypeId,
             ReferenceResourceId = value.ResourceId,
             ReferenceResourceVersion = referenceResourceVersion,
-            IsHistory = isHistory,
         };
 
         _context.ReferenceSearchParams.Add(entity);
@@ -366,7 +360,6 @@ public class SearchIndexWriter
             ResourceSurrogateId = resourceSurrogateId,
             SearchParamId = searchParamId,
             Uri = uri,
-            IsHistory = isHistory,
         };
 
         _context.UriSearchParams.Add(entity);

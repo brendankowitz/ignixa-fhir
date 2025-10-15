@@ -5,7 +5,7 @@
  * Stores variables and resources available during expression evaluation.
  */
 
-using Sparky.Domain.ElementModel;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.FhirPath.Evaluation;
 

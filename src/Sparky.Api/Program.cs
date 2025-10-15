@@ -13,6 +13,7 @@ using Sparky.Api.Services;
 using Sparky.Application.Features;
 using Sparky.Domain.Abstractions;
 using Sparky.DataLayer.FileSystem.FileSystem;
+using Sparky.DataLayer.LegacySqlEF;
 using Sparky.DataLayer.InMemoryIndex;
 using Sparky.Application.Features.Bundle;
 using Sparky.Application.Features.Bundle.Serialization;
@@ -59,14 +60,38 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<ITenantConfigurationStore>()
         .SingleInstance();
 
-    // Register IFhirRepositoryFactory (creates and caches tenant-specific repositories)
+    // Register individual factory implementations with Named registrations
+    // These are consumed by CompositeRepositoryFactory and CompositeSearchServiceFactory
+    // Named registrations prevent circular dependency with composite factories
     containerBuilder.RegisterType<FileBasedFhirRepositoryFactory>()
-        .As<IFhirRepositoryFactory>()
+        .Named<IFhirRepositoryFactory>("FileSystem")
         .SingleInstance();
 
-    // Register ISearchServiceFactory (creates and caches tenant-specific search services)
     containerBuilder.RegisterType<FileBasedSearchServiceFactory>()
-        .As<ISearchServiceFactory>()
+        .Named<ISearchServiceFactory>("FileSystem")
+        .SingleInstance();
+
+    // LegacySqlEfRepositoryFactory implements both interfaces, register with both names
+    containerBuilder.RegisterType<LegacySqlEfRepositoryFactory>()
+        .Named<IFhirRepositoryFactory>("SqlEf")
+        .Named<ISearchServiceFactory>("SqlEf")
+        .SingleInstance();
+
+    // Register composite factories as main interfaces
+    // Route requests to appropriate storage provider based on tenant configuration
+    // Use lambda registration to resolve named dependencies explicitly
+    containerBuilder.Register<IFhirRepositoryFactory>(c =>
+        new CompositeRepositoryFactory(
+            c.Resolve<ITenantConfigurationStore>(),
+            c.ResolveNamed<IFhirRepositoryFactory>("FileSystem"),
+            c.ResolveNamed<IFhirRepositoryFactory>("SqlEf")))
+        .SingleInstance();
+
+    containerBuilder.Register<ISearchServiceFactory>(c =>
+        new CompositeSearchServiceFactory(
+            c.Resolve<ITenantConfigurationStore>(),
+            c.ResolveNamed<ISearchServiceFactory>("FileSystem"),
+            c.ResolveNamed<ISearchServiceFactory>("SqlEf")))
         .SingleInstance();
 
     // Register IPartitionStrategy based on configured TenantMode (Phase 20 - ADR-2523)
@@ -130,7 +155,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // Generic resource handlers (replaces Patient-specific handlers)
     containerBuilder.RegisterType<GetResourceHandler>()
-        .As<IRequestHandler<GetResourceQuery, ResourceWrapper?>>()
+        .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
         .InstancePerDependency();
 
     containerBuilder.RegisterType<CreateOrUpdateResourceHandler>()

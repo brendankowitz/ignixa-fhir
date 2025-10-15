@@ -7,10 +7,12 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ISourceNode = Sparky.Domain.ElementModel.ISourceNode;
-using ITypedElement = Sparky.Domain.ElementModel.ITypedElement;
-using Sparky.Domain.Specification;
-using Sparky.Domain.ElementModel; // For ToTypedElement extension method
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Specification;
+using ISourceNode = Sparky.SourceNodeSerialization.ElementModel.ISourceNode;
+using ITypedElement = Sparky.SourceNodeSerialization.ElementModel.ITypedElement;
+
+// For ToTypedElement extension method
 
 namespace Sparky.SourceNodeSerialization.SourceNodes.Models;
 
@@ -67,6 +69,6 @@ public class ResourceJsonNode : IExtensionData, IResourceNode
     /// </summary>
     public static ResourceJsonNode Parse(string json)
     {
-        return JsonSourceNodeFactory.ParseJsonNode<ResourceJsonNode>(json);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
     }
 }

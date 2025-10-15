@@ -1,21 +1,27 @@
-using Sparky.Domain.ElementModel;
 using Sparky.Domain.Models;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Domain.Abstractions;
 
 /// <summary>
 /// Core abstraction for FHIR resource storage and retrieval.
 /// Provider-agnostic interface supports file, SQL, Cosmos, and in-memory implementations.
+///
+/// Design Philosophy:
+/// - Write path: Accept ResourceJsonNode (data layer can modify metadata before serialization)
+/// - Read path: Return SearchEntryResult with raw bytes (zero-copy serialization to HTTP response)
 /// </summary>
 public interface IFhirRepository
 {
     /// <summary>
     /// Retrieves a resource by key. Returns null if not found.
+    /// Returns raw JSON bytes + metadata for zero-copy serialization.
     /// </summary>
-    ValueTask<ResourceWrapper?> GetAsync(ResourceKey key, CancellationToken ct = default);
+    ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default);
 
     /// <summary>
     /// Creates or updates a resource. Returns the persisted resource key with version.
+    /// Accepts ResourceJsonNode so data layer can set id/meta before final serialization.
     /// </summary>
     ValueTask<ResourceKey> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default);
 
@@ -31,14 +37,15 @@ public interface IFhirRepository
     /// Batch write operation for bulk resource creation/updates.
     /// Atomically writes multiple resources in a single transaction.
     /// Returns the persisted resource keys with versions in the same order as input.
+    /// Accepts ResourceJsonNode so data layer can set metadata before serialization.
     /// </summary>
     /// <param name="transactionId">Transaction ID to use for this batch (from GetNextTransactionIdAsync).</param>
-    /// <param name="operations">List of resources to write (resourceType, resourceId, resource, rawJson).</param>
+    /// <param name="operations">List of resources to write (resourceType, resourceId, resource, searchIndexes).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>List of resource keys with versions.</returns>
     Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ISourceNode resource, string rawJson, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
         CancellationToken ct = default);
 
     /// <summary>

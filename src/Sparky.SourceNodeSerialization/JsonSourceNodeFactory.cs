@@ -7,7 +7,6 @@ using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Sparky.Domain.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
@@ -23,35 +22,28 @@ public static class JsonSourceNodeFactory
         Encoder = JavaScriptEncoder.Default,
     };
 
-    public static ISourceNode Parse(string json, string name = null)
-    {
-        ResourceJsonNode resource = JsonSerializer.Deserialize<ResourceJsonNode>(json, _jsonSerializerOptions);
-        return new ReflectedSourceNode(resource, name);
-    }
-
-    public static TResource ParseJsonNode<TResource>(string json)
+    public static TResource Parse<TResource>(string json)
         where TResource : ResourceJsonNode
     {
         TResource resource = JsonSerializer.Deserialize<TResource>(json, _jsonSerializerOptions);
         return resource;
     }
 
-    public static async ValueTask<ISourceNode> Parse(Stream jsonReader, string name = null)
-    {
-        ResourceJsonNode resource = await JsonSerializer.DeserializeAsync<ResourceJsonNode>(jsonReader, _jsonSerializerOptions);
-        return new ReflectedSourceNode(resource, name);
-    }
-
-    public static async ValueTask<T> Parse<T>(Stream jsonReader, string name = null)
+    public static async ValueTask<T> Parse<T>(Stream jsonReader)
         where T : ResourceJsonNode
     {
         T resource = await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions);
         return resource;
     }
 
-    public static ISourceNode Create(ResourceJsonNode resource)
+    public static ResourceJsonNode Parse(string json)
     {
-        return new ReflectedSourceNode(resource, null);
+        return Parse<ResourceJsonNode>(json);
+    }
+
+    public static ValueTask<ResourceJsonNode> Parse(Stream jsonReader)
+    {
+        return Parse<ResourceJsonNode>(jsonReader);
     }
 
     public static string SerializeToString(this ResourceJsonNode resource)

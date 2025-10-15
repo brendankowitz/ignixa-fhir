@@ -6,7 +6,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
-using Sparky.Domain.Utility;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes.Models;
 

@@ -4,10 +4,10 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Sparky.Extensions.Models;
 using Sparky.FhirPath.Evaluation;
 using Sparky.Search.Indexing.Converters;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Definition.BundleNavigators;
 

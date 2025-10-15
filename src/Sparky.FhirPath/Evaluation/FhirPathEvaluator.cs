@@ -5,9 +5,9 @@
  * Executes parsed FhirPath AST against ITypedElement trees.
  */
 
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Specification;
 using Sparky.FhirPath.Expressions;
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Specification;
 
 namespace Sparky.FhirPath.Evaluation;
 

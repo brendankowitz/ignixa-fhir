@@ -3,10 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Sparky.Domain.Specification;
-using Sparky.Domain.Utility;
+using Sparky.SourceNodeSerialization.Specification;
+using Sparky.SourceNodeSerialization.Utility;
 
-namespace Sparky.Domain.ElementModel;
+namespace Sparky.SourceNodeSerialization.ElementModel;
 
 /// <summary>
 /// Wraps an ISourceNode and adds type information from a structure definition provider.

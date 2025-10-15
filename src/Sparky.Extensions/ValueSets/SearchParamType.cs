@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
-using Sparky.Domain.Utility;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.Extensions.ValueSets;
 

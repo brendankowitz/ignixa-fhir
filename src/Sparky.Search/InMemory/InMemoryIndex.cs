@@ -5,9 +5,9 @@
 
 using System.Collections.Concurrent;
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Sparky.Domain.Models;
 using Sparky.Search.Indexing;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.InMemory;
 

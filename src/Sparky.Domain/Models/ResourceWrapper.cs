@@ -1,4 +1,4 @@
-using Sparky.Domain.ElementModel;
+using Sparky.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Sparky.Domain.Models;
 
@@ -11,7 +11,7 @@ public record ResourceWrapper(
     string ResourceId,
     string VersionId,
     DateTimeOffset LastModified,
-    ISourceNode Resource,
+    ResourceJsonNode Resource,
     ResourceRequest Request,
     bool IsDeleted = false)
 {

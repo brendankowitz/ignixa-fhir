@@ -44,21 +44,21 @@ public class IterateProcessor
     /// <param name="iterateExpressions">The include/revinclude expressions with :iterate modifier.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>All resources discovered through recursive iteration.</returns>
-    public async Task<List<ResourceWrapper>> ProcessIteratesAsync(
-        IReadOnlyList<ResourceWrapper> mainResults,
+    public async Task<List<SearchEntryResult>> ProcessIteratesAsync(
+        IReadOnlyList<SearchEntryResult> mainResults,
         IReadOnlyList<IncludeExpression> iterateExpressions,
         CancellationToken ct)
     {
         if (mainResults.Count == 0 || iterateExpressions.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Processing {Count} :iterate expressions for {ResultCount} main results",
             iterateExpressions.Count, mainResults.Count);
 
         // Track all resources we've seen (to avoid duplicates and infinite loops)
-        var allResources = new Dictionary<string, ResourceWrapper>();
+        var allResources = new Dictionary<string, SearchEntryResult>();
         foreach (var resource in mainResults)
         {
             var key = $"{resource.ResourceType}/{resource.ResourceId}";
@@ -78,7 +78,7 @@ public class IterateProcessor
             iterationDepth++;
             _logger.LogDebug("Iteration {Depth}: Processing {Count} resources", iterationDepth, currentBatch.Count);
 
-            var newlyDiscovered = new List<ResourceWrapper>();
+            var newlyDiscovered = new List<SearchEntryResult>();
 
             // Process forward includes on current batch
             if (forwardIterates.Count > 0)

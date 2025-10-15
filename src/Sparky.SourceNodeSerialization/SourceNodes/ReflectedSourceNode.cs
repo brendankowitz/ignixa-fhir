@@ -8,7 +8,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json.Serialization;
-using Sparky.Domain.ElementModel;
+using Sparky.SourceNodeSerialization.ElementModel;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
 using Sparky.SourceNodeSerialization.Utilities;
 

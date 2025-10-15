@@ -6,9 +6,7 @@
  * available at https://github.com/FirelyTeam/firely-net-sdk/blob/master/LICENSE
  */
 
-using System.Collections.Generic;
-
-namespace Sparky.Domain.ElementModel;
+namespace Sparky.SourceNodeSerialization.ElementModel;
 
 /// <summary>
 /// A node within a tree of FHIR data.

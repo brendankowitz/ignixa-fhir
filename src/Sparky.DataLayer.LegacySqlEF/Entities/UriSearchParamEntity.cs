@@ -45,13 +45,6 @@ public class UriSearchParamEntity
     [MaxLength(256)]
     public string Uri { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Indicates if this index entry is for a historical resource version.
-    /// </summary>
-    [Required]
-    [Column("IsHistory")]
-    public bool IsHistory { get; set; }
-
     // Navigation properties
 
     /// <summary>

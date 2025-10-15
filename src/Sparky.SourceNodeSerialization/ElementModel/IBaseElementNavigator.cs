@@ -6,12 +6,9 @@
  * available at https://raw.githubusercontent.com/FirelyTeam/firely-net-sdk/master/LICENSE
  */
 
-using System;
-using System.Collections.Generic;
-
 #nullable enable
 
-namespace Sparky.Domain.ElementModel;
+namespace Sparky.SourceNodeSerialization.ElementModel;
 
 /// <summary>
 /// The base interface for <see cref="ITypedElement"/>."/>

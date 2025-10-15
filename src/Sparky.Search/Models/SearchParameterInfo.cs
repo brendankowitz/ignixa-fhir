@@ -6,10 +6,10 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using EnsureThat;
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Utility;
 using Sparky.Extensions.ValueSets;
 using Sparky.Search.Definition.BundleNavigators;
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.Search.Models;
 

@@ -18,6 +18,6 @@ public class JsonSourceNodeFactoryTest
         var json = """{"resourceType":"Patient","id":"123"}""";
         var node = JsonSourceNodeFactory.Parse(json);
         Assert.NotNull(node);
-        Assert.Equal("Patient", node.Name);
+        Assert.Equal("Patient", node.ResourceType);
     }
 }

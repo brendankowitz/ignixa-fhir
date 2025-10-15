@@ -6,9 +6,7 @@
  * available at https://raw.githubusercontent.com/FirelyTeam/firely-net-sdk/master/LICENSE
  */
 
-using System;
-
-namespace Sparky.Domain.Utility;
+namespace Sparky.SourceNodeSerialization.Utility;
 
 /// <summary>
 /// Utility class for creating and unwrapping <see cref="Exception"/> instances.

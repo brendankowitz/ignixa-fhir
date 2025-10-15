@@ -6,8 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Utility;
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.SourceNodeSerialization.SourceNodes;
 

@@ -9,11 +9,12 @@ namespace Sparky.Application.Features.Resource;
 
 /// <summary>
 /// Result of a generic resource search query with streaming support.
+/// Uses SearchEntryResult for zero-copy serialization (read path with raw bytes).
 /// </summary>
-/// <param name="Resources">The async stream of matching resources.</param>
+/// <param name="Resources">The async stream of matching resources (as raw bytes).</param>
 /// <param name="Total">The total count of matching resources (if requested).</param>
 /// <param name="ContinuationToken">Token for fetching the next page of results.</param>
 public record SearchResourcesResult(
-    IAsyncEnumerable<ResourceWrapper> Resources,
+    IAsyncEnumerable<SearchEntryResult> Resources,
     int? Total = null,
     string? ContinuationToken = null);

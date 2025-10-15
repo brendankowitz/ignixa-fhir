@@ -6,16 +6,11 @@
  * available at https://raw.githubusercontent.com/FirelyTeam/firely-net-sdk/master/LICENSE
  */
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 #nullable enable
 
-namespace Sparky.Domain.Utility;
+using System.Diagnostics.CodeAnalysis;
+
+namespace Sparky.SourceNodeSerialization.Utility;
 
 public interface IAnnotated
 {

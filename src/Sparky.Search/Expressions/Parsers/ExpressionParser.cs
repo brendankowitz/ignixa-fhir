@@ -5,7 +5,6 @@
 
 using System.Globalization;
 using EnsureThat;
-using Sparky.Domain.Utility;
 using Sparky.Extensions.Exceptions;
 using Sparky.Extensions.Models;
 using Sparky.Extensions.Schema;
@@ -13,6 +12,7 @@ using Sparky.Extensions.ValueSets;
 using Sparky.Search.Definition;
 using Sparky.Search.Indexing;
 using Sparky.Search.Models;
+using Sparky.SourceNodeSerialization.Utility;
 
 namespace Sparky.Search.Expressions.Parsers;
 

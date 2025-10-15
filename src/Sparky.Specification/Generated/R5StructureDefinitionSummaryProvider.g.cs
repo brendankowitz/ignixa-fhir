@@ -8,9 +8,9 @@
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using Sparky.Domain.Specification;
 using Sparky.Extensions;
 using Sparky.Extensions.Schema;
+using Sparky.SourceNodeSerialization.Specification;
 using Sparky.Specification;
 
 namespace Sparky.Specification.Generated;

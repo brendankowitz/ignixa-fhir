@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Sparky.Extensions;
 using Sparky.Extensions.Exceptions;
@@ -15,6 +14,7 @@ using Sparky.Extensions.Schema;
 using Sparky.Search.Generated;
 using Sparky.Search.Indexing;
 using Sparky.Search.Models;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Definition;
 

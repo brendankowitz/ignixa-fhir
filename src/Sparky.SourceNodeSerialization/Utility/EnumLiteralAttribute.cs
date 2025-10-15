@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Sparky.Domain.Utility;
+namespace Sparky.SourceNodeSerialization.Utility;
 
 /// <summary>
 /// Attribute to specify the literal representation of an enum value for serialization.

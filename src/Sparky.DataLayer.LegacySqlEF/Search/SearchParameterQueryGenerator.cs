@@ -151,7 +151,6 @@ public class SearchParameterQueryGenerator
 
         var query = _context.StringSearchParams
             .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory
                 && EF.Functions.Like(sp.Text, pattern))
             .Select(sp => sp.ResourceSurrogateId);
 
@@ -173,7 +172,6 @@ public class SearchParameterQueryGenerator
 
         var query = _context.TokenSearchParams
             .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory
                 && (code == null || sp.Code == code)
                 && (systemId == null || sp.SystemId == systemId))
             .Select(sp => sp.ResourceSurrogateId);
@@ -186,8 +184,7 @@ public class SearchParameterQueryGenerator
         var value = Convert.ToDecimal(binaryExpr.Value);
 
         var query = _context.NumberSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory);
+            .Where(sp => sp.ResourceTypeId == resourceTypeId);
 
         // Apply comparison based on operator
         query = binaryExpr.BinaryOperator switch
@@ -209,8 +206,7 @@ public class SearchParameterQueryGenerator
         var value = Convert.ToDateTime(binaryExpr.Value);
 
         var query = _context.DateTimeSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory);
+            .Where(sp => sp.ResourceTypeId == resourceTypeId);
 
         // Apply comparison based on operator (range overlap logic for DateTime)
         query = binaryExpr.BinaryOperator switch
@@ -237,8 +233,7 @@ public class SearchParameterQueryGenerator
         // Note: System and Code would need to come from additional expressions in a MultiaryExpression
         // For now, we'll just handle the numeric comparison
         var query = _context.QuantitySearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory);
+            .Where(sp => sp.ResourceTypeId == resourceTypeId);
 
         // Apply comparison based on operator
         query = binaryExpr.BinaryOperator switch
@@ -262,7 +257,6 @@ public class SearchParameterQueryGenerator
     {
         var query = _context.ReferenceSearchParams
             .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory
                 && sp.ReferenceResourceId == referenceResourceId)
             .Select(sp => sp.ResourceSurrogateId);
 
@@ -273,7 +267,6 @@ public class SearchParameterQueryGenerator
     {
         var query = _context.UriSearchParams
             .Where(sp => sp.ResourceTypeId == resourceTypeId
-                && !sp.IsHistory
                 && sp.Uri == uri)
             .Select(sp => sp.ResourceSurrogateId);
 

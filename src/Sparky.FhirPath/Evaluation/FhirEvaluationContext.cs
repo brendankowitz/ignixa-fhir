@@ -4,7 +4,7 @@
  * FHIR-specific evaluation context with support for resolve() and terminology services.
  */
 
-using Sparky.Domain.ElementModel;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.FhirPath.Evaluation;
 

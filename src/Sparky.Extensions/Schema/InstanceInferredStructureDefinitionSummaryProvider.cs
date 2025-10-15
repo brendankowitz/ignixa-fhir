@@ -3,9 +3,11 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using ISourceNode = Sparky.Domain.ElementModel.ISourceNode;
-using Sparky.Domain.Specification;
-using Sparky.Domain.ElementModel; // For GetResourceTypeIndicator extension method
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Specification;
+using ISourceNode = Sparky.SourceNodeSerialization.ElementModel.ISourceNode;
+
+// For GetResourceTypeIndicator extension method
 
 namespace Sparky.Extensions.Schema;
 

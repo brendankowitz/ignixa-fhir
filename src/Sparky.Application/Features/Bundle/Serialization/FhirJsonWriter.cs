@@ -161,12 +161,12 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
     /// Writes a raw JSON property value from pre-serialized UTF-8 bytes.
     /// This enables zero-copy passthrough of already-serialized JSON.
     /// </summary>
-    public FhirJsonWriter WriteRawProperty(string name, ReadOnlySpan<byte> value)
+    public FhirJsonWriter WriteRawProperty(string name, ReadOnlyMemory<byte> value)
     {
         EnsureArg.IsNotNullOrEmpty(name, nameof(name));
 
         _writer.WritePropertyName(name);
-        _writer.WriteRawValue(value, skipInputValidation: true);
+        _writer.WriteRawValue(value.Span, skipInputValidation: false);
 
         return this;
     }

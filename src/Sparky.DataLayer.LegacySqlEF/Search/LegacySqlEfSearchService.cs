@@ -56,7 +56,7 @@ public class LegacySqlEfSearchService : ISearchService
     }
 
     /// <inheritdoc/>
-    public async ValueTask<IReadOnlyList<ResourceWrapper>> SearchAsync<TSearchOptions>(
+    public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         CancellationToken ct = default)
         where TSearchOptions : class
@@ -74,7 +74,7 @@ public class LegacySqlEfSearchService : ISearchService
     }
 
     /// <inheritdoc/>
-    public async IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>(
+    public async IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
         where TSearchOptions : class
@@ -98,14 +98,14 @@ public class LegacySqlEfSearchService : ISearchService
         // Build query
         var query = await BuildQueryAsync(options, resourceTypeId.Value, ct);
 
-        // Stream results
+        // Stream results - return SearchEntryResult directly (raw bytes for zero-copy serialization)
         await foreach (var entity in query.AsAsyncEnumerable().WithCancellation(ct))
         {
             var key = new ResourceKey(options.ResourceType, entity.ResourceId, entity.Version.ToString());
-            var resource = await _repository.GetAsync(key, ct);
-            if (resource != null)
+            var searchResult = await _repository.GetAsync(key, ct);
+            if (searchResult != null)
             {
-                yield return resource;
+                yield return searchResult;
             }
         }
     }
@@ -151,14 +151,14 @@ public class LegacySqlEfSearchService : ISearchService
         return await baseQuery.CountAsync(ct);
     }
 
-    private async Task<List<ResourceWrapper>> SearchInternalAsync(SearchOptions options, CancellationToken ct)
+    private async Task<List<SearchEntryResult>> SearchInternalAsync(SearchOptions options, CancellationToken ct)
     {
         // Get ResourceTypeId
         var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, ct);
         if (!resourceTypeId.HasValue)
         {
             _logger.LogWarning("ResourceType not found: {ResourceType}", options.ResourceType);
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Build query with pagination
@@ -175,15 +175,15 @@ public class LegacySqlEfSearchService : ISearchService
 
         _logger.LogDebug("Found {Count} resources", resourceEntities.Count);
 
-        // Fetch full resources from repository
-        var resources = new List<ResourceWrapper>();
+        // Fetch full resources from repository - return raw bytes for zero-copy serialization
+        var resources = new List<SearchEntryResult>();
         foreach (var entity in resourceEntities)
         {
             var key = new ResourceKey(options.ResourceType, entity.ResourceId, entity.Version.ToString());
-            var resource = await _repository.GetAsync(key, ct);
-            if (resource != null)
+            var searchResult = await _repository.GetAsync(key, ct);
+            if (searchResult != null)
             {
-                resources.Add(resource);
+                resources.Add(searchResult);
             }
         }
 

@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Sparky.Search.Indexing.SearchValues;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Indexing.Converters;
 

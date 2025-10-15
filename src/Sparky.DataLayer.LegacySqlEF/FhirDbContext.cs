@@ -148,6 +148,7 @@ public class FhirDbContext : DbContext
         entity.HasOne(r => r.ResourceType)
             .WithMany(rt => rt.Resources)
             .HasForeignKey(r => r.ResourceTypeId)
+            .HasPrincipalKey(rt => rt.ResourceTypeId)  // FK references ResourceTypeId (unique index), not Name (PK)
             .OnDelete(DeleteBehavior.Restrict);
 
         entity.HasOne(r => r.Transaction)
@@ -241,14 +242,12 @@ public class FhirDbContext : DbContext
         // StringSearchParam
         var stringEntity = modelBuilder.Entity<StringSearchParamEntity>();
         stringEntity.HasKey(s => new { s.ResourceTypeId, s.ResourceSurrogateId, s.SearchParamId, s.Text });
-        stringEntity.Property(s => s.IsHistory).HasDefaultValue(false);
         stringEntity.Property(s => s.IsMin).HasDefaultValue(false);
         stringEntity.Property(s => s.IsMax).HasDefaultValue(false);
 
         // TokenSearchParam
         var tokenEntity = modelBuilder.Entity<TokenSearchParamEntity>();
         tokenEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Code });
-        tokenEntity.Property(t => t.IsHistory).HasDefaultValue(false);
         tokenEntity.ToTable(t => t.HasCheckConstraint(
             "CHK_TokenSearchParam_CodeOverflow",
             "LEN(Code) = 256 OR CodeOverflow IS NULL"));
@@ -256,28 +255,23 @@ public class FhirDbContext : DbContext
         // NumberSearchParam
         var numberEntity = modelBuilder.Entity<NumberSearchParamEntity>();
         numberEntity.HasKey(n => new { n.ResourceTypeId, n.ResourceSurrogateId, n.SearchParamId });
-        numberEntity.Property(n => n.IsHistory).HasDefaultValue(false);
 
         // DateTimeSearchParam
         var dateTimeEntity = modelBuilder.Entity<DateTimeSearchParamEntity>();
         dateTimeEntity.HasKey(d => new { d.ResourceTypeId, d.ResourceSurrogateId, d.SearchParamId, d.StartDateTime });
-        dateTimeEntity.Property(d => d.IsHistory).HasDefaultValue(false);
         dateTimeEntity.Property(d => d.IsMin).HasDefaultValue(false);
         dateTimeEntity.Property(d => d.IsMax).HasDefaultValue(false);
 
         // QuantitySearchParam
         var quantityEntity = modelBuilder.Entity<QuantitySearchParamEntity>();
         quantityEntity.HasKey(q => new { q.ResourceTypeId, q.ResourceSurrogateId, q.SearchParamId });
-        quantityEntity.Property(q => q.IsHistory).HasDefaultValue(false);
 
         // ReferenceSearchParam
         var referenceEntity = modelBuilder.Entity<ReferenceSearchParamEntity>();
         referenceEntity.HasKey(r => new { r.ResourceTypeId, r.ResourceSurrogateId, r.SearchParamId, r.ReferenceResourceId });
-        referenceEntity.Property(r => r.IsHistory).HasDefaultValue(false);
 
         // UriSearchParam
         var uriEntity = modelBuilder.Entity<UriSearchParamEntity>();
         uriEntity.HasKey(u => new { u.ResourceTypeId, u.ResourceSurrogateId, u.SearchParamId, u.Uri });
-        uriEntity.Property(u => u.IsHistory).HasDefaultValue(false);
     }
 }

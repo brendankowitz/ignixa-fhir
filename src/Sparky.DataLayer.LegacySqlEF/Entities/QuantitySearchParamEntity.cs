@@ -75,13 +75,6 @@ public class QuantitySearchParamEntity
     [Precision(36, 18)]
     public decimal HighValue { get; set; }
 
-    /// <summary>
-    /// Indicates if this index entry is for a historical resource version.
-    /// </summary>
-    [Required]
-    [Column("IsHistory")]
-    public bool IsHistory { get; set; }
-
     // Navigation properties
 
     /// <summary>

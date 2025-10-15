@@ -54,4 +54,21 @@ public class GzipResourceCompressor
 
         return Encoding.UTF8.GetString(outputStream.ToArray());
     }
+
+    public ReadOnlyMemory<byte> DecompressBytes(byte[] compressedData)
+    {
+        ArgumentNullException.ThrowIfNull(compressedData);
+
+        if (compressedData.Length == 0)
+        {
+            return ReadOnlyMemory<byte>.Empty;
+        }
+
+        using var inputStream = new MemoryStream(compressedData);
+        using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
+        using var outputStream = new MemoryStream();
+        gzipStream.CopyTo(outputStream);
+
+        return outputStream.ToArray();
+    }
 }

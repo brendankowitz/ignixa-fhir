@@ -285,9 +285,7 @@ public class DeferredWriteCoordinator
                         tuple.Operation.Wrapper.ResourceType,
                         tuple.Operation.Wrapper.ResourceId,
                         tuple.Operation.Wrapper.Resource,
-                        tuple.Operation.Wrapper.RawJson ?? throw new InvalidOperationException(
-                            $"RawJson is null for {tuple.Operation.Wrapper.ResourceType}/{tuple.Operation.Wrapper.ResourceId}"),
-                        tuple.Operation.Wrapper.SearchIndices ?? Array.Empty<object>()
+                        tuple.Operation.Wrapper.SearchIndices ?? (IReadOnlyList<object>)Array.Empty<object>()
                     ))
                     .ToList();
 

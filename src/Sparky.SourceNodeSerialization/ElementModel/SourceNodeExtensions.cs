@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Sparky.Domain.ElementModel;
+namespace Sparky.SourceNodeSerialization.ElementModel;
 
 /// <summary>
 /// Extension methods for ISourceNode.

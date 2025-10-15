@@ -34,7 +34,7 @@ public class PassthroughExecutionStrategy : IQueryExecutionStrategy
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>(
+    public async IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         RequestPartition partition,
         TSearchOptions searchOptions,
         [EnumeratorCancellation] CancellationToken ct = default)

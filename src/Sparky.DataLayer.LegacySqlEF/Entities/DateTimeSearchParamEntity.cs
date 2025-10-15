@@ -59,13 +59,6 @@ public class DateTimeSearchParamEntity
     public bool IsLongerThanADay { get; set; }
 
     /// <summary>
-    /// Indicates if this index entry is for a historical resource version.
-    /// </summary>
-    [Required]
-    [Column("IsHistory")]
-    public bool IsHistory { get; set; }
-
-    /// <summary>
     /// Indicates if this is the minimum value for range searches.
     /// </summary>
     [Required]

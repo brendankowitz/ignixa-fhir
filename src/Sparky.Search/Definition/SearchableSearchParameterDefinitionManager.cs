@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Sparky.Search.Indexing;
 using Sparky.Search.Models;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Definition;
 

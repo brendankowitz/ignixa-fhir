@@ -6,11 +6,11 @@
  * available at https://raw.githubusercontent.com/FirelyTeam/firely-net-sdk/master/LICENSE
  */
 
-using Sparky.Domain.Specification;
-
 #nullable enable
 
-namespace Sparky.Domain.ElementModel;
+using Sparky.SourceNodeSerialization.Specification;
+
+namespace Sparky.SourceNodeSerialization.ElementModel;
 
 /// <summary>
 /// A element within a tree of typed FHIR data.

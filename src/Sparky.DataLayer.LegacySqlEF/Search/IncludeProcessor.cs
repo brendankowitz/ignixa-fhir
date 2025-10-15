@@ -44,25 +44,26 @@ public class IncludeProcessor
 
     /// <summary>
     /// Processes _include expressions and returns included resources.
+    /// Returns raw bytes for zero-copy serialization.
     /// </summary>
     /// <param name="mainResults">The main search results to include from.</param>
     /// <param name="includeExpressions">The include expressions to process.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>A list of included resources.</returns>
-    public async Task<List<ResourceWrapper>> ProcessIncludesAsync(
-        IReadOnlyList<ResourceWrapper> mainResults,
+    /// <returns>A list of included resources with raw bytes.</returns>
+    public async Task<List<SearchEntryResult>> ProcessIncludesAsync(
+        IReadOnlyList<SearchEntryResult> mainResults,
         IReadOnlyList<IncludeExpression> includeExpressions,
         CancellationToken ct)
     {
         if (mainResults.Count == 0 || includeExpressions.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Processing {Count} _include expressions for {ResultCount} main results",
             includeExpressions.Count, mainResults.Count);
 
-        var includedResources = new List<ResourceWrapper>();
+        var includedResources = new List<SearchEntryResult>();
         var processedResourceKeys = new HashSet<string>(); // Track to avoid duplicates
 
         foreach (var includeExpr in includeExpressions.Where(e => !e.Iterate && !e.Reversed))
@@ -86,8 +87,8 @@ public class IncludeProcessor
     /// <summary>
     /// Processes a single _include expression.
     /// </summary>
-    private async Task<List<ResourceWrapper>> ProcessSingleIncludeAsync(
-        IReadOnlyList<ResourceWrapper> mainResults,
+    private async Task<List<SearchEntryResult>> ProcessSingleIncludeAsync(
+        IReadOnlyList<SearchEntryResult> mainResults,
         IncludeExpression includeExpr,
         CancellationToken ct)
     {
@@ -101,7 +102,7 @@ public class IncludeProcessor
         if (!sourceResourceTypeId.HasValue)
         {
             _logger.LogWarning("Source resource type not found: {Type}", includeExpr.SourceResourceType);
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         var sourceResourceIds = mainResults
@@ -111,7 +112,7 @@ public class IncludeProcessor
 
         if (sourceResourceIds.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Step 2: Find resource surrogate IDs for these resource IDs
@@ -125,7 +126,7 @@ public class IncludeProcessor
 
         if (sourceSurrogateIds.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Step 3: Extract reference targets from ReferenceSearchParam table
@@ -136,7 +137,6 @@ public class IncludeProcessor
             // Wildcard include: fetch all referenced resources
             targetReferences = await _context.ReferenceSearchParams
                 .Where(rsp => sourceSurrogateIds.Contains(rsp.ResourceSurrogateId)
-                    && !rsp.IsHistory
                     && rsp.ReferenceResourceTypeId != null)
                 .Select(rsp => new ValueTuple<short, string>(
                     rsp.ReferenceResourceTypeId ?? 0,
@@ -157,7 +157,6 @@ public class IncludeProcessor
             // Query reference table filtered by target type if specified
             var referenceQuery = _context.ReferenceSearchParams
                 .Where(rsp => sourceSurrogateIds.Contains(rsp.ResourceSurrogateId)
-                    && !rsp.IsHistory
                     && rsp.ReferenceResourceTypeId != null);
 
             if (targetResourceTypeId.HasValue)
@@ -176,13 +175,13 @@ public class IncludeProcessor
         if (targetReferences.Count == 0)
         {
             _logger.LogDebug("No references found for include");
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Found {Count} unique references to include", targetReferences.Count);
 
-        // Step 4: Fetch target resources
-        var includedResources = new List<ResourceWrapper>();
+        // Step 4: Fetch target resources - return raw bytes for zero-copy serialization
+        var includedResources = new List<SearchEntryResult>();
 
         // Group by resource type for efficient fetching
         var referencesByType = targetReferences.GroupBy(r => r.Item1);
@@ -199,14 +198,14 @@ public class IncludeProcessor
                 continue;
             }
 
-            // Fetch resources from repository
+            // Fetch resources from repository - return raw bytes for zero-copy serialization
             foreach (var resourceId in resourceIds)
             {
                 var key = new ResourceKey(resourceTypeName, resourceId);
-                var resource = await _repository.GetAsync(key, ct);
-                if (resource != null)
+                var searchResult = await _repository.GetAsync(key, ct);
+                if (searchResult != null)
                 {
-                    includedResources.Add(resource);
+                    includedResources.Add(searchResult);
                 }
             }
         }

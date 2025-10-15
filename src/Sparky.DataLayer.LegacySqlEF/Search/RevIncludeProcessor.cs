@@ -49,20 +49,20 @@ public class RevIncludeProcessor
     /// <param name="revIncludeExpressions">The revinclude expressions to process.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A list of resources that reference the main results.</returns>
-    public async Task<List<ResourceWrapper>> ProcessRevIncludesAsync(
-        IReadOnlyList<ResourceWrapper> mainResults,
+    public async Task<List<SearchEntryResult>> ProcessRevIncludesAsync(
+        IReadOnlyList<SearchEntryResult> mainResults,
         IReadOnlyList<IncludeExpression> revIncludeExpressions,
         CancellationToken ct)
     {
         if (mainResults.Count == 0 || revIncludeExpressions.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Processing {Count} _revinclude expressions for {ResultCount} main results",
             revIncludeExpressions.Count, mainResults.Count);
 
-        var revIncludedResources = new List<ResourceWrapper>();
+        var revIncludedResources = new List<SearchEntryResult>();
         var processedResourceKeys = new HashSet<string>(); // Track to avoid duplicates
 
         foreach (var revIncludeExpr in revIncludeExpressions.Where(e => !e.Iterate && e.Reversed))
@@ -94,8 +94,8 @@ public class RevIncludeProcessor
     ///   - TargetResourceType: Patient (the main search type)
     ///   - Find Observations that reference these Patients
     /// </remarks>
-    private async Task<List<ResourceWrapper>> ProcessSingleRevIncludeAsync(
-        IReadOnlyList<ResourceWrapper> mainResults,
+    private async Task<List<SearchEntryResult>> ProcessSingleRevIncludeAsync(
+        IReadOnlyList<SearchEntryResult> mainResults,
         IncludeExpression revIncludeExpr,
         CancellationToken ct)
     {
@@ -109,7 +109,7 @@ public class RevIncludeProcessor
         if (!targetResourceTypeId.HasValue)
         {
             _logger.LogWarning("Target resource type not found: {Type}", revIncludeExpr.TargetResourceType);
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Step 2: Get main result resource IDs that we want to find references to
@@ -120,7 +120,7 @@ public class RevIncludeProcessor
 
         if (targetResourceIds.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Step 3: Find resource surrogate IDs for target resources
@@ -134,7 +134,7 @@ public class RevIncludeProcessor
 
         if (targetSurrogateIds.Count == 0)
         {
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Step 4: Get source resource type ID (the type that references the main results)
@@ -142,7 +142,7 @@ public class RevIncludeProcessor
         if (!sourceResourceTypeId.HasValue)
         {
             _logger.LogWarning("Source resource type not found: {Type}", revIncludeExpr.SourceResourceType);
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         // Step 5: Find references FROM source type TO target resources
@@ -153,8 +153,7 @@ public class RevIncludeProcessor
         //   - Filter by target surrogate IDs (the main results we're finding references to)
         var referencingResourceIds = await _context.ReferenceSearchParams
             .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value
-                && rsp.ReferenceResourceTypeId == targetResourceTypeId.Value
-                && !rsp.IsHistory)
+                && rsp.ReferenceResourceTypeId == targetResourceTypeId.Value)
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },
@@ -167,7 +166,7 @@ public class RevIncludeProcessor
         if (referencingResourceIds.Count == 0)
         {
             _logger.LogDebug("No reverse references found");
-            return new List<ResourceWrapper>();
+            return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Found {Count} unique reverse references", referencingResourceIds.Count);
@@ -180,7 +179,7 @@ public class RevIncludeProcessor
             .Select(r => new { r.ResourceId, r.Version })
             .ToListAsync(ct);
 
-        var revIncludedResources = new List<ResourceWrapper>();
+        var revIncludedResources = new List<SearchEntryResult>();
         foreach (var entity in referencingEntities)
         {
             var key = new ResourceKey(revIncludeExpr.SourceResourceType, entity.ResourceId);

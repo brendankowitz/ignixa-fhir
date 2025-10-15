@@ -5,8 +5,8 @@
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using Sparky.Domain.ElementModel;
-using Sparky.Domain.Specification;
+using Sparky.SourceNodeSerialization.ElementModel;
+using Sparky.SourceNodeSerialization.Specification;
 
 namespace Sparky.Validation.SourceNodeValidation;
 

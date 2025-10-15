@@ -4,11 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using ISourceNode = Sparky.Domain.ElementModel.ISourceNode;
-using ITypedElement = Sparky.Domain.ElementModel.ITypedElement;
+using ISourceNode = Sparky.SourceNodeSerialization.ElementModel.ISourceNode;
+using ITypedElement = Sparky.SourceNodeSerialization.ElementModel.ITypedElement;
 using Sparky.Extensions.Schema;
 using Sparky.Search.Indexing.SearchValues;
-using Sparky.Domain.ElementModel; // For ToTypedElement extension method
+using Sparky.SourceNodeSerialization.ElementModel;
+// For ToTypedElement extension method
 using Sparky.SourceNodeSerialization.SourceNodes.Models; // For ResourceJsonNode
 
 namespace Sparky.Search.Indexing;

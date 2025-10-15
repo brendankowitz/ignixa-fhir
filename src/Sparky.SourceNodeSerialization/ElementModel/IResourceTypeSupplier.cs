@@ -6,10 +6,7 @@
  * available at https://github.com/FirelyTeam/firely-net-sdk/blob/master/LICENSE
  */
 
-using System;
-using System.Collections.Generic;
-
-namespace Sparky.Domain.ElementModel;
+namespace Sparky.SourceNodeSerialization.ElementModel;
 
 /// <summary>
 /// This interface is implemented by FHIR parsers to represent the resource type indicator

@@ -5,11 +5,11 @@
 
 using System.Collections.Concurrent;
 using EnsureThat;
-using Sparky.Domain.ElementModel;
 using Microsoft.Extensions.Logging;
 using Sparky.Extensions;
 using Sparky.Extensions.Schema;
 using Sparky.Search.Models;
+using Sparky.SourceNodeSerialization.ElementModel;
 
 namespace Sparky.Search.Definition;
 

@@ -37,7 +37,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -60,7 +60,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -83,7 +83,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -111,7 +111,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -133,7 +133,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -166,7 +166,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -197,7 +197,7 @@ public class FastPathValidatorTests
         }
         """;
 
-        var node = JsonSourceNodeFactory.Parse(json);
+        var node = JsonSourceNodeFactory.Parse(json).ToSourceNode();
 
         // Act
         var result = _validator.Validate(node, _provider);
@@ -217,8 +217,8 @@ public class FastPathValidatorTests
         string json1 = """{"resourceType": "Patient", "id": "patient-1"}""";
         string json2 = """{"resourceType": "Patient", "id": "patient-2"}""";
 
-        var node1 = JsonSourceNodeFactory.Parse(json1);
-        var node2 = JsonSourceNodeFactory.Parse(json2);
+        var node1 = JsonSourceNodeFactory.Parse(json1).ToSourceNode();
+        var node2 = JsonSourceNodeFactory.Parse(json2).ToSourceNode();
 
         // Act - First validation builds rules
         var result1 = _validator.Validate(node1, _provider);

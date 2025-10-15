@@ -5,23 +5,25 @@
 
 #pragma warning disable CA1707 // Identifiers should not contain underscores (standard xUnit naming pattern)
 
-using Sparky.Domain.Specification;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Hl7.Fhir.ElementModel; // SDK ElementModel (ISourceNode, ITypedElement, ToTypedElement extensions)
 using Hl7.FhirPath; // SDK FhirPath extensions
 using Sparky.FhirPath.Evaluation; // Our FhirPath extensions
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
+using Sparky.SourceNodeSerialization.Specification;
 using Sparky.SourceNodeSerialization.Tests.TestData;
 using Sparky.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
 
 // Namespace aliases to avoid conflicts
-using OurElementModel = Sparky.Domain.ElementModel;
+using OurElementModel = Sparky.SourceNodeSerialization.ElementModel;
 
 // Static using for our extension methods
-using static Sparky.Domain.ElementModel.TypedElementExtensions;
+using static Sparky.SourceNodeSerialization.ElementModel.TypedElementExtensions;
+using ISourceNode = Sparky.SourceNodeSerialization.ElementModel.ISourceNode;
+using ITypedElement = Sparky.SourceNodeSerialization.ElementModel.ITypedElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
@@ -106,9 +108,9 @@ public class R4StructureDefinitionProviderComparisonTests
         var patientJson = Samples.GetJson("Patient");
 
         // Our implementation
-        OurElementModel.ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(patientJson);
-        OurElementModel.ITypedElement ourTypedElement = ourSourceNode.ToTypedElement(_ourProvider);
-        OurElementModel.ITypedElement ourId = ourTypedElement.Select("Patient.id").SingleOrDefault();
+        ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(patientJson).ToSourceNode();
+        ITypedElement ourTypedElement = ourSourceNode.ToTypedElement(_ourProvider);
+        ITypedElement ourId = ourTypedElement.Select("Patient.id").SingleOrDefault();
 
         // SDK implementation
         SdkISourceNode firelySourceNode = Hl7.Fhir.Serialization.FhirJsonNode.Parse(patientJson);
