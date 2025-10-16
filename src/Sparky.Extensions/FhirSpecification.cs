@@ -37,12 +37,22 @@ public static class FhirSpecificationExtensions
 
     /// <summary>
     /// Converts version string to FhirSpecification enum.
+    /// Supports both major.minor (e.g., "4.0") and major.minor.patch (e.g., "4.0.1") formats.
     /// </summary>
-    /// <param name="versionString">Version string (e.g., "4.0", "5.0", "3.0").</param>
+    /// <param name="versionString">Version string (e.g., "4.0", "4.0.1", "5.0", "3.0.2").</param>
     /// <returns>FhirSpecification enum value. Defaults to R4 for unknown versions.</returns>
     public static FhirSpecification FromVersionString(string versionString)
     {
-        return versionString switch
+        if (string.IsNullOrEmpty(versionString))
+        {
+            return FhirSpecification.R4; // Default to R4
+        }
+
+        // Extract major.minor by taking first 3 characters or until second dot
+        // "3.0" -> "3.0", "3.0.2" -> "3.0", "4.0.1" -> "4.0", "4.3.0" -> "4.3"
+        var majorMinor = versionString.Length >= 3 ? versionString.Substring(0, 3) : versionString;
+
+        return majorMinor switch
         {
             "3.0" => FhirSpecification.Stu3,
             "4.0" => FhirSpecification.R4,

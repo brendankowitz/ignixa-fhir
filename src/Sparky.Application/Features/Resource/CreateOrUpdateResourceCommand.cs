@@ -5,6 +5,7 @@
 
 using Medino;
 using Sparky.Application.Features.Bundle;
+using Sparky.Domain.Abstractions;
 using Sparky.Domain.Models;
 using Sparky.SourceNodeSerialization;
 using Sparky.SourceNodeSerialization.SourceNodes.Models;
@@ -24,4 +25,13 @@ public record CreateOrUpdateResourceCommand(
     string ResourceType,
     string Id,
     ResourceJsonNode JsonNode,
-    DeferredWriteCoordinator? Coordinator = null) : IRequest<ResourceKey>;
+    DeferredWriteCoordinator? Coordinator = null) : IRequest<ResourceKey>, IRequireCapability
+{
+    /// <summary>
+    /// Returns FHIRPath expression to validate update capability for this resource type.
+    /// Checks if CapabilityStatement advertises 'update' interaction for the resource type.
+    /// Note: FHIR PUT is an upsert operation (create-or-update), but we check 'update' as it's more restrictive.
+    /// </summary>
+    public string GetCapabilityRequirementExpression() =>
+        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'update').exists()";
+}

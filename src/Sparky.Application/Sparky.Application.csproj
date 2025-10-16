@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
     <ProjectReference Include="..\Sparky.DataLayer.FileSystem\Sparky.DataLayer.FileSystem.csproj" />
+    <ProjectReference Include="..\Sparky.FhirPath\Sparky.FhirPath.csproj" />
     <ProjectReference Include="..\Sparky.Search\Sparky.Search.csproj" />
     <ProjectReference Include="..\Sparky.Specification\Sparky.Specification.csproj" />
     <ProjectReference Include="..\Sparky.Validation\Sparky.Validation.csproj" />
@@ -13,6 +14,7 @@
     <PackageReference Include="Medino" />
     <PackageReference Include="Microsoft.AspNetCore.Http" />
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

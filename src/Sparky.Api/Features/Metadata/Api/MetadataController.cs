@@ -1,71 +1,94 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation.All rights reserved.
-// Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Reflection;
+using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Sparky.Application.Features.Metadata;
+using Sparky.Application.Features.Metadata.Serialization;
+using Sparky.Extensions;
 
 namespace Sparky.Api.Features.Metadata.Api;
 
+/// <summary>
+/// Controller for FHIR metadata endpoints (CapabilityStatement).
+/// Supports both tenant-agnostic (/metadata) and tenant-explicit (/tenant/{tenantId}/metadata) routes.
+/// </summary>
 [ApiController]
-[Route("[controller]")]
 public class MetadataController : ControllerBase
 {
+    private readonly IMediator _mediator;
     private readonly ILogger<MetadataController> _logger;
-    private static readonly Lazy<string> CapabilityStatement = new(() => LoadCapabilityStatement());
 
-    public MetadataController(ILogger<MetadataController> logger)
+    public MetadataController(
+        IMediator mediator,
+        ILogger<MetadataController> logger)
     {
+        _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
     /// GET /metadata
-    /// Returns the FHIR server's capability statement.
+    /// Returns the FHIR server's capability statement (tenant-agnostic).
+    /// In multi-tenant scenarios, returns system-wide capabilities.
+    /// In single-tenant scenarios, returns the single tenant's capabilities.
     /// </summary>
-    [HttpGet]
+    [HttpGet("metadata")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult Get()
+    public async Task<IActionResult> GetMetadata(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("GET /metadata");
+        _logger.LogInformation("GET /metadata (tenant-agnostic)");
 
-        return Content(CapabilityStatement.Value, "application/fhir+json");
-    }
-
-    private static string LoadCapabilityStatement()
-    {
-        var assembly = typeof(MetadataController).Assembly;
-        var resourceName = "Sparky.Api.Data.BaseCapabilities.json";
-
-        using var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null)
+        // Check if TenantId was resolved by TenantResolutionMiddleware (single-tenant auto-detect)
+        int? tenantId = null;
+        if (HttpContext.Items.TryGetValue("TenantId", out var tenantIdObj) &&
+            tenantIdObj is int resolvedTenantId)
         {
-            // Return a minimal capability statement if embedded resource not found
-            return """
-            {
-              "resourceType": "CapabilityStatement",
-              "status": "active",
-              "date": "2025-10-09",
-              "kind": "instance",
-              "fhirVersion": "4.0.1",
-              "format": ["application/fhir+json"],
-              "rest": [{
-                "mode": "server",
-                "resource": [{
-                  "type": "Patient",
-                  "interaction": [
-                    { "code": "read" },
-                    { "code": "update" },
-                    { "code": "create" }
-                  ]
-                }]
-              }]
-            }
-            """;
+            tenantId = resolvedTenantId;
+            _logger.LogDebug("Tenant auto-detected: {TenantId}", tenantId);
         }
 
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        var query = new GetCapabilityStatementQuery(tenantId);
+        var capabilityStatement = await _mediator.SendAsync(query, cancellationToken);
+
+        // Extract FHIR version from CapabilityStatement and use version-aware serialization
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(capabilityStatement.FhirVersion ?? "4.0");
+        var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
+
+        return new JsonResult(capabilityStatement, serializerOptions)
+        {
+            ContentType = "application/fhir+json",
+        };
+    }
+
+    /// <summary>
+    /// GET /tenant/{tenantId}/metadata
+    /// Returns the FHIR server's capability statement for a specific tenant.
+    /// </summary>
+    [HttpGet("tenant/{tenantId:int}/metadata")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetTenantMetadata(
+        int tenantId,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("GET /tenant/{TenantId}/metadata", tenantId);
+
+        // TenantResolutionMiddleware already validated the tenant exists and is active
+        // The tenantId is stored in HttpContext.Items
+
+        var query = new GetCapabilityStatementQuery(tenantId);
+        var capabilityStatement = await _mediator.SendAsync(query, cancellationToken);
+
+        // Extract FHIR version from CapabilityStatement and use version-aware serialization
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(capabilityStatement.FhirVersion ?? "4.0");
+        var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
+
+        return new JsonResult(capabilityStatement, serializerOptions)
+        {
+            ContentType = "application/fhir+json",
+        };
     }
 }

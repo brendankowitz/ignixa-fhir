@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
+using Sparky.Domain.Abstractions;
 using Sparky.Search.Models;
 
 namespace Sparky.Application.Features.Resource;
@@ -14,4 +15,12 @@ namespace Sparky.Application.Features.Resource;
 /// </summary>
 /// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
 /// <param name="SearchOptions">The search options parsed from query parameters.</param>
-public record SearchResourcesQuery(string ResourceType, SearchOptions SearchOptions) : IRequest<SearchResourcesResult>;
+public record SearchResourcesQuery(string ResourceType, SearchOptions SearchOptions) : IRequest<SearchResourcesResult>, IRequireCapability
+{
+    /// <summary>
+    /// Returns FHIRPath expression to validate search-type capability for this resource type.
+    /// Checks if CapabilityStatement advertises 'search-type' interaction for the resource type.
+    /// </summary>
+    public string GetCapabilityRequirementExpression() =>
+        $"rest.resource.where(type = '{ResourceType}').interaction.where(code = 'search-type').exists()";
+}

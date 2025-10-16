@@ -123,6 +123,13 @@ All.sln (9 projects)
 - **DataLayer** depends only on Domain (storage implementations)
 - **API** depends on all layers (HTTP concerns)
 
+**IMPORTANT**: Do NOT add Firely SDK (`Hl7.Fhir.R4`, `Hl7.Fhir.R4B`, `Hl7.Fhir.R5`, `Hl7.Fhir.STU3`) package references to ANY layer. The codebase uses custom implementations in `Sparky.*` projects:
+- **ITypedElement**: `Sparky.SourceNodeSerialization.ElementModel.ITypedElement` (not SDK's)
+- **FHIRPath**: `Sparky.FhirPath.Evaluation` (not SDK's `Hl7.FhirPath`)
+- **Schema**: `Sparky.Specification` (custom generated providers)
+
+Only projects that explicitly need SDK types (e.g., `Sparky.Domain` for POCO models) should reference it. If you encounter a missing type error, use Sparky's equivalents, not the SDK.
+
 ### 2. Feature Folders
 - Organize by feature/capability (Patient, Observation, etc.)
 - Each feature contains Api, Application, and optional Domain folders

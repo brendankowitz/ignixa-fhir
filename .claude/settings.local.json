@@ -55,7 +55,9 @@
       "Read(//c/**)",
       "Bash(Get-Content \"C:\\Src\\fhir-server-contrib\\src\\Sparky.Search\\Data\\R4\\search-parameters.json\")",
       "Bash(awk:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(cmd /c \"netstat -ano | findstr :5000\")",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

@@ -35,6 +35,9 @@ builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// Register MemoryCache for CapabilityStatement caching (Phase 1.2)
+builder.Services.AddMemoryCache();
+
 // Register RecyclableMemoryStreamManager as singleton
 builder.Services.AddSingleton<RecyclableMemoryStreamManager>();
 
@@ -216,6 +219,63 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // are now created by SearchOptionsBuilderFactory with version-specific dependencies
     // No longer registered in DI container - factory creates them per (tenant, version) pair
 
+    // PHASE 1.2: Segmented CapabilityStatement with Smart Caching
+
+    // Register capability cache (Phase 1.2: in-memory, Phase 7: Redis)
+    containerBuilder.RegisterType<Sparky.Application.Infrastructure.Caching.MemoryCapabilityCache>()
+        .As<Sparky.Application.Infrastructure.Caching.ICapabilityCache>()
+        .SingleInstance();
+
+    // Register capability segments (ordered by priority)
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.Segments.StaticCapabilitySegment>()
+        .As<Sparky.Application.Features.Metadata.Segments.ICapabilitySegment>()
+        .SingleInstance();
+
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.Segments.ResourceInteractionCapabilitySegment>()
+        .As<Sparky.Application.Features.Metadata.Segments.ICapabilitySegment>()
+        .SingleInstance();
+
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.Segments.SearchParameterCapabilitySegment>()
+        .As<Sparky.Application.Features.Metadata.Segments.ICapabilitySegment>()
+        .SingleInstance();
+
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.Segments.ProfileCapabilitySegment>()
+        .As<Sparky.Application.Features.Metadata.Segments.ICapabilitySegment>()
+        .SingleInstance();
+
+    // Register CapabilityStatementService (orchestrates segments + caching)
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.CapabilityStatementService>()
+        .AsSelf()
+        .SingleInstance();
+
+    // PHASE 3: Capability Enforcement with FHIRPath
+
+    // Register CapabilityEnforcementBehavior (Medino pipeline behavior)
+    // Validates all Medino requests by evaluating FHIRPath expressions against CapabilityStatement
+    // Commands/queries implement IRequiresCapability to declare their capability requirements
+    // No brittle pattern matching - each command self-declares its FHIRPath expression
+    containerBuilder.RegisterGeneric(typeof(CapabilityEnforcementBehavior<,>))
+        .As(typeof(IPipelineBehavior<,>))
+        .InstancePerDependency();
+
+    // Register capability cache invalidator (Phase 3)
+    containerBuilder.RegisterType<Sparky.Application.Infrastructure.Caching.CapabilityCacheInvalidator>()
+        .As<Sparky.Application.Infrastructure.Caching.ICapabilityCacheInvalidator>()
+        .SingleInstance();
+
+    // Register GetCapabilityStatementHandler (uses service)
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.GetCapabilityStatementHandler>()
+        .As<IRequestHandler<Sparky.Application.Features.Metadata.GetCapabilityStatementQuery, Sparky.Application.Features.Metadata.Models.CapabilityStatementJsonNode>>()
+        .InstancePerDependency();
+
+    // OLD: CapabilityStatementBuilder - marked obsolete, will be removed in Phase 3
+    // Kept for reference during Phase 1.2 migration
+#pragma warning disable CS0618 // Type or member is obsolete
+    containerBuilder.RegisterType<Sparky.Application.Features.Metadata.CapabilityStatementBuilder>()
+        .AsSelf()
+        .SingleInstance();
+#pragma warning restore CS0618 // Type or member is obsolete
+
     // Register FastPathValidator (SourceNodeValidation version - fixes missing property bug)
     // Registered as singleton - caches rules per (resourceType, provider) pair
     // Provider is passed at runtime via Validate(node, provider) to support multi-version requests
@@ -266,6 +326,11 @@ app.UseFhirExceptionHandler();
 // Extracts tenantId from route, validates tenant exists and is active
 // Stores tenant context in HttpContext.Items for downstream handlers
 app.UseMiddleware<TenantResolutionMiddleware>();
+
+// CAPABILITY ENFORCEMENT (Phase 3 - ADR-2506)
+// Now handled by CapabilityEnforcementBehavior (Medino pipeline behavior)
+// Commands/queries implement IRequiresCapability and declare FHIRPath expressions
+// Behavior validates requests against CapabilityStatement before executing handlers
 
 if (app.Environment.IsDevelopment())
 {
