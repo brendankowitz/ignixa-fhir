@@ -61,7 +61,50 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
 
     public IEnumerable<ITypedElement> Children(string? name = null)
     {
-        foreach (var child in _source.Children(name))
+        // Handle polymorphic properties (value[x] in FHIR spec)
+        // According to FHIRPath N1 spec section 3.2, accessing "value" should match
+        // "valueCode", "valueString", "valueQuantity", etc.
+        IEnumerable<ISourceNode> sourceChildren;
+
+        if (name != null && !name.EndsWith("[x]", StringComparison.Ordinal))
+        {
+            // Try exact match first
+            sourceChildren = _source.Children(name);
+
+            // If no exact match and we have a definition, check for polymorphic (choice) properties
+            if (!sourceChildren.Any())
+            {
+                var currentType = InstanceType;
+                if (currentType != null)
+                {
+                    var structureDef = _provider.Provide(currentType);
+
+                    // Check if this is a choice element (IsChoiceElement == true)
+                    // OR if there's an element with [x] suffix
+                    var choiceElement = structureDef?.GetElements()
+                        .FirstOrDefault(e => e.ElementName == name && e.IsChoiceElement);
+
+                    if (choiceElement == null)
+                    {
+                        choiceElement = structureDef?.GetElements()
+                            .FirstOrDefault(e => e.ElementName == name + "[x]");
+                    }
+
+                    // If this element is polymorphic, match any child starting with the name
+                    if (choiceElement != null)
+                    {
+                        sourceChildren = _source.Children().Where(c => c.Name.StartsWith(name, StringComparison.Ordinal));
+                    }
+                }
+            }
+        }
+        else
+        {
+            // No name filter or explicit [x] - return all children
+            sourceChildren = _source.Children(name);
+        }
+
+        foreach (var child in sourceChildren)
         {
             // Try to find definition for this child
             // We can look up child definitions even when _definition is null,

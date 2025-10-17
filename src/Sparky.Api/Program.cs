@@ -41,12 +41,23 @@ builder.Services.AddMemoryCache();
 // Register RecyclableMemoryStreamManager as singleton
 builder.Services.AddSingleton<RecyclableMemoryStreamManager>();
 
+// Configure blob storage options
+builder.Services.Configure<Sparky.DataLayer.BlobStorage.LocalFileBlobStorageOptions>(
+    builder.Configuration.GetSection("LocalFileBlobStorage"));
+
 // Register IHttpContextFactory and IHttpContextAccessor for bundle entry pipeline routing
 builder.Services.AddSingleton<IHttpContextFactory, DefaultHttpContextFactory>();
 builder.Services.AddHttpContextAccessor();
 
 // Register IndexLoaderService as hosted service
 builder.Services.AddHostedService<IndexLoaderService>();
+
+// Register DurableTask framework for background job processing ($export)
+builder.Services.AddDurableTask();
+
+// Register export activities for dependency injection
+builder.Services.AddTransient<Sparky.Api.Features.Export.Activities.SearchAndWriteChunkActivity>();
+builder.Services.AddTransient<Sparky.Api.Features.Export.Activities.CompleteJobActivity>();
 
 // Configure Autofac container
 builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
@@ -144,6 +155,18 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Register IAuditLogger (logs tenant access for security/compliance)
     containerBuilder.RegisterType<AuditLogger>()
         .As<IAuditLogger>()
+        .SingleInstance();
+
+    // BULK EXPORT INFRASTRUCTURE (Phase 13 - ADR-2516)
+
+    // Register blob storage client (local filesystem for prototype, Azure Blob for production)
+    containerBuilder.RegisterType<Sparky.DataLayer.BlobStorage.LocalFileBlobClient>()
+        .As<IBlobStorageClient>()
+        .SingleInstance();
+
+    // Register export job store (in-memory for prototype, SQL Server for production)
+    containerBuilder.RegisterType<Sparky.DataLayer.BlobStorage.InMemoryExportJobStore>()
+        .As<IExportJobStore>()
         .SingleInstance();
 
     // Register Medino service provider
@@ -339,6 +362,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.MapFhirEndpoints();
+Sparky.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)
 app.MapControllers(); // Keep for MetadataController
 
 app.Logger.LogInformation("Sparky FHIR starting...");

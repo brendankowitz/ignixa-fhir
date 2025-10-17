@@ -14,6 +14,7 @@
     <PackageReference Include="Medino" />
     <PackageReference Include="Autofac" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,11 +26,14 @@
     <ProjectReference Include="..\Sparky.Domain\Sparky.Domain.csproj" />
     <ProjectReference Include="..\Sparky.Application\Sparky.Application.csproj" />
     <ProjectReference Include="..\Sparky.DataLayer.FileSystem\Sparky.DataLayer.FileSystem.csproj" />
+    <ProjectReference Include="..\Sparky.DataLayer.BlobStorage\Sparky.DataLayer.BlobStorage.csproj" />
     <ProjectReference Include="..\Sparky.DataLayer.LegacySqlEF\Sparky.DataLayer.LegacySqlEF.csproj" />
     <ProjectReference Include="..\Sparky.DataLayer.InMemoryIndex\Sparky.DataLayer.InMemoryIndex.csproj" />
     <ProjectReference Include="..\Sparky.SourceNodeSerialization\Sparky.SourceNodeSerialization.csproj" />
     <ProjectReference Include="..\Sparky.Specification\Sparky.Specification.csproj" />
     <ProjectReference Include="..\Sparky.Validation\Sparky.Validation.csproj" />
+    <ProjectReference Include="..\Sparky.Extensions\Sparky.Extensions.csproj" />
+    <ProjectReference Include="..\Sparky.Search\Sparky.Search.csproj" />
   </ItemGroup>
 
 </Project>

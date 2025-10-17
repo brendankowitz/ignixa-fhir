@@ -72,7 +72,7 @@ public static class PrimitiveTypeConverter
             return null;
         }
 
-        // FHIR dateTime format: YYYY-MM-DDThh:mm:ss+zz:zz
-        return value.Value.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
+        // FHIR instant format: YYYY-MM-DDThh:mm:ss.ffffff+zz:zz (with fractional seconds)
+        return value.Value.ToString("yyyy-MM-ddTHH:mm:ss.FFFFFFFzzz", CultureInfo.InvariantCulture);
     }
 }

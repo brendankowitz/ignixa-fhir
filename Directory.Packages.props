@@ -12,6 +12,8 @@
     <!-- Legacy 4.3.0 packages removed - SDK 6.0 has unified package structure -->
     <!-- Messaging -->
     <PackageVersion Include="Medino" Version="2.0.1" />
+    <!-- DurableTask Framework -->
+    <PackageVersion Include="Microsoft.Azure.DurableTask.Core" Version="3.5.0" />
     <!-- Memory Management -->
     <PackageVersion Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
@@ -20,6 +22,7 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.CommandLine" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <!-- Entity Framework Core -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
