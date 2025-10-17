@@ -2,444 +2,245 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Links
+- [Current Status](#current-status) - Phase 22 (FHIR _history) completed
+- [Architecture Principles](#architecture-principles) - Layer separation, minimal API pattern
+- [Multi-Tenancy](#multi-tenancy-architecture) - Partition 0, routing, factories
+- [Multi-Agent System](#multi-agent-development-system) - When to use which agent
+- [Common Commands](#common-commands) - Build, test, run
+
 ## Project Overview
 
-This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR server implementation. The project implements a clean architecture with separate projects for each architectural layer, supporting multi-data-layer scenarios (Isolation vs Distributed modes).
+**FHIR Server v2** - A next-generation FHIR server implementation built with C# .NET 9.0. Clean architecture with separate projects for each layer, supporting multi-tenant data partitioning (Isolation mode currently, Distributed mode planned).
 
 ## Current Status
 
-**Phase**: FHIR _history Operations (Phase 22) - ✅ COMPLETED (October 17, 2025)
-**Previous Phase**: Transaction Watcher (Phase 21) - ✅ COMPLETED (October 16, 2025)
-**SDK Version**: Firely SDK 6.0.0 final (October 14, 2025 - unified multi-version support)
-**Build Status**: ✅ All projects build successfully (0 warnings, 0 errors)
-**Test Status**: ✅ All tests passing
-**Background Services**:
-- ✅ IndexLoaderService - Search index preloading on startup
-- ✅ TransactionWatcherService - Automatic stalled transaction recovery
-**Endpoints** (Minimal API pattern):
-- ✅ PUT /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
-- ✅ GET /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
-- ✅ GET /tenant/{tenantId}/{resourceType} - Tenant-explicit search (always)
-- ✅ POST /tenant/{tenantId}/ - Tenant-explicit bundles (always)
-- ✅ PUT /{resourceType}/{id} - Tenant-agnostic (single-tenant auto-detect)
-- ✅ GET /{resourceType}/{id} - Tenant-agnostic (single-tenant auto-detect)
-- ✅ GET /{resourceType} - Tenant-agnostic search (single-tenant auto-detect)
-- ✅ POST / - Tenant-agnostic bundles (single-tenant auto-detect)
-- ✅ GET /tenant/{tenantId}/{resourceType}/{id}/_history - Instance-level history
-- ✅ GET /tenant/{tenantId}/{resourceType}/_history - Type-level history
-- ✅ GET /tenant/{tenantId}/_history - System-level history
-- ✅ GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
-- ✅ GET /{resourceType}/_history - Type-level history (agnostic)
-- ✅ GET /_history - System-level history (agnostic)
-- ✅ GET /metadata - No tenant required (Controller)
+| Category | Status |
+|----------|--------|
+| **Phase** | Phase 22: FHIR _history Operations ✅ COMPLETED (Oct 17, 2025) |
+| **Build** | ✅ All projects build (0 warnings, 0 errors) |
+| **Tests** | ✅ All tests passing |
+| **SDK** | Firely SDK 6.0.0 final (multi-version R4/R4B/R5/STU3) |
 
-### Recent Investigations (October 9, 2025)
+### Active Background Services
+- ✅ **IndexLoaderService** - Preloads search indexes on startup
+- ✅ **TransactionWatcherService** - Automatic stalled transaction recovery
 
-Three new investigation documents completed to address architectural gaps:
+### Production Endpoints (Minimal API Pattern)
 
-1. **Dynamic FHIR Routing** (`docs/investigations/dynamic-fhir-routing.md`)
-   - **Problem**: Current PatientController approach doesn't scale to 145+ FHIR resource types
-   - **Solution**: Generic endpoint routing with RequestDelegate handlers
-   - **Impact**: Zero controllers, automatic support for all resource types, 14% performance improvement
-   - **Status**: Ready for Phase 1.1 implementation
+**Tenant-Explicit Routes** (Always Available):
+- `PUT/GET /tenant/{tenantId}/{resourceType}/{id}` - CRUD operations
+- `GET /tenant/{tenantId}/{resourceType}` - Search
+- `POST /tenant/{tenantId}/` - Transaction bundles
+- `GET /tenant/{tenantId}/{resourceType}/{id}/_history` - Instance history
+- `GET /tenant/{tenantId}/{resourceType}/_history` - Type-level history
+- `GET /tenant/{tenantId}/_history` - System-level history
 
-2. **Bundle Streaming** (`docs/investigations/bundle-streaming.md`)
-   - **Problem**: Current buffered Bundle responses load entire result set into memory (50 MB for 1000 resources)
-   - **Solution**: IAsyncEnumerable + FhirJsonWriter streaming serialization
-   - **Impact**: 95% memory reduction (50 MB → 2-3 MB), 50-200ms time-to-first-byte
-   - **Status**: ✅ **ALREADY IMPLEMENTED** - BundleSerializer, FhirJsonWriter, streaming infrastructure complete
+**Tenant-Agnostic Routes** (Single-Tenant Auto-Detect):
+- `PUT/GET /{resourceType}/{id}` - CRUD operations
+- `GET /{resourceType}` - Search
+- `POST /` - Transaction bundles
+- `GET /{resourceType}/{id}/_history` - Instance history
+- `GET /{resourceType}/_history` - Type-level history
+- `GET /_history` - System-level history
+- `GET /metadata` - Capability statement (no tenant required)
 
-3. **Search Query Parsing** (`docs/investigations/search-query-parsing.md`)
-   - **Problem**: Legacy SearchOptionsFactory is 800 lines of complex parameter parsing logic
-   - **Solution**: Simplified 3-stage pipeline (QueryParameterParser → ExpressionBuilder → SearchOptionsBuilder)
-   - **Impact**: 70% code reduction (800 → 250 lines), easier to maintain and extend
-   - **Status**: Design complete, ready for Phase 1.2 implementation
+### Recent Investigations
+
+| Investigation | Status | Key Insight |
+|---------------|--------|-------------|
+| **Dynamic FHIR Routing** | Ready for Phase 1.1 | Generic endpoints eliminate need for 145+ controllers, 14% faster |
+| **Bundle Streaming** | ✅ IMPLEMENTED | IAsyncEnumerable + FhirJsonWriter = 95% memory reduction (50 MB → 2-3 MB) |
+| **Search Query Parsing** | Ready for Phase 1.2 | Simplified 3-stage pipeline reduces code 70% (800 → 250 lines) |
+
+See `docs/investigations/*.md` for details.
 
 ## Solution Architecture
 
-The solution follows a **layered architecture** with **separate projects** for each layer:
-
 ```
 All.sln (9 projects)
-├── 1. Ignixa.Domain              - Domain models and abstractions (no dependencies)
-├── 2. Ignixa.Application         - Medino handlers and business logic (→ Domain)
-├── 3. Ignixa.DataLayer.*         - Data storage implementations (→ Domain)
-│   ├── Ignixa.DataLayer.FileSystem      - File-based repository (prototype)
-│   └── Ignixa.DataLayer.InMemoryIndex   - Resource location tracking
-├── 4. Ignixa.Api                 - ASP.NET Core API (→ all layers)
+├── 1. Ignixa.Domain              - Domain models, abstractions (no dependencies)
+├── 2. Ignixa.Application         - Medino handlers, business logic (→ Domain)
+├── 3. Ignixa.DataLayer.*         - Storage implementations (→ Domain)
+│   ├── Ignixa.DataLayer.FileSystem      - File-based repository
+│   ├── Ignixa.DataLayer.InMemoryIndex   - Resource location tracking
+│   └── Ignixa.DataLayer.LegacySqlEF     - Legacy SQL Server (EF Core)
+├── 4. Ignixa.Api                 - ASP.NET Core minimal API (→ all layers)
 └── Supporting Libraries
-    ├── Ignixa.Extensions         - FHIR extensions and utilities
-    ├── Ignixa.Search             - Search functionality
-    └── Ignixa.SourceNodeSerialization - Serialization utilities
+    ├── Ignixa.Extensions         - FHIR extensions, utilities
+    ├── Ignixa.Search             - Search parameters, indexing
+    ├── Ignixa.Specification      - Generated structure providers
+    └── Ignixa.SourceNodeSerialization - Custom FHIR serialization
 ```
 
-### Project Details
+### Key Project Dependencies
 
-#### 1. **Ignixa.Domain** (Domain Layer)
-- **Purpose**: Core domain models and abstractions
-- **Dependencies**: Hl7.Fhir.R4 only
-- **Key Files**:
-  - `Abstractions/IFhirRepository.cs` - Repository interface
-  - `Models/ResourceKey.cs` - Resource identifier
-  - `Models/ResourceWrapper.cs` - Resource + metadata container
-  - `Models/ResourceRequest.cs` - HTTP request metadata
-  - `Models/TransactionId.cs` - Transaction tracking
-
-#### 2. **Ignixa.Application** (Application Layer)
-- **Purpose**: Business logic and Medino message handlers
-- **Dependencies**: Ignixa.Domain, Medino, Microsoft.Extensions.Logging.Abstractions
-- **Pattern**: Feature folders (Features/Patient/)
-- **Key Files**:
-  - `Features/Patient/CreateOrUpdatePatientCommand.cs` - IRequest<ResourceKey>
-  - `Features/Patient/CreateOrUpdatePatientHandler.cs` - IRequestHandler
-  - `Features/Patient/GetPatientQuery.cs` - IRequest<ResourceWrapper?>
-  - `Features/Patient/GetPatientHandler.cs` - IRequestHandler
-
-#### 3. **Ignixa.DataLayer.FileSystem** (Data Layer)
-- **Purpose**: File-based FHIR repository implementation (prototype)
-- **Dependencies**: Ignixa.Domain, Hl7.Fhir.R4, Microsoft.Extensions.Logging.Abstractions
-- **Storage Format**:
-  - `{baseDir}/{resourceType}/{id}.json` - Resource JSON
-  - `{baseDir}/{resourceType}/{id}.meta.json` - Metadata sidecar
-- **Key Files**:
-  - `FileSystem/FileBasedFhirRepository.cs` - IFhirRepository implementation
-
-#### 4. **Ignixa.DataLayer.InMemoryIndex** (Data Layer)
-- **Purpose**: Tracks which data layer(s) contain each resource (for Distributed mode)
-- **Dependencies**: Ignixa.Domain
-- **Key Files**:
-  - `InMemoryIndex/IResourceLocationIndex.cs` - Interface
-  - `InMemoryIndex/InMemoryResourceLocationIndex.cs` - ConcurrentDictionary implementation
-
-#### 5. **Ignixa.Api** (API Layer)
-- **Purpose**: ASP.NET Core Web API endpoints
-- **Dependencies**: All layers (Domain, Application, DataLayer.*)
-- **Pattern**: Feature folders (Features/Patient/Api/)
-- **Key Files**:
-  - `Features/Patient/Api/PatientController.cs` - GET /Patient/{id}, PUT /Patient/{id}
-  - `Program.cs` - Application startup
-
-#### Supporting Libraries
-
-- **Ignixa.Extensions**: FHIR extensions, value sets, schema helpers
-- **Ignixa.Search**: Search parameter definitions, indexing, search values
-- **Ignixa.SourceNodeSerialization**: Custom serialization for FHIR ISourceNode
+| Project | Purpose | Dependencies |
+|---------|---------|--------------|
+| **Ignixa.Domain** | Core models (ResourceKey, ResourceWrapper, IFhirRepository) | Hl7.Fhir.R4 only |
+| **Ignixa.Application** | Medino handlers (CreateOrUpdateHandler, GetHandler, SearchHandler) | Domain, Medino, Logging |
+| **Ignixa.DataLayer.\*** | Storage (FileSystem, SQL, future CosmosDB) | Domain only |
+| **Ignixa.Api** | Minimal API endpoints, middleware | All layers |
 
 ## Architecture Principles
 
-### 1. Layer Separation
-- **Domain** has no dependencies (pure models)
-- **Application** depends only on Domain (business logic)
-- **DataLayer** depends only on Domain (storage implementations)
-- **API** depends on all layers (HTTP concerns)
+### 1. Layer Separation (Strict Dependency Rules)
 
-**IMPORTANT**: Do NOT add Firely SDK (`Hl7.Fhir.R4`, `Hl7.Fhir.R4B`, `Hl7.Fhir.R5`, `Hl7.Fhir.STU3`) package references to ANY layer. The codebase uses custom implementations in `Ignixa.*` projects:
+```
+API Layer (HTTP concerns)
+    ↓ depends on
+Application Layer (Business logic, Medino handlers)
+    ↓ depends on
+Domain Layer (Pure models, interfaces)
+    ← implemented by
+DataLayer Projects (Storage implementations)
+```
+
+**CRITICAL**: Do NOT add Firely SDK packages (`Hl7.Fhir.*`) to Application/DataLayer projects. Use custom implementations:
 - **ITypedElement**: `Ignixa.SourceNodeSerialization.ElementModel.ITypedElement` (not SDK's)
-- **FHIRPath**: `Ignixa.FhirPath.Evaluation` (not SDK's `Hl7.FhirPath`)
-- **Schema**: `Ignixa.Specification` (custom generated providers)
-
-Only projects that explicitly need SDK types (e.g., `Ignixa.Domain` for POCO models) should reference it. If you encounter a missing type error, use Ignixa's equivalents, not the SDK.
+- **FHIRPath**: `Ignixa.FhirPath.Evaluation` (not `Hl7.FhirPath`)
+- **Schema**: `Ignixa.Specification` (generated providers)
 
 ### 2. Feature Folders
-- Organize by feature/capability (Patient, Observation, etc.)
-- Each feature contains Api, Application, and optional Domain folders
-- Example: `Features/Patient/Api/`, `Features/Patient/Application/`
+Organize by capability, not by layer type:
+```
+Features/Patient/
+├── Api/PatientController.cs (if using controllers)
+├── CreateOrUpdatePatientCommand.cs
+├── CreateOrUpdatePatientHandler.cs
+├── GetPatientQuery.cs
+└── GetPatientHandler.cs
+```
 
-### 3. Separate DataLayer Projects
-- Each storage implementation is its own project
-- Easy to add: Ignixa.DataLayer.SqlServer, Ignixa.DataLayer.CosmosDB, etc.
-- Supports multi-data-layer scenarios (Isolation vs Distributed modes)
+### 3. Medino Messaging Pattern
 
-### 4. Medino Messaging
-- Use **IRequest<TResponse>** for commands/queries (not ICommand)
-- Use **IRequestHandler<TRequest, TResponse>** for handlers
-- Method name: `HandleAsync` (not Handle)
-- Parameter name: `cancellationToken` (not `ct` - for CA1725 compliance)
-- Return type: `Task<T>` (not `ValueTask<T>` for handlers)
-- Example: `public record GetPatientQuery(string Id) : IRequest<ResourceWrapper?>`
-
-### 4a. API Routing Pattern - Minimal API Endpoints (Not Controllers!)
-
-**IMPORTANT**: This codebase uses **Minimal API Endpoints**, NOT traditional MVC Controllers.
-
-**Pattern**: Static extension methods with `Map*Endpoints()` pattern
-- Location: `Ignixa.Api/Infrastructure/*Endpoints.cs`
-- Registration: `app.MapFhirEndpoints()` in `Program.cs`
-- Handler functions: Static private methods that return `IResult`
-
-**Example** (from `FhirEndpoints.cs`):
+**Commands/Queries** (Application Layer):
 ```csharp
+// Record-based request (immutable)
+public record GetPatientQuery(string Id) : IRequest<ResourceWrapper?>;
+
+// Handler with HandleAsync method
+public class GetPatientHandler : IRequestHandler<GetPatientQuery, ResourceWrapper?>
+{
+    public async Task<ResourceWrapper?> HandleAsync(
+        GetPatientQuery request,
+        CancellationToken cancellationToken) // NOT 'ct' (CA1725 compliance)
+    {
+        // Implementation
+    }
+}
+```
+
+**Key Rules**:
+- Use `IRequest<TResponse>` (not ICommand)
+- Use `IRequestHandler<TRequest, TResponse>`
+- Method name: `HandleAsync` (not Handle)
+- Parameter: `cancellationToken` (full name)
+- Return: `Task<T>` (not ValueTask)
+
+### 4. Minimal API Endpoints (NOT Controllers!)
+
+**CRITICAL**: This codebase uses **Minimal API**, NOT MVC Controllers.
+
+**Pattern** - Static extension methods with `Map*Endpoints()`:
+
+```csharp
+// File: Ignixa.Api/Infrastructure/FhirEndpoints.cs
 public static class FhirEndpoints
 {
     public static IEndpointRouteBuilder MapFhirEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // Tenant-explicit routes
+        // Tenant-explicit route
         endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/{id}", HandleGetResource)
             .WithName("GetResource")
             .Produces<object>(StatusCodes.Status200OK, "application/fhir+json");
 
-        // Tenant-agnostic routes (lambda delegates to tenant-explicit handler)
-        endpoints.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleGetResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
-            .WithName("GetResourceAgnostic");
+        // Tenant-agnostic route (delegates to explicit handler)
+        endpoints.MapGet("/{resourceType}/{id}", (HttpContext ctx, string resourceType, string id,
+            [FromServices] IMediator mediator, CancellationToken ct) =>
+            HandleGetResource(ctx, ExtractTenantId(ctx), resourceType, id, mediator, ct));
 
         return endpoints;
     }
 
-    private static async Task<IResult> HandleGetResource(HttpContext context, int tenantId, ...)
+    private static async Task<IResult> HandleGetResource(
+        HttpContext context, int tenantId, string resourceType, string id,
+        IMediator mediator, CancellationToken ct)
     {
-        // Implementation
-        return Results.Ok(...);
+        var query = new GetResourceQuery(tenantId, resourceType, id);
+        var result = await mediator.SendAsync(query, ct);
+        return result != null ? Results.Ok(result) : Results.NotFound();
     }
 }
+
+// Program.cs registration
+app.MapFhirEndpoints();
+app.MapFhirHistoryEndpoints();
 ```
 
 **Why Minimal API vs Controllers?**
-- ✅ **Lightweight**: No controller overhead, direct route-to-handler mapping
-- ✅ **Performance**: ~14% faster than MVC controllers (see `dynamic-fhir-routing.md`)
-- ✅ **Composable**: Easy to mix tenant-explicit and tenant-agnostic routes
-- ✅ **Modern .NET**: Aligns with .NET 9 best practices
-- ✅ **Zero Attributes**: Route definitions are explicit in code, not scattered via attributes
+- ✅ 14% faster (no controller overhead)
+- ✅ Composable (easy to mix tenant-explicit/agnostic routes)
+- ✅ Explicit route definitions (not scattered via attributes)
+- ✅ Modern .NET 9 best practice
 
-**Controllers Still Used For:**
-- ✅ `MetadataController` - Legacy, should be converted eventually
-
-**When Adding New Endpoints:**
-1. Create `*Endpoints.cs` static class in `Ignixa.Api/Infrastructure/`
+**When Adding Endpoints**:
+1. Create `*Endpoints.cs` in `Ignixa.Api/Infrastructure/`
 2. Add `Map*Endpoints()` extension method
-3. Define handler methods as `private static async Task<IResult>`
+3. Define handlers as `private static async Task<IResult>`
 4. Register in `Program.cs`: `app.Map*Endpoints()`
-5. Register Medino handlers in `Program.cs` Autofac container
+5. Register Medino handlers in Autofac
 
-**Example Files:**
-- `Ignixa.Api/Infrastructure/FhirEndpoints.cs` - CRUD operations for all resource types
-- `Ignixa.Api/Infrastructure/HistoryEndpoints.cs` - _history operations (instance, type, system)
-- `Ignixa.Api/Features/Export/Api/ExportEndpoints.cs` - Bulk $export operations
+**Example Files**:
+- `Ignixa.Api/Infrastructure/FhirEndpoints.cs` - CRUD for all resource types
+- `Ignixa.Api/Infrastructure/HistoryEndpoints.cs` - _history operations
+- `Ignixa.Api/Features/Export/Api/ExportEndpoints.cs` - Bulk $export
 
-### 5. Multi-Tenancy Architecture (ADR-2523 Phase 20)
+## Multi-Tenancy Architecture
 
-#### Partition 0: System Partition
-- **Partition 0 is RESERVED** for system operations (defined in `SystemConstants.SystemPartitionId`)
-- All transaction IDs allocated from Partition 0 for global uniqueness across entire system
-- Cannot be accessed via `/tenant/0/` API routes (middleware rejects with 400 Bad Request)
-- Filtered from `GetAllTenantsAsync()` enumeration (marked with `IsSystemPartition = true`)
-- Used internally by `DeferredWriteCoordinator` for transaction ID allocation
+### Partition 0: System Partition (Reserved)
 
-#### Multi-Tenant Routing
+**Critical Rules**:
+- Partition 0 (`SystemConstants.SystemPartitionId`) is RESERVED for system operations
+- All transaction IDs allocated from Partition 0 (global uniqueness)
+- Cannot be accessed via `/tenant/0/` routes (middleware rejects with 400)
+- Filtered from `GetAllTenantsAsync()` (marked `IsSystemPartition = true`)
 
-**Two Route Patterns Supported:**
-
-1. **Tenant-Explicit Routes** (always supported):
-   - Pattern: `/tenant/{tenantId:int}/{resourceType}/{id?}`
-   - Used for: Multi-tenant scenarios, explicit tenant selection
-   - Example: `GET /tenant/1/Patient/123` - Mayo Clinic
-
-2. **Tenant-Agnostic Routes** (FHIR-compliant, auto-enabled for single-tenant):
-   - Pattern: `/{resourceType}/{id?}`
-   - Used for: Single-tenant deployments, standard FHIR clients
-   - Example: `GET /Patient/123` - automatically uses the single configured tenant
-
-**Routing Behavior:**
+### Multi-Tenant Routing Behavior
 
 | Scenario | Tenant Count | Agnostic Routes (`/Patient/123`) | Explicit Routes (`/tenant/1/Patient/123`) |
 |----------|--------------|----------------------------------|-------------------------------------------|
-| **Single-Tenant** | 1 active tenant | ✅ Works (auto-detects tenant) | ✅ Works (explicit) |
-| **Multi-Tenant** | 2+ active tenants | ❌ 400 Bad Request (ambiguous) | ✅ Works (required) |
-| **Distributed Mode** (future) | N shards | ✅ Works (transparent sharding) | N/A (no tenant concept) |
+| **Single-Tenant** | 1 active | ✅ Auto-detects tenant | ✅ Works |
+| **Multi-Tenant** | 2+ active | ❌ 400 Bad Request (ambiguous) | ✅ Required |
+| **Distributed** (future) | N shards | ✅ Transparent sharding | N/A (no tenant concept) |
 
-**Middleware Logic** (`TenantResolutionMiddleware`):
-- Extracts tenantId from route parameters OR auto-detects single tenant
-- Single-tenant detection: Queries `ITenantConfigurationStore.GetAllTenantsAsync()` at startup
-- Result cached per-process (avoids repeated queries)
-- Multi-tenant scenarios: Agnostic routes blocked with helpful error message
-- Partition 0 (system partition) always rejected from API access
+**Middleware**: `TenantResolutionMiddleware` extracts `tenantId` from route OR auto-detects single tenant, caches result per-process.
 
-**Examples:**
+**Example**:
 ```bash
-# Single-tenant deployment (only tenant 1 configured)
-GET /Patient/123              # ✅ Works - auto-detects tenant 1
-GET /tenant/1/Patient/123     # ✅ Works - explicit tenant 1
-GET /metadata                 # ✅ Works - no tenant required
+# Single-tenant (only tenant 1 configured)
+GET /Patient/123              # ✅ Auto-detects tenant 1
+GET /tenant/1/Patient/123     # ✅ Explicit
 
-# Multi-tenant deployment (tenants 1, 2, 3, 4 configured)
-GET /Patient/123              # ❌ 400 Bad Request - tenant ambiguous
-GET /tenant/1/Patient/123     # ✅ Works - Mayo Clinic (R4)
-GET /tenant/2/Patient/123     # ✅ Works - Cleveland Clinic (R4)
-GET /tenant/3/Patient/123     # ✅ Works - Johns Hopkins (R4B)
-GET /tenant/4/Patient/123     # ✅ Works - Stanford Health (R5)
-GET /metadata                 # ✅ Works - no tenant required
+# Multi-tenant (tenants 1, 2, 3 configured)
+GET /Patient/123              # ❌ 400 Bad Request - ambiguous
+GET /tenant/1/Patient/123     # ✅ Mayo Clinic (R4)
+GET /tenant/2/Patient/123     # ✅ Cleveland Clinic (R4B)
 ```
 
-**Benefits of Agnostic Routes:**
-- ✅ FHIR-compliant standard URLs for single-tenant deployments
-- ✅ Works with standard FHIR client libraries (no custom URL handling)
-- ✅ Easy migration path: Deploy single-tenant, add tenants later without breaking existing URLs
-- ✅ Zero breaking changes: Both route patterns coexist
+### Factory Pattern (Tenant-Scoped Dependencies)
 
-#### Factory Pattern
-- **IFhirRepositoryFactory**: Creates tenant-specific repository instances, caches per tenant
-- **ISearchServiceFactory**: Creates tenant-specific search services, caches per tenant
-- **Location**: `Ignixa.DataLayer.FileSystem` project (moved from Application layer)
-- **Caching**: `ConcurrentDictionary<int, IFhirRepository>` for O(1) lookup after first creation
+**Interfaces** (Domain Layer):
+- `IFhirRepositoryFactory` - Creates tenant-specific repositories (cached)
+- `ISearchServiceFactory` - Creates tenant-specific search services (cached)
+- `IPartitionStrategy` - Determines read/write partitions
 
-#### Partition Strategy (HAPI FHIR-Inspired)
-- **IPartitionStrategy**: Determines which partition(s) to read from / write to
-  - `DetermineReadPartition()`: For searches (may return multiple partitions in future Distributed mode)
-  - `DetermineWritePartition()`: For CRUD operations (always returns single partition)
-- **IsolatedModePartitionStrategy**: Current implementation (single partition per tenant)
-- **Future DistributedModePartitionStrategy**: Horizontal sharding with fanout/union (Phase 20.2+)
+**Implementations** (DataLayer):
+- `FileBasedFhirRepositoryFactory` - Uses `ConcurrentDictionary<int, IFhirRepository>`
+- `IsolatedModePartitionStrategy` - Single partition per tenant (current)
+- Future: `DistributedModePartitionStrategy` - Horizontal sharding with fanout
 
-#### Bundle Processing with Multi-Tenancy
-- **Tenant Context Propagation**: `BundleEntryExecutor` copies `TenantId` from parent HttpContext to bundle entry mini-HttpContext
-- **Transaction ID Allocation**: `DeferredWriteCoordinator.CreateAsync()` allocates transaction ID from Partition 0
-- **Partition-Aware Writes**: `ProcessBatchAsync()` groups operations by partition using `IPartitionStrategy`
-- **Multi-Partition Commits**: Commits transaction across all touched partitions via `_touchedPartitions` tracking
-
-#### Transaction Watcher (Background Recovery Service)
-
-**Purpose**: Automatically detects and commits stalled transactions across all active tenants and storage implementations (FileSystem and SQL).
-
-**Architecture:**
-- **TransactionWatcherService** (Ignixa.Api/BackgroundServices/TransactionWatcherService.cs)
-  - Implements `IHostedService` for background execution
-  - Timer-based periodic scanning (configurable interval, default: 60 seconds)
-  - Multi-tenant aware: Scans all active tenants via `ITenantConfigurationStore`
-  - Multi-storage support: Routes to correct repository via `IFhirRepositoryFactory`
-  - Excludes system partition (Partition 0) from API-level scans
-
-**Storage Implementations:**
-
-1. **FileSystem** (FileBasedFhirRepository.cs:324-397)
-   - Scans `_transactions/**/*.lock.ndjson` files recursively
-   - Checks file modification time vs configured threshold
-   - Extracts transaction IDs from filenames (`tx-{id}.lock.ndjson`)
-   - Returns list of stalled transaction IDs
-
-2. **SQL** (LegacySqlEfRepository.cs:234-269)
-   - Queries `TransactionEntity` table via EF Core
-   - Filters: `WHERE IsCompleted = false AND HeartbeatDate < threshold`
-   - Returns transaction IDs via LINQ query
-
-**Configuration:**
-```json
-{
-  "TransactionWatcher": {
-    "Enabled": true,
-    "ScanInterval": "00:01:00",     // Scan every 60 seconds
-    "StallThreshold": "00:05:00"    // 5 minutes without commit = stalled
-  }
-}
-```
-
-**Workflow:**
-1. **Service Starts**: On application startup, service registers timer
-2. **Periodic Scan**: Every `ScanInterval`:
-   - Queries all active tenants (excluding Partition 0)
-   - For each tenant, gets repository (FileSystem or SQL based on tenant config)
-   - Calls `GetStalledTransactionsAsync(StallThreshold)`
-   - For each stalled transaction, calls `CommitTransactionAsync()`
-3. **Logging**: Comprehensive metrics logging (scan duration, stalled count, commit success/failure)
-4. **Error Handling**: Retries on next scan if commit fails (non-blocking)
-
-**Key Files:**
-- `Ignixa.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface
-- `Ignixa.Domain/Models/TransactionId.cs:24` - `TryParse()` method for parsing transaction IDs
-- `Ignixa.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model
-- `Ignixa.Api/BackgroundServices/TransactionWatcherService.cs` - Background service implementation
-- `Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem implementation
-- `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL implementation
-
-**Benefits:**
-- ✅ Automatic recovery from failed bundle operations (server crash, network timeout)
-- ✅ Multi-tenant support with isolated transaction tracking per tenant
-- ✅ Storage-agnostic design (works with FileSystem, SQL, future implementations)
-- ✅ Configurable scan interval and stall threshold
-- ✅ Non-blocking background execution (doesn't impact API performance)
-- ✅ Comprehensive logging for observability
-
-#### History Bundle Total Count Pattern
-
-**Critical Architecture Decision**: History bundles default to **NO total count** for optimal streaming performance.
-
-**Why Total Counts Are Expensive:**
-- Calculating total count requires enumerating ALL matching results (not just the current page)
-- Defeats streaming architecture by forcing separate enumeration of entire result set
-- For large datasets, this can double query execution time
-- Most FHIR clients don't need total counts for pagination
-
-**FHIR `_total` Parameter Support:**
-
-| Value | Behavior | Use Case | Performance Impact |
-|-------|----------|----------|-------------------|
-| **none** (default) | No total in Bundle | Standard pagination, most clients | ✅ Fast - single streaming query |
-| **estimate** | Estimated total (future) | Quick approximation | ⚠️ Medium - cheap estimate query |
-| **accurate** | Exact total count | Rare - client needs exact count | ❌ Slow - full enumeration |
-
-**Implementation Pattern:**
-
-```csharp
-// Domain: TotalMode enum
-public enum TotalMode
-{
-    None,      // Default - no total calculation
-    Estimate,  // Not yet implemented
-    Accurate   // Expensive separate query
-}
-
-// Repository: True streaming (no total calculation)
-IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
-    ResourceKey key,
-    HistoryQueryParameters parameters,
-    CancellationToken ct = default);
-
-// Handler: Conditional total counting
-int? totalCount = null;
-if (request.Parameters.Total == TotalMode.Accurate)
-{
-    // Separate query to count all results
-    totalCount = await HistoryCountHelper.CountResourceHistoryAsync(...);
-}
-
-// Result: Nullable total (null = not calculated)
-return new HistoryResult
-{
-    Entries = entries,        // Streaming IAsyncEnumerable
-    TotalCount = totalCount,  // null unless _total=accurate
-    Links = links
-};
-```
-
-**Usage Examples:**
-
-```bash
-# Default: No total count (fastest)
-GET /Patient/123/_history?_count=20
-# Bundle response: No "total" field, includes "next" link
-
-# Explicit: No total
-GET /Patient/123/_history?_count=20&_total=none
-# Bundle response: No "total" field
-
-# Expensive: Accurate total (separate count query)
-GET /Patient/123/_history?_count=20&_total=accurate
-# Bundle response: "total": 157, includes "next" and "last" links
-```
-
-**Key Files:**
-- `Ignixa.Domain/Models/TotalMode.cs` - Enum definition
-- `Ignixa.Domain/Models/HistoryQueryParameters.cs:Total` - Parameter property
-- `Ignixa.Application/Features/History/HistoryCountHelper.cs` - Counting logic for _total=accurate
-- `Ignixa.Application/Features/History/Get*HistoryHandler.cs` - Conditional total calculation
-- `Ignixa.Application/Features/Bundle/Serialization/StreamingBundleSerializer.cs:SerializeHistoryAsync()` - Nullable total handling
-
-**Benefits:**
-- ✅ Default behavior optimized for streaming (O(page size) memory)
-- ✅ No wasted work calculating totals when clients don't need them
-- ✅ Accurate totals available when explicitly requested
-- ✅ Pagination links adapt based on whether total is known (next link always present when total unknown)
-
-#### Configuration Example
+**Configuration** (`appsettings.json`):
 ```json
 {
   "Tenants": {
@@ -453,7 +254,7 @@ GET /Patient/123/_history?_count=20&_total=accurate
       },
       {
         "TenantId": 1,
-        "DisplayName": "Mayo Clinic (Example)",
+        "DisplayName": "Mayo Clinic",
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": { "Type": "FileSystem", "BaseDirectory": "tenants/1" }
@@ -463,527 +264,310 @@ GET /Patient/123/_history?_count=20&_total=accurate
 }
 ```
 
+### Key Multi-Tenancy Files
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| **Domain** | `Constants/SystemConstants.cs` | Defines Partition 0 |
+| | `Models/TenantConfiguration.cs` | Tenant config model |
+| | `Abstractions/IFhirRepositoryFactory.cs` | Repository factory interface |
+| | `Abstractions/IPartitionStrategy.cs` | Partition determination |
+| **Application** | `Infrastructure/AppSettingsTenantConfigurationStore.cs` | Loads tenants from config |
+| | `Features/Bundle/DeferredWriteCoordinator.cs` | Allocates transaction IDs from Partition 0 |
+| **DataLayer** | `FileBasedFhirRepositoryFactory.cs` | Creates tenant repositories |
+| | `IsolatedModePartitionStrategy.cs` | Isolation mode strategy |
+| **API** | `Middleware/TenantResolutionMiddleware.cs` | Extracts/validates tenant, protects Partition 0 |
+
+### Transaction Watcher (Background Recovery)
+
+**Purpose**: Automatically detects and commits stalled transactions across all tenants and storage types.
+
+**Architecture**:
+- `TransactionWatcherService` (IHostedService) - Timer-based periodic scanning
+- Multi-tenant aware via `ITenantConfigurationStore`
+- Multi-storage support (FileSystem, SQL) via `IFhirRepositoryFactory`
+- Scans every 60 seconds (default), commits transactions stalled >5 minutes
+
+**Storage Implementations**:
+- **FileSystem**: Scans `_transactions/**/*.lock.ndjson` files, checks modification time
+- **SQL**: Queries `TransactionEntity WHERE IsCompleted = false AND HeartbeatDate < threshold`
+
+**Configuration**:
+```json
+{
+  "TransactionWatcher": {
+    "Enabled": true,
+    "ScanInterval": "00:01:00",
+    "StallThreshold": "00:05:00"
+  }
+}
+```
+
+### History Bundle Total Count Pattern
+
+**Default**: NO total count (optimal streaming performance).
+
+**FHIR `_total` Parameter**:
+
+| Value | Behavior | Performance |
+|-------|----------|-------------|
+| **none** (default) | No total in Bundle | ✅ Fast - single streaming query |
+| **estimate** (future) | Estimated total | ⚠️ Medium - cheap estimate |
+| **accurate** | Exact count | ❌ Slow - full enumeration |
+
+**Why?** Calculating totals requires enumerating ALL results (defeats streaming, doubles query time).
+
+**Implementation**:
+```csharp
+// Default: No total
+GET /Patient/123/_history?_count=20
+// Response: No "total" field, includes "next" link
+
+// Accurate: Separate count query
+GET /Patient/123/_history?_count=20&_total=accurate
+// Response: "total": 157, includes "last" link
+```
+
 ## Common Commands
 
-### Build
 ```bash
-# Build entire solution
+# Build
 dotnet build All.sln
 
-# Build specific layer
-dotnet build src/Ignixa.Domain/Ignixa.Domain.csproj
-dotnet build src/Ignixa.Application/Ignixa.Application.csproj
-dotnet build src/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj
-dotnet build src/Ignixa.Api/Ignixa.Api.csproj
-```
-
-### Test
-```bash
-# Run all tests
+# Test
 dotnet test All.sln
 
-# Run specific test project
-dotnet test test/Ignixa.Api.Tests/Ignixa.Api.Tests.csproj
-```
-
-### Run API
-```bash
+# Run API
 dotnet run --project src/Ignixa.Api/Ignixa.Api.csproj
+
+# Code Generation (Structure Providers)
+cd codegen
+./generate.ps1        # PowerShell (Windows)
+./generate.sh         # Bash (Linux/Mac)
 ```
 
 ## Code Standards
 
-- **StyleCop**: Configured via `stylecop.json` with Microsoft Corporation copyright headers
-- **Code Analysis**: Latest analysis level enabled with code style enforcement in build
-- **Warnings as Errors**: Enabled with specific suppressions for SA (StyleCop) and CA (Code Analysis) rules
-- **Indentation**: 4 spaces, no tabs
-- **Using Directives**: System usings first, placed outside namespace
-- **Nullable Reference Types**: Enabled in new projects (Domain, Application, DataLayer, Api)
+**StyleCop/Analysis**:
+- 4 spaces, no tabs
+- System usings first, outside namespace
+- Nullable reference types enabled (Domain, Application, DataLayer, Api)
+- Warnings as errors (specific suppressions for SA/CA rules)
 
-### Testing Standards
-
-- **Test Framework**: xUnit
-- **Test Naming Convention**: Use BDD-style naming with underscores separating Given/When/Then clauses
-  - Format: `Given[Context]_When[Action]_Then[Result]`
-  - Example: `GivenAPatientPoco_WhenConvertingToJsonNode_ThenMetaIsPopulated`
-  - This naming style improves readability and clearly documents test intent
-- **Test Organization**: Use `#region` blocks to group related tests (e.g., "GetReferences Tests", "UpdateReference Tests")
-- **Arrange-Act-Assert Pattern**: Structure all test methods using the standard AAA pattern with comments
+**Testing**:
+- xUnit framework
+- BDD naming: `Given[Context]_When[Action]_Then[Result]`
+- Example: `GivenAPatientPoco_WhenConvertingToJsonNode_ThenMetaIsPopulated`
+- AAA pattern (Arrange-Act-Assert)
+- Group with `#region` blocks
 
 ## Key Dependencies
 
-### Centralized Package Management
-All package versions managed in `Directory.Packages.props`:
+| Package | Version | Purpose |
+|---------|---------|---------|
+| Hl7.Fhir.R4 | 6.0.0 | Multi-version FHIR support (R4/R4B/R5/STU3) |
+| Medino | 2.0.1 | In-process messaging (CQRS) |
+| Autofac | 8.2.0 | Dependency injection |
+| Microsoft.IO.RecyclableMemoryStream | 3.0.1 | Memory optimization |
 
-- **Firely SDK**: Hl7.Fhir.R4 (6.0.0) - Multi-version FHIR support
-- **Messaging**: Medino (2.0.1) - In-process messaging
-- **IoC Container**: Autofac (8.2.0) - Dependency injection
-- **Logging**: Microsoft.Extensions.Logging.Abstractions
-- **Memory**: Microsoft.IO.RecyclableMemoryStream (3.0.1)
-
-### SDK 6.0 Changes
-- **Unified Packages**: Just Hl7.Fhir.R4, R4B, R5, STU3 (no separate .Core/.Specification)
-- **Serialization**: FhirJsonNode.ParseAsync, FhirJsonSerializer with Utf8JsonWriter
-- **Nullable Context**: SDK 6.0 has nullable enabled, old code needs annotations
+**SDK 6.0 Changes**:
+- Unified packages (no separate .Core/.Specification)
+- `FhirJsonNode.ParseAsync()` for parsing
+- Nullable context enabled
 
 ## FHIR Support
 
-### Versions Supported
-- **R4**: Primary implementation target
-- **R4B, R5, STU3**: Supported via SDK 6.0 unified packages
-
-### Search Parameters
-Embedded JSON files in `Ignixa.Search/Data/{Version}/`:
-- `search-parameters.json` - FHIR search parameter definitions
+**Versions**: R4 (primary), R4B, R5, STU3
+**Search Parameters**: Embedded JSON in `Ignixa.Search/Data/{Version}/`
+- `search-parameters.json` - Supported parameters
 - `unsupported-search-parameters.json` - Not implemented
 - `BaseCapabilities.json` - Capability statement
-- `compartment.json` - Compartment definitions
-- `resourcepath-codesystem-mappings.json` - Code system mappings
 
-## Code Generation
+## Multi-Agent Development System
 
-### IStructureDefinitionSummaryProvider Generation
-
-The project includes a build-time code generator for creating `IStructureDefinitionSummaryProvider` implementations for different FHIR versions (R4, R4B, R5, STU3). This ensures reliable, correct structure definitions from official FHIR packages.
-
-**Location**: `codegen/` folder
-**Solution**: `codegen/IgnixaCodegen.sln` (separate from main All.sln)
-**Output**: `src/Ignixa.Specification/Generated/` folder
-
-#### Architecture
+This project uses a **hierarchical multi-agent architecture**:
 
 ```
-codegen/
-├── IgnixaCodegen.sln                   # Separate solution for code generation
-├── Ignixa.Specification.Generators/    # Custom ILanguage implementation
-│   ├── Program.cs                      # Console app entry point
-│   └── CSharpStructureProviderLanguage.cs
-├── fhir-codegen/                       # Git submodule (Microsoft fhir-codegen)
-├── generate.ps1                        # PowerShell generation script
-├── generate.sh                         # Bash generation script
-├── Directory.Build.props               # Disables CPM for codegen
-└── README.md                           # Code generation documentation
+fhir-coordinator (Orchestrator - Sonnet)
+    ├─→ fhir-agent (FHIR Spec Research - Sonnet)
+    ├─→ coding-agent (Complex Implementation - Sonnet)
+    └─→ fast-coding-agent (Quick Tasks - Haiku 3.5) ⚡
 ```
 
-#### Why a Separate Solution?
+### Agent Roles
 
-The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `IgnixaCodegen.sln`, we:
+| Agent | Model | Tools | Use Case |
+|-------|-------|-------|----------|
+| **fhir-coordinator** | Sonnet | Task, Read, Write, Edit, Grep, Glob | Orchestrate workflows, manage ADRs, delegate tasks |
+| **fhir-agent** | Sonnet | WebFetch, Read, Grep, Glob (NO Write) | Research FHIR specs, create ADR-ready docs |
+| **coding-agent** | Sonnet | All tools | Multi-file features, architecture changes, complex refactoring |
+| **fast-coding-agent** | Haiku 3.5 | Read, Write, Edit, Bash | Single-file edits, simple refactoring, build fixes |
 
-1. Keep the main solution simple and fast to build
-2. Avoid CPM conflicts with third-party dependencies
-3. Generate files on-demand rather than on every build
-4. Make the build process more transparent
+### When to Use Each Agent
 
-#### Usage
+| Task | Agent | Reason |
+|------|-------|--------|
+| Research FHIR spec | fhir-agent | Spec expertise, WebFetch |
+| Coordinate complex feature | fhir-coordinator | Orchestration |
+| Add simple parameter | fast-coding-agent | Speed, single file |
+| Multi-file feature | coding-agent | Complexity |
+| Update ADRs | fhir-coordinator | Documentation management |
 
-**Generate all FHIR versions:**
+### Example Workflows
 
+**Simple Task**:
+```
+@fhir-coordinator "Add _count parameter support"
+1. Checks ADR-2501 for context
+2. Spawns fhir-agent: Research _count spec
+3. Updates ADR with requirements
+4. Spawns fast-coding-agent: Add ParseCount() method
+5. Verifies build
+```
+
+**Complex Feature**:
+```
+@fhir-coordinator "Implement FHIR Subscriptions"
+1. Reads ADR-2500 roadmap
+2. Spawns fhir-agent: Research Subscriptions spec
+3. Creates ADR-2530 with findings
+4. Spawns coding-agent: Implement subscription engine
+5. Updates ADR with status
+```
+
+**Direct Invocation** (skip coordinator when task is clear):
 ```bash
-cd codegen
-./generate.ps1        # PowerShell
-./generate.sh         # Bash
+@fast-coding-agent "Fix CS0103 error in SearchHandler.cs"
+@coding-agent "Refactor BundleSerializer to extract helpers"
+@fhir-agent "Research FHIR _total parameter specification"
 ```
 
-**Generate specific version:**
+**ADR Integration**: Coordinator maintains `docs/investigations/ADR-*.md` as single source of truth (spec → ADR → code lineage).
 
-```bash
-./generate.ps1 -FhirVersion R4   # PowerShell
-./generate.sh R4                 # Bash
-```
+**Agent Config Files**: `.claude/agents/*.md`
 
-Supported versions: `R4`, `R4B`, `R5`, `STU3`, `All`
+## Common Patterns Cheat Sheet
 
-#### Generated Files
-
-Generated files are placed in `src/Ignixa.Specification/Generated/`:
-- `R4StructureDefinitionSummaryProvider.g.cs`
-- `R4BStructureDefinitionSummaryProvider.g.cs`
-- `R5StructureDefinitionSummaryProvider.g.cs`
-- `STU3StructureDefinitionSummaryProvider.g.cs`
-
-These files are marked as `linguist-generated=true` in `.gitattributes`.
-
-#### How It Works
-
-1. Scripts build both fhir-codegen and Ignixa.Specification.Generators
-2. fhir-codegen downloads and parses FHIR packages (e.g., `hl7.fhir.r4.core#4.0.1`)
-3. fhir-codegen creates a `DefinitionCollection` with all FHIR structures
-4. Our custom `CSharpStructureProviderLanguage` traverses the collection
-5. Generated C# code is written to `src/Ignixa.Specification/Generated/`
-
-#### Key Classes
-
-- **CSharpStructureProviderLanguage**: Implements `ILanguage` interface from fhir-codegen
-- **CSharpStructureProviderConfig**: Configuration for output directory and namespace
-- **Program.cs**: Console application orchestrating package loading and generation
-
-#### Package Versions
-
-The code generator uses Firely SDK 5.10.2 (from fhir-codegen submodule), **not** 6.0.0 used in the main solution. This is intentional to avoid API compatibility issues with fhir-codegen's LoaderOptions.
-
-## Development Guidelines
-
-### Key Files for Multi-Tenancy
-
-When working with multi-tenant features, these files are critical:
-
-**Domain Layer**:
-- `Ignixa.Domain/Constants/SystemConstants.cs` - Defines Partition 0 as system partition
-- `Ignixa.Domain/Models/TenantConfiguration.cs` - Tenant configuration model
-- `Ignixa.Domain/Models/TenantMode.cs` - Isolated vs Distributed mode enum
-- `Ignixa.Domain/Abstractions/ITenantConfigurationStore.cs` - Tenant config interface
-- `Ignixa.Domain/Abstractions/IFhirRepositoryFactory.cs` - Repository factory interface
-- `Ignixa.Domain/Abstractions/ISearchServiceFactory.cs` - Search service factory interface
-- `Ignixa.Domain/Abstractions/IPartitionStrategy.cs` - Partition determination strategy
-
-**Application Layer**:
-- `Ignixa.Application/Infrastructure/AppSettingsTenantConfigurationStore.cs` - Loads tenants from appsettings.json
-
-**Data Layer**:
-- `Ignixa.DataLayer.FileSystem/FileBasedFhirRepositoryFactory.cs` - Creates tenant-specific repositories
-- `Ignixa.DataLayer.FileSystem/FileBasedSearchServiceFactory.cs` - Creates tenant-specific search services
-- `Ignixa.DataLayer.FileSystem/IsolatedModePartitionStrategy.cs` - Isolation mode partition strategy
-
-**API Layer**:
-- `Ignixa.Api/Middleware/TenantResolutionMiddleware.cs` - Extracts tenant from route, validates, protects Partition 0
-- `Ignixa.Api/appsettings.json` - Tenant configurations for production
-- `Ignixa.Api/appsettings.Development.json` - Multi-tenant test configuration
-
-**Bundle Processing**:
-- `Ignixa.Application/Features/Bundle/DeferredWriteCoordinator.cs` - Allocates transaction IDs from Partition 0, groups writes by partition
-- `Ignixa.Application/Features/Bundle/BundleProcessor.cs` - Creates coordinators with partition strategy
-- `Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs` - Propagates tenant context to mini-HttpContext
-
-**Transaction Watcher** (Background Recovery):
-- `Ignixa.Api/BackgroundServices/TransactionWatcherService.cs` - Background service for automatic transaction recovery
-- `Ignixa.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model (ScanInterval, StallThreshold)
-- `Ignixa.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface method
-- `Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem stalled transaction detection
-- `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL stalled transaction detection
-
-### Adding a New Feature (e.g., Observation)
-
-1. **Application Layer** - Create handlers
-   ```
-   src/Ignixa.Application/Features/Observation/
-   ├── CreateObservationCommand.cs
-   ├── CreateObservationHandler.cs
-   ├── GetObservationQuery.cs
-   └── GetObservationHandler.cs
-   ```
-
-2. **API Layer** - Create controller
-   ```
-   src/Ignixa.Api/Features/Observation/Api/
-   └── ObservationController.cs
-   ```
-
-3. **No changes needed** in Domain or DataLayer (already generic)
-
-### Adding a New DataLayer Implementation (e.g., SQL Server)
-
-1. **Create new project**
-   ```bash
-   dotnet new classlib -n Ignixa.DataLayer.SqlServer -o src/Ignixa.DataLayer.SqlServer
-   dotnet add src/Ignixa.DataLayer.SqlServer reference src/Ignixa.Domain
-   dotnet sln add src/Ignixa.DataLayer.SqlServer
-   ```
-
-2. **Implement IFhirRepository**
-   ```csharp
-   namespace Ignixa.DataLayer.SqlServer;
-
-   public class SqlServerFhirRepository : IFhirRepository
-   {
-       // Implement GetAsync, CreateOrUpdateAsync
-   }
-   ```
-
-3. **Register in Ignixa.Api** (Autofac/DI)
-
-### SDK 6.0 API Patterns
+### Adding a New Minimal API Endpoint
 
 ```csharp
-// Parsing JSON to ISourceNode
-ISourceNode node = await FhirJsonNode.ParseAsync(jsonString);
+// 1. Create Endpoints class
+public static class MyEndpoints
+{
+    public static IEndpointRouteBuilder MapMyEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapGet("/my-route", HandleMyRequest);
+        return endpoints;
+    }
 
-// Serializing (prototype uses RawJson property for simplicity)
-string json = resourceWrapper.RawJson; // Stored during read
+    private static async Task<IResult> HandleMyRequest(
+        HttpContext context, IMediator mediator, CancellationToken ct)
+    {
+        var query = new MyQuery();
+        var result = await mediator.SendAsync(query, ct);
+        return Results.Ok(result);
+    }
+}
+
+// 2. Register in Program.cs
+app.MapMyEndpoints();
 ```
 
-## Known Issues / Workarounds
+### Adding a New Medino Handler
 
-### 1. Ignixa.Search Nullable Compatibility
-- **Issue**: Old code doesn't use nullable annotations
-- **Workaround**: Nullable disabled (`<Nullable>disable</Nullable>`)
-- **TODO**: Incrementally enable nullable and add annotations
+```csharp
+// Query/Command
+public record MyQuery(string Id) : IRequest<MyResult>;
 
-### 2. Ignixa.Specification JsonSchema.Net
-- **Issue**: API changed in version 7.x
-- **Status**: Temporarily removed from solution
-- **TODO**: Migrate to new JsonSchema.Net API or replace
+// Handler
+public class MyHandler : IRequestHandler<MyQuery, MyResult>
+{
+    private readonly IFhirRepository _repository;
 
-### 3. FhirEvaluationContext.ElementResolver / PocoNode Custom Provider Limitation
-- **Issue**: PocoNode/ToPocoNode doesn't support custom `IStructureDefinitionSummaryProvider` implementations
-- **Root Cause**:
-  - `ElementResolver` requires `PocoNode` return type (not `ITypedElement`)
-  - `ToPocoNode()` accepts `ModelInspector` (concrete class), not `IStructureDefinitionSummaryProvider` (interface)
-  - Our `R4StructureDefinitionSummaryProvider` cannot be converted to `ModelInspector`
-- **Impact**: Custom provider metadata is discarded when converting `ITypedElement` → `PocoNode`
-- **Status**: **Known SDK 6.0.0 architectural limitation** - cannot be resolved without SDK changes
-- **Workaround**: Use `ToTypedElement()` with custom provider where possible (works for search indexing)
-- **Location**: `TypedElementSearchIndexer.cs:71` (documented with detailed comments)
+    public MyHandler(IFhirRepository repository) => _repository = repository;
 
-### 4. ISourceNode Serialization
-- **Issue**: No direct ToJson() method in SDK 6.0
-- **Workaround**: Store RawJson string in ResourceWrapper.RawJson
-- **Production**: Use proper serialization via FhirJsonSerializer + Utf8JsonWriter
+    public async Task<MyResult> HandleAsync(MyQuery request, CancellationToken cancellationToken)
+    {
+        // Implementation
+    }
+}
 
-## Implementation Progress (ADR-2501: Prototype Phase)
-
-**Current Phase**: Prototype Implementation ✅ COMPLETED
-**Status**: 🟢 All Core Features Implemented and Tested
-**Completion Date**: October 9, 2025
-
-### ✅ Completed Tasks
-
-1. **Project Structure** (Week 1)
-   - ✅ Created layered architecture with separate projects
-   - ✅ Ignixa.Domain - Models and abstractions
-   - ✅ Ignixa.Application - Medino handlers
-   - ✅ Ignixa.DataLayer.FileSystem - File-based repository
-   - ✅ Ignixa.DataLayer.InMemoryIndex - Resource location tracking
-   - ✅ Ignixa.Api - ASP.NET Core controllers
-
-2. **Domain Layer** (Week 1)
-   - ✅ ResourceKey, ResourceWrapper, ResourceRequest models
-   - ✅ IFhirRepository abstraction
-   - ✅ Feature folder structure established
-
-3. **Data Layer** (Week 2)
-   - ✅ FileBasedFhirRepository with JSON + metadata sidecars
-   - ✅ InMemoryResourceLocationIndex (ConcurrentDictionary)
-   - ✅ Version tracking and metadata storage
-
-4. **Application Layer** (Week 2)
-   - ✅ Patient CreateOrUpdateCommand/Handler
-   - ✅ Patient GetQuery/Handler
-   - ✅ Medino IRequest<T>/IRequestHandler<T,R> patterns
-
-5. **API Layer** (Week 3)
-   - ✅ PatientController with GET /Patient/{id} and PUT /Patient/{id}
-   - ✅ MetadataController with GET /metadata
-   - ✅ Feature folder organization
-
-6. **SDK Migration** (Week 1, October 14, 2025)
-   - ✅ Upgraded to Firely SDK 6.0.0-rc1 (August 2025)
-   - ✅ Upgraded to Firely SDK 6.0.0 final (October 14, 2025)
-   - ✅ Fixed Ignixa.Search nullable compatibility issues
-   - ✅ Centralized package management
-   - ✅ Resolved PocoNode/FhirPath issues with SDK 6.0.0 final
-
-7. **Dependency Injection & Wiring** (Week 3-4)
-   - ✅ Configured Autofac container with AutofacServiceProviderFactory
-   - ✅ Registered IFhirRepository → FileBasedFhirRepository
-   - ✅ Registered IMediatorServiceProvider → AutofacMediatorServiceProvider
-   - ✅ Registered IMediator → Medino Mediator
-   - ✅ Registered all Patient handlers
-   - ✅ Configured logging with appsettings.json
-   - ✅ Wired up Program.cs startup
-
-8. **Testing** (Week 4-5)
-   - ✅ Manual integration tests for PUT /Patient/{id}
-   - ✅ Manual integration tests for GET /Patient/{id}
-   - ✅ Verified end-to-end round-trip (create → read)
-   - ✅ Repository file operations validated
-
-9. **Additional Endpoints** (Week 5-6)
-   - ✅ GET /metadata (capability statement)
-   - ✅ Error handling middleware (FhirExceptionMiddleware)
-   - ✅ FHIR response formatting (application/fhir+json)
-
-10. **Build & Validation**
-    - ✅ All 9 projects build successfully
-    - ✅ All tests pass (1/1 passing)
-    - ✅ Code analysis warnings resolved
-
-### 🎉 Prototype Achievements
-
-**Functional Endpoints:**
-- ✅ `PUT /Patient/{id}` - Create or update Patient resource
-- ✅ `GET /Patient/{id}` - Retrieve Patient resource by ID
-- ✅ `GET /metadata` - Return capability statement
-
-**Technical Stack:**
-- ✅ ASP.NET Core 9.0 with Autofac DI
-- ✅ Medino 2.0.1 for in-process messaging (CQRS pattern)
-- ✅ Firely SDK 6.0.0 final for FHIR support
-- ✅ File-based storage with JSON + metadata sidecars
-- ✅ FHIR-compliant error handling (OperationOutcome)
-
-**Architecture Validated:**
-- ✅ Clean separation of concerns (Domain → Application → API)
-- ✅ Generic repository pattern (IFhirRepository)
-- ✅ Feature folder structure
-- ✅ Dependency injection with Autofac
-- ✅ Medino CQRS handlers
-
-### Testing Results
-
-```bash
-# Build Status
-Build succeeded: 0 Warning(s), 0 Error(s)
-
-# Test Results
-Passed!  - Failed: 0, Passed: 1, Skipped: 0, Total: 1
-
-# Manual Integration Test
-PUT /Patient/example-123 → 201 Created (version 1)
-GET /Patient/example-123 → 200 OK (returns complete Patient resource)
-GET /metadata → 200 OK (returns capability statement)
+// Register in Program.cs (Autofac)
+builder.RegisterType<MyHandler>().As<IRequestHandler<MyQuery, MyResult>>();
 ```
 
-**Storage Verification:**
-```
-fhir-data/
-└── Patient/
-    ├── example-123.json       # Full FHIR Patient resource
-    └── example-123.meta.json  # Metadata (version, lastModified)
-```
+### Adding a New DataLayer Implementation
 
-11. **Phase 20: Multi-Tenancy Data Partitioning** (October 13, 2025)
-    - ✅ TenantConfiguration model with IsSystemPartition property
-    - ✅ ITenantConfigurationStore and AppSettingsTenantConfigurationStore
-    - ✅ IFhirRepositoryFactory and FileBasedFhirRepositoryFactory (with caching)
-    - ✅ ISearchServiceFactory and FileBasedSearchServiceFactory
-    - ✅ IPartitionStrategy interface with IsolatedModePartitionStrategy
-    - ✅ TenantResolutionMiddleware for tenant extraction and validation
-    - ✅ Partition 0 system partition reservation (SystemConstants.SystemPartitionId)
-    - ✅ Multi-partition bundle processing with DeferredWriteCoordinator
-    - ✅ Tenant context propagation in BundleEntryExecutor
-    - ✅ Updated all handlers to use factories and partition strategy
-    - ✅ Multi-tenant routing: `/tenant/{tenantId}/{resourceType}/{id?}`
+```csharp
+// 1. Create project
+dotnet new classlib -n Ignixa.DataLayer.MyStorage -o src/Ignixa.DataLayer.MyStorage
+dotnet add src/Ignixa.DataLayer.MyStorage reference src/Ignixa.Domain
+dotnet sln add src/Ignixa.DataLayer.MyStorage
 
-12. **Phase 21: Transaction Watcher (Background Recovery)** (October 16, 2025)
-    - ✅ Added `GetStalledTransactionsAsync()` to IFhirRepository interface
-    - ✅ Added `TryParse()` to TransactionId model
-    - ✅ FileSystem stalled transaction detection (scans .lock.ndjson files)
-    - ✅ SQL stalled transaction detection (queries TransactionEntity table)
-    - ✅ TransactionWatcherOptions configuration model
-    - ✅ TransactionWatcherService background service (IHostedService)
-    - ✅ Multi-tenant and multi-storage support
-    - ✅ Configurable scan interval and stall threshold
-    - ✅ Comprehensive logging and metrics
-    - ✅ Registered in DI and appsettings.json configuration
-    - ✅ Build succeeded (0 warnings, 0 errors)
+// 2. Implement IFhirRepository
+public class MyStorageFhirRepository : IFhirRepository
+{
+    // Implement GetAsync, CreateOrUpdateAsync, GetResourceHistoryAsync, etc.
+}
 
-13. **Phase 22: FHIR _history Operations** (October 17, 2025)
-    - ✅ HistoryQueryParameters model (count, offset, since, until, sort)
-    - ✅ HistorySortOrder enum (Ascending/Descending)
-    - ✅ Added history methods to IFhirRepository interface:
-      - `GetResourceHistoryAsync()` - Instance-level history
-      - `GetTypeHistoryAsync()` - Type-level history
-      - `GetSystemHistoryAsync()` - System-level history
-    - ✅ FileSystem implementation (scans metadata files, filters/sorts/paginates)
-    - ✅ SQL implementation (EF Core queries with timestamp filtering)
-    - ✅ HistoryQueryParametersParser (parses _count, _offset, _since, _until, _sort)
-    - ✅ Three Medino query/handler pairs (GetResourceHistory, GetTypeHistory, GetSystemHistory)
-    - ✅ HistoryPaginationLinkBuilder (self, first, next, previous, last links)
-    - ✅ BundleResponseBuilder.BuildHistoryBundle() static method
-    - ✅ HistoryEndpoints with MapFhirHistoryEndpoints() (6 routes: 3 tenant-explicit + 3 tenant-agnostic)
-    - ✅ Minimal API pattern (NOT Controllers)
-    - ✅ Registered handlers in Program.cs Autofac container
-    - ✅ Build succeeded (0 warnings, 0 errors)
-
-**History Query Parameters:**
-- `_count` (default: 20, max: 1000) - Page size
-- `_offset` (default: 0) - Results to skip (offset-based pagination)
-- `_since` (DateTimeOffset) - Include only versions created at/after this instant
-- `_until` (DateTimeOffset) - Include only versions created at/before this instant (custom extension)
-- `_sort` (asc/desc, default: desc) - Sort by lastModified (newest first per FHIR spec)
-
-**Routing:**
-```bash
-# Instance-level: All versions of a specific resource
-GET /tenant/{tenantId}/{resourceType}/{id}/_history?_count=10&_sort=desc
-GET /{resourceType}/{id}/_history  # Agnostic (single-tenant auto-detect)
-
-# Type-level: All versions of all resources of a type
-GET /tenant/{tenantId}/{resourceType}/_history?_since=2025-01-01T00:00:00Z
-GET /{resourceType}/_history  # Agnostic
-
-# System-level: All versions across all resource types
-GET /tenant/{tenantId}/_history?_count=50&_offset=100
-GET /_history  # Agnostic
+// 3. Register factory in Program.cs
 ```
 
-**Key Files:**
-- `Ignixa.Domain/Models/HistoryQueryParameters.cs` - Query parameter model
-- `Ignixa.Domain/Abstractions/IFhirRepository.cs:72-114` - History interface methods
-- `Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:763+` - FileSystem implementation
-- `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:396+` - SQL implementation
-- `Ignixa.Application/Features/History/` - Query/handler/parser classes (7 files)
-- `Ignixa.Api/Infrastructure/HistoryEndpoints.cs` - Minimal API endpoints
+## Anti-Patterns to Avoid
 
-### Next Steps (Post-Phase 21)
+| ❌ Don't | ✅ Do |
+|---------|-------|
+| Add `Hl7.Fhir.*` to Application/DataLayer | Use `Ignixa.*` equivalents |
+| Use MVC Controllers | Use Minimal API endpoints |
+| Use `ICommand` | Use `IRequest<TResponse>` |
+| Return `ValueTask<T>` from handlers | Return `Task<T>` |
+| Name parameter `ct` | Name parameter `cancellationToken` |
+| Calculate total count by default | Use `_total=none` (default), only count when requested |
+| Allow access to Partition 0 via API | Block in middleware (system partition only) |
 
-The multi-tenancy foundation is **IN PROGRESS**. Remaining work:
+## Known Issues
 
-1. **Phase 1.1: Bundle Processing & Dynamic Routing** (Week 2)
-   - **NEW**: Migrate from PatientController to generic endpoint routing (see `dynamic-fhir-routing.md`)
-     - Eliminates need for 145+ resource-specific controllers
-     - Generic RequestDelegate handlers for all resource types
-     - Zero controllers, automatic support for all FHIR resources
-   - Implement POST / for transaction bundles
-   - Channel-based parallel execution
-   - Reference resolution for urn:uuid:
+1. **Ignixa.Search Nullable**: Nullable disabled (`<Nullable>disable</Nullable>`). TODO: Incrementally enable.
+2. **PocoNode Custom Provider**: SDK 6.0 limitation - `ToPocoNode()` doesn't accept custom `IStructureDefinitionSummaryProvider`. Workaround: Use `ToTypedElement()` where possible.
+3. **ISourceNode Serialization**: Store `RawJson` in `ResourceWrapper` for prototype. Production: Use `FhirJsonSerializer`.
 
-2. **Phase 1.2: Search Implementation** (Week 3)
-   - **NEW**: Implement simplified SearchOptionsBuilder (see `search-query-parsing.md`)
-     - 250 lines vs 800-line legacy factory (70% reduction)
-     - QueryParameterParser for structured parsing
-   - **NEW**: Implement streaming Bundle responses (see `bundle-streaming.md`)
-     - IAsyncEnumerable + FhirJsonWriter for 95% memory reduction
-     - BundleSerializer for zero-copy JSON serialization
-   - Port InMemory search from microsoft/fhir-server
-   - Add GET /Patient?name=... support
-   - Integrate Ignixa.Search indexing
+## Implementation Progress Summary
 
-2. **Phase 3: Additional Resource Types**
-   - Add Observation, Condition, Medication, etc.
-   - Reuse existing handlers (generic pattern)
+| Phase | Status | Completion Date |
+|-------|--------|-----------------|
+| Phases 1-10 (Prototype) | ✅ COMPLETED | Oct 9, 2025 |
+| Phase 20 (Multi-Tenancy) | ✅ COMPLETED | Oct 13, 2025 |
+| Phase 21 (Transaction Watcher) | ✅ COMPLETED | Oct 16, 2025 |
+| Phase 22 (FHIR _history) | ✅ COMPLETED | Oct 17, 2025 |
 
-3. **Phase 4: Production Hardening**
-   - Add comprehensive unit tests (80% coverage)
-   - Add integration test suite
-   - Performance testing and optimization
-   - Security hardening (authentication/authorization)
+**Current Capabilities**:
+- ✅ CRUD operations (all resource types via generic endpoints)
+- ✅ Search (basic implementation)
+- ✅ Transaction bundles (POST /)
+- ✅ Multi-tenant data partitioning (Isolation mode)
+- ✅ Background transaction recovery
+- ✅ FHIR _history operations (instance/type/system)
+- ✅ Streaming Bundle responses (95% memory reduction)
+- ✅ Tenant-explicit and tenant-agnostic routing
+
+**Next Phases**:
+1. **Phase 1.1**: Dynamic routing (eliminate PatientController), enhanced bundle processing
+2. **Phase 1.2**: Advanced search (simplified SearchOptionsBuilder, 70% code reduction)
+3. **Phase 3**: Additional resource types (Observation, Condition, Medication)
+4. **Phase 4**: Production hardening (80% test coverage, performance optimization, security)
 
 ## Related Documentation
 
-- **ADR-2500**: Master implementation roadmap (116 weeks, 29 investigations)
-- **ADR-2501**: Prototype phase details (Weeks 1-8, file-based storage, Medino) - ✅ COMPLETED
-- **ADR-2523**: Phase 20 - Multi-Tenancy Data Partitioning - IN PROGRESS
-  - Isolation mode with factory pattern
-  - Partition 0 system partition reservation
-  - HAPI FHIR-inspired partition strategy
-- **Investigation**: `docs/investigations/multi-tenancy-data-partitioning-modes.md`
-- **Investigation**: `docs/investigations/dynamic-fhir-routing.md`
-- **Investigation**: `docs/investigations/bundle-streaming.md`
-- **Investigation**: `docs/investigations/search-query-parsing.md`
+**Key ADRs**:
+- `docs/investigations/ADR-2500-master-roadmap.md` - 116-week roadmap
+- `docs/investigations/ADR-2501-prototype-phase.md` - Prototype details (COMPLETED)
+- `docs/investigations/ADR-2523-multi-tenancy.md` - Multi-tenant design
 
-## Future Roadmap
+**Investigations**:
+- `docs/investigations/dynamic-fhir-routing.md` - Generic endpoints (14% faster)
+- `docs/investigations/bundle-streaming.md` - Memory optimization (IMPLEMENTED)
+- `docs/investigations/search-query-parsing.md` - Simplified parser (70% code reduction)
 
-### Planned DataLayer Projects
-- ✅ Ignixa.DataLayer.FileSystem (Prototype)
-- ✅ Ignixa.DataLayer.InMemoryIndex (Prototype)
-- 🔲 Ignixa.DataLayer.SqlServer.Legacy (Phase 8 - EF with legacy schema)
-- 🔲 Ignixa.DataLayer.SqlServer.Optimized (Phase 8a - Optimized schema)
-- 🔲 Ignixa.DataLayer.CosmosDB (Phase 9)
-
-### Next Steps (Post-Prototype)
-1. **Autofac Configuration** - Register services, configure DI
-2. **Startup/Program.cs** - Wire up controllers, Medino, repositories
-3. **Integration Tests** - PUT /Patient/{id}, GET /Patient/{id}
-4. **Metadata Endpoint** - Static capability statement
-5. **Unit Tests** - 80% coverage target
+**Code Generation**:
+- `codegen/README.md` - Structure provider generation
+- `codegen/generate.ps1` / `generate.sh` - Generation scripts
