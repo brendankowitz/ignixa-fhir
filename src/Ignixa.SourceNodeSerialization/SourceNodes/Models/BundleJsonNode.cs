@@ -27,7 +27,7 @@ public class BundleJsonNode : ResourceJsonNode
     public int? Total { get; set; }
 
     [JsonPropertyName("link")]
-    public IList<BundleLinkJsonNode> Link { get; set; }
+    public IReadOnlyList<BundleLinkJsonNode> Link { get; set; }
 
     [JsonPropertyName("entry")]
     public IList<BundleComponentJsonNode> Entry { get; set; }

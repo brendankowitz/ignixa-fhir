@@ -127,11 +127,6 @@ public class DeferredWriteCoordinator
     {
         ArgumentNullException.ThrowIfNull(wrapper);
 
-        if (wrapper.RawJson == null)
-        {
-            throw new InvalidOperationException("ResourceWrapper.RawJson must not be null for deferred writes");
-        }
-
         // Create TaskCompletionSource with RunContinuationsAsynchronously flag
         // This is CRITICAL: Without this flag, continuations run on the batch processor thread,
         // causing deadlocks and poor performance.

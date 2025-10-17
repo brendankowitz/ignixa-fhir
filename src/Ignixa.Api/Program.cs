@@ -196,6 +196,20 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IRequestHandler<SearchResourcesQuery, SearchResourcesResult>>()
         .InstancePerDependency();
 
+    // History handlers (Phase 22 - ADR-2524: FHIR _history operations)
+    // NOW WITH STREAMING: Returns HistoryResult with IAsyncEnumerable<SearchEntryResult> for efficient memory usage
+    containerBuilder.RegisterType<Ignixa.Application.Features.History.GetResourceHistoryHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.History.GetResourceHistoryQuery, Ignixa.Application.Features.History.HistoryResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.History.GetTypeHistoryHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.History.GetTypeHistoryQuery, Ignixa.Application.Features.History.HistoryResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.History.GetSystemHistoryHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.History.GetSystemHistoryQuery, Ignixa.Application.Features.History.HistoryResult>>()
+        .InstancePerDependency();
+
     // NOTE: FileBasedSearchService is no longer registered as singleton
     // It is now created per tenant by FileBasedSearchServiceFactory
 
@@ -362,6 +376,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.MapFhirEndpoints();
+app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
 Ignixa.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)
 app.MapControllers(); // Keep for MetadataController
 

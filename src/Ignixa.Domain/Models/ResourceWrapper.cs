@@ -16,18 +16,6 @@ public record ResourceWrapper(
     bool IsDeleted = false)
 {
     /// <summary>
-    /// Optional: Raw JSON representation for prototype simplicity.
-    /// In production, serialize from Resource as needed.
-    /// </summary>
-    public string? RawJson { get; init; }
-
-    /// <summary>
-    /// Optional: Raw JSON bytes for zero-copy serialization.
-    /// Enables streaming without parsing/re-serializing JSON.
-    /// </summary>
-    public ReadOnlyMemory<byte>? RawJsonBytes { get; init; }
-
-    /// <summary>
     /// Optional: FHIR version of the resource (e.g., "4.0" for R4, "5.0" for R5).
     /// Defaults to "4.0" (R4) if not specified.
     /// </summary>

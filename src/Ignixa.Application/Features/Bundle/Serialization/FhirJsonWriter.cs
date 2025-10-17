@@ -160,13 +160,23 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
     /// <summary>
     /// Writes a raw JSON property value from pre-serialized UTF-8 bytes.
     /// This enables zero-copy passthrough of already-serialized JSON.
+    /// Strips UTF-8 BOM if present for backward compatibility with legacy files.
     /// </summary>
     public FhirJsonWriter WriteRawProperty(string name, ReadOnlyMemory<byte> value)
     {
         EnsureArg.IsNotNullOrEmpty(name, nameof(name));
 
         _writer.WritePropertyName(name);
-        _writer.WriteRawValue(value.Span, skipInputValidation: false);
+
+        // Strip UTF-8 BOM if present (0xEF 0xBB 0xBF)
+        // This handles legacy files written with BOM while being zero-cost for clean files
+        var span = value.Span;
+        if (span.Length >= 3 && span[0] == 0xEF && span[1] == 0xBB && span[2] == 0xBF)
+        {
+            span = span.Slice(3); // Skip the 3-byte UTF-8 BOM
+        }
+
+        _writer.WriteRawValue(span, skipInputValidation: false);
 
         return this;
     }

@@ -1,16 +1,14 @@
-@hostname = localhost:7057
+@hostname = localhost:5000
 
 ### Setup test data
 # @name batch
 POST https://{{hostname}}
 Content-Type: application/json
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 < ./data/SearchDataBatch.json
 
 ### Include
 GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Revinclude
 GET {{hostname}}/Patient?_revinclude=Encounter:subject
@@ -150,8 +148,8 @@ Content-Type: application/json
       "reference": "Practitioner/searchpractitioner3"
     }
   ],
-  "managingOrganization" : 
-  { 
+  "managingOrganization" :
+  {
     "reference" : "Organization/good"
   }
 }

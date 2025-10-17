@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Sparky.Api.Configuration;
+namespace Ignixa.Api.Configuration;
 
 /// <summary>
 /// Configuration options for the Transaction Watcher background service.

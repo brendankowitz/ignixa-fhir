@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -127,8 +128,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             int newVersion = await GetNextVersionAsync(key, ct).ConfigureAwait(false);
 
             // Use RawJson if available (fast path), otherwise would need complex serialization
-            string resourceJson = resource.RawJson
-                ?? throw new InvalidOperationException("RawJson must be provided for FileBasedFhirRepository");
+            string resourceJson = resource.Resource.SerializeToString();
 
             // Get date-based directory path
             string dateDirectory = GetDateDirectory(resource.ResourceType, timestamp);
@@ -171,6 +171,109 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
             _logger.LogInformation("Stored resource: {ResourceType}/{Id} version {VersionId} tx {TransactionId}",
                 resource.ResourceType, resource.ResourceId, metadata.VersionId, transactionId);
+
+            return resultKey;
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<ResourceKey?> DeleteAsync(
+        ResourceKey key,
+        ResourceRequest request,
+        TransactionId? transactionId = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(request);
+
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            _logger.LogDebug("Deleting resource {ResourceType}/{Id}", key.ResourceType, key.Id);
+
+            // Check if resource exists
+            var metadataFile = await FindLatestMetadataFileAsync(key, ct).ConfigureAwait(false);
+            if (metadataFile == null)
+            {
+                // Resource never existed - return null (404 Not Found)
+                _logger.LogWarning(
+                    "Cannot delete {ResourceType}/{Id}: resource never existed",
+                    key.ResourceType,
+                    key.Id);
+                return null;
+            }
+
+            // Read current metadata
+            var currentMetadata = await ReadMetadataFileAsync(metadataFile, ct).ConfigureAwait(false);
+
+            // Check if already deleted (idempotency)
+            if (currentMetadata.IsDeleted)
+            {
+                _logger.LogDebug(
+                    "Resource {ResourceType}/{Id} already deleted at version {Version} (idempotent)",
+                    key.ResourceType,
+                    key.Id,
+                    currentMetadata.VersionId);
+
+                return new ResourceKey(
+                    key.ResourceType,
+                    key.Id,
+                    currentMetadata.VersionId,
+                    key.TenantId);
+            }
+
+            // Create new deleted version (tombstone)
+            var txId = transactionId ?? TransactionId.Generate();
+            var timestamp = DateTimeOffset.UtcNow;
+            int newVersion = int.Parse(currentMetadata.VersionId) + 1;
+
+            // Create minimal tombstone JSON (FHIR spec: only id and meta)
+            var tombstoneJson = $"{{\"resourceType\":\"{key.ResourceType}\",\"id\":\"{key.Id}\",\"meta\":{{\"versionId\":\"{newVersion}\",\"lastUpdated\":\"{timestamp:o}\"}}}}";
+
+            // Get date-based directory path
+            string dateDirectory = GetDateDirectory(key.ResourceType, timestamp);
+            Directory.CreateDirectory(dateDirectory);
+
+            // Write tombstone NDJSON file
+            string ndjsonPath = Path.Combine(dateDirectory, $"tx-{txId}.ndjson");
+            await File.WriteAllTextAsync(ndjsonPath, tombstoneJson, ct).ConfigureAwait(false);
+
+            // Write metadata sidecar with IsDeleted = true
+            string internalMetadataDir = Path.Combine(
+                _baseDirectory,
+                "_internal",
+                key.ResourceType,
+                key.Id);
+            Directory.CreateDirectory(internalMetadataDir);
+
+            string internalMetadataPath = Path.Combine(internalMetadataDir, $"{txId}.metadata.json");
+
+            var deletedMetadata = new ResourceMetadata
+            {
+                TransactionId = txId.ToString(),
+                ResourceType = key.ResourceType,
+                ResourceId = key.Id,
+                VersionId = newVersion.ToString(),
+                LastModified = timestamp,
+                IsDeleted = true, // Mark as deleted
+                Request = request,
+                SearchIndexes = null, // Deleted resources have no search indices
+            };
+
+            string metadataJson = JsonSerializer.Serialize(deletedMetadata, _jsonOptions);
+            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, ct).ConfigureAwait(false);
+
+            var resultKey = new ResourceKey(key.ResourceType, key.Id, newVersion.ToString(), key.TenantId);
+
+            _logger.LogInformation(
+                "Deleted resource: {ResourceType}/{Id} (created tombstone version {Version})",
+                key.ResourceType,
+                key.Id,
+                newVersion);
 
             return resultKey;
         }
@@ -759,6 +862,321 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             resourceType);
 
         return results;
+    }
+
+    public async IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        // Validate parameters
+        parameters = parameters.Validate();
+
+        // Get metadata directory for this specific resource
+        string metadataDir = Path.Combine(_baseDirectory, "_internal", key.ResourceType, key.Id);
+        if (!Directory.Exists(metadataDir))
+        {
+            _logger.LogDebug("No history found for resource: {ResourceType}/{Id}", key.ResourceType, key.Id);
+            yield break;
+        }
+
+        // Get all metadata files for this resource (all versions)
+        var metadataFiles = Directory.GetFiles(metadataDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
+        var allMetadata = new List<ResourceMetadata>();
+
+        foreach (var file in metadataFiles)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                allMetadata.Add(metadata);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read metadata file {File}", file);
+            }
+        }
+
+        // Apply filters and sorting
+        var filtered = ApplyHistoryFilters(allMetadata, parameters);
+
+        // Skip offset, then yield up to count results
+        int skipped = 0;
+        int returned = 0;
+
+        foreach (var metadata in filtered)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Skip offset entries
+            if (skipped < parameters.Offset)
+            {
+                skipped++;
+                continue;
+            }
+
+            // Stop after count entries
+            if (returned >= parameters.Count)
+            {
+                break;
+            }
+
+            // Load resource and yield
+            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, ct).ConfigureAwait(false);
+            if (result != null)
+            {
+                returned++;
+                yield return result;
+            }
+        }
+
+        _logger.LogDebug(
+            "Resource history query: {ResourceType}/{Id} returned {Count} versions",
+            key.ResourceType,
+            key.Id,
+            returned);
+    }
+
+    public async IAsyncEnumerable<SearchEntryResult> GetTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        // Validate parameters
+        parameters = parameters.Validate();
+
+        // Get all metadata files for this resource type
+        string resourceTypeDir = Path.Combine(_baseDirectory, "_internal", resourceType);
+        if (!Directory.Exists(resourceTypeDir))
+        {
+            _logger.LogDebug("No history found for resource type: {ResourceType}", resourceType);
+            yield break;
+        }
+
+        // Scan all resource ID directories for metadata files
+        var allMetadata = new List<ResourceMetadata>();
+        var resourceIdDirs = Directory.GetDirectories(resourceTypeDir, "*", SearchOption.TopDirectoryOnly);
+
+        foreach (var resourceIdDir in resourceIdDirs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var metadataFiles = Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
+            foreach (var file in metadataFiles)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                    allMetadata.Add(metadata);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to read metadata file {File}", file);
+                }
+            }
+        }
+
+        // Apply filters and sorting
+        var filtered = ApplyHistoryFilters(allMetadata, parameters);
+
+        // Skip offset, then yield up to count results
+        int skipped = 0;
+        int returned = 0;
+
+        foreach (var metadata in filtered)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Skip offset entries
+            if (skipped < parameters.Offset)
+            {
+                skipped++;
+                continue;
+            }
+
+            // Stop after count entries
+            if (returned >= parameters.Count)
+            {
+                break;
+            }
+
+            // Load resource and yield
+            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, ct).ConfigureAwait(false);
+            if (result != null)
+            {
+                returned++;
+                yield return result;
+            }
+        }
+
+        _logger.LogDebug(
+            "Type history query: {ResourceType} returned {Count} versions",
+            resourceType,
+            returned);
+    }
+
+    public async IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        // Validate parameters
+        parameters = parameters.Validate();
+
+        // Get all metadata files across all resource types
+        string internalDir = Path.Combine(_baseDirectory, "_internal");
+        if (!Directory.Exists(internalDir))
+        {
+            _logger.LogDebug("No history found in system");
+            yield break;
+        }
+
+        // Scan all resource type directories
+        var allMetadata = new List<ResourceMetadata>();
+        var resourceTypeDirs = Directory.GetDirectories(internalDir, "*", SearchOption.TopDirectoryOnly);
+
+        foreach (var resourceTypeDir in resourceTypeDirs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Scan all resource ID directories
+            var resourceIdDirs = Directory.GetDirectories(resourceTypeDir, "*", SearchOption.TopDirectoryOnly);
+            foreach (var resourceIdDir in resourceIdDirs)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var metadataFiles = Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
+                foreach (var file in metadataFiles)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    try
+                    {
+                        var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                        allMetadata.Add(metadata);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to read metadata file {File}", file);
+                    }
+                }
+            }
+        }
+
+        // Apply filters and sorting
+        var filtered = ApplyHistoryFilters(allMetadata, parameters);
+
+        // Skip offset, then yield up to count results
+        int skipped = 0;
+        int returned = 0;
+
+        foreach (var metadata in filtered)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Skip offset entries
+            if (skipped < parameters.Offset)
+            {
+                skipped++;
+                continue;
+            }
+
+            // Stop after count entries
+            if (returned >= parameters.Count)
+            {
+                break;
+            }
+
+            // Load resource and yield
+            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, ct).ConfigureAwait(false);
+            if (result != null)
+            {
+                returned++;
+                yield return result;
+            }
+        }
+
+        _logger.LogDebug(
+            "System history query returned {Count} versions",
+            returned);
+    }
+
+    /// <summary>
+    /// Applies history filters (timestamp range) and sorting to metadata list.
+    /// Does NOT apply pagination - caller handles offset/limit during iteration.
+    /// </summary>
+    private static IEnumerable<ResourceMetadata> ApplyHistoryFilters(
+        List<ResourceMetadata> allMetadata,
+        HistoryQueryParameters parameters)
+    {
+        // Filter by timestamp range (_since and _until)
+        var filtered = allMetadata.AsEnumerable();
+
+        if (parameters.Since.HasValue)
+        {
+            filtered = filtered.Where(m => m.LastModified >= parameters.Since.Value);
+        }
+
+        if (parameters.Until.HasValue)
+        {
+            filtered = filtered.Where(m => m.LastModified <= parameters.Until.Value);
+        }
+
+        // Sort by LastModified (ascending or descending)
+        filtered = parameters.Sort == HistorySortOrder.Ascending
+            ? filtered.OrderBy(m => m.LastModified)
+            : filtered.OrderByDescending(m => m.LastModified);
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Loads a single resource version from disk given its metadata.
+    /// Returns null if resource file cannot be loaded.
+    /// </summary>
+    private async ValueTask<SearchEntryResult?> LoadResourceVersionAsync(
+        ResourceMetadata metadata,
+        CancellationToken ct)
+    {
+        try
+        {
+            // Build path to resource NDJSON file
+            string resourceTypeDir = GetDateDirectory(metadata.ResourceType, metadata.LastModified);
+            string ndjsonPath = Path.Combine(resourceTypeDir, $"tx-{metadata.TransactionId}.ndjson");
+
+            // Read resource JSON from NDJSON file
+            string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, metadata.ResourceId, ct).ConfigureAwait(false);
+
+            // Convert to bytes for zero-copy serialization
+            byte[] resourceJsonBytes = Encoding.UTF8.GetBytes(resourceJson);
+
+            // Create SearchEntryResult
+            return new SearchEntryResult(
+                ResourceType: metadata.ResourceType,
+                ResourceId: metadata.ResourceId,
+                VersionId: metadata.VersionId,
+                LastModified: metadata.LastModified,
+                ResourceBytes: new ReadOnlyMemory<byte>(resourceJsonBytes))
+            {
+                IsDeleted = metadata.IsDeleted,
+                Request = metadata.Request
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to load resource version {ResourceType}/{Id} v{Version}",
+                metadata.ResourceType,
+                metadata.ResourceId,
+                metadata.VersionId);
+            return null;
+        }
     }
 
     private class ResourceMetadata

@@ -87,12 +87,9 @@ public class LegacySqlEfRepository : IFhirRepository
             return null;
         }
 
-        // Check if deleted
-        if (entity.IsDeleted)
-        {
-            _logger.LogDebug("Resource is deleted: {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
-            return null;
-        }
+        // NOTE: Do NOT filter out deleted resources here - return them with IsDeleted=true
+        // The API layer (FhirEndpoints.HandleGetResource) will check IsDeleted and return 410 Gone
+        // This allows proper FHIR-compliant behavior: 404 = never existed, 410 = deleted
 
         // Decompress RawResource to bytes (no parsing!)
         // Return SearchEntryResult with raw bytes for zero-copy serialization
@@ -142,6 +139,112 @@ public class LegacySqlEfRepository : IFhirRepository
         _logger.LogInformation("Created resource {ResourceType}/{ResourceId} version {Version}", resource.ResourceType, resource.ResourceId, newVersion);
 
         return new ResourceKey(resource.ResourceType, resource.ResourceId, newVersion.ToString(), resource.TenantId);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<ResourceKey?> DeleteAsync(
+        ResourceKey key,
+        ResourceRequest request,
+        TransactionId? transactionId = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(request);
+
+        _logger.LogDebug("Deleting resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
+
+        // Get ResourceTypeId
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+
+        // Find current version (IsHistory = false)
+        var currentEntity = await _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId
+                && r.ResourceId == key.Id
+                && !r.IsHistory)
+            .Include(r => r.Transaction)
+            .OrderByDescending(r => r.Version)
+            .FirstOrDefaultAsync(ct);
+
+        if (currentEntity == null)
+        {
+            // Resource never existed - return null (404 Not Found)
+            _logger.LogWarning(
+                "Cannot delete {ResourceType}/{ResourceId}: resource never existed",
+                key.ResourceType,
+                key.Id);
+            return null;
+        }
+
+        if (currentEntity.IsDeleted)
+        {
+            // Idempotency: Already deleted, return existing deleted version
+            _logger.LogDebug(
+                "Resource {ResourceType}/{ResourceId} already deleted at version {Version} (idempotent)",
+                key.ResourceType,
+                key.Id,
+                currentEntity.Version);
+
+            return new ResourceKey(
+                key.ResourceType,
+                key.Id,
+                currentEntity.Version.ToString(),
+                key.TenantId);
+        }
+
+        // Create new deleted version
+        int newVersion = currentEntity.Version + 1;
+
+        // Mark old version as history
+        currentEntity.IsHistory = true;
+        // TODO: Set HistoryTransactionId if needed
+
+        // Create minimal tombstone JSON (FHIR spec: id and meta only)
+        var tombstoneJsonNode = new ResourceJsonNode
+        {
+            ResourceType = key.ResourceType,
+            Id = key.Id,
+            Meta = new MetaJsonNode
+            {
+                VersionId = newVersion.ToString(),
+                LastUpdated = DateTimeOffset.UtcNow
+            }
+        };
+
+        // Compress minimal tombstone
+        var compressedTombstone = _compressor.SerializeAndCompress(tombstoneJsonNode);
+
+        // Create new deleted version entity
+        var deletedEntity = new ResourceEntity
+        {
+            ResourceTypeId = resourceTypeId,
+            ResourceId = key.Id,
+            Version = newVersion,
+            IsHistory = false, // This is now the current version
+            ResourceSurrogateId = await GetNextSurrogateIdAsync(ct),
+            IsDeleted = true, // Mark as deleted
+            RequestMethod = "DELETE",
+            RawResource = compressedTombstone,
+            IsRawResourceMetaSet = true, // Meta is set in tombstone
+            SearchParamHash = null, // Deleted resources have no search indices
+            TransactionId = transactionId?.Value,
+            HistoryTransactionId = null,
+        };
+
+        _context.Resources.Add(deletedEntity);
+
+        // Save changes immediately if not part of a transaction
+        if (!transactionId.HasValue)
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+
+        _logger.LogInformation(
+            "Created tombstone for {ResourceType}/{ResourceId} version {Version}",
+            key.ResourceType,
+            key.Id,
+            newVersion);
+
+        return new ResourceKey(key.ResourceType, key.Id, newVersion.ToString(), key.TenantId);
     }
 
     /// <inheritdoc/>
@@ -305,11 +408,8 @@ public class LegacySqlEfRepository : IFhirRepository
             // TODO: Set HistoryTransactionId
         }
 
-        // Serialize ResourceJsonNode to JSON string
-        string rawJson = resource.SerializeToString();
-
         // Compress JSON
-        var compressedData = _compressor.Compress(rawJson);
+        var compressedData = _compressor.SerializeAndCompress(resource);
 
         // Create new version
         var newEntity = new ResourceEntity
@@ -393,6 +493,172 @@ public class LegacySqlEfRepository : IFhirRepository
         finally
         {
             await _context.Database.CloseConnectionAsync();
+        }
+    }
+
+    public async IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        // Validate parameters
+        parameters = parameters.Validate();
+
+        _logger.LogDebug(
+            "Getting history for resource {ResourceType}/{ResourceId} (count={Count}, offset={Offset})",
+            key.ResourceType,
+            key.Id,
+            parameters.Count,
+            parameters.Offset);
+
+        // Get ResourceTypeId
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+
+        // Query all versions of this resource (both current and historical)
+        var query = _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId && r.ResourceId == key.Id)
+            .Include(r => r.Transaction);
+
+        // Stream results incrementally
+        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, ct))
+        {
+            yield return result;
+        }
+    }
+
+    public async IAsyncEnumerable<SearchEntryResult> GetTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(resourceType);
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        // Validate parameters
+        parameters = parameters.Validate();
+
+        _logger.LogDebug(
+            "Getting history for resource type {ResourceType} (count={Count}, offset={Offset})",
+            resourceType,
+            parameters.Count,
+            parameters.Offset);
+
+        // Get ResourceTypeId
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
+
+        // Query all versions of all resources of this type
+        var query = _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId)
+            .Include(r => r.Transaction);
+
+        // Stream results incrementally
+        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, ct))
+        {
+            yield return result;
+        }
+    }
+
+    public async IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        // Validate parameters
+        parameters = parameters.Validate();
+
+        _logger.LogDebug(
+            "Getting system-wide history (count={Count}, offset={Offset})",
+            parameters.Count,
+            parameters.Offset);
+
+        // Query all resources across all types
+        var query = _context.Resources
+            .Include(r => r.Transaction)
+            .Include(r => r.ResourceType);
+
+        // Stream results incrementally
+        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, ct))
+        {
+            yield return result;
+        }
+    }
+
+    private async IAsyncEnumerable<SearchEntryResult> ExecuteHistoryQueryAsync(
+        IQueryable<ResourceEntity> query,
+        HistoryQueryParameters parameters,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        // Apply timestamp filtering (_since and _until)
+        if (parameters.Since.HasValue)
+        {
+            var sinceUtc = parameters.Since.Value.UtcDateTime;
+            query = query.Where(r => r.Transaction != null && r.Transaction.CreateDate >= sinceUtc);
+        }
+
+        if (parameters.Until.HasValue)
+        {
+            var untilUtc = parameters.Until.Value.UtcDateTime;
+            query = query.Where(r => r.Transaction != null && r.Transaction.CreateDate <= untilUtc);
+        }
+
+        // Apply sorting by transaction creation date
+        query = parameters.Sort == HistorySortOrder.Ascending
+            ? query.OrderBy(r => r.Transaction!.CreateDate).ThenBy(r => r.ResourceSurrogateId)
+            : query.OrderByDescending(r => r.Transaction!.CreateDate).ThenByDescending(r => r.ResourceSurrogateId);
+
+        // Apply pagination
+        query = query.Skip(parameters.Offset).Take(parameters.Count);
+
+        // Stream results incrementally using AsAsyncEnumerable
+        await foreach (var entity in query.AsAsyncEnumerable().WithCancellation(ct))
+        {
+            SearchEntryResult? result = null;
+
+            try
+            {
+                // Decompress resource bytes
+                var resourceBytes = _compressor.DecompressBytes(entity.RawResource);
+
+                // Determine resource type name (may need to load ResourceType entity if not included)
+                var resourceTypeName = entity.ResourceType?.Name;
+                if (string.IsNullOrEmpty(resourceTypeName))
+                {
+                    var resourceType = await _context.ResourceTypes
+                        .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
+                        .FirstOrDefaultAsync(ct);
+                    resourceTypeName = resourceType?.Name ?? "Unknown";
+                }
+
+                result = new SearchEntryResult(
+                    ResourceType: resourceTypeName,
+                    ResourceId: entity.ResourceId,
+                    VersionId: entity.Version.ToString(),
+                    LastModified: entity.Transaction?.CreateDate.ToUniversalTime() ?? DateTimeOffset.UtcNow,
+                    ResourceBytes: resourceBytes)
+                {
+                    IsDeleted = entity.IsDeleted,
+                    Request = new ResourceRequest(entity.RequestMethod ?? "PUT", $"{resourceTypeName}/{entity.ResourceId}")
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to deserialize resource {ResourceId} version {Version}",
+                    entity.ResourceId,
+                    entity.Version);
+            }
+
+            if (result != null)
+            {
+                yield return result;
+            }
         }
     }
 }

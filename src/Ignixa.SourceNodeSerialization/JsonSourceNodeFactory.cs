@@ -50,4 +50,9 @@ public static class JsonSourceNodeFactory
     {
         return JsonSerializer.Serialize(resource, _jsonSerializerOptions);
     }
+
+    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream)
+    {
+        JsonSerializer.Serialize(outStream, resource, _jsonSerializerOptions);
+    }
 }

@@ -5,6 +5,8 @@
 
 using System.IO.Compression;
 using System.Text;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.DataLayer.LegacySqlEF.Compression;
 
@@ -33,6 +35,18 @@ public class GzipResourceCompressor
         return outputStream.ToArray();
     }
 
+    public byte[] SerializeAndCompress(ResourceJsonNode node)
+    {
+        using var outputStream = new MemoryStream();
+        using (var gzipStream = new GZipStream(outputStream, CompressionLevel.Optimal))
+        {
+            node.SerializeToStream(gzipStream);
+            gzipStream.Flush();
+        }
+
+        return outputStream.ToArray();
+    }
+
     /// <summary>
     /// Decompresses byte array to JSON string using Gzip.
     /// </summary>
@@ -55,16 +69,16 @@ public class GzipResourceCompressor
         return Encoding.UTF8.GetString(outputStream.ToArray());
     }
 
-    public ReadOnlyMemory<byte> DecompressBytes(byte[] compressedData)
+    public ReadOnlyMemory<byte> DecompressBytes(ReadOnlyMemory<byte> compressedData)
     {
-        ArgumentNullException.ThrowIfNull(compressedData);
-
         if (compressedData.Length == 0)
         {
             return ReadOnlyMemory<byte>.Empty;
         }
 
-        using var inputStream = new MemoryStream(compressedData);
+        using var inputStream = new MemoryStream();
+        inputStream.Write(compressedData.Span);
+        inputStream.Position = 0;
         using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
         using var outputStream = new MemoryStream();
         gzipStream.CopyTo(outputStream);

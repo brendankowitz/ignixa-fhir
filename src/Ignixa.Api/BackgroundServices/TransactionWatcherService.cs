@@ -4,11 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using Microsoft.Extensions.Options;
-using Sparky.Api.Configuration;
-using Sparky.Domain.Abstractions;
-using Sparky.Domain.Constants;
+using Ignixa.Api.Configuration;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 
-namespace Sparky.Api.BackgroundServices;
+namespace Ignixa.Api.BackgroundServices;
 
 /// <summary>
 /// Background service that monitors for stalled transactions and automatically commits them.

@@ -68,4 +68,83 @@ public interface IFhirRepository
     ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
         TimeSpan stallThreshold,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves version history for a specific resource instance.
+    /// Instance-level history: GET [base]/[type]/[id]/_history
+    /// Returns all historical versions of the resource, filtered and paginated per parameters.
+    /// IMPORTANT: Does NOT calculate total count - use separate count query if needed.
+    /// Streams results incrementally for optimal memory usage.
+    /// </summary>
+    /// <param name="key">Resource key (resourceType and resourceId, versionId ignored).</param>
+    /// <param name="parameters">Query parameters (count, offset, since, until, sort).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Async stream of search entry results (raw bytes for zero-copy serialization).</returns>
+    IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves version history for all resources of a given type.
+    /// Type-level history: GET [base]/[type]/_history
+    /// Returns all historical versions of all resources of this type.
+    /// IMPORTANT: Does NOT calculate total count - use separate count query if needed.
+    /// Streams results incrementally for optimal memory usage.
+    /// </summary>
+    /// <param name="resourceType">FHIR resource type (e.g., "Patient").</param>
+    /// <param name="tenantId">Tenant partition ID.</param>
+    /// <param name="parameters">Query parameters (count, offset, since, until, sort).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Async stream of search entry results (raw bytes for zero-copy serialization).</returns>
+    IAsyncEnumerable<SearchEntryResult> GetTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves version history across all resource types in the system.
+    /// System-level history: GET [base]/_history
+    /// Returns all historical versions of all resources in the tenant partition.
+    /// IMPORTANT: Does NOT calculate total count - use separate count query if needed.
+    /// Streams results incrementally for optimal memory usage.
+    /// </summary>
+    /// <param name="tenantId">Tenant partition ID.</param>
+    /// <param name="parameters">Query parameters (count, offset, since, until, sort).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Async stream of search entry results (raw bytes for zero-copy serialization).</returns>
+    IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a resource (soft delete per FHIR R4 specification).
+    /// Creates a new version marked as deleted (tombstone) with incremented version number.
+    /// DELETE [base]/[type]/[id]
+    ///
+    /// FHIR R4 Specification: Section 3.1.0.7.1 (delete interaction)
+    /// - Logical deletion (soft delete), not physical deletion
+    /// - Creates new version with IsDeleted=true, increments version number
+    /// - Subsequent GET returns 410 Gone
+    /// - Deletion appears in _history endpoint
+    ///
+    /// Behavior:
+    /// - Success: Returns ResourceKey with new version (e.g., v4 if current was v3)
+    /// - Not Found: Returns null if resource never existed
+    /// - Idempotent: Returns existing deleted version if already deleted (no new version created)
+    /// </summary>
+    /// <param name="key">Resource key (resourceType and resourceId, versionId ignored).</param>
+    /// <param name="request">HTTP request metadata (method, URL).</param>
+    /// <param name="transactionId">Optional transaction ID for bundle operations.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// ResourceKey with new deleted version, or null if resource never existed.
+    /// </returns>
+    ValueTask<ResourceKey?> DeleteAsync(
+        ResourceKey key,
+        ResourceRequest request,
+        TransactionId? transactionId = null,
+        CancellationToken ct = default);
 }

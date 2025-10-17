@@ -44,28 +44,11 @@ public static class StreamingBundleSerializer
 
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
 
-        writer
-            .WriteStartObject()
-            .WriteString("resourceType", "Bundle")
-            .WriteString("type", bundleType)
-            .WriteOptionalNumber("total", total);
+        // Write bundle header
+        WriteBundleHeader(writer, bundleType, total);
 
-        // Write link array if any links are present
-        writer.Condition(
-            !string.IsNullOrEmpty(selfLink) || !string.IsNullOrEmpty(nextLink),
-            w => w
-                .WriteStartArray("link")
-                .Condition(!string.IsNullOrEmpty(selfLink), w2 => w2
-                    .WriteStartObject()
-                    .WriteString("relation", "self")
-                    .WriteString("url", selfLink!)
-                    .WriteEndObject())
-                .Condition(!string.IsNullOrEmpty(nextLink), w2 => w2
-                    .WriteStartObject()
-                    .WriteString("relation", "next")
-                    .WriteString("url", nextLink!)
-                    .WriteEndObject())
-                .WriteEndArray());
+        // Write links
+        WriteBundleLinksFromStrings(writer, selfLink, nextLink);
 
         // Write entry array
         writer.WriteStartArray("entry");
@@ -79,18 +62,8 @@ public static class StreamingBundleSerializer
             string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
             writer.WriteString("fullUrl", fullUrl);
 
-            // Write resource - use zero-copy with ResourceBytes
-            if (resource.ResourceBytes.Length > 0)
-            {
-                writer.WriteRawProperty("resource", resource.ResourceBytes);
-            }
-            else
-            {
-                // Minimal fallback (should not happen - all SearchEntryResults should have bytes)
-                writer.WriteObject("resource",
-                    w => w.WriteString("resourceType", resource.ResourceType)
-                        .WriteString("id", resource.ResourceId));
-            }
+            // Write resource using helper
+            WriteResourceBytes(writer, resource);
 
             // Write search metadata
             writer.WriteObject("search", w => w
@@ -102,10 +75,8 @@ public static class StreamingBundleSerializer
             await writer.FlushAsync(cancellationToken);
         }
 
-        writer.WriteEndArray(); // end entry array
-        writer.WriteEndObject(); // end bundle
-
-        await writer.FlushAsync(cancellationToken);
+        // Write bundle footer
+        await WriteBundleFooterAsync(writer, cancellationToken);
     }
 
     /// <summary>
@@ -140,6 +111,79 @@ public static class StreamingBundleSerializer
             nextLink,
             pretty,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Serializes a bundle with custom pagination links (for history bundles).
+    /// Uses zero-copy serialization with SearchEntryResult (raw bytes from repository).
+    /// </summary>
+    /// <param name="outputStream">The stream to write JSON to.</param>
+    /// <param name="bundleType">The FHIR bundle type (e.g., "history").</param>
+    /// <param name="total">Total number of matching resources (optional).</param>
+    /// <param name="entries">Async stream of search entry results (raw bytes) to include in the bundle.</param>
+    /// <param name="links">Pagination links (self, first, prev, next, last).</param>
+    /// <param name="pretty">Whether to format JSON with indentation.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public static async Task SerializeHistoryAsync(
+        Stream outputStream,
+        string bundleType,
+        int? total,
+        IAsyncEnumerable<SearchEntryResult> entries,
+        IReadOnlyList<SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode>? links = null,
+        bool pretty = false,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureArg.IsNotNull(outputStream, nameof(outputStream));
+        EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
+        EnsureArg.IsNotNull(entries, nameof(entries));
+
+        await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+
+        // Write bundle header
+        WriteBundleHeader(writer, bundleType, total);
+
+        // Write links
+        WriteBundleLinks(writer, links);
+
+        // Write entry array
+        writer.WriteStartArray("entry");
+
+        // Stream entries as they become available (zero-copy from raw bytes)
+        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        {
+            writer.WriteStartObject();
+
+            // Write fullUrl with version for history bundles
+            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+            if (!string.IsNullOrEmpty(resource.VersionId))
+            {
+                fullUrl = $"{fullUrl}/_history/{resource.VersionId}";
+            }
+            writer.WriteString("fullUrl", fullUrl);
+
+            // Write resource using helper
+            WriteResourceBytes(writer, resource);
+
+            // Write request metadata for history bundles
+            writer.WriteObject("request", w => w
+                .WriteString("method", resource.Request?.Method ?? "PUT")
+                .WriteString("url", $"{resource.ResourceType}/{resource.ResourceId}"));
+
+            // Write response metadata for history bundles
+            writer.WriteObject("response", w => w
+                .WriteString("status", resource.IsDeleted ? "204" : "200")
+                .WriteString("lastModified", resource.LastModified.ToString("o"))
+                .Condition(!string.IsNullOrEmpty(resource.VersionId), w2 => w2
+                    .WriteString("etag", $"W/\"{resource.VersionId}\"")));
+
+            writer.WriteEndObject(); // end entry
+
+            // Flush periodically to stream data to client
+            await writer.FlushAsync(cancellationToken);
+        }
+
+        // Write bundle footer
+        await WriteBundleFooterAsync(writer, cancellationToken);
     }
 
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(IEnumerable<T> items)
@@ -179,28 +223,11 @@ public static class StreamingBundleSerializer
 
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
 
-        writer
-            .WriteStartObject()
-            .WriteString("resourceType", "Bundle")
-            .WriteString("type", bundleType)
-            .WriteOptionalNumber("total", total);
+        // Write bundle header
+        WriteBundleHeader(writer, bundleType, total);
 
-        // Write link array if any links are present
-        writer.Condition(
-            !string.IsNullOrEmpty(selfLink) || !string.IsNullOrEmpty(nextLink),
-            w => w
-                .WriteStartArray("link")
-                .Condition(!string.IsNullOrEmpty(selfLink), w2 => w2
-                    .WriteStartObject()
-                    .WriteString("relation", "self")
-                    .WriteString("url", selfLink!)
-                    .WriteEndObject())
-                .Condition(!string.IsNullOrEmpty(nextLink), w2 => w2
-                    .WriteStartObject()
-                    .WriteString("relation", "next")
-                    .WriteString("url", nextLink!)
-                    .WriteEndObject())
-                .WriteEndArray());
+        // Write links
+        WriteBundleLinksFromStrings(writer, selfLink, nextLink);
 
         // Write entry array
         writer.WriteStartArray("entry");
@@ -214,10 +241,8 @@ public static class StreamingBundleSerializer
             await writer.FlushAsync(cancellationToken);
         }
 
-        writer.WriteEndArray(); // end entry array
-        writer.WriteEndObject(); // end bundle
-
-        await writer.FlushAsync(cancellationToken);
+        // Write bundle footer
+        await WriteBundleFooterAsync(writer, cancellationToken);
     }
 
     /// <summary>
@@ -257,5 +282,110 @@ public static class StreamingBundleSerializer
         }
 
         writer.WriteEndObject(); // end entry
+    }
+
+    // Helper methods for reducing duplication
+
+    /// <summary>
+    /// Writes the bundle header (resourceType, type, total).
+    /// </summary>
+    private static void WriteBundleHeader(FhirJsonWriter writer, string bundleType, int? total)
+    {
+        writer
+            .WriteStartObject()
+            .WriteString("resourceType", "Bundle")
+            .WriteString("type", bundleType);
+
+        // Only write total if present (null when _total parameter not used)
+        if (total.HasValue)
+        {
+            writer.WriteNumber("total", total.Value);
+        }
+    }
+
+    /// <summary>
+    /// Writes bundle links from a list of BundleLinkJsonNode.
+    /// </summary>
+    private static void WriteBundleLinks(FhirJsonWriter writer, IReadOnlyList<SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode>? links)
+    {
+        if (links is null || links.Count == 0)
+        {
+            return;
+        }
+
+        writer.WriteStartArray("link");
+
+        foreach (var link in links)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("relation", link.Relation ?? "self");
+            writer.WriteString("url", link.Url ?? string.Empty);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
+
+    /// <summary>
+    /// Writes bundle links from simple self/next string URLs.
+    /// Converts to BundleLinkJsonNode format internally.
+    /// </summary>
+    private static void WriteBundleLinksFromStrings(FhirJsonWriter writer, string? selfLink, string? nextLink)
+    {
+        if (string.IsNullOrEmpty(selfLink) && string.IsNullOrEmpty(nextLink))
+        {
+            return;
+        }
+
+        var links = new List<SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode>();
+
+        if (!string.IsNullOrEmpty(selfLink))
+        {
+            links.Add(new SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode
+            {
+                Relation = "self",
+                Url = selfLink
+            });
+        }
+
+        if (!string.IsNullOrEmpty(nextLink))
+        {
+            links.Add(new SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode
+            {
+                Relation = "next",
+                Url = nextLink
+            });
+        }
+
+        WriteBundleLinks(writer, links);
+    }
+
+    /// <summary>
+    /// Writes the resource property using zero-copy ResourceBytes or fallback minimal JSON.
+    /// </summary>
+    private static void WriteResourceBytes(FhirJsonWriter writer, SearchEntryResult resource)
+    {
+        if (resource.ResourceBytes.Length > 0)
+        {
+            writer.WriteRawProperty("resource", resource.ResourceBytes);
+        }
+        else
+        {
+            // Minimal fallback (should not happen - all SearchEntryResults should have bytes)
+            writer.WriteObject("resource",
+                w => w.WriteString("resourceType", resource.ResourceType)
+                    .WriteString("id", resource.ResourceId));
+        }
+    }
+
+    /// <summary>
+    /// Writes the bundle footer (end entry array, end bundle object, flush).
+    /// </summary>
+    private static async Task WriteBundleFooterAsync(FhirJsonWriter writer, CancellationToken cancellationToken)
+    {
+        writer.WriteEndArray(); // end entry array
+        writer.WriteEndObject(); // end bundle
+
+        await writer.FlushAsync(cancellationToken);
     }
 }

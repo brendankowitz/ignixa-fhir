@@ -1,6 +1,9 @@
-# Ignixa
 
-**Intelligent Gateway for Next-generation Interoperability via eXtensible APIs**
+<div align="center">
+  <img src="docs/assets/ignixa_transparent.png" alt="Ignixa Logo" width="300"/>
+</div>
+
+# Ignixa
 
 A blazing-fast FHIR server built in .NET/C# that ignites your healthcare data exchange.
 
@@ -32,10 +35,6 @@ Ignixa is a next-generation FHIR server implementation built from the ground up 
 ### Running the Server
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/fhir-server-contrib.git
-cd fhir-server-contrib
-
 # Build the solution
 dotnet build All.sln
 
@@ -92,7 +91,7 @@ Ignixa follows a **layered architecture** with clear separation of concerns:
 - **Ignixa.Search**: Search parameter definitions, indexing, search values
 - **Ignixa.Specification**: Structure definitions, generated providers
 - **Ignixa.Validation**: Fast validation engine with SourceNode support
-- **Ignixa.FhirPath**: Custom FHIRPath parser and evaluator
+- **Ignixa.FhirPath**: A fast FHIRPath parser and evaluator built on Superpower
 - **Ignixa.SourceNodeSerialization**: Zero-copy JSON serialization
 
 ## Current Status
@@ -198,8 +197,6 @@ Cloud-native storage with partitioning support.
 - **Medino 2.0.1**: In-process CQRS messaging
 - **Autofac 8.2.0**: Dependency injection container
 - **Microsoft.Azure.DurableTask.Core 3.5.0**: Background job orchestration
-- **Hl7.Fhir.R4/R4B/R5/STU3 6.0.0**: Firely SDK - Full FHIR implementation with POCOs, parsers, serializers, validators, and structure definitions
-- **Firely.Fhir.Packages 4.9.1**: FHIR package management
 
 ### Testing
 
@@ -326,4 +323,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Ignixa** - Igniting healthcare data interoperability 🔥
+**Ignixa** / Intelligent Gateway for Next-generation Interoperability and eXtensible APIs / Igniting healthcare data interoperability 🔥
+

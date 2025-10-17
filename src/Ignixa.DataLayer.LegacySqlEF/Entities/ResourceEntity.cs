@@ -74,7 +74,7 @@ public class ResourceEntity
     [Required]
     [Column("RawResource")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1819:Properties should not return arrays", Justification = "Required by EF Core for varbinary(max) column mapping")]
-    public byte[] RawResource { get; set; } = Array.Empty<byte>();
+    public byte[] RawResource { get; set; } = [];
 
     /// <summary>
     /// Indicates if meta fields (lastUpdated, versionId) are set in RawResource.

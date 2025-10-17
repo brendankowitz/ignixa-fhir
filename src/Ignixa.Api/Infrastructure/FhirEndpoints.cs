@@ -210,6 +210,24 @@ public static class FhirEndpoints
             return Results.NotFound();
         }
 
+        // Check if resource is deleted (FHIR R4 spec: return 410 Gone)
+        if (result.IsDeleted)
+        {
+            logger.LogInformation(
+                "Resource {ResourceType}/{Id} has been deleted (version {VersionId})",
+                resourceType,
+                id,
+                result.VersionId);
+
+            // Return 410 Gone per FHIR R4 specification (Section 3.1.0.1.2)
+            // 410 Gone = resource existed but has been deleted
+            // 404 Not Found = resource never existed
+            return Results.Problem(
+                statusCode: StatusCodes.Status410Gone,
+                title: "Resource Deleted",
+                detail: $"{resourceType}/{id} has been deleted (last version: {result.VersionId})");
+        }
+
         // Add headers
         context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
         context.Response.Headers.Append("Last-Modified", result.LastModified.ToString("R"));

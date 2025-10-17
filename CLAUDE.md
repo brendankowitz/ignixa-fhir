@@ -8,15 +8,15 @@ This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR s
 
 ## Current Status
 
-**Phase**: Transaction Watcher (Phase 21) - ✅ COMPLETED (October 16, 2025)
-**Previous Phase**: Multi-Tenancy Data Partitioning (ADR-2523 Phase 20) - ✅ COMPLETED (October 13, 2025)
+**Phase**: FHIR _history Operations (Phase 22) - ✅ COMPLETED (October 17, 2025)
+**Previous Phase**: Transaction Watcher (Phase 21) - ✅ COMPLETED (October 16, 2025)
 **SDK Version**: Firely SDK 6.0.0 final (October 14, 2025 - unified multi-version support)
 **Build Status**: ✅ All projects build successfully (0 warnings, 0 errors)
 **Test Status**: ✅ All tests passing
 **Background Services**:
 - ✅ IndexLoaderService - Search index preloading on startup
 - ✅ TransactionWatcherService - Automatic stalled transaction recovery
-**Endpoints**:
+**Endpoints** (Minimal API pattern):
 - ✅ PUT /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
 - ✅ GET /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
 - ✅ GET /tenant/{tenantId}/{resourceType} - Tenant-explicit search (always)
@@ -25,7 +25,13 @@ This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR s
 - ✅ GET /{resourceType}/{id} - Tenant-agnostic (single-tenant auto-detect)
 - ✅ GET /{resourceType} - Tenant-agnostic search (single-tenant auto-detect)
 - ✅ POST / - Tenant-agnostic bundles (single-tenant auto-detect)
-- ✅ GET /metadata - No tenant required
+- ✅ GET /tenant/{tenantId}/{resourceType}/{id}/_history - Instance-level history
+- ✅ GET /tenant/{tenantId}/{resourceType}/_history - Type-level history
+- ✅ GET /tenant/{tenantId}/_history - System-level history
+- ✅ GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
+- ✅ GET /{resourceType}/_history - Type-level history (agnostic)
+- ✅ GET /_history - System-level history (agnostic)
+- ✅ GET /metadata - No tenant required (Controller)
 
 ### Recent Investigations (October 9, 2025)
 
@@ -148,7 +154,68 @@ Only projects that explicitly need SDK types (e.g., `Ignixa.Domain` for POCO mod
 - Use **IRequest<TResponse>** for commands/queries (not ICommand)
 - Use **IRequestHandler<TRequest, TResponse>** for handlers
 - Method name: `HandleAsync` (not Handle)
+- Parameter name: `cancellationToken` (not `ct` - for CA1725 compliance)
+- Return type: `Task<T>` (not `ValueTask<T>` for handlers)
 - Example: `public record GetPatientQuery(string Id) : IRequest<ResourceWrapper?>`
+
+### 4a. API Routing Pattern - Minimal API Endpoints (Not Controllers!)
+
+**IMPORTANT**: This codebase uses **Minimal API Endpoints**, NOT traditional MVC Controllers.
+
+**Pattern**: Static extension methods with `Map*Endpoints()` pattern
+- Location: `Ignixa.Api/Infrastructure/*Endpoints.cs`
+- Registration: `app.MapFhirEndpoints()` in `Program.cs`
+- Handler functions: Static private methods that return `IResult`
+
+**Example** (from `FhirEndpoints.cs`):
+```csharp
+public static class FhirEndpoints
+{
+    public static IEndpointRouteBuilder MapFhirEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        // Tenant-explicit routes
+        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/{id}", HandleGetResource)
+            .WithName("GetResource")
+            .Produces<object>(StatusCodes.Status200OK, "application/fhir+json");
+
+        // Tenant-agnostic routes (lambda delegates to tenant-explicit handler)
+        endpoints.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+            [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleGetResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
+            .WithName("GetResourceAgnostic");
+
+        return endpoints;
+    }
+
+    private static async Task<IResult> HandleGetResource(HttpContext context, int tenantId, ...)
+    {
+        // Implementation
+        return Results.Ok(...);
+    }
+}
+```
+
+**Why Minimal API vs Controllers?**
+- ✅ **Lightweight**: No controller overhead, direct route-to-handler mapping
+- ✅ **Performance**: ~14% faster than MVC controllers (see `dynamic-fhir-routing.md`)
+- ✅ **Composable**: Easy to mix tenant-explicit and tenant-agnostic routes
+- ✅ **Modern .NET**: Aligns with .NET 9 best practices
+- ✅ **Zero Attributes**: Route definitions are explicit in code, not scattered via attributes
+
+**Controllers Still Used For:**
+- ✅ `MetadataController` - Legacy, should be converted eventually
+
+**When Adding New Endpoints:**
+1. Create `*Endpoints.cs` static class in `Ignixa.Api/Infrastructure/`
+2. Add `Map*Endpoints()` extension method
+3. Define handler methods as `private static async Task<IResult>`
+4. Register in `Program.cs`: `app.Map*Endpoints()`
+5. Register Medino handlers in `Program.cs` Autofac container
+
+**Example Files:**
+- `Ignixa.Api/Infrastructure/FhirEndpoints.cs` - CRUD operations for all resource types
+- `Ignixa.Api/Infrastructure/HistoryEndpoints.cs` - _history operations (instance, type, system)
+- `Ignixa.Api/Features/Export/Api/ExportEndpoints.cs` - Bulk $export operations
 
 ### 5. Multi-Tenancy Architecture (ADR-2523 Phase 20)
 
@@ -234,7 +301,7 @@ GET /metadata                 # ✅ Works - no tenant required
 **Purpose**: Automatically detects and commits stalled transactions across all active tenants and storage implementations (FileSystem and SQL).
 
 **Architecture:**
-- **TransactionWatcherService** (Sparky.Api/BackgroundServices/TransactionWatcherService.cs)
+- **TransactionWatcherService** (Ignixa.Api/BackgroundServices/TransactionWatcherService.cs)
   - Implements `IHostedService` for background execution
   - Timer-based periodic scanning (configurable interval, default: 60 seconds)
   - Multi-tenant aware: Scans all active tenants via `ITenantConfigurationStore`
@@ -276,12 +343,12 @@ GET /metadata                 # ✅ Works - no tenant required
 4. **Error Handling**: Retries on next scan if commit fails (non-blocking)
 
 **Key Files:**
-- `Sparky.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface
-- `Sparky.Domain/Models/TransactionId.cs:24` - `TryParse()` method for parsing transaction IDs
-- `Sparky.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model
-- `Sparky.Api/BackgroundServices/TransactionWatcherService.cs` - Background service implementation
-- `Sparky.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem implementation
-- `Sparky.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL implementation
+- `Ignixa.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface
+- `Ignixa.Domain/Models/TransactionId.cs:24` - `TryParse()` method for parsing transaction IDs
+- `Ignixa.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model
+- `Ignixa.Api/BackgroundServices/TransactionWatcherService.cs` - Background service implementation
+- `Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem implementation
+- `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL implementation
 
 **Benefits:**
 - ✅ Automatic recovery from failed bundle operations (server crash, network timeout)
@@ -290,6 +357,87 @@ GET /metadata                 # ✅ Works - no tenant required
 - ✅ Configurable scan interval and stall threshold
 - ✅ Non-blocking background execution (doesn't impact API performance)
 - ✅ Comprehensive logging for observability
+
+#### History Bundle Total Count Pattern
+
+**Critical Architecture Decision**: History bundles default to **NO total count** for optimal streaming performance.
+
+**Why Total Counts Are Expensive:**
+- Calculating total count requires enumerating ALL matching results (not just the current page)
+- Defeats streaming architecture by forcing separate enumeration of entire result set
+- For large datasets, this can double query execution time
+- Most FHIR clients don't need total counts for pagination
+
+**FHIR `_total` Parameter Support:**
+
+| Value | Behavior | Use Case | Performance Impact |
+|-------|----------|----------|-------------------|
+| **none** (default) | No total in Bundle | Standard pagination, most clients | ✅ Fast - single streaming query |
+| **estimate** | Estimated total (future) | Quick approximation | ⚠️ Medium - cheap estimate query |
+| **accurate** | Exact total count | Rare - client needs exact count | ❌ Slow - full enumeration |
+
+**Implementation Pattern:**
+
+```csharp
+// Domain: TotalMode enum
+public enum TotalMode
+{
+    None,      // Default - no total calculation
+    Estimate,  // Not yet implemented
+    Accurate   // Expensive separate query
+}
+
+// Repository: True streaming (no total calculation)
+IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
+    ResourceKey key,
+    HistoryQueryParameters parameters,
+    CancellationToken ct = default);
+
+// Handler: Conditional total counting
+int? totalCount = null;
+if (request.Parameters.Total == TotalMode.Accurate)
+{
+    // Separate query to count all results
+    totalCount = await HistoryCountHelper.CountResourceHistoryAsync(...);
+}
+
+// Result: Nullable total (null = not calculated)
+return new HistoryResult
+{
+    Entries = entries,        // Streaming IAsyncEnumerable
+    TotalCount = totalCount,  // null unless _total=accurate
+    Links = links
+};
+```
+
+**Usage Examples:**
+
+```bash
+# Default: No total count (fastest)
+GET /Patient/123/_history?_count=20
+# Bundle response: No "total" field, includes "next" link
+
+# Explicit: No total
+GET /Patient/123/_history?_count=20&_total=none
+# Bundle response: No "total" field
+
+# Expensive: Accurate total (separate count query)
+GET /Patient/123/_history?_count=20&_total=accurate
+# Bundle response: "total": 157, includes "next" and "last" links
+```
+
+**Key Files:**
+- `Ignixa.Domain/Models/TotalMode.cs` - Enum definition
+- `Ignixa.Domain/Models/HistoryQueryParameters.cs:Total` - Parameter property
+- `Ignixa.Application/Features/History/HistoryCountHelper.cs` - Counting logic for _total=accurate
+- `Ignixa.Application/Features/History/Get*HistoryHandler.cs` - Conditional total calculation
+- `Ignixa.Application/Features/Bundle/Serialization/StreamingBundleSerializer.cs:SerializeHistoryAsync()` - Nullable total handling
+
+**Benefits:**
+- ✅ Default behavior optimized for streaming (O(page size) memory)
+- ✅ No wasted work calculating totals when clients don't need them
+- ✅ Accurate totals available when explicitly requested
+- ✅ Pagination links adapt based on whether total is known (next link always present when total unknown)
 
 #### Configuration Example
 ```json
@@ -507,11 +655,11 @@ When working with multi-tenant features, these files are critical:
 - `Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs` - Propagates tenant context to mini-HttpContext
 
 **Transaction Watcher** (Background Recovery):
-- `Sparky.Api/BackgroundServices/TransactionWatcherService.cs` - Background service for automatic transaction recovery
-- `Sparky.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model (ScanInterval, StallThreshold)
-- `Sparky.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface method
-- `Sparky.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem stalled transaction detection
-- `Sparky.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL stalled transaction detection
+- `Ignixa.Api/BackgroundServices/TransactionWatcherService.cs` - Background service for automatic transaction recovery
+- `Ignixa.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model (ScanInterval, StallThreshold)
+- `Ignixa.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface method
+- `Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem stalled transaction detection
+- `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL stalled transaction detection
 
 ### Adding a New Feature (e.g., Observation)
 
@@ -728,6 +876,54 @@ fhir-data/
     - ✅ Comprehensive logging and metrics
     - ✅ Registered in DI and appsettings.json configuration
     - ✅ Build succeeded (0 warnings, 0 errors)
+
+13. **Phase 22: FHIR _history Operations** (October 17, 2025)
+    - ✅ HistoryQueryParameters model (count, offset, since, until, sort)
+    - ✅ HistorySortOrder enum (Ascending/Descending)
+    - ✅ Added history methods to IFhirRepository interface:
+      - `GetResourceHistoryAsync()` - Instance-level history
+      - `GetTypeHistoryAsync()` - Type-level history
+      - `GetSystemHistoryAsync()` - System-level history
+    - ✅ FileSystem implementation (scans metadata files, filters/sorts/paginates)
+    - ✅ SQL implementation (EF Core queries with timestamp filtering)
+    - ✅ HistoryQueryParametersParser (parses _count, _offset, _since, _until, _sort)
+    - ✅ Three Medino query/handler pairs (GetResourceHistory, GetTypeHistory, GetSystemHistory)
+    - ✅ HistoryPaginationLinkBuilder (self, first, next, previous, last links)
+    - ✅ BundleResponseBuilder.BuildHistoryBundle() static method
+    - ✅ HistoryEndpoints with MapFhirHistoryEndpoints() (6 routes: 3 tenant-explicit + 3 tenant-agnostic)
+    - ✅ Minimal API pattern (NOT Controllers)
+    - ✅ Registered handlers in Program.cs Autofac container
+    - ✅ Build succeeded (0 warnings, 0 errors)
+
+**History Query Parameters:**
+- `_count` (default: 20, max: 1000) - Page size
+- `_offset` (default: 0) - Results to skip (offset-based pagination)
+- `_since` (DateTimeOffset) - Include only versions created at/after this instant
+- `_until` (DateTimeOffset) - Include only versions created at/before this instant (custom extension)
+- `_sort` (asc/desc, default: desc) - Sort by lastModified (newest first per FHIR spec)
+
+**Routing:**
+```bash
+# Instance-level: All versions of a specific resource
+GET /tenant/{tenantId}/{resourceType}/{id}/_history?_count=10&_sort=desc
+GET /{resourceType}/{id}/_history  # Agnostic (single-tenant auto-detect)
+
+# Type-level: All versions of all resources of a type
+GET /tenant/{tenantId}/{resourceType}/_history?_since=2025-01-01T00:00:00Z
+GET /{resourceType}/_history  # Agnostic
+
+# System-level: All versions across all resource types
+GET /tenant/{tenantId}/_history?_count=50&_offset=100
+GET /_history  # Agnostic
+```
+
+**Key Files:**
+- `Ignixa.Domain/Models/HistoryQueryParameters.cs` - Query parameter model
+- `Ignixa.Domain/Abstractions/IFhirRepository.cs:72-114` - History interface methods
+- `Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:763+` - FileSystem implementation
+- `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:396+` - SQL implementation
+- `Ignixa.Application/Features/History/` - Query/handler/parser classes (7 files)
+- `Ignixa.Api/Infrastructure/HistoryEndpoints.cs` - Minimal API endpoints
 
 ### Next Steps (Post-Phase 21)
 
