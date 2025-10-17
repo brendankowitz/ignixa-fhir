@@ -231,6 +231,43 @@ public class LegacySqlEfRepository : IFhirRepository
         _logger.LogInformation("Committed transaction {TransactionId}", transactionId.Value);
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
+        TimeSpan stallThreshold,
+        CancellationToken ct = default)
+    {
+        var threshold = DateTime.UtcNow - stallThreshold;
+
+        _logger.LogDebug(
+            "Querying for stalled transactions (IsCompleted = false, HeartbeatDate < {Threshold})",
+            threshold);
+
+        // Query TransactionEntity table for incomplete transactions with old heartbeat dates
+        var stalledTransactions = await _context.Transactions
+            .Where(t => !t.IsCompleted && t.HeartbeatDate < threshold)
+            .Select(t => new TransactionId(t.SurrogateIdRangeFirstValue))
+            .ToListAsync(ct);
+
+        if (stalledTransactions.Count > 0)
+        {
+            _logger.LogWarning(
+                "Found {Count} stalled transactions in database (threshold: {Threshold})",
+                stalledTransactions.Count,
+                threshold);
+
+            foreach (var txId in stalledTransactions)
+            {
+                _logger.LogWarning("Stalled transaction: {TransactionId}", txId.Value);
+            }
+        }
+        else
+        {
+            _logger.LogDebug("No stalled transactions found");
+        }
+
+        return stalledTransactions;
+    }
+
     // Helper methods
 
     /// <summary>

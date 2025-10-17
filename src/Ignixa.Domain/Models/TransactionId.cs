@@ -18,5 +18,20 @@ public readonly record struct TransactionId(long Value)
     public static TransactionId Parse(string value) =>
         new(long.Parse(value));
 
+    /// <summary>
+    /// Tries to parse a transaction ID from a string.
+    /// </summary>
+    public static bool TryParse(string value, out TransactionId transactionId)
+    {
+        if (long.TryParse(value, out var longValue))
+        {
+            transactionId = new TransactionId(longValue);
+            return true;
+        }
+
+        transactionId = default;
+        return false;
+    }
+
     public override string ToString() => Value.ToString();
 }

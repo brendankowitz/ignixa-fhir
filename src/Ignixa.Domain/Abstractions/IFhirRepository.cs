@@ -55,4 +55,17 @@ public interface IFhirRepository
     /// <param name="transactionId">Transaction ID to commit.</param>
     /// <param name="ct">Cancellation token.</param>
     ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Get transactions with lock files/records older than specified threshold.
+    /// Used by TransactionWatcherService to detect stalled transactions that need to be committed.
+    /// FileSystem: Scans for .lock.ndjson files with old modification times.
+    /// SQL: Queries TransactionEntity table where IsCompleted = false AND HeartbeatDate is old.
+    /// </summary>
+    /// <param name="stallThreshold">Time threshold for considering a transaction stalled.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of transaction IDs that are stalled and need to be committed.</returns>
+    ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
+        TimeSpan stallThreshold,
+        CancellationToken ct = default);
 }

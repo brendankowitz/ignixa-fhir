@@ -8,10 +8,14 @@ This is a C# .NET 9.0 codebase for **FHIR Server v2** - a next-generation FHIR s
 
 ## Current Status
 
-**Phase**: Multi-Tenancy Data Partitioning (ADR-2523 Phase 20) - ✅ COMPLETED
+**Phase**: Transaction Watcher (Phase 21) - ✅ COMPLETED (October 16, 2025)
+**Previous Phase**: Multi-Tenancy Data Partitioning (ADR-2523 Phase 20) - ✅ COMPLETED (October 13, 2025)
 **SDK Version**: Firely SDK 6.0.0 final (October 14, 2025 - unified multi-version support)
 **Build Status**: ✅ All projects build successfully (0 warnings, 0 errors)
 **Test Status**: ✅ All tests passing
+**Background Services**:
+- ✅ IndexLoaderService - Search index preloading on startup
+- ✅ TransactionWatcherService - Automatic stalled transaction recovery
 **Endpoints**:
 - ✅ PUT /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
 - ✅ GET /tenant/{tenantId}/{resourceType}/{id} - Tenant-explicit (always)
@@ -224,6 +228,68 @@ GET /metadata                 # ✅ Works - no tenant required
 - **Transaction ID Allocation**: `DeferredWriteCoordinator.CreateAsync()` allocates transaction ID from Partition 0
 - **Partition-Aware Writes**: `ProcessBatchAsync()` groups operations by partition using `IPartitionStrategy`
 - **Multi-Partition Commits**: Commits transaction across all touched partitions via `_touchedPartitions` tracking
+
+#### Transaction Watcher (Background Recovery Service)
+
+**Purpose**: Automatically detects and commits stalled transactions across all active tenants and storage implementations (FileSystem and SQL).
+
+**Architecture:**
+- **TransactionWatcherService** (Sparky.Api/BackgroundServices/TransactionWatcherService.cs)
+  - Implements `IHostedService` for background execution
+  - Timer-based periodic scanning (configurable interval, default: 60 seconds)
+  - Multi-tenant aware: Scans all active tenants via `ITenantConfigurationStore`
+  - Multi-storage support: Routes to correct repository via `IFhirRepositoryFactory`
+  - Excludes system partition (Partition 0) from API-level scans
+
+**Storage Implementations:**
+
+1. **FileSystem** (FileBasedFhirRepository.cs:324-397)
+   - Scans `_transactions/**/*.lock.ndjson` files recursively
+   - Checks file modification time vs configured threshold
+   - Extracts transaction IDs from filenames (`tx-{id}.lock.ndjson`)
+   - Returns list of stalled transaction IDs
+
+2. **SQL** (LegacySqlEfRepository.cs:234-269)
+   - Queries `TransactionEntity` table via EF Core
+   - Filters: `WHERE IsCompleted = false AND HeartbeatDate < threshold`
+   - Returns transaction IDs via LINQ query
+
+**Configuration:**
+```json
+{
+  "TransactionWatcher": {
+    "Enabled": true,
+    "ScanInterval": "00:01:00",     // Scan every 60 seconds
+    "StallThreshold": "00:05:00"    // 5 minutes without commit = stalled
+  }
+}
+```
+
+**Workflow:**
+1. **Service Starts**: On application startup, service registers timer
+2. **Periodic Scan**: Every `ScanInterval`:
+   - Queries all active tenants (excluding Partition 0)
+   - For each tenant, gets repository (FileSystem or SQL based on tenant config)
+   - Calls `GetStalledTransactionsAsync(StallThreshold)`
+   - For each stalled transaction, calls `CommitTransactionAsync()`
+3. **Logging**: Comprehensive metrics logging (scan duration, stalled count, commit success/failure)
+4. **Error Handling**: Retries on next scan if commit fails (non-blocking)
+
+**Key Files:**
+- `Sparky.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface
+- `Sparky.Domain/Models/TransactionId.cs:24` - `TryParse()` method for parsing transaction IDs
+- `Sparky.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model
+- `Sparky.Api/BackgroundServices/TransactionWatcherService.cs` - Background service implementation
+- `Sparky.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem implementation
+- `Sparky.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL implementation
+
+**Benefits:**
+- ✅ Automatic recovery from failed bundle operations (server crash, network timeout)
+- ✅ Multi-tenant support with isolated transaction tracking per tenant
+- ✅ Storage-agnostic design (works with FileSystem, SQL, future implementations)
+- ✅ Configurable scan interval and stall threshold
+- ✅ Non-blocking background execution (doesn't impact API performance)
+- ✅ Comprehensive logging for observability
 
 #### Configuration Example
 ```json
@@ -440,6 +506,13 @@ When working with multi-tenant features, these files are critical:
 - `Ignixa.Application/Features/Bundle/BundleProcessor.cs` - Creates coordinators with partition strategy
 - `Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs` - Propagates tenant context to mini-HttpContext
 
+**Transaction Watcher** (Background Recovery):
+- `Sparky.Api/BackgroundServices/TransactionWatcherService.cs` - Background service for automatic transaction recovery
+- `Sparky.Api/Configuration/TransactionWatcherOptions.cs` - Configuration model (ScanInterval, StallThreshold)
+- `Sparky.Domain/Abstractions/IFhirRepository.cs:68` - `GetStalledTransactionsAsync()` interface method
+- `Sparky.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs:324` - FileSystem stalled transaction detection
+- `Sparky.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs:234` - SQL stalled transaction detection
+
 ### Adding a New Feature (e.g., Observation)
 
 1. **Application Layer** - Create handlers
@@ -643,7 +716,20 @@ fhir-data/
     - ✅ Updated all handlers to use factories and partition strategy
     - ✅ Multi-tenant routing: `/tenant/{tenantId}/{resourceType}/{id?}`
 
-### Next Steps (Post-Phase 20)
+12. **Phase 21: Transaction Watcher (Background Recovery)** (October 16, 2025)
+    - ✅ Added `GetStalledTransactionsAsync()` to IFhirRepository interface
+    - ✅ Added `TryParse()` to TransactionId model
+    - ✅ FileSystem stalled transaction detection (scans .lock.ndjson files)
+    - ✅ SQL stalled transaction detection (queries TransactionEntity table)
+    - ✅ TransactionWatcherOptions configuration model
+    - ✅ TransactionWatcherService background service (IHostedService)
+    - ✅ Multi-tenant and multi-storage support
+    - ✅ Configurable scan interval and stall threshold
+    - ✅ Comprehensive logging and metrics
+    - ✅ Registered in DI and appsettings.json configuration
+    - ✅ Build succeeded (0 warnings, 0 errors)
+
+### Next Steps (Post-Phase 21)
 
 The multi-tenancy foundation is **IN PROGRESS**. Remaining work:
 

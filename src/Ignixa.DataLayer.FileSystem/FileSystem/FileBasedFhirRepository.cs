@@ -321,6 +321,81 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         await ValueTask.CompletedTask;
     }
 
+    public async ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
+        TimeSpan stallThreshold,
+        CancellationToken ct = default)
+    {
+        var stalledTransactions = new List<TransactionId>();
+
+        // Get the _transactions directory
+        string transactionsDir = Path.Combine(_baseDirectory, "_transactions");
+        if (!Directory.Exists(transactionsDir))
+        {
+            _logger.LogDebug("No _transactions directory found at {TransactionsDir}", transactionsDir);
+            return stalledTransactions;
+        }
+
+        // Get all .lock.ndjson files recursively
+        var lockFiles = Directory.GetFiles(transactionsDir, "*.lock.ndjson", SearchOption.AllDirectories);
+
+        var threshold = DateTimeOffset.UtcNow - stallThreshold;
+
+        _logger.LogDebug(
+            "Scanning {Count} lock files for stalled transactions (threshold: {Threshold})",
+            lockFiles.Length,
+            threshold);
+
+        foreach (var lockFile in lockFiles)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                // Get file last write time
+                var fileInfo = new FileInfo(lockFile);
+                var lastWriteTime = new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero);
+
+                // Check if file is older than threshold
+                if (lastWriteTime < threshold)
+                {
+                    // Extract transaction ID from filename (format: tx-{transactionId}.lock.ndjson)
+                    var fileName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(lockFile)); // Remove .lock.ndjson
+                    if (fileName.StartsWith("tx-", StringComparison.Ordinal))
+                    {
+                        var transactionIdString = fileName.Substring(3); // Remove "tx-" prefix
+                        if (TransactionId.TryParse(transactionIdString, out var transactionId))
+                        {
+                            stalledTransactions.Add(transactionId);
+
+                            _logger.LogWarning(
+                                "Found stalled transaction {TransactionId} in file {LockFile} (age: {Age})",
+                                transactionId,
+                                lockFile,
+                                DateTimeOffset.UtcNow - lastWriteTime);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to process lock file {LockFile}",
+                    lockFile);
+            }
+        }
+
+        _logger.LogDebug(
+            "Found {Count} stalled transactions out of {TotalCount} lock files",
+            stalledTransactions.Count,
+            lockFiles.Length);
+
+        return await ValueTask.FromResult(stalledTransactions);
+    }
+
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
