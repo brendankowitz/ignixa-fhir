@@ -13,20 +13,20 @@ The initial CapabilityStatement implementation (from coding-agent) violated a cr
 **NO FIRELY SDK DEPENDENCY** in application/business logic layers.
 
 **Violations**:
-1. ❌ Added `Hl7.Fhir.R4` package reference to `Sparky.Application.csproj`
+1. ❌ Added `Hl7.Fhir.R4` package reference to `Ignixa.Application.csproj`
 2. ❌ Used `Hl7.Fhir.R4.Model.CapabilityStatement` type directly
 3. ❌ Created dependency on Firely SDK for business logic
 4. ❌ Breaks clean architecture separation
 
 **Why No Firely SDK?**:
-- Sparky uses **custom FHIR models** based on SourceNode pattern
+- Ignixa uses **custom FHIR models** based on SourceNode pattern
 - Firely SDK is heavyweight and version-specific
 - We need fine-grained control over serialization and multi-version support
 - Custom models proven successful: `BundleJsonNode`, `OperationOutcomeJsonNode`, `ResourceJsonNode`
 
 ### Current Architecture
 
-**Proven SourceNode Pattern** (`Sparky.SourceNodeSerialization.SourceNodes.Models/`):
+**Proven SourceNode Pattern** (`Ignixa.SourceNodeSerialization.SourceNodes.Models/`):
 
 ```csharp
 // Base class for all FHIR resources
@@ -148,7 +148,7 @@ Implement CapabilityStatement using the **proven SourceNode pattern** with custo
 
 ### Architecture
 
-**Location**: `Sparky.Application/Features/Metadata/Models/`
+**Location**: `Ignixa.Application/Features/Metadata/Models/`
 
 **Rationale**: Application layer is correct for business logic (building capability statements). Only HTTP concerns (controllers) belong in API layer.
 
@@ -157,7 +157,7 @@ Implement CapabilityStatement using the **proven SourceNode pattern** with custo
 #### 1. CapabilityStatementJsonNode
 
 ```csharp
-namespace Sparky.Application.Features.Metadata.Models;
+namespace Ignixa.Application.Features.Metadata.Models;
 
 public class CapabilityStatementJsonNode : ResourceJsonNode
 {
@@ -240,7 +240,7 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
 #### 2. RestComponentJsonNode
 
 ```csharp
-namespace Sparky.Application.Features.Metadata.Models;
+namespace Ignixa.Application.Features.Metadata.Models;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
 public class RestComponentJsonNode
@@ -281,7 +281,7 @@ public class RestComponentJsonNode
 #### 3. ResourceComponentJsonNode
 
 ```csharp
-namespace Sparky.Application.Features.Metadata.Models;
+namespace Ignixa.Application.Features.Metadata.Models;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
 public class ResourceComponentJsonNode
@@ -359,7 +359,7 @@ public class ResourceComponentJsonNode
 #### 4. ResourceInteractionJsonNode
 
 ```csharp
-namespace Sparky.Application.Features.Metadata.Models;
+namespace Ignixa.Application.Features.Metadata.Models;
 
 public class ResourceInteractionJsonNode
 {
@@ -405,7 +405,7 @@ public class ResourceInteractionJsonNode
 #### 5. SearchParamJsonNode
 
 ```csharp
-namespace Sparky.Application.Features.Metadata.Models;
+namespace Ignixa.Application.Features.Metadata.Models;
 
 public class SearchParamJsonNode
 {
@@ -457,7 +457,7 @@ public class SearchParamJsonNode
 #### 6. SoftwareComponentJsonNode
 
 ```csharp
-namespace Sparky.Application.Features.Metadata.Models;
+namespace Ignixa.Application.Features.Metadata.Models;
 
 public class SoftwareComponentJsonNode
 {
@@ -474,10 +474,10 @@ public class SoftwareComponentJsonNode
 
 ### Builder Implementation
 
-**File**: `Sparky.Application/Features/Metadata/CapabilityStatementBuilder.cs`
+**File**: `Ignixa.Application/Features/Metadata/CapabilityStatementBuilder.cs`
 
 ```csharp
-namespace Sparky.Application.Features.Metadata;
+namespace Ignixa.Application.Features.Metadata;
 
 public class CapabilityStatementBuilder
 {
@@ -520,7 +520,7 @@ public class CapabilityStatementBuilder
         {
             Url = "http://sparky.example.com/fhir/CapabilityStatement",
             Version = "0.1.0",
-            Name = "SparkyFhirServer",
+            Name = "IgnixaFhirServer",
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Experimental = false,
             Date = DateTimeOffset.UtcNow.ToString("O"),
@@ -531,7 +531,7 @@ public class CapabilityStatementBuilder
             PatchFormat = new List<string> { "application/json-patch+json" },
             Software = new SoftwareComponentJsonNode
             {
-                Name = "Sparky FHIR Server",
+                Name = "Ignixa FHIR Server",
                 Version = "0.1.0",
                 ReleaseDate = "2025-10-16"
             }
@@ -624,10 +624,10 @@ public class CapabilityStatementBuilder
 
 ### Handler Implementation
 
-**File**: `Sparky.Application/Features/Metadata/GetCapabilityStatementHandler.cs`
+**File**: `Ignixa.Application/Features/Metadata/GetCapabilityStatementHandler.cs`
 
 ```csharp
-namespace Sparky.Application.Features.Metadata;
+namespace Ignixa.Application.Features.Metadata;
 
 public class GetCapabilityStatementHandler
     : IRequestHandler<GetCapabilityStatementQuery, CapabilityStatementJsonNode>
@@ -661,10 +661,10 @@ public class GetCapabilityStatementHandler
 
 ### Query Definition
 
-**File**: `Sparky.Application/Features/Metadata/GetCapabilityStatementQuery.cs`
+**File**: `Ignixa.Application/Features/Metadata/GetCapabilityStatementQuery.cs`
 
 ```csharp
-namespace Sparky.Application.Features.Metadata;
+namespace Ignixa.Application.Features.Metadata;
 
 public record GetCapabilityStatementQuery(int? TenantId)
     : IRequest<CapabilityStatementJsonNode>;
@@ -672,10 +672,10 @@ public record GetCapabilityStatementQuery(int? TenantId)
 
 ### Controller Integration
 
-**File**: `Sparky.Api/Features/Metadata/Api/MetadataController.cs`
+**File**: `Ignixa.Api/Features/Metadata/Api/MetadataController.cs`
 
 ```csharp
-namespace Sparky.Api.Features.Metadata.Api;
+namespace Ignixa.Api.Features.Metadata.Api;
 
 [ApiController]
 public class MetadataController : ControllerBase
@@ -720,7 +720,7 @@ public class MetadataController : ControllerBase
 
 ### DI Registration
 
-**File**: `Sparky.Api/Program.cs`
+**File**: `Ignixa.Api/Program.cs`
 
 ```csharp
 // Register CapabilityStatementBuilder as singleton (cacheable)
@@ -738,7 +738,7 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
 
 ### Phase 1: Create Models (4 hours)
 
-1. Create `Sparky.Application/Features/Metadata/Models/` directory
+1. Create `Ignixa.Application/Features/Metadata/Models/` directory
 2. Implement 6 model files:
    - `CapabilityStatementJsonNode.cs`
    - `RestComponentJsonNode.cs`
@@ -771,7 +771,7 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
 
 ### Phase 5: Remove Firely SDK (0.5 hours)
 
-1. Remove `<PackageReference Include="Hl7.Fhir.R4" />` from `Sparky.Application.csproj`
+1. Remove `<PackageReference Include="Hl7.Fhir.R4" />` from `Ignixa.Application.csproj`
 2. Build solution and verify 0 errors
 3. Run tests and verify all pass
 
@@ -810,7 +810,7 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
 ### Mitigation
 
 1. **Codegen Option**: Can generate models from FHIR StructureDefinition if needed
-   - Extend `codegen/Sparky.Specification.Generators/` with `CSharpCapabilityStatementLanguage.cs`
+   - Extend `codegen/Ignixa.Specification.Generators/` with `CSharpCapabilityStatementLanguage.cs`
    - Same pattern as IStructureDefinitionSummaryProvider generation
    - Still produces POCOs, not Firely SDK types
 
@@ -842,14 +842,14 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
   "id": "sparky-r4",
   "url": "http://sparky.example.com/fhir/CapabilityStatement",
   "version": "0.1.0",
-  "name": "SparkyFhirServer",
+  "name": "IgnixaFhirServer",
   "status": "active",
   "experimental": false,
   "date": "2025-10-16T12:00:00Z",
   "publisher": "Microsoft Corporation",
   "kind": "instance",
   "software": {
-    "name": "Sparky FHIR Server",
+    "name": "Ignixa FHIR Server",
     "version": "0.1.0",
     "releaseDate": "2025-10-16"
   },
@@ -902,7 +902,7 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
 - [ ] ✅ GET /tenant/1/metadata returns 200 OK
 - [ ] ✅ JSON validates against FHIR CapabilityStatement schema
 - [ ] ✅ Multi-version support works (R4, R4B, R5)
-- [ ] ✅ No Firely SDK references in `Sparky.Application.csproj`
+- [ ] ✅ No Firely SDK references in `Ignixa.Application.csproj`
 - [ ] ✅ Build succeeds with 0 warnings, 0 errors
 - [ ] ✅ All tests pass
 - [ ] ✅ Response time < 100ms (P95)
@@ -910,7 +910,7 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
 ## References
 
 - **Microsoft FHIR Server**: `ThirdParty/Microsoft.Health.Fhir.Core/Features/Conformance/`
-- **SourceNode Models**: `Sparky.SourceNodeSerialization/SourceNodes/Models/`
+- **SourceNode Models**: `Ignixa.SourceNodeSerialization/SourceNodes/Models/`
 - **FHIR R4 CapabilityStatement**: http://hl7.org/fhir/R4/capabilitystatement.html
 - **FHIR R5 CapabilityStatement**: http://hl7.org/fhir/R5/capabilitystatement.html
 - **ADR-2503**: Phase 1.2 - Search Implementation (mentions metadata endpoint)
@@ -919,10 +919,10 @@ containerBuilder.RegisterType<GetCapabilityStatementHandler>()
 ## Next Steps
 
 1. ✅ Review this ADR with team
-2. ⏳ Create model files in `Sparky.Application/Features/Metadata/Models/`
+2. ⏳ Create model files in `Ignixa.Application/Features/Metadata/Models/`
 3. ⏳ Update `CapabilityStatementBuilder.cs` to return `CapabilityStatementJsonNode`
 4. ⏳ Update handler and query to use new return type
-5. ⏳ Remove `Hl7.Fhir.R4` from `Sparky.Application.csproj`
+5. ⏳ Remove `Hl7.Fhir.R4` from `Ignixa.Application.csproj`
 6. ⏳ Test both `/metadata` and `/tenant/{id}/metadata` endpoints
 7. ⏳ Validate JSON output against FHIR schema
 8. ⏳ Performance testing and optimization

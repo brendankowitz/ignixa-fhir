@@ -25,7 +25,7 @@ We will integrate **SourceNodeValidation.FastPathValidator** into the **Applicat
 
 ### Key Decisions
 
-1. **Validator Choice**: Use `Sparky.Validation.SourceNodeValidation.FastPathValidator`
+1. **Validator Choice**: Use `Ignixa.Validation.SourceNodeValidation.FastPathValidator`
    - **Reason**: Fixes missing property bug (id, resourceType, meta) using ISourceNode's unified view
    - **Alternative**: JsonNodeValidation version has dictionary-based access bug
 
@@ -252,10 +252,10 @@ Passed! - Failed: 0, Passed: 134, Skipped: 0, Total: 134
 
 ### Test Coverage
 
-- **Sparky.Api.Tests**: 1 test
-- **Sparky.Validation.Tests**: 66 tests (FastPathValidator validation rules)
-- **Sparky.Application.Tests**: 34 tests (handler logic)
-- **Sparky.SourceNodeSerialization.Tests**: 33 tests (ISourceNode conversion)
+- **Ignixa.Api.Tests**: 1 test
+- **Ignixa.Validation.Tests**: 66 tests (FastPathValidator validation rules)
+- **Ignixa.Application.Tests**: 34 tests (handler logic)
+- **Ignixa.SourceNodeSerialization.Tests**: 33 tests (ISourceNode conversion)
 
 ### Manual Integration Tests
 
@@ -299,7 +299,7 @@ Created `test-validation.http` with 10 scenarios:
 - **Implementation Summary**: `VALIDATION_INTEGRATION_SUMMARY.md`
 - **Architecture Diagram**: `VALIDATION_ARCHITECTURE.md`
 - **FastPathValidator Investigation**: `docs/investigations/fast-path-validation.md`
-- **Test Suite**: `test/Sparky.Validation.Tests/`
+- **Test Suite**: `test/Ignixa.Validation.Tests/`
 - **Manual Tests**: `test-validation.http`
 - **FHIR Validation Spec**: https://hl7.org/fhir/validation.html
 

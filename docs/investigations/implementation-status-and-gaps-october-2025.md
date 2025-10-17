@@ -181,7 +181,7 @@ GET /metadata                   # ✅ 200 OK (bypassed)
 - Example: `GET /Patient/123` → 403, but `POST / {Bundle with Patient GET}` → 200
 
 **Solution Implemented**:
-1. **CapabilityEnforcementHelper** (`src/Sparky.Application/Infrastructure/`):
+1. **CapabilityEnforcementHelper** (`src/Ignixa.Application/Infrastructure/`):
    - Shared validation logic for both layers
    - `IsOperationSupportedAsync(resourceType, interaction, tenantId)`
    - DRY principle (no code duplication)
@@ -245,10 +245,10 @@ POST /tenant/1/
 ```
 
 **Files Created/Modified**:
-- ✅ Created: `src/Sparky.Application/Infrastructure/CapabilityEnforcementHelper.cs`
-- ✅ Created: `src/Sparky.Application/Infrastructure/CapabilityEnforcementBehavior.cs`
-- ✅ Modified: `src/Sparky.Api/Middleware/CapabilityEnforcementMiddleware.cs` (refactored to use helper)
-- ✅ Modified: `src/Sparky.Api/Program.cs` (registered helper + behavior)
+- ✅ Created: `src/Ignixa.Application/Infrastructure/CapabilityEnforcementHelper.cs`
+- ✅ Created: `src/Ignixa.Application/Infrastructure/CapabilityEnforcementBehavior.cs`
+- ✅ Modified: `src/Ignixa.Api/Middleware/CapabilityEnforcementMiddleware.cs` (refactored to use helper)
+- ✅ Modified: `src/Ignixa.Api/Program.cs` (registered helper + behavior)
 
 **Build Status**: ✅ 0 errors, 0 warnings
 
@@ -258,7 +258,7 @@ POST /tenant/1/
 
 ### Category A: SDK & Dependency Issues
 
-#### A1. Sparky.Search Nullable Compatibility ⚠️
+#### A1. Ignixa.Search Nullable Compatibility ⚠️
 
 **Issue**: Legacy code lacks nullable annotations
 **Current State**: Nullable disabled (`<Nullable>disable</Nullable>`)
@@ -268,9 +268,9 @@ POST /tenant/1/
 **Estimate**: 8-16 hours
 **Priority**: Medium (code quality)
 
-**Location**: `src/Sparky.Search/Sparky.Search.csproj`
+**Location**: `src/Ignixa.Search/Ignixa.Search.csproj`
 
-#### A2. Sparky.Specification JsonSchema.Net ⛔
+#### A2. Ignixa.Specification JsonSchema.Net ⛔
 
 **Issue**: API breaking changes in v7.x
 **Current State**: Temporarily removed from solution
@@ -306,13 +306,13 @@ POST /tenant/1/
 
 **Current State**: Single controller with generic handlers
 ```csharp
-// src/Sparky.Api/Infrastructure/EndpointRouting.cs (generic routing)
+// src/Ignixa.Api/Infrastructure/EndpointRouting.cs (generic routing)
 app.MapFhirEndpoints(); // Maps all resource types dynamically
 ```
 
 **But Still Have**:
 ```csharp
-// src/Sparky.Api/Features/Patient/Api/PatientController.cs
+// src/Ignixa.Api/Features/Patient/Api/PatientController.cs
 // Problem: Need to create 144 more of these!
 ```
 
@@ -397,7 +397,7 @@ public IAsyncEnumerable<SearchEntryResult> SearchStreaming(...)
 
 #### B4. Legacy SearchOptionsFactory Refactoring 🔧
 
-**Current State**: `Sparky.Search/Parsing/SearchOptionsFactory.cs` - 800 lines
+**Current State**: `Ignixa.Search/Parsing/SearchOptionsFactory.cs` - 800 lines
 
 **Problems**:
 - Monolithic method: `BuildSearchOptions()` is 400+ lines
@@ -475,7 +475,7 @@ curl -X DELETE http://server/tenant/1/Patient/123 # Deletes patient!
 ```csharp
 // xUnit test project structure
 test/
-├── Sparky.Api.Tests/
+├── Ignixa.Api.Tests/
 │   ├── Integration/
 │   │   ├── ResourceCrudTests.cs
 │   │   ├── MultiTenancyTests.cs
@@ -483,8 +483,8 @@ test/
 │   └── Unit/
 │       ├── Handlers/GetResourceHandlerTests.cs
 │       └── Middleware/CapabilityEnforcementTests.cs
-├── Sparky.Application.Tests/
-└── Sparky.Search.Tests/
+├── Ignixa.Application.Tests/
+└── Ignixa.Search.Tests/
 ```
 
 **Estimate**: 40-80 hours (5-10 weeks parallel to feature work)
@@ -531,7 +531,7 @@ public class AuditLogger : IAuditLogger
 
 **Server Logs**:
 ```
-warn: Sparky.Api.Services.IndexLoaderService[0]
+warn: Ignixa.Api.Services.IndexLoaderService[0]
       IndexLoaderService performance is slow: 69.40ms per resource (target: <3ms)
 ```
 
@@ -693,11 +693,11 @@ TenantMode.Distributed => throw new NotSupportedException(
 **Current State**: FileSystem (prototype) + LegacySqlEF (legacy schema)
 
 **Missing**:
-1. **Sparky.DataLayer.SqlServer.Optimized** (Phase 8a)
+1. **Ignixa.DataLayer.SqlServer.Optimized** (Phase 8a)
    - Optimized schema design
    - Partitioned tables for multi-tenancy
    - Full-text search integration
-2. **Sparky.DataLayer.CosmosDB** (Phase 9)
+2. **Ignixa.DataLayer.CosmosDB** (Phase 9)
    - NoSQL document storage
    - Global distribution
    - Automatic scaling
@@ -936,9 +936,9 @@ TenantMode.Distributed => throw new NotSupportedException(
 **Tasks**:
 1. **Create Test Projects** (4h)
    ```bash
-   dotnet new xunit -n Sparky.Api.Tests -o test/Sparky.Api.Tests
-   dotnet new xunit -n Sparky.Application.Tests -o test/Sparky.Application.Tests
-   dotnet sln add test/Sparky.Api.Tests test/Sparky.Application.Tests
+   dotnet new xunit -n Ignixa.Api.Tests -o test/Ignixa.Api.Tests
+   dotnet new xunit -n Ignixa.Application.Tests -o test/Ignixa.Application.Tests
+   dotnet sln add test/Ignixa.Api.Tests test/Ignixa.Application.Tests
    ```
 
 2. **Integration Test Harness** (12h)
@@ -1189,7 +1189,7 @@ TenantMode.Distributed => throw new NotSupportedException(
 | 11 | No IG Loading | Feature | 🟡 Medium | 24-40h | Infrastructure Ready |
 | 12 | Distributed Mode | Future | 🟢 Low | 7 weeks | Not Started |
 | 13 | Additional Storage Providers | Future | 🟢 Low | 2-3 weeks each | Not Started |
-| 14 | Sparky.Search Nullable | Code Quality | 🟢 Low | 8-16h | Workaround |
+| 14 | Ignixa.Search Nullable | Code Quality | 🟢 Low | 8-16h | Workaround |
 | 15 | JsonSchema.Net v7 | Dependency | 🟢 Low | 4-8h | Removed |
 | 16 | PocoNode Custom Provider | SDK Limit | ⚪ Cannot Fix | N/A | Workaround |
 

@@ -20,7 +20,7 @@ Modern FHIR server deployments require flexible data partitioning patterns that 
    - ❌ Cannot provide strict tenant isolation between customers
    - ❌ All-or-nothing participation model
 
-**Sparky's Vision**: Support **both** isolation and distributed modes as **first-class concepts** with **zero architectural friction** between them:
+**Ignixa's Vision**: Support **both** isolation and distributed modes as **first-class concepts** with **zero architectural friction** between them:
 
 - **Isolation Mode**: Multiple separate customers (tenants), each with their own isolated data store
   - Example: Mayo Clinic (tenant 0), Cedars-Sinai (tenant 1), Johns Hopkins (tenant 2)
@@ -56,7 +56,7 @@ Based on `docs/investigations/multi-tenancy-data-partitioning-modes.md`, this AD
 - Each organization is a separate customer
 - Different FHIR versions per organization
 
-**Sparky Solution**:
+**Ignixa Solution**:
 ```csharp
 // Different customers, each with isolated data
 Tenant 0: Mayo Clinic     → fhir-data/tenants/0/  (FHIR R4)
@@ -77,7 +77,7 @@ GET /tenant/2/Patient?name=Smith  → Johns Hopkins only
 - Shard data across multiple stores for performance
 - Transparent queries (users don't specify shard)
 
-**Sparky Solution**:
+**Ignixa Solution**:
 ```csharp
 // Single customer, multiple shards (same organization)
 Shard 0: Patients A-M      → fhir-data/0/
@@ -100,12 +100,12 @@ GET /Patient?name=Smith
 ### Current Implementation Status
 
 **Completed (Weeks 1-2)**:
-- ✅ `TenantConfiguration` model (`Sparky.Domain/Models/TenantConfiguration.cs`)
-- ✅ `TenantMode` enum (Isolated, Distributed) (`Sparky.Domain/Models/TenantMode.cs`)
-- ✅ `ITenantConfigurationStore` interface (`Sparky.Domain/Abstractions/ITenantConfigurationStore.cs`)
-- ✅ `AppSettingsTenantConfigurationStore` implementation (`Sparky.Application/Infrastructure/AppSettingsTenantConfigurationStore.cs`)
-- ✅ `ResourceKey.TenantId` property added (`Sparky.Domain/Models/ResourceKey.cs`)
-- ✅ `ResourceWrapper.TenantId` property added (`Sparky.Domain/Models/ResourceWrapper.cs`)
+- ✅ `TenantConfiguration` model (`Ignixa.Domain/Models/TenantConfiguration.cs`)
+- ✅ `TenantMode` enum (Isolated, Distributed) (`Ignixa.Domain/Models/TenantMode.cs`)
+- ✅ `ITenantConfigurationStore` interface (`Ignixa.Domain/Abstractions/ITenantConfigurationStore.cs`)
+- ✅ `AppSettingsTenantConfigurationStore` implementation (`Ignixa.Application/Infrastructure/AppSettingsTenantConfigurationStore.cs`)
+- ✅ `ResourceKey.TenantId` property added (`Ignixa.Domain/Models/ResourceKey.cs`)
+- ✅ `ResourceWrapper.TenantId` property added (`Ignixa.Domain/Models/ResourceWrapper.cs`)
 
 **Configuration Structure**:
 ```json
@@ -1007,11 +1007,11 @@ SELECT * FROM c WHERE c.tenantId = 0 AND c.resourceType = 'Patient'
 ### Week 1-2: Factory Pattern and Routing (32 hours)
 
 #### Deliverables:
-1. **IFhirRepositoryFactory interface** (`Sparky.Domain/Abstractions/IFhirRepositoryFactory.cs`)
-2. **FileBasedFhirRepositoryFactory implementation** (`Sparky.Application/Infrastructure/FileBasedFhirRepositoryFactory.cs`)
-3. **ISearchServiceFactory interface** (`Sparky.Domain/Abstractions/ISearchServiceFactory.cs`)
-4. **FileBasedSearchServiceFactory implementation** (`Sparky.Application/Infrastructure/FileBasedSearchServiceFactory.cs`)
-5. **TenantResolutionMiddleware** (`Sparky.Api/Middleware/TenantResolutionMiddleware.cs`)
+1. **IFhirRepositoryFactory interface** (`Ignixa.Domain/Abstractions/IFhirRepositoryFactory.cs`)
+2. **FileBasedFhirRepositoryFactory implementation** (`Ignixa.Application/Infrastructure/FileBasedFhirRepositoryFactory.cs`)
+3. **ISearchServiceFactory interface** (`Ignixa.Domain/Abstractions/ISearchServiceFactory.cs`)
+4. **FileBasedSearchServiceFactory implementation** (`Ignixa.Application/Infrastructure/FileBasedSearchServiceFactory.cs`)
+5. **TenantResolutionMiddleware** (`Ignixa.Api/Middleware/TenantResolutionMiddleware.cs`)
 6. **Update FileBasedFhirRepository** to accept `int? tenantId` constructor parameter
 7. **Update FileBasedSearchService** to accept `int? tenantId` constructor parameter
 8. **Update FhirEndpoints routing** to `/tenant/{tenantId:int}/{resourceType}/{id?}`
@@ -1020,7 +1020,7 @@ SELECT * FROM c WHERE c.tenantId = 0 AND c.resourceType = 'Patient'
 
 **Step 1: Create IFhirRepositoryFactory**
 ```csharp
-namespace Sparky.Domain.Abstractions;
+namespace Ignixa.Domain.Abstractions;
 
 public interface IFhirRepositoryFactory
 {
@@ -1035,7 +1035,7 @@ public interface IFhirRepositoryFactory
 
 **Step 2: Implement FileBasedFhirRepositoryFactory**
 ```csharp
-namespace Sparky.Application.Infrastructure;
+namespace Ignixa.Application.Infrastructure;
 
 public class FileBasedFhirRepositoryFactory : IFhirRepositoryFactory
 {
@@ -1115,7 +1115,7 @@ public class FileBasedFhirRepositoryFactory : IFhirRepositoryFactory
 
 **Step 3: Create TenantResolutionMiddleware**
 ```csharp
-namespace Sparky.Api.Middleware;
+namespace Ignixa.Api.Middleware;
 
 public class TenantResolutionMiddleware
 {

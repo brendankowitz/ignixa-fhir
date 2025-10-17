@@ -189,8 +189,8 @@ For early phases with file-based storage, use simple `IHostedService` pattern:
 #### TransactionRecoveryWatcher
 
 ```csharp
-// Sparky.Api/BackgroundServices/TransactionRecoveryWatcher.cs
-namespace Sparky.Api.BackgroundServices;
+// Ignixa.Api/BackgroundServices/TransactionRecoveryWatcher.cs
+namespace Ignixa.Api.BackgroundServices;
 
 public class TransactionRecoveryWatcher : BackgroundService
 {
@@ -314,8 +314,8 @@ public class TransactionRecoveryWatcher : BackgroundService
 #### Transaction Cleanup Watchdog
 
 ```csharp
-// Sparky.Api/BackgroundServices/TransactionCleanupWatcher.cs
-namespace Sparky.Api.BackgroundServices;
+// Ignixa.Api/BackgroundServices/TransactionCleanupWatcher.cs
+namespace Ignixa.Api.BackgroundServices;
 
 public class TransactionCleanupWatcher : BackgroundService
 {
@@ -444,7 +444,7 @@ public class TransactionCleanupWatcher : BackgroundService
 Add these methods to `IFhirRepository`:
 
 ```csharp
-// Sparky.Domain/Abstractions/IFhirRepository.cs
+// Ignixa.Domain/Abstractions/IFhirRepository.cs
 public interface IFhirRepository
 {
     // Existing methods...
@@ -487,7 +487,7 @@ public interface IFhirRepository
 ### FileBasedFhirRepository Implementation
 
 ```csharp
-// Sparky.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs
+// Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs
 public sealed class FileBasedFhirRepository : IFhirRepository
 {
     // Existing methods...
@@ -686,7 +686,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository
 ### Program.cs Registration
 
 ```csharp
-// Sparky.Api/Program.cs
+// Ignixa.Api/Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
 // Register background services
@@ -765,8 +765,8 @@ private async Task ProcessAllTenantsAsync(CancellationToken cancellationToken)
 Create a data-layer-agnostic locking interface:
 
 ```csharp
-// Sparky.Domain/Abstractions/IDistributedLockManager.cs
-namespace Sparky.Domain.Abstractions;
+// Ignixa.Domain/Abstractions/IDistributedLockManager.cs
+namespace Ignixa.Domain.Abstractions;
 
 /// <summary>
 /// Manages distributed locks for coordinating background workers across multiple instances.
@@ -857,8 +857,8 @@ public class TransactionRecoveryWatcher : BackgroundService
 For Phase 1.1, use simple file-based locking (single instance only):
 
 ```csharp
-// Sparky.DataLayer.FileSystem/Locking/FileSystemDistributedLockManager.cs
-namespace Sparky.DataLayer.FileSystem.Locking;
+// Ignixa.DataLayer.FileSystem/Locking/FileSystemDistributedLockManager.cs
+namespace Ignixa.DataLayer.FileSystem.Locking;
 
 public class FileSystemDistributedLockManager : IDistributedLockManager
 {
@@ -973,8 +973,8 @@ internal class FileSystemDistributedLock : IDistributedLock
 For SQL Server data layer, use built-in `sp_getapplock`:
 
 ```csharp
-// Sparky.DataLayer.SqlServer/Locking/SqlServerDistributedLockManager.cs
-namespace Sparky.DataLayer.SqlServer.Locking;
+// Ignixa.DataLayer.SqlServer/Locking/SqlServerDistributedLockManager.cs
+namespace Ignixa.DataLayer.SqlServer.Locking;
 
 public class SqlServerDistributedLockManager : IDistributedLockManager
 {
@@ -1090,8 +1090,8 @@ internal class SqlServerDistributedLock : IDistributedLock
 For Cosmos DB, use lease containers (built into Change Feed):
 
 ```csharp
-// Sparky.DataLayer.CosmosDB/Locking/CosmosDbDistributedLockManager.cs
-namespace Sparky.DataLayer.CosmosDB.Locking;
+// Ignixa.DataLayer.CosmosDB/Locking/CosmosDbDistributedLockManager.cs
+namespace Ignixa.DataLayer.CosmosDB.Locking;
 
 /// <summary>
 /// Cosmos DB locking using lease containers.
@@ -1251,7 +1251,7 @@ internal class CosmosDbDistributedLock : IDistributedLock
 Register the appropriate lock manager based on data layer:
 
 ```csharp
-// Sparky.Api/Program.cs
+// Ignixa.Api/Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
 // Register distributed lock manager based on data layer
@@ -1301,7 +1301,7 @@ builder.Services.AddHostedService<TransactionCleanupWatcher>();
 ### Unit Tests
 
 ```csharp
-// Sparky.Api.Tests/BackgroundServices/TransactionRecoveryWatcherTests.cs
+// Ignixa.Api.Tests/BackgroundServices/TransactionRecoveryWatcherTests.cs
 public class TransactionRecoveryWatcherTests
 {
     [Fact]
@@ -1350,7 +1350,7 @@ public class TransactionRecoveryWatcherTests
 ### Integration Tests
 
 ```csharp
-// Sparky.Api.Tests/BackgroundServices/TransactionCleanupIntegrationTests.cs
+// Ignixa.Api.Tests/BackgroundServices/TransactionCleanupIntegrationTests.cs
 public class TransactionCleanupIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
     [Fact]
@@ -1392,7 +1392,7 @@ public class TransactionCleanupIntegrationTests : IClassFixture<WebApplicationFa
 Use `ISystemClock` abstraction to test time-dependent behavior:
 
 ```csharp
-// Sparky.Domain/Abstractions/ISystemClock.cs
+// Ignixa.Domain/Abstractions/ISystemClock.cs
 public interface ISystemClock
 {
     DateTimeOffset UtcNow { get; }
@@ -1470,7 +1470,7 @@ private readonly Histogram<double> _watchdogDuration;
 
 public TransactionRecoveryWatcher(...)
 {
-    var meter = new Meter("Sparky.BackgroundServices");
+    var meter = new Meter("Ignixa.BackgroundServices");
     _stalledTransactionsFound = meter.CreateCounter<long>("stalled_transactions_found");
     _transactionsAdvanced = meter.CreateCounter<long>("transactions_advanced");
     _watchdogDuration = meter.CreateHistogram<double>("watchdog_duration_seconds");
@@ -1503,7 +1503,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<TransactionRecoveryWatcherHealthCheck>("transaction-advancement")
     .AddCheck<TransactionCleanupWatcherHealthCheck>("transaction-cleanup");
 
-// Sparky.Api/HealthChecks/TransactionRecoveryWatcherHealthCheck.cs
+// Ignixa.Api/HealthChecks/TransactionRecoveryWatcherHealthCheck.cs
 public class TransactionRecoveryWatcherHealthCheck : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(

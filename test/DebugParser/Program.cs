@@ -1,6 +1,6 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
-using Sparky.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Features.Bundle.Serialization;
 
 // Set up console logging with Info level to reduce noise
 using var loggerFactory = LoggerFactory.Create(builder =>

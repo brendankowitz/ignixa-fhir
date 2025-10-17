@@ -48,7 +48,7 @@ Following Bundle processing in Phase 1.1, we add complete search functionality u
 ## Decision
 
 Implement search functionality using:
-1. **microsoft/fhir-server InMemory search** architecture (ported to Sparky)
+1. **microsoft/fhir-server InMemory search** architecture (ported to Ignixa)
 2. **Segmented CapabilityStatement** service
 3. **Basic authorization** middleware (authentication only)
 
@@ -58,7 +58,7 @@ Implement search functionality using:
 
 **File Structure**:
 ```
-Sparky.Api/
+Ignixa.Api/
   Features/
     Search/
       SearchEndpoints.cs           # GET {resourceType}?name=value
@@ -75,8 +75,8 @@ Sparky.Api/
 
 **Core Abstractions**:
 ```csharp
-// Sparky.Api/Features/Search/Abstractions/ISearchService.cs
-namespace Sparky.Features.Search.Abstractions;
+// Ignixa.Api/Features/Search/Abstractions/ISearchService.cs
+namespace Ignixa.Features.Search.Abstractions;
 
 public interface ISearchService
 {
@@ -91,8 +91,8 @@ public record SearchResult(
     string? ContinuationToken,
     int Total);
 
-// Sparky.Api/Features/Search/InMemory/InMemorySearchService.cs
-namespace Sparky.Features.Search.InMemory;
+// Ignixa.Api/Features/Search/InMemory/InMemorySearchService.cs
+namespace Ignixa.Features.Search.InMemory;
 
 public class InMemorySearchService : ISearchService
 {
@@ -127,8 +127,8 @@ public class InMemorySearchService : ISearchService
 **Ported from microsoft/fhir-server**:
 
 ```csharp
-// Sparky.Api/Features/Search/InMemory/SearchQueryInterpreter.cs
-namespace Sparky.Features.Search.InMemory;
+// Ignixa.Api/Features/Search/InMemory/SearchQueryInterpreter.cs
+namespace Ignixa.Features.Search.InMemory;
 
 /// <summary>
 /// Expression visitor that converts FHIR search parameters to index queries
@@ -180,8 +180,8 @@ public class SearchQueryInterpreter
 **Ported from microsoft/fhir-server**:
 
 ```csharp
-// Sparky.Api/Features/Search/InMemory/InMemoryIndex.cs
-namespace Sparky.Features.Search.InMemory;
+// Ignixa.Api/Features/Search/InMemory/InMemoryIndex.cs
+namespace Ignixa.Features.Search.InMemory;
 
 /// <summary>
 /// Optimized in-memory search index with grouped lookups
@@ -264,8 +264,8 @@ public class InMemoryIndex
 #### 4. Index Loading from Metadata Sidecar
 
 ```csharp
-// Sparky.Api/Features/Search/IndexLoading/IndexLoaderService.cs
-namespace Sparky.Features.Search.IndexLoading;
+// Ignixa.Api/Features/Search/IndexLoading/IndexLoaderService.cs
+namespace Ignixa.Features.Search.IndexLoading;
 
 public class IndexLoaderService
 {
@@ -337,8 +337,8 @@ public class IndexLoaderService
 **From `dynamic-capability-statement-generation.md`**:
 
 ```csharp
-// Sparky.Api/Features/Metadata/CapabilityStatementService.cs
-namespace Sparky.Features.Metadata;
+// Ignixa.Api/Features/Metadata/CapabilityStatementService.cs
+namespace Ignixa.Features.Metadata;
 
 public interface ICapabilityStatementService
 {
@@ -404,7 +404,7 @@ public class CapabilityStatementService : ICapabilityStatementService
     }
 }
 
-// Sparky.Api/Features/Metadata/Segments/StaticCapabilitySegment.cs
+// Ignixa.Api/Features/Metadata/Segments/StaticCapabilitySegment.cs
 public class StaticCapabilitySegment : ICapabilitySegment
 {
     public string SegmentKey => "Static";
@@ -415,8 +415,8 @@ public class StaticCapabilitySegment : ICapabilitySegment
         CapabilityContext context,
         CancellationToken ct)
     {
-        builder.SetSoftware("Sparky FHIR Server", "0.1.0");
-        builder.SetImplementation("Sparky", "https://sparky.example.com");
+        builder.SetSoftware("Ignixa FHIR Server", "0.1.0");
+        builder.SetImplementation("Ignixa", "https://sparky.example.com");
         builder.SetFhirVersion(context.FhirVersion);
 
         return ValueTask.CompletedTask;
@@ -431,7 +431,7 @@ public class StaticCapabilitySegment : ICapabilitySegment
     }
 }
 
-// Sparky.Api/Features/Metadata/Segments/ResourceInteractionSegment.cs
+// Ignixa.Api/Features/Metadata/Segments/ResourceInteractionSegment.cs
 public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 {
     public string SegmentKey => "ResourceInteractions";
@@ -478,8 +478,8 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 **From `rbac-authorization-with-capability-enforcement.md`**:
 
 ```csharp
-// Sparky.Api/Features/Authorization/FhirAuthorizationMiddleware.cs
-namespace Sparky.Features.Authorization;
+// Ignixa.Api/Features/Authorization/FhirAuthorizationMiddleware.cs
+namespace Ignixa.Features.Authorization;
 
 public class FhirAuthorizationMiddleware
 {
@@ -543,7 +543,7 @@ public class FhirAuthorizationMiddleware
     }
 }
 
-// Sparky.Api/Features/Authorization/Handlers/AuthenticationHandler.cs
+// Ignixa.Api/Features/Authorization/Handlers/AuthenticationHandler.cs
 public class AuthenticationHandler : IAuthorizationHandler
 {
     public int Priority => 10;  // First handler
@@ -568,7 +568,7 @@ public class AuthenticationHandler : IAuthorizationHandler
 
 ### Week 3 Implementation Plan (~16 Claude Code hours)
 
-**NOTE**: Expression tree infrastructure already in place at `Sparky.Search.Expressions/` (relocated October 2025).
+**NOTE**: Expression tree infrastructure already in place at `Ignixa.Search.Expressions/` (relocated October 2025).
 See `docs/investigations/search-query-parsing.md` for query parsing implementation details.
 
 #### 1. Port InMemory Search (8 hours)
@@ -577,8 +577,8 @@ See `docs/investigations/search-query-parsing.md` for query parsing implementati
 - Copy SearchQueryInterpreter.cs from microsoft/fhir-server
 - Copy ComparisonValueVisitor.cs
 - Copy InMemoryIndex.cs
-- Adapt to Sparky namespaces and patterns
-- **Use existing** `Sparky.Search.Expressions.Parsers.ExpressionParser` for query parsing
+- Adapt to Ignixa namespaces and patterns
+- **Use existing** `Ignixa.Search.Expressions.Parsers.ExpressionParser` for query parsing
 - **Implement** `SearchOptionsBuilder` (simplified vs legacy SearchOptionsFactory - see `search-query-parsing.md`)
   - 250 lines vs 800-line legacy factory (70% reduction)
   - QueryParameterParser for structured parameter parsing
@@ -641,7 +641,7 @@ See `docs/investigations/search-query-parsing.md` for query parsing implementati
 
 ### Negative
 
-1. **Code Porting**: Requires careful adaptation from microsoft/fhir-server to Sparky patterns
+1. **Code Porting**: Requires careful adaptation from microsoft/fhir-server to Ignixa patterns
 2. **Memory Footprint**: InMemory index grows with resource count (mitigated by .metadata.ndjson pre-extraction)
 3. **Limited Search Types**: Phase 1.2 only supports string search; other types in Phase 1.3
 
@@ -658,7 +658,7 @@ See `docs/investigations/search-query-parsing.md` for query parsing implementati
 - Investigation: `docs/investigations/dynamic-capability-statement-generation.md` - Segmented capability statement
 - Investigation: `docs/investigations/rbac-authorization-with-capability-enforcement.md` - 5-layer authorization pipeline
 - microsoft/fhir-server InMemory search: https://github.com/microsoft/fhir-server/tree/feature/subscription-engine/src/Microsoft.Health.Fhir.Core/Features/Search/InMemory
-- Expression tree classes: `src/Sparky.Search/Expressions/` - **Relocated October 2025**
+- Expression tree classes: `src/Ignixa.Search/Expressions/` - **Relocated October 2025**
 - ADR-2500: Master Implementation Roadmap
 - ADR-2501: Prototype Phase
 - ADR-2502: Phase 1.1 - Bundle Processing

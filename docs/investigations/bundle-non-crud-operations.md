@@ -19,7 +19,7 @@
 
 ### Current Implementation
 
-`src/Sparky.Application/Features/Bundle/BundleEntryExecutor.cs:56-71`
+`src/Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs:56-71`
 
 ```csharp
 return entry.HttpVerb.ToUpperInvariant() switch

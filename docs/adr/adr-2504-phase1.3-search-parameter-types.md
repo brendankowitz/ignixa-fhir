@@ -59,7 +59,7 @@ Extend InMemory search to support:
 
 **File Structure**:
 ```
-Sparky.Api/
+Ignixa.Api/
   Features/
     Search/
       InMemory/
@@ -80,8 +80,8 @@ Sparky.Api/
 **Token Format**: `system|code` or just `code`
 
 ```csharp
-// Sparky.Api/Features/Search/InMemory/Types/TokenSearchHandler.cs
-namespace Sparky.Features.Search.InMemory.Types;
+// Ignixa.Api/Features/Search/InMemory/Types/TokenSearchHandler.cs
+namespace Ignixa.Features.Search.InMemory.Types;
 
 public class TokenSearchHandler : ISearchParameterHandler
 {
@@ -213,8 +213,8 @@ GET /Patient?gender:not=female
 - Handle implicit ranges for partial dates
 
 ```csharp
-// Sparky.Api/Features/Search/InMemory/Types/DateSearchHandler.cs
-namespace Sparky.Features.Search.InMemory.Types;
+// Ignixa.Api/Features/Search/InMemory/Types/DateSearchHandler.cs
+namespace Ignixa.Features.Search.InMemory.Types;
 
 public class DateSearchHandler : ISearchParameterHandler
 {
@@ -365,8 +365,8 @@ GET /Observation?date=2024-01
 #### 4. Number Search Implementation
 
 ```csharp
-// Sparky.Api/Features/Search/InMemory/Types/NumberSearchHandler.cs
-namespace Sparky.Features.Search.InMemory.Types;
+// Ignixa.Api/Features/Search/InMemory/Types/NumberSearchHandler.cs
+namespace Ignixa.Features.Search.InMemory.Types;
 
 public class NumberSearchHandler : ISearchParameterHandler
 {
@@ -437,8 +437,8 @@ GET /RiskAssessment?probability=lt0.5
 #### 5. Reference Search Implementation
 
 ```csharp
-// Sparky.Api/Features/Search/InMemory/Types/ReferenceSearchHandler.cs
-namespace Sparky.Features.Search.InMemory.Types;
+// Ignixa.Api/Features/Search/InMemory/Types/ReferenceSearchHandler.cs
+namespace Ignixa.Features.Search.InMemory.Types;
 
 public class ReferenceSearchHandler : ISearchParameterHandler
 {
@@ -521,7 +521,7 @@ GET /DiagnosticReport?result=Observation/456
 
 **_id Implementation**:
 ```csharp
-// Sparky.Api/Features/Search/InMemory/SpecialParameters/IdSearchHandler.cs
+// Ignixa.Api/Features/Search/InMemory/SpecialParameters/IdSearchHandler.cs
 public class IdSearchHandler : ISearchParameterHandler
 {
     private readonly IFhirRepository _repository;
@@ -552,7 +552,7 @@ public class IdSearchHandler : ISearchParameterHandler
 
 **_lastUpdated Implementation**:
 ```csharp
-// Sparky.Api/Features/Search/InMemory/SpecialParameters/LastUpdatedSearchHandler.cs
+// Ignixa.Api/Features/Search/InMemory/SpecialParameters/LastUpdatedSearchHandler.cs
 public class LastUpdatedSearchHandler : ISearchParameterHandler
 {
     private readonly InMemoryIndex _index;
@@ -590,8 +590,8 @@ GET /Observation?_lastUpdated=lt2024-10-08
 #### 7. Pagination with Continuation Tokens
 
 ```csharp
-// Sparky.Api/Features/Search/Pagination/ContinuationTokenService.cs
-namespace Sparky.Features.Search.Pagination;
+// Ignixa.Api/Features/Search/Pagination/ContinuationTokenService.cs
+namespace Ignixa.Features.Search.Pagination;
 
 public class ContinuationTokenService
 {

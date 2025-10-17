@@ -51,21 +51,21 @@ The solution follows a **layered architecture** with **separate projects** for e
 
 ```
 All.sln (9 projects)
-├── 1. Sparky.Domain              - Domain models and abstractions (no dependencies)
-├── 2. Sparky.Application         - Medino handlers and business logic (→ Domain)
-├── 3. Sparky.DataLayer.*         - Data storage implementations (→ Domain)
-│   ├── Sparky.DataLayer.FileSystem      - File-based repository (prototype)
-│   └── Sparky.DataLayer.InMemoryIndex   - Resource location tracking
-├── 4. Sparky.Api                 - ASP.NET Core API (→ all layers)
+├── 1. Ignixa.Domain              - Domain models and abstractions (no dependencies)
+├── 2. Ignixa.Application         - Medino handlers and business logic (→ Domain)
+├── 3. Ignixa.DataLayer.*         - Data storage implementations (→ Domain)
+│   ├── Ignixa.DataLayer.FileSystem      - File-based repository (prototype)
+│   └── Ignixa.DataLayer.InMemoryIndex   - Resource location tracking
+├── 4. Ignixa.Api                 - ASP.NET Core API (→ all layers)
 └── Supporting Libraries
-    ├── Sparky.Extensions         - FHIR extensions and utilities
-    ├── Sparky.Search             - Search functionality
-    └── Sparky.SourceNodeSerialization - Serialization utilities
+    ├── Ignixa.Extensions         - FHIR extensions and utilities
+    ├── Ignixa.Search             - Search functionality
+    └── Ignixa.SourceNodeSerialization - Serialization utilities
 ```
 
 ### Project Details
 
-#### 1. **Sparky.Domain** (Domain Layer)
+#### 1. **Ignixa.Domain** (Domain Layer)
 - **Purpose**: Core domain models and abstractions
 - **Dependencies**: Hl7.Fhir.R4 only
 - **Key Files**:
@@ -75,9 +75,9 @@ All.sln (9 projects)
   - `Models/ResourceRequest.cs` - HTTP request metadata
   - `Models/TransactionId.cs` - Transaction tracking
 
-#### 2. **Sparky.Application** (Application Layer)
+#### 2. **Ignixa.Application** (Application Layer)
 - **Purpose**: Business logic and Medino message handlers
-- **Dependencies**: Sparky.Domain, Medino, Microsoft.Extensions.Logging.Abstractions
+- **Dependencies**: Ignixa.Domain, Medino, Microsoft.Extensions.Logging.Abstractions
 - **Pattern**: Feature folders (Features/Patient/)
 - **Key Files**:
   - `Features/Patient/CreateOrUpdatePatientCommand.cs` - IRequest<ResourceKey>
@@ -85,23 +85,23 @@ All.sln (9 projects)
   - `Features/Patient/GetPatientQuery.cs` - IRequest<ResourceWrapper?>
   - `Features/Patient/GetPatientHandler.cs` - IRequestHandler
 
-#### 3. **Sparky.DataLayer.FileSystem** (Data Layer)
+#### 3. **Ignixa.DataLayer.FileSystem** (Data Layer)
 - **Purpose**: File-based FHIR repository implementation (prototype)
-- **Dependencies**: Sparky.Domain, Hl7.Fhir.R4, Microsoft.Extensions.Logging.Abstractions
+- **Dependencies**: Ignixa.Domain, Hl7.Fhir.R4, Microsoft.Extensions.Logging.Abstractions
 - **Storage Format**:
   - `{baseDir}/{resourceType}/{id}.json` - Resource JSON
   - `{baseDir}/{resourceType}/{id}.meta.json` - Metadata sidecar
 - **Key Files**:
   - `FileSystem/FileBasedFhirRepository.cs` - IFhirRepository implementation
 
-#### 4. **Sparky.DataLayer.InMemoryIndex** (Data Layer)
+#### 4. **Ignixa.DataLayer.InMemoryIndex** (Data Layer)
 - **Purpose**: Tracks which data layer(s) contain each resource (for Distributed mode)
-- **Dependencies**: Sparky.Domain
+- **Dependencies**: Ignixa.Domain
 - **Key Files**:
   - `InMemoryIndex/IResourceLocationIndex.cs` - Interface
   - `InMemoryIndex/InMemoryResourceLocationIndex.cs` - ConcurrentDictionary implementation
 
-#### 5. **Sparky.Api** (API Layer)
+#### 5. **Ignixa.Api** (API Layer)
 - **Purpose**: ASP.NET Core Web API endpoints
 - **Dependencies**: All layers (Domain, Application, DataLayer.*)
 - **Pattern**: Feature folders (Features/Patient/Api/)
@@ -111,9 +111,9 @@ All.sln (9 projects)
 
 #### Supporting Libraries
 
-- **Sparky.Extensions**: FHIR extensions, value sets, schema helpers
-- **Sparky.Search**: Search parameter definitions, indexing, search values
-- **Sparky.SourceNodeSerialization**: Custom serialization for FHIR ISourceNode
+- **Ignixa.Extensions**: FHIR extensions, value sets, schema helpers
+- **Ignixa.Search**: Search parameter definitions, indexing, search values
+- **Ignixa.SourceNodeSerialization**: Custom serialization for FHIR ISourceNode
 
 ## Architecture Principles
 
@@ -123,12 +123,12 @@ All.sln (9 projects)
 - **DataLayer** depends only on Domain (storage implementations)
 - **API** depends on all layers (HTTP concerns)
 
-**IMPORTANT**: Do NOT add Firely SDK (`Hl7.Fhir.R4`, `Hl7.Fhir.R4B`, `Hl7.Fhir.R5`, `Hl7.Fhir.STU3`) package references to ANY layer. The codebase uses custom implementations in `Sparky.*` projects:
-- **ITypedElement**: `Sparky.SourceNodeSerialization.ElementModel.ITypedElement` (not SDK's)
-- **FHIRPath**: `Sparky.FhirPath.Evaluation` (not SDK's `Hl7.FhirPath`)
-- **Schema**: `Sparky.Specification` (custom generated providers)
+**IMPORTANT**: Do NOT add Firely SDK (`Hl7.Fhir.R4`, `Hl7.Fhir.R4B`, `Hl7.Fhir.R5`, `Hl7.Fhir.STU3`) package references to ANY layer. The codebase uses custom implementations in `Ignixa.*` projects:
+- **ITypedElement**: `Ignixa.SourceNodeSerialization.ElementModel.ITypedElement` (not SDK's)
+- **FHIRPath**: `Ignixa.FhirPath.Evaluation` (not SDK's `Hl7.FhirPath`)
+- **Schema**: `Ignixa.Specification` (custom generated providers)
 
-Only projects that explicitly need SDK types (e.g., `Sparky.Domain` for POCO models) should reference it. If you encounter a missing type error, use Sparky's equivalents, not the SDK.
+Only projects that explicitly need SDK types (e.g., `Ignixa.Domain` for POCO models) should reference it. If you encounter a missing type error, use Ignixa's equivalents, not the SDK.
 
 ### 2. Feature Folders
 - Organize by feature/capability (Patient, Observation, etc.)
@@ -137,7 +137,7 @@ Only projects that explicitly need SDK types (e.g., `Sparky.Domain` for POCO mod
 
 ### 3. Separate DataLayer Projects
 - Each storage implementation is its own project
-- Easy to add: Sparky.DataLayer.SqlServer, Sparky.DataLayer.CosmosDB, etc.
+- Easy to add: Ignixa.DataLayer.SqlServer, Ignixa.DataLayer.CosmosDB, etc.
 - Supports multi-data-layer scenarios (Isolation vs Distributed modes)
 
 ### 4. Medino Messaging
@@ -209,7 +209,7 @@ GET /metadata                 # ✅ Works - no tenant required
 #### Factory Pattern
 - **IFhirRepositoryFactory**: Creates tenant-specific repository instances, caches per tenant
 - **ISearchServiceFactory**: Creates tenant-specific search services, caches per tenant
-- **Location**: `Sparky.DataLayer.FileSystem` project (moved from Application layer)
+- **Location**: `Ignixa.DataLayer.FileSystem` project (moved from Application layer)
 - **Caching**: `ConcurrentDictionary<int, IFhirRepository>` for O(1) lookup after first creation
 
 #### Partition Strategy (HAPI FHIR-Inspired)
@@ -257,10 +257,10 @@ GET /metadata                 # ✅ Works - no tenant required
 dotnet build All.sln
 
 # Build specific layer
-dotnet build src/Sparky.Domain/Sparky.Domain.csproj
-dotnet build src/Sparky.Application/Sparky.Application.csproj
-dotnet build src/Sparky.DataLayer.FileSystem/Sparky.DataLayer.FileSystem.csproj
-dotnet build src/Sparky.Api/Sparky.Api.csproj
+dotnet build src/Ignixa.Domain/Ignixa.Domain.csproj
+dotnet build src/Ignixa.Application/Ignixa.Application.csproj
+dotnet build src/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj
+dotnet build src/Ignixa.Api/Ignixa.Api.csproj
 ```
 
 ### Test
@@ -269,12 +269,12 @@ dotnet build src/Sparky.Api/Sparky.Api.csproj
 dotnet test All.sln
 
 # Run specific test project
-dotnet test test/Sparky.Api.Tests/Sparky.Api.Tests.csproj
+dotnet test test/Ignixa.Api.Tests/Ignixa.Api.Tests.csproj
 ```
 
 ### Run API
 ```bash
-dotnet run --project src/Sparky.Api/Sparky.Api.csproj
+dotnet run --project src/Ignixa.Api/Ignixa.Api.csproj
 ```
 
 ## Code Standards
@@ -319,7 +319,7 @@ All package versions managed in `Directory.Packages.props`:
 - **R4B, R5, STU3**: Supported via SDK 6.0 unified packages
 
 ### Search Parameters
-Embedded JSON files in `Sparky.Search/Data/{Version}/`:
+Embedded JSON files in `Ignixa.Search/Data/{Version}/`:
 - `search-parameters.json` - FHIR search parameter definitions
 - `unsupported-search-parameters.json` - Not implemented
 - `BaseCapabilities.json` - Capability statement
@@ -333,15 +333,15 @@ Embedded JSON files in `Sparky.Search/Data/{Version}/`:
 The project includes a build-time code generator for creating `IStructureDefinitionSummaryProvider` implementations for different FHIR versions (R4, R4B, R5, STU3). This ensures reliable, correct structure definitions from official FHIR packages.
 
 **Location**: `codegen/` folder
-**Solution**: `codegen/SparkyCodegen.sln` (separate from main All.sln)
-**Output**: `src/Sparky.Specification/Generated/` folder
+**Solution**: `codegen/IgnixaCodegen.sln` (separate from main All.sln)
+**Output**: `src/Ignixa.Specification/Generated/` folder
 
 #### Architecture
 
 ```
 codegen/
-├── SparkyCodegen.sln                   # Separate solution for code generation
-├── Sparky.Specification.Generators/    # Custom ILanguage implementation
+├── IgnixaCodegen.sln                   # Separate solution for code generation
+├── Ignixa.Specification.Generators/    # Custom ILanguage implementation
 │   ├── Program.cs                      # Console app entry point
 │   └── CSharpStructureProviderLanguage.cs
 ├── fhir-codegen/                       # Git submodule (Microsoft fhir-codegen)
@@ -353,7 +353,7 @@ codegen/
 
 #### Why a Separate Solution?
 
-The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `SparkyCodegen.sln`, we:
+The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `IgnixaCodegen.sln`, we:
 
 1. Keep the main solution simple and fast to build
 2. Avoid CPM conflicts with third-party dependencies
@@ -381,7 +381,7 @@ Supported versions: `R4`, `R4B`, `R5`, `STU3`, `All`
 
 #### Generated Files
 
-Generated files are placed in `src/Sparky.Specification/Generated/`:
+Generated files are placed in `src/Ignixa.Specification/Generated/`:
 - `R4StructureDefinitionSummaryProvider.g.cs`
 - `R4BStructureDefinitionSummaryProvider.g.cs`
 - `R5StructureDefinitionSummaryProvider.g.cs`
@@ -391,11 +391,11 @@ These files are marked as `linguist-generated=true` in `.gitattributes`.
 
 #### How It Works
 
-1. Scripts build both fhir-codegen and Sparky.Specification.Generators
+1. Scripts build both fhir-codegen and Ignixa.Specification.Generators
 2. fhir-codegen downloads and parses FHIR packages (e.g., `hl7.fhir.r4.core#4.0.1`)
 3. fhir-codegen creates a `DefinitionCollection` with all FHIR structures
 4. Our custom `CSharpStructureProviderLanguage` traverses the collection
-5. Generated C# code is written to `src/Sparky.Specification/Generated/`
+5. Generated C# code is written to `src/Ignixa.Specification/Generated/`
 
 #### Key Classes
 
@@ -414,37 +414,37 @@ The code generator uses Firely SDK 5.10.2 (from fhir-codegen submodule), **not**
 When working with multi-tenant features, these files are critical:
 
 **Domain Layer**:
-- `Sparky.Domain/Constants/SystemConstants.cs` - Defines Partition 0 as system partition
-- `Sparky.Domain/Models/TenantConfiguration.cs` - Tenant configuration model
-- `Sparky.Domain/Models/TenantMode.cs` - Isolated vs Distributed mode enum
-- `Sparky.Domain/Abstractions/ITenantConfigurationStore.cs` - Tenant config interface
-- `Sparky.Domain/Abstractions/IFhirRepositoryFactory.cs` - Repository factory interface
-- `Sparky.Domain/Abstractions/ISearchServiceFactory.cs` - Search service factory interface
-- `Sparky.Domain/Abstractions/IPartitionStrategy.cs` - Partition determination strategy
+- `Ignixa.Domain/Constants/SystemConstants.cs` - Defines Partition 0 as system partition
+- `Ignixa.Domain/Models/TenantConfiguration.cs` - Tenant configuration model
+- `Ignixa.Domain/Models/TenantMode.cs` - Isolated vs Distributed mode enum
+- `Ignixa.Domain/Abstractions/ITenantConfigurationStore.cs` - Tenant config interface
+- `Ignixa.Domain/Abstractions/IFhirRepositoryFactory.cs` - Repository factory interface
+- `Ignixa.Domain/Abstractions/ISearchServiceFactory.cs` - Search service factory interface
+- `Ignixa.Domain/Abstractions/IPartitionStrategy.cs` - Partition determination strategy
 
 **Application Layer**:
-- `Sparky.Application/Infrastructure/AppSettingsTenantConfigurationStore.cs` - Loads tenants from appsettings.json
+- `Ignixa.Application/Infrastructure/AppSettingsTenantConfigurationStore.cs` - Loads tenants from appsettings.json
 
 **Data Layer**:
-- `Sparky.DataLayer.FileSystem/FileBasedFhirRepositoryFactory.cs` - Creates tenant-specific repositories
-- `Sparky.DataLayer.FileSystem/FileBasedSearchServiceFactory.cs` - Creates tenant-specific search services
-- `Sparky.DataLayer.FileSystem/IsolatedModePartitionStrategy.cs` - Isolation mode partition strategy
+- `Ignixa.DataLayer.FileSystem/FileBasedFhirRepositoryFactory.cs` - Creates tenant-specific repositories
+- `Ignixa.DataLayer.FileSystem/FileBasedSearchServiceFactory.cs` - Creates tenant-specific search services
+- `Ignixa.DataLayer.FileSystem/IsolatedModePartitionStrategy.cs` - Isolation mode partition strategy
 
 **API Layer**:
-- `Sparky.Api/Middleware/TenantResolutionMiddleware.cs` - Extracts tenant from route, validates, protects Partition 0
-- `Sparky.Api/appsettings.json` - Tenant configurations for production
-- `Sparky.Api/appsettings.Development.json` - Multi-tenant test configuration
+- `Ignixa.Api/Middleware/TenantResolutionMiddleware.cs` - Extracts tenant from route, validates, protects Partition 0
+- `Ignixa.Api/appsettings.json` - Tenant configurations for production
+- `Ignixa.Api/appsettings.Development.json` - Multi-tenant test configuration
 
 **Bundle Processing**:
-- `Sparky.Application/Features/Bundle/DeferredWriteCoordinator.cs` - Allocates transaction IDs from Partition 0, groups writes by partition
-- `Sparky.Application/Features/Bundle/BundleProcessor.cs` - Creates coordinators with partition strategy
-- `Sparky.Application/Features/Bundle/BundleEntryExecutor.cs` - Propagates tenant context to mini-HttpContext
+- `Ignixa.Application/Features/Bundle/DeferredWriteCoordinator.cs` - Allocates transaction IDs from Partition 0, groups writes by partition
+- `Ignixa.Application/Features/Bundle/BundleProcessor.cs` - Creates coordinators with partition strategy
+- `Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs` - Propagates tenant context to mini-HttpContext
 
 ### Adding a New Feature (e.g., Observation)
 
 1. **Application Layer** - Create handlers
    ```
-   src/Sparky.Application/Features/Observation/
+   src/Ignixa.Application/Features/Observation/
    ├── CreateObservationCommand.cs
    ├── CreateObservationHandler.cs
    ├── GetObservationQuery.cs
@@ -453,7 +453,7 @@ When working with multi-tenant features, these files are critical:
 
 2. **API Layer** - Create controller
    ```
-   src/Sparky.Api/Features/Observation/Api/
+   src/Ignixa.Api/Features/Observation/Api/
    └── ObservationController.cs
    ```
 
@@ -463,14 +463,14 @@ When working with multi-tenant features, these files are critical:
 
 1. **Create new project**
    ```bash
-   dotnet new classlib -n Sparky.DataLayer.SqlServer -o src/Sparky.DataLayer.SqlServer
-   dotnet add src/Sparky.DataLayer.SqlServer reference src/Sparky.Domain
-   dotnet sln add src/Sparky.DataLayer.SqlServer
+   dotnet new classlib -n Ignixa.DataLayer.SqlServer -o src/Ignixa.DataLayer.SqlServer
+   dotnet add src/Ignixa.DataLayer.SqlServer reference src/Ignixa.Domain
+   dotnet sln add src/Ignixa.DataLayer.SqlServer
    ```
 
 2. **Implement IFhirRepository**
    ```csharp
-   namespace Sparky.DataLayer.SqlServer;
+   namespace Ignixa.DataLayer.SqlServer;
 
    public class SqlServerFhirRepository : IFhirRepository
    {
@@ -478,7 +478,7 @@ When working with multi-tenant features, these files are critical:
    }
    ```
 
-3. **Register in Sparky.Api** (Autofac/DI)
+3. **Register in Ignixa.Api** (Autofac/DI)
 
 ### SDK 6.0 API Patterns
 
@@ -492,12 +492,12 @@ string json = resourceWrapper.RawJson; // Stored during read
 
 ## Known Issues / Workarounds
 
-### 1. Sparky.Search Nullable Compatibility
+### 1. Ignixa.Search Nullable Compatibility
 - **Issue**: Old code doesn't use nullable annotations
 - **Workaround**: Nullable disabled (`<Nullable>disable</Nullable>`)
 - **TODO**: Incrementally enable nullable and add annotations
 
-### 2. Sparky.Specification JsonSchema.Net
+### 2. Ignixa.Specification JsonSchema.Net
 - **Issue**: API changed in version 7.x
 - **Status**: Temporarily removed from solution
 - **TODO**: Migrate to new JsonSchema.Net API or replace
@@ -528,11 +528,11 @@ string json = resourceWrapper.RawJson; // Stored during read
 
 1. **Project Structure** (Week 1)
    - ✅ Created layered architecture with separate projects
-   - ✅ Sparky.Domain - Models and abstractions
-   - ✅ Sparky.Application - Medino handlers
-   - ✅ Sparky.DataLayer.FileSystem - File-based repository
-   - ✅ Sparky.DataLayer.InMemoryIndex - Resource location tracking
-   - ✅ Sparky.Api - ASP.NET Core controllers
+   - ✅ Ignixa.Domain - Models and abstractions
+   - ✅ Ignixa.Application - Medino handlers
+   - ✅ Ignixa.DataLayer.FileSystem - File-based repository
+   - ✅ Ignixa.DataLayer.InMemoryIndex - Resource location tracking
+   - ✅ Ignixa.Api - ASP.NET Core controllers
 
 2. **Domain Layer** (Week 1)
    - ✅ ResourceKey, ResourceWrapper, ResourceRequest models
@@ -557,7 +557,7 @@ string json = resourceWrapper.RawJson; // Stored during read
 6. **SDK Migration** (Week 1, October 14, 2025)
    - ✅ Upgraded to Firely SDK 6.0.0-rc1 (August 2025)
    - ✅ Upgraded to Firely SDK 6.0.0 final (October 14, 2025)
-   - ✅ Fixed Sparky.Search nullable compatibility issues
+   - ✅ Fixed Ignixa.Search nullable compatibility issues
    - ✅ Centralized package management
    - ✅ Resolved PocoNode/FhirPath issues with SDK 6.0.0 final
 
@@ -665,7 +665,7 @@ The multi-tenancy foundation is **IN PROGRESS**. Remaining work:
      - BundleSerializer for zero-copy JSON serialization
    - Port InMemory search from microsoft/fhir-server
    - Add GET /Patient?name=... support
-   - Integrate Sparky.Search indexing
+   - Integrate Ignixa.Search indexing
 
 2. **Phase 3: Additional Resource Types**
    - Add Observation, Condition, Medication, etc.
@@ -693,11 +693,11 @@ The multi-tenancy foundation is **IN PROGRESS**. Remaining work:
 ## Future Roadmap
 
 ### Planned DataLayer Projects
-- ✅ Sparky.DataLayer.FileSystem (Prototype)
-- ✅ Sparky.DataLayer.InMemoryIndex (Prototype)
-- 🔲 Sparky.DataLayer.SqlServer.Legacy (Phase 8 - EF with legacy schema)
-- 🔲 Sparky.DataLayer.SqlServer.Optimized (Phase 8a - Optimized schema)
-- 🔲 Sparky.DataLayer.CosmosDB (Phase 9)
+- ✅ Ignixa.DataLayer.FileSystem (Prototype)
+- ✅ Ignixa.DataLayer.InMemoryIndex (Prototype)
+- 🔲 Ignixa.DataLayer.SqlServer.Legacy (Phase 8 - EF with legacy schema)
+- 🔲 Ignixa.DataLayer.SqlServer.Optimized (Phase 8a - Optimized schema)
+- 🔲 Ignixa.DataLayer.CosmosDB (Phase 9)
 
 ### Next Steps (Post-Prototype)
 1. **Autofac Configuration** - Register services, configure DI

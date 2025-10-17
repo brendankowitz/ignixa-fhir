@@ -10,8 +10,8 @@ The code generator uses Microsoft's [fhir-codegen](https://github.com/microsoft/
 
 ```
 codegen/
-├── SparkyCodegen.sln               # Separate solution for code generation
-├── Sparky.Specification.Generators/ # Custom ILanguage implementation
+├── IgnixaCodegen.sln               # Separate solution for code generation
+├── Ignixa.Specification.Generators/ # Custom ILanguage implementation
 │   └── CSharpStructureProviderLanguage.cs
 ├── fhir-codegen/                   # Git submodule (Microsoft fhir-codegen)
 ├── generate.ps1                    # PowerShell generation script
@@ -21,7 +21,7 @@ codegen/
 
 ### Why a Separate Solution?
 
-The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `SparkyCodegen.sln`, we:
+The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `IgnixaCodegen.sln`, we:
 
 1. Keep the main solution simple and fast to build
 2. Avoid CPM conflicts with third-party dependencies
@@ -69,7 +69,7 @@ Supported versions: `R4`, `R4B`, `R5`, `STU3`, `All`
 
 Generated files are placed in:
 ```
-src/Sparky.Specification/Generated/
+src/Ignixa.Specification/Generated/
 ├── R4StructureDefinitionSummaryProvider.g.cs
 ├── R4BStructureDefinitionSummaryProvider.g.cs
 ├── R5StructureDefinitionSummaryProvider.g.cs
@@ -84,13 +84,13 @@ These files are marked as `linguist-generated=true` in `.gitattributes`.
 
 ```bash
 cd codegen
-dotnet build SparkyCodegen.sln -c Release
+dotnet build IgnixaCodegen.sln -c Release
 ```
 
 ### Modifying the Generator
 
-1. Edit `Sparky.Specification.Generators/CSharpStructureProviderLanguage.cs`
-2. Build: `dotnet build SparkyCodegen.sln`
+1. Edit `Ignixa.Specification.Generators/CSharpStructureProviderLanguage.cs`
+2. Build: `dotnet build IgnixaCodegen.sln`
 3. Run generation scripts to test changes
 
 ### Key Classes
@@ -101,11 +101,11 @@ dotnet build SparkyCodegen.sln -c Release
 
 ### How It Works
 
-1. Scripts build both fhir-codegen and Sparky.Specification.Generators
+1. Scripts build both fhir-codegen and Ignixa.Specification.Generators
 2. fhir-codegen downloads and parses FHIR packages (e.g., `hl7.fhir.r4.core`)
 3. fhir-codegen creates a `DefinitionCollection` with all FHIR structures
 4. Our custom `CSharpStructureProviderLanguage` traverses the collection
-5. Generated C# code is written to `src/Sparky.Specification/Generated/`
+5. Generated C# code is written to `src/Ignixa.Specification/Generated/`
 
 ## Troubleshooting
 
@@ -120,7 +120,7 @@ If you encounter build errors, ensure:
 
 If you see NU1008 errors about package versions:
 - These should only occur when building from the root directory
-- Always build SparkyCodegen.sln from within the `codegen/` folder
+- Always build IgnixaCodegen.sln from within the `codegen/` folder
 - The `codegen/Directory.Build.props` and `codegen/Directory.Packages.props` files disable CPM for this folder
 
 ### Missing Packages
@@ -163,7 +163,7 @@ The generator now produces **complete, production-ready** implementations with:
 
 ### Data Source Comparison
 
-See `src/Sparky.Specification/Schema/gaps.md` for a detailed analysis of improvements over the old JSON schema-based implementation.
+See `src/Ignixa.Specification/Schema/gaps.md` for a detailed analysis of improvements over the old JSON schema-based implementation.
 
 | Feature | JSON Schema (Old) | fhir-codegen (New) |
 |---------|------------------|---------------------|

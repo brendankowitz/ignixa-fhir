@@ -526,7 +526,7 @@ From 29 investigation documents (see `docs/investigations/SUMMARY.md`):
 17. **R6 Additional Resources**: Hot-load via `POST /$load-ig` for dynamic resource types
 18. **Extension Indexing**: FHIRPath-based extraction for searchable extensions
 19. **Feature Folder Organization**: Organize by capability (Patient/, Search/, Bundle/) not technical layer (Controllers/, Services/)
-20. **Project Name: "Sparky"**: Side project with `Sparky.*` namespace (not Microsoft.Health)
+20. **Project Name: "Ignixa"**: Side project with `Ignixa.*` namespace (not Microsoft.Health)
 21. **DurableTask Framework**: All background operations use Azure DurableTask (not custom task framework)
 22. **Dual-Mode Data Partitioning**: Isolation mode (single repository) vs Distributed mode (fanout/union) as first-class abstractions
 23. **Pass-Through Optimization**: Zero overhead for Isolation mode and Distributed mode with 0-1 layers

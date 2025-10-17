@@ -44,15 +44,15 @@ Based on investigations in `phase1-file-based-storage-with-search.md` and `stora
 
 **0. Project Organization and Naming**
 
-This is a **side project** called **"Sparky"**, not "Microsoft.Health". Project naming follows this pattern:
-- `Sparky.*` namespace (e.g., `Sparky.Api`, `Sparky.Domain`, `Sparky.Application`)
+This is a **side project** called **"Ignixa"**, not "Microsoft.Health". Project naming follows this pattern:
+- `Ignixa.*` namespace (e.g., `Ignixa.Api`, `Ignixa.Domain`, `Ignixa.Application`)
 - Layered architecture with separate projects for each architectural layer
 
 **Implemented Architecture: Layered Projects** (organized by architectural layer):
 
 ```
 All.sln (9 projects)
-├── 1. Sparky.Domain              # Domain models and abstractions (no dependencies)
+├── 1. Ignixa.Domain              # Domain models and abstractions (no dependencies)
 │   ├── Abstractions/
 │   │   └── IFhirRepository.cs
 │   └── Models/
@@ -61,7 +61,7 @@ All.sln (9 projects)
 │       ├── ResourceRequest.cs
 │       └── TransactionId.cs
 │
-├── 2. Sparky.Application         # Medino handlers and business logic (→ Domain)
+├── 2. Ignixa.Application         # Medino handlers and business logic (→ Domain)
 │   └── Features/
 │       └── Patient/
 │           ├── CreateOrUpdatePatientCommand.cs
@@ -69,16 +69,16 @@ All.sln (9 projects)
 │           ├── GetPatientQuery.cs
 │           └── GetPatientHandler.cs
 │
-├── 3. Sparky.DataLayer.*         # Data storage implementations (→ Domain)
-│   ├── Sparky.DataLayer.FileSystem
+├── 3. Ignixa.DataLayer.*         # Data storage implementations (→ Domain)
+│   ├── Ignixa.DataLayer.FileSystem
 │   │   └── FileSystem/
 │   │       └── FileBasedFhirRepository.cs
-│   └── Sparky.DataLayer.InMemoryIndex
+│   └── Ignixa.DataLayer.InMemoryIndex
 │       └── InMemoryIndex/
 │           ├── IResourceLocationIndex.cs
 │           └── InMemoryResourceLocationIndex.cs
 │
-├── 4. Sparky.Api                 # ASP.NET Core API (→ all layers)
+├── 4. Ignixa.Api                 # ASP.NET Core API (→ all layers)
 │   ├── Features/
 │   │   ├── Patient/
 │   │   │   └── Api/
@@ -95,9 +95,9 @@ All.sln (9 projects)
 │   └── Program.cs
 │
 └── Supporting Libraries
-    ├── Sparky.Extensions         # FHIR extensions and utilities
-    ├── Sparky.Search             # Search functionality
-    └── Sparky.SourceNodeSerialization # Serialization utilities
+    ├── Ignixa.Extensions         # FHIR extensions and utilities
+    ├── Ignixa.Search             # Search functionality
+    └── Ignixa.SourceNodeSerialization # Serialization utilities
 ```
 
 **Architecture Principles**:
@@ -108,7 +108,7 @@ All.sln (9 projects)
 
 **Rationale**:
 - **Clean Architecture**: Clear separation between domain logic, application logic, and infrastructure
-- **Multi-DataLayer Support**: Easy to add new storage implementations (Sparky.DataLayer.SqlServer, Sparky.DataLayer.CosmosDB)
+- **Multi-DataLayer Support**: Easy to add new storage implementations (Ignixa.DataLayer.SqlServer, Ignixa.DataLayer.CosmosDB)
 - **Feature Folders Within Layers**: Each layer uses feature folders (e.g., Application/Features/Patient/)
 - **Testability**: Each layer can be tested independently
 - **Scalability**: Supports Isolation Mode (single data layer) and Distributed Mode (multiple data layers)
@@ -157,36 +157,36 @@ Implement a complete vertical slice with **only** `PUT /Patient/{id}` and `GET /
 │                 Prototype Phase Architecture (Implemented)       │
 ├─────────────────────────────────────────────────────────────────┤
 │  1. API Layer (ASP.NET Core Controllers)                        │
-│     Sparky.Api                                                   │
+│     Ignixa.Api                                                   │
 │     - PatientController: PUT /Patient/{id}, GET /Patient/{id}   │
 │     - MetadataController: GET /metadata                         │
 │     - IndexLoaderService: IHostedService for startup loading    │
 │     - FhirExceptionMiddleware: FHIR error responses             │
 │                                                                  │
 │  2. Application Layer (Medino CQRS Handlers)                    │
-│     Sparky.Application                                           │
+│     Ignixa.Application                                           │
 │     - CreateOrUpdatePatientCommand / Handler                    │
 │     - GetPatientQuery / Handler                                 │
 │                                                                  │
 │  3. Domain Layer (Models & Abstractions)                        │
-│     Sparky.Domain                                                │
+│     Ignixa.Domain                                                │
 │     - IFhirRepository interface                                 │
 │     - ResourceWrapper, ResourceKey, ResourceRequest             │
 │     - TransactionId                                             │
 │                                                                  │
 │  4. Data Layer (Storage Implementations)                        │
-│     Sparky.DataLayer.FileSystem                                  │
+│     Ignixa.DataLayer.FileSystem                                  │
 │     - FileBasedFhirRepository: NDJSON storage with metadata     │
-│     Sparky.DataLayer.InMemoryIndex                               │
+│     Ignixa.DataLayer.InMemoryIndex                               │
 │     - InMemoryResourceLocationIndex: Resource location tracking │
 │                                                                  │
 │  5. Supporting Libraries                                        │
-│     - Sparky.Extensions: FHIR utilities                         │
-│     - Sparky.Search: Search parameters                          │
-│     - Sparky.SourceNodeSerialization: Custom serialization      │
+│     - Ignixa.Extensions: FHIR utilities                         │
+│     - Ignixa.Search: Search parameters                          │
+│     - Ignixa.SourceNodeSerialization: Custom serialization      │
 │                                                                  │
 │  6. Tests (xUnit + NSubstitute)                                 │
-│     Sparky.Api.Tests                                             │
+│     Ignixa.Api.Tests                                             │
 │     - Unit tests for all layers                                 │
 │     - Integration tests for PUT/GET                             │
 └─────────────────────────────────────────────────────────────────┘
@@ -203,7 +203,7 @@ Implement a complete vertical slice with **only** `PUT /Patient/{id}` and `GET /
 ```
 All.sln
 src/
-  Sparky.Domain/                     # Core domain (no dependencies)
+  Ignixa.Domain/                     # Core domain (no dependencies)
     Abstractions/
       IFhirRepository.cs
     Models/
@@ -212,7 +212,7 @@ src/
       ResourceRequest.cs
       TransactionId.cs
 
-  Sparky.Application/                # Business logic (→ Domain)
+  Ignixa.Application/                # Business logic (→ Domain)
     Features/
       Patient/
         CreateOrUpdatePatientCommand.cs
@@ -220,16 +220,16 @@ src/
         GetPatientQuery.cs
         GetPatientHandler.cs
 
-  Sparky.DataLayer.FileSystem/       # File storage (→ Domain)
+  Ignixa.DataLayer.FileSystem/       # File storage (→ Domain)
     FileSystem/
       FileBasedFhirRepository.cs
 
-  Sparky.DataLayer.InMemoryIndex/    # Index tracking (→ Domain)
+  Ignixa.DataLayer.InMemoryIndex/    # Index tracking (→ Domain)
     InMemoryIndex/
       IResourceLocationIndex.cs
       InMemoryResourceLocationIndex.cs
 
-  Sparky.Api/                        # HTTP API (→ all layers)
+  Ignixa.Api/                        # HTTP API (→ all layers)
     Features/
       Patient/
         Api/
@@ -245,12 +245,12 @@ src/
       AutofacMediatorServiceProvider.cs
     Program.cs
 
-  Sparky.Extensions/                 # FHIR utilities
-  Sparky.Search/                     # Search parameters
-  Sparky.SourceNodeSerialization/    # Custom serialization
+  Ignixa.Extensions/                 # FHIR utilities
+  Ignixa.Search/                     # Search parameters
+  Ignixa.SourceNodeSerialization/    # Custom serialization
 
 test/
-  Sparky.Api.Tests/
+  Ignixa.Api.Tests/
     Features/
       Patient/
         PatientControllerTests.cs
@@ -270,8 +270,8 @@ test/
 #### 2. Core Abstractions (4 hours)
 
 ```csharp
-// Sparky.Domain/Abstractions/IFhirRepository.cs
-namespace Sparky.Domain.Abstractions;
+// Ignixa.Domain/Abstractions/IFhirRepository.cs
+namespace Ignixa.Domain.Abstractions;
 
 public interface IFhirRepository
 {
@@ -280,8 +280,8 @@ public interface IFhirRepository
     IEnumerable<string> GetAllMetadataFiles();
 }
 
-// Sparky.Domain/Models/ResourceWrapper.cs
-namespace Sparky.Domain.Models;
+// Ignixa.Domain/Models/ResourceWrapper.cs
+namespace Ignixa.Domain.Models;
 
 public class ResourceWrapper
 {
@@ -579,8 +579,8 @@ public class GetPatientQueryHandler : IQueryHandler<GetPatientQuery, ResourceWra
 - Works well with Autofac dependency injection
 
 ```csharp
-// Sparky.Api/Features/Patient/Api/PatientController.cs
-namespace Sparky.Api.Features.Patient.Api;
+// Ignixa.Api/Features/Patient/Api/PatientController.cs
+namespace Ignixa.Api.Features.Patient.Api;
 
 [ApiController]
 [Route("[controller]")]

@@ -480,4 +480,4 @@ BundleProcessor
 - **Analysis**: `docs/analysis/deferred-write-architecture-analysis.md`
 - **ADR**: `docs/adr/adr-2502-phase1.1-bundle-processing.md`
 - **Investigation**: `docs/investigations/bundle-deferred-writes.md`
-- **Code**: `src/Sparky.Application/Features/Bundle/BundleEntryExecutor.cs`
+- **Code**: `src/Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs`

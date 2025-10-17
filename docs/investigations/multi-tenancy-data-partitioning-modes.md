@@ -17,7 +17,7 @@ This investigation explores implementing **first-class multi-tenancy data partit
    - API: `/Patient` (transparent fanout to all shards, merge results)
    - Sharding strategies: Hash-based, geography-based, time-based
 
-The goal is to build these patterns using the existing **`IFhirRepository` abstraction** in Sparky, allowing seamless switching between modes.
+The goal is to build these patterns using the existing **`IFhirRepository` abstraction** in Ignixa, allowing seamless switching between modes.
 
 ## Problem Statement
 
@@ -36,7 +36,7 @@ Traditional FHIR servers handle multi-tenancy through:
 - ❌ Manual data aggregation required when sharding is needed
 - ❌ Tenant migration requires application downtime
 
-### Sparky's Vision
+### Ignixa's Vision
 
 Support **both** isolation and distributed modes as first-class concepts:
 
@@ -120,7 +120,7 @@ FHIR Bundle (with continuation tokens)
 - **Isolation**: Configurable
 - **Distribution**: Custom "Cluster Mode" with federated search
 
-**Insight**: No major vendor provides **built-in** isolation + distributed modes as first-class abstractions. This is a **differentiator** for Sparky.
+**Insight**: No major vendor provides **built-in** isolation + distributed modes as first-class abstractions. This is a **differentiator** for Ignixa.
 
 ### Real-World Use Cases
 
@@ -132,7 +132,7 @@ FHIR Bundle (with continuation tokens)
 - Each organization is a separate customer
 - Different FHIR versions per organization
 
-**Sparky Solution**:
+**Ignixa Solution**:
 ```csharp
 // Different customers, each with isolated data
 Tenant 0: Mayo Clinic     → fhir-data/tenants/0/  (FHIR R4)
@@ -153,7 +153,7 @@ GET /tenant/2/Patient?name=Smith  → Johns Hopkins only
 - Shard data across multiple stores for performance
 - Transparent queries (users don't specify shard)
 
-**Sparky Solution**:
+**Ignixa Solution**:
 ```csharp
 // Single customer, multiple shards (same organization)
 Shard 0: Patients A-M      → fhir-data/0/  (IFhirRepository instance)

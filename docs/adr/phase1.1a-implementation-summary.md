@@ -401,16 +401,16 @@ await foreach (var entry in _streamingParser.ParseStreamAsync(httpRequest.Body, 
 ### Components to Implement
 
 **Week 3 (Two-Phase Architecture)**:
-1. `Sparky.Domain/Models/DeferredWriteOperation.cs` - Write operation container
-2. `Sparky.Application/Bundle/DeferredWriteCoordinator.cs` - Channel-based coordinator
-3. `Sparky.Domain/Abstractions/IFhirRepository.cs` - Add BatchWriteAsync method
-4. `Sparky.DataLayer.FileSystem/FileBasedFhirRepository.cs` - Implement BatchWriteAsync
+1. `Ignixa.Domain/Models/DeferredWriteOperation.cs` - Write operation container
+2. `Ignixa.Application/Bundle/DeferredWriteCoordinator.cs` - Channel-based coordinator
+3. `Ignixa.Domain/Abstractions/IFhirRepository.cs` - Add BatchWriteAsync method
+4. `Ignixa.DataLayer.FileSystem/FileBasedFhirRepository.cs` - Implement BatchWriteAsync
 
 **Week 4 (Streaming Parser)**:
-1. `Sparky.Application/Bundle/BundleParserState.cs` - State machine helper
-2. `Sparky.Application/Bundle/StreamingBundleParser.cs` - Utf8JsonReader implementation
-3. `Sparky.Api/Http/PreferHeaderParser.cs` - Header detection utility
-4. `Sparky.Application/Bundle/BundleProcessor.cs` - Add ProcessStreamAsync method
+1. `Ignixa.Application/Bundle/BundleParserState.cs` - State machine helper
+2. `Ignixa.Application/Bundle/StreamingBundleParser.cs` - Utf8JsonReader implementation
+3. `Ignixa.Api/Http/PreferHeaderParser.cs` - Header detection utility
+4. `Ignixa.Application/Bundle/BundleProcessor.cs` - Add ProcessStreamAsync method
 
 **Week 5 (Optimization)**:
 1. Enhanced error handling in StreamingBundleParser
@@ -589,8 +589,8 @@ await foreach (var entry in _streamingParser.ParseStreamAsync(httpRequest.Body, 
 ## Next Steps
 
 ### Week 3 (Days 9-12): Two-Phase Write Architecture
-1. Create DeferredWriteOperation.cs in Sparky.Domain/Models/
-2. Create DeferredWriteCoordinator.cs in Sparky.Application/Bundle/
+1. Create DeferredWriteOperation.cs in Ignixa.Domain/Models/
+2. Create DeferredWriteCoordinator.cs in Ignixa.Application/Bundle/
 3. Update IFhirRepository interface (add BatchWriteAsync method)
 4. Implement FileBasedFhirRepository.BatchWriteAsync
 5. Integrate DeferredWriteCoordinator with BundleProcessor
@@ -598,11 +598,11 @@ await foreach (var entry in _streamingParser.ParseStreamAsync(httpRequest.Body, 
 7. Manual integration testing (verify atomic commits)
 
 ### Week 4 (Days 13-16): Streaming Bundle Parser
-1. Create BundleParserState.cs in Sparky.Application/Bundle/
-2. Create StreamingBundleParser.cs in Sparky.Application/Bundle/
+1. Create BundleParserState.cs in Ignixa.Application/Bundle/
+2. Create StreamingBundleParser.cs in Ignixa.Application/Bundle/
 3. Add ArrayPool<byte> buffer management
 4. Implement state machine token processing
-5. Create PreferHeaderParser.cs in Sparky.Api/Http/
+5. Create PreferHeaderParser.cs in Ignixa.Api/Http/
 6. Update FhirEndpoints.HandleBundle with streaming path
 7. Add BundleProcessor.ProcessStreamAsync method
 8. Manual integration testing (verify memory usage)

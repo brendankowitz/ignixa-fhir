@@ -64,7 +64,7 @@ Total Indexing Time: ~10 ms per resource
 
 ### 1. FhirPath Execution Model
 
-**Location**: `src/Sparky.FhirPath/Evaluation/FhirPathEvaluator.cs` (1,568 LOC)
+**Location**: `src/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs` (1,568 LOC)
 
 **Execution Flow**:
 ```
@@ -137,7 +137,7 @@ Total overhead: ~30-50 method calls, 2 O(n) enumerations, 2-3 allocations
 
 ### 2. ITypedElement Access Patterns
 
-**Location**: `src/Sparky.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs`
+**Location**: `src/Ignixa.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs`
 
 **Current Implementation**:
 ```csharp
@@ -178,7 +178,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
 
 ### 3. SourceNode Serialization
 
-**Location**: `src/Sparky.SourceNodeSerialization/SourceNodes/JsonElementSourceNode.cs`
+**Location**: `src/Ignixa.SourceNodeSerialization/SourceNodes/JsonElementSourceNode.cs`
 
 **Current Implementation** (showing good patterns to replicate):
 ```csharp
@@ -264,7 +264,7 @@ Patient Resource Indexing (10 search parameters):
 
 ### Bottleneck 1: Interpreted FhirPath Execution
 
-**Location**: `src/Sparky.FhirPath/Evaluation/FhirPathEvaluator.cs:33-1200`
+**Location**: `src/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:33-1200`
 
 **Profiling Data** (estimated from code structure):
 
@@ -285,7 +285,7 @@ Patient Resource Indexing (10 search parameters):
 
 ### Bottleneck 2: Linear Property Access
 
-**Location**: `src/Sparky.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs:62-79`
+**Location**: `src/Ignixa.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs:62-79`
 
 **Profiling Data** (estimated):
 
@@ -335,7 +335,7 @@ Patient Resource Indexing (10 search parameters):
 **Implementation**:
 
 ```csharp
-// Modified: src/Sparky.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs
+// Modified: src/Ignixa.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs
 
 internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
 {
@@ -452,7 +452,7 @@ public void Children_WithSpecificName_ReturnsCachedResults()
 **Implementation**:
 
 ```csharp
-// Modified: src/Sparky.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs
+// Modified: src/Ignixa.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs
 
 internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
 {
@@ -580,9 +580,9 @@ public void GetStructureDefinition_CalledMultipleTimes_ReturnsCachedInstance()
 **Implementation** (Phase 1: Common Expressions):
 
 ```csharp
-// New file: src/Sparky.FhirPath/Compilation/FhirPathDelegateCompiler.cs
+// New file: src/Ignixa.FhirPath/Compilation/FhirPathDelegateCompiler.cs
 
-namespace Sparky.FhirPath.Compilation;
+namespace Ignixa.FhirPath.Compilation;
 
 /// <summary>
 /// Compiles FhirPath AST to executable delegates for improved performance.
@@ -919,7 +919,7 @@ public class FhirPathCompilationBenchmarks
 **Implementation**:
 
 ```csharp
-// New file: src/Sparky.FhirPath/Optimization/AstOptimizer.cs
+// New file: src/Ignixa.FhirPath/Optimization/AstOptimizer.cs
 
 public class AstOptimizer
 {
@@ -1072,7 +1072,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
 **Tasks**:
 
 1. **Week 1: Dictionary-Backed Property Access (Priority 1)**
-   - File: `src/Sparky.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs`
+   - File: `src/Ignixa.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs`
    - Implementation: Add `_childrenCache` dictionary with lazy initialization
    - Testing: Unit tests for property access, micro-benchmarks
    - **Deliverable**: O(1) property lookup for `Children(name)` calls
@@ -1084,7 +1084,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
    - **Deliverable**: Single structure lookup per element instance
 
 3. **Week 2: Benchmarking Infrastructure**
-   - File: `test/Sparky.FhirPath.Benchmarks/FhirPathPerformanceBenchmarks.cs` (new project)
+   - File: `test/Ignixa.FhirPath.Benchmarks/FhirPathPerformanceBenchmarks.cs` (new project)
    - Implementation: BenchmarkDotNet test suite for FhirPath execution
    - Scenarios: Simple paths, two-level paths, where clauses, full Patient indexing
    - **Deliverable**: Measurable baseline + validation of optimizations
@@ -1108,7 +1108,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
 **Tasks**:
 
 1. **Week 3: Delegate Compiler Foundation**
-   - File: `src/Sparky.FhirPath/Compilation/FhirPathDelegateCompiler.cs` (new)
+   - File: `src/Ignixa.FhirPath/Compilation/FhirPathDelegateCompiler.cs` (new)
    - Implementation: Core compiler infrastructure + ChildExpression compilation
    - Testing: Unit tests comparing compiled vs interpreted results
    - **Deliverable**: Compilation support for 40% of search parameters (simple paths)
@@ -1125,7 +1125,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
    - **Deliverable**: Production-ready compilation with safety guarantees
 
 4. **Week 6: Integration & Optimization**
-   - File: `src/Sparky.FhirPath/Evaluation/TypedElementExtensions.cs` (modify)
+   - File: `src/Ignixa.FhirPath/Evaluation/TypedElementExtensions.cs` (modify)
    - Implementation: Replace AST cache with compiled delegate cache
    - Implementation: Feature flag + telemetry (track compiled vs interpreted usage)
    - Testing: Integration tests, performance benchmarks
@@ -1152,18 +1152,18 @@ public IEnumerable<ITypedElement> Children(string? name = null)
 **Tasks**:
 
 1. **Week 7-8: AST Optimization Passes (Priority 4)**
-   - File: `src/Sparky.FhirPath/Optimization/AstOptimizer.cs` (new)
+   - File: `src/Ignixa.FhirPath/Optimization/AstOptimizer.cs` (new)
    - Implementation: Collapse nested children, pre-evaluate constants
    - Testing: Optimization correctness tests
    - **Deliverable**: +5-10% additional speedup, +10-15% compilation coverage
 
 2. **Week 8-9: Lazy Cache Initialization (Priority 5)**
-   - File: `src/Sparky.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs`
+   - File: `src/Ignixa.SourceNodeSerialization/ElementModel/TypedElementOnSourceNode.cs`
    - Implementation: Wrap dictionary in `Lazy<T>`
    - **Deliverable**: 10-20% memory savings for partially-accessed resources
 
 3. **Week 9: Object Pooling (Bonus)**
-   - File: `src/Sparky.FhirPath/Evaluation/EvaluationContextPool.cs` (new)
+   - File: `src/Ignixa.FhirPath/Evaluation/EvaluationContextPool.cs` (new)
    - Implementation: Pool `EvaluationContext` instances using `ObjectPool<T>`
    - **Deliverable**: Eliminate EvaluationContext allocations (10-20 per resource → 0)
 
@@ -1220,7 +1220,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
 - Maintained by Firely team
 
 **Cons**:
-- Uses Sprache parser (slower than Superpower used in `Sparky.FhirPath`)
+- Uses Sprache parser (slower than Superpower used in `Ignixa.FhirPath`)
 - Requires `PocoNode` (POCO-based), incompatible with `ISourceNode` approach
 - **Known limitation** (CLAUDE.md:85): `PocoNode.ToPocoNode()` doesn't accept custom `IStructureDefinitionSummaryProvider`
 - Would require rewriting entire serialization layer
@@ -1323,7 +1323,7 @@ var compiledDelegate = expr.Compile(); // JIT to native code
 
 ### Unit Tests
 
-**File**: `test/Sparky.SourceNodeSerialization.Tests/ElementModel/TypedElementOnSourceNodeTests.cs`
+**File**: `test/Ignixa.SourceNodeSerialization.Tests/ElementModel/TypedElementOnSourceNodeTests.cs`
 
 ```csharp
 public class TypedElementOnSourceNodeTests
@@ -1373,7 +1373,7 @@ public class TypedElementOnSourceNodeTests
 
 ### Integration Tests
 
-**File**: `test/Sparky.Search.Tests/Indexing/TypedElementSearchIndexerIntegrationTests.cs`
+**File**: `test/Ignixa.Search.Tests/Indexing/TypedElementSearchIndexerIntegrationTests.cs`
 
 ```csharp
 public class TypedElementSearchIndexerIntegrationTests
@@ -1420,7 +1420,7 @@ public class TypedElementSearchIndexerIntegrationTests
 
 ### Benchmarks
 
-**File**: `test/Sparky.FhirPath.Benchmarks/FhirPathPerformanceBenchmarks.cs`
+**File**: `test/Ignixa.FhirPath.Benchmarks/FhirPathPerformanceBenchmarks.cs`
 
 ```csharp
 [MemoryDiagnoser]
@@ -1488,7 +1488,7 @@ BenchmarkDotNet Results:
 **Recommendation**: Extend to FhirPath evaluation contexts
 
 ```csharp
-// New file: src/Sparky.FhirPath/Pooling/EvaluationContextPool.cs
+// New file: src/Ignixa.FhirPath/Pooling/EvaluationContextPool.cs
 
 using Microsoft.Extensions.ObjectPool;
 

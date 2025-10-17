@@ -158,8 +158,8 @@ HTTP Request: GET /Patient/123
 #### 1. Create Generic Request/Response Models
 
 ```csharp
-// Sparky.Application/Features/Resource/GetResourceQuery.cs
-namespace Sparky.Application.Features.Resource;
+// Ignixa.Application/Features/Resource/GetResourceQuery.cs
+namespace Ignixa.Application.Features.Resource;
 
 public record GetResourceQuery(string ResourceType, string Id) : IRequest<ResourceWrapper?>;
 
@@ -187,8 +187,8 @@ public class GetResourceHandler : IRequestHandler<GetResourceQuery, ResourceWrap
 #### 2. Create Generic Request Delegates
 
 ```csharp
-// Sparky.Api/Infrastructure/FhirEndpoints.cs
-namespace Sparky.Api.Infrastructure;
+// Ignixa.Api/Infrastructure/FhirEndpoints.cs
+namespace Ignixa.Api.Infrastructure;
 
 public static class FhirEndpoints
 {
@@ -617,7 +617,7 @@ public class ResourceController : ControllerBase
 
 ```bash
 # Create generic handlers
-src/Sparky.Application/Features/Resource/
+src/Ignixa.Application/Features/Resource/
 ├── GetResourceQuery.cs
 ├── GetResourceHandler.cs
 ├── CreateOrUpdateResourceCommand.cs
@@ -631,7 +631,7 @@ src/Sparky.Application/Features/Resource/
 
 ```bash
 # Create endpoint registration
-src/Sparky.Api/Infrastructure/
+src/Ignixa.Api/Infrastructure/
 └── FhirEndpoints.cs
 ```
 
@@ -662,7 +662,7 @@ public async Task GET_Patient_ReturnsResource()
 #### Step 5: Delete PatientController (Day 3)
 
 Once tests pass, delete:
-- `src/Sparky.Api/Features/Patient/Api/PatientController.cs`
+- `src/Ignixa.Api/Features/Patient/Api/PatientController.cs`
 
 ---
 

@@ -7,7 +7,7 @@ This document describes the compact JSON serialization format for search indices
 ## Implementation
 
 ### Location
-- **Namespace**: `Sparky.Search.Serialization`
+- **Namespace**: `Ignixa.Search.Serialization`
 - **Files**:
   - `SearchValueConstants.cs` - Abbreviated property name constants
   - `CompactSearchValueWriter.cs` - Visitor pattern implementation for writing compact JSON
@@ -231,10 +231,10 @@ Look for compact structure:
 
 ```csharp
 using System.Text.Json;
-using Sparky.Search.Indexing;
-using Sparky.Search.Indexing.SearchValues;
-using Sparky.Search.Models;
-using Sparky.Search.Serialization;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Search.Serialization;
 
 // Create sample search index entries
 var nameParam = new SearchParameterInfo(

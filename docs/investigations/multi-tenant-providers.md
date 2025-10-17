@@ -43,7 +43,7 @@ Each cell requires separate cached artifacts (search parameters, validators, ind
 
 ### Core Abstraction: TenantContext
 
-**File**: `src/Sparky.Extensions/TenantContext.cs`
+**File**: `src/Ignixa.Extensions/TenantContext.cs`
 
 ```csharp
 /// <summary>
@@ -120,7 +120,7 @@ private readonly ConcurrentDictionary<
 
 ### Factory Pattern Architecture
 
-**File**: `src/Sparky.Search/Parsing/SearchOptionsBuilderFactory.cs`
+**File**: `src/Ignixa.Search/Parsing/SearchOptionsBuilderFactory.cs`
 
 ```csharp
 public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, IDisposable

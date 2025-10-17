@@ -2,10 +2,10 @@
 
 ## Executive Summary
 
-This document outlines the implementation strategy for parsing FHIR search query strings into expression trees using the newly organized `Sparky.Search.Expressions` namespace. The approach simplifies the overly complex legacy `SearchOptionsFactory` while maintaining full FHIR R4 search compliance.
+This document outlines the implementation strategy for parsing FHIR search query strings into expression trees using the newly organized `Ignixa.Search.Expressions` namespace. The approach simplifies the overly complex legacy `SearchOptionsFactory` while maintaining full FHIR R4 search compliance.
 
 **Key Changes from Legacy**:
-- ✅ Expressions moved to `Sparky.Search.Expressions` (completed)
+- ✅ Expressions moved to `Ignixa.Search.Expressions` (completed)
 - ✅ Expression parser already available (`ExpressionParser.cs`)
 - 🔲 Simplified `SearchOptionsBuilder` (to implement)
 - 🔲 Modern query string parsing with `Span<T>` optimizations
@@ -196,7 +196,7 @@ public SearchOptions Create(
 
 ---
 
-## Sparky v2 Simplified Approach
+## Ignixa v2 Simplified Approach
 
 ### Design Principles
 
@@ -240,7 +240,7 @@ HTTP Query String
 
 ### What We Already Have ✅
 
-**From Sparky.Search.Expressions** (relocated in this session):
+**From Ignixa.Search.Expressions** (relocated in this session):
 - `Expression.cs` - Base class with factory methods
 - `ExpressionParser.cs` - Parses query params into expressions
 - `SearchParameterExpressionParser.cs` - Parses individual search parameters
@@ -253,7 +253,7 @@ HTTP Query String
 **Purpose**: Parse raw query string into structured parameters
 
 ```csharp
-namespace Sparky.Search.Parsing;
+namespace Ignixa.Search.Parsing;
 
 public record QueryParameter(string Name, string Value)
 {
@@ -313,7 +313,7 @@ public class QueryParameterParser
 **Purpose**: Build `SearchOptions` from query parameters and expression tree
 
 ```csharp
-namespace Sparky.Search.Options;
+namespace Ignixa.Search.Options;
 
 public class SearchOptionsBuilder
 {
@@ -448,7 +448,7 @@ public class SearchOptionsBuilder
 #### 3. SearchOptions Model (Simplified)
 
 ```csharp
-namespace Sparky.Domain.Models;
+namespace Ignixa.Domain.Models;
 
 public class SearchOptions
 {
@@ -550,9 +550,9 @@ MultiaryExpression(AND) {
 
 ---
 
-## Comparison: Legacy vs Sparky v2
+## Comparison: Legacy vs Ignixa v2
 
-| Aspect | Legacy SearchOptionsFactory | Sparky v2 SearchOptionsBuilder |
+| Aspect | Legacy SearchOptionsFactory | Ignixa v2 SearchOptionsBuilder |
 |--------|----------------------------|-------------------------------|
 | **Lines of Code** | ~800 | ~250 (70% reduction) |
 | **Dependencies** | 12 injected services | 3 injected services |
@@ -569,9 +569,9 @@ MultiaryExpression(AND) {
 ## Implementation Roadmap
 
 ### Week 1: Foundation
-- [x] ~~Move expression classes to `Sparky.Search.Expressions`~~ (COMPLETED THIS SESSION)
+- [x] ~~Move expression classes to `Ignixa.Search.Expressions`~~ (COMPLETED THIS SESSION)
 - [ ] Create `QueryParameter` model and parser
-- [ ] Create `SearchOptions` model in `Sparky.Domain`
+- [ ] Create `SearchOptions` model in `Ignixa.Domain`
 - [ ] Unit tests for query parameter parsing
 
 ### Week 2: Core Builder
@@ -700,18 +700,18 @@ public class SearchIntegrationTests : IClassFixture<FhirServerFixture>
 ## Next Steps
 
 1. **Create `QueryParameterParser`** - Start with simple implementation
-2. **Create `SearchOptions` model** - Move to `Sparky.Domain`
+2. **Create `SearchOptions` model** - Move to `Ignixa.Domain`
 3. **Create `SearchOptionsBuilder`** - Implement basic version
 4. **Wire into PatientController** - Replace manual parsing
 5. **Add tests** - Unit + integration coverage
 
-**Ready to proceed?** The expression tree infrastructure is in place (`Sparky.Search.Expressions`), we just need the query parameter parsing and options building logic.
+**Ready to proceed?** The expression tree infrastructure is in place (`Ignixa.Search.Expressions`), we just need the query parameter parsing and options building logic.
 
 ---
 
 ## References
 
 - **Legacy Code**: `src-old/Microsoft.Health.Fhir.Shared.Core/Features/Search/SearchOptionsFactory.cs`
-- **Expression Classes**: `src/Sparky.Search/Expressions/` (relocated this session)
-- **Expression Parser**: `src/Sparky.Search/Expressions/Parsers/ExpressionParser.cs`
+- **Expression Classes**: `src/Ignixa.Search/Expressions/` (relocated this session)
+- **Expression Parser**: `src/Ignixa.Search/Expressions/Parsers/ExpressionParser.cs`
 - **FHIR Search Spec**: https://hl7.org/fhir/R4/search.html

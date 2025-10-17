@@ -427,8 +427,8 @@ If CreateOrUpdateResourceHandler called this method, where would it get `entryIn
 ### Why ADR Chose Current Design
 
 1. **Layer Separation**:
-   - Bundle processing concerns stay in `Sparky.Application/Features/Bundle/`
-   - Generic resource handlers stay in `Sparky.Application/Features/Resource/`
+   - Bundle processing concerns stay in `Ignixa.Application/Features/Bundle/`
+   - Generic resource handlers stay in `Ignixa.Application/Features/Resource/`
    - Clear architectural boundaries
 
 2. **Optimization is Opt-In**:
@@ -580,10 +580,10 @@ Add this comment to BundleEntryExecutor.cs at line 162:
 - `docs/investigations/bundle-processing-with-channels.md` (Alternative approach, NOT implemented)
 
 **Implementation Files**:
-- `src/Sparky.Application/Features/Bundle/BundleEntryExecutor.cs` (Lines 138-314)
-- `src/Sparky.Application/Features/Bundle/DeferredWriteCoordinator.cs` (Complete file)
-- `src/Sparky.Application/Features/Resource/CreateOrUpdateResourceHandler.cs` (Lines 30-56)
-- `src/Sparky.Application/Features/Resource/CreateOrUpdateResourceCommand.cs` (Complete file)
+- `src/Ignixa.Application/Features/Bundle/BundleEntryExecutor.cs` (Lines 138-314)
+- `src/Ignixa.Application/Features/Bundle/DeferredWriteCoordinator.cs` (Complete file)
+- `src/Ignixa.Application/Features/Resource/CreateOrUpdateResourceHandler.cs` (Lines 30-56)
+- `src/Ignixa.Application/Features/Resource/CreateOrUpdateResourceCommand.cs` (Complete file)
 
 **Architecture Principles**:
 - Layer separation (Bundle layer vs Application layer)

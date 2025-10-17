@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);NU1900</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core packages - versions managed in Directory.Packages.props -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
+    <PackageReference Include="Medino" />
+    <PackageReference Include="Autofac" />
+    <PackageReference Include="Autofac.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="fhir-data\" />
+    <Folder Include="fhir-data\tenants\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\Ignixa.Application\Ignixa.Application.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.LegacySqlEF\Ignixa.DataLayer.LegacySqlEF.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj" />
+    <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\Ignixa.Extensions\Ignixa.Extensions.csproj" />
+    <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+  </ItemGroup>
+
+</Project>

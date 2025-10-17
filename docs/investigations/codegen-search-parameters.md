@@ -50,10 +50,10 @@ SearchParameterDefinitionManager
 
 ### Code Generator
 
-**File**: `codegen/Sparky.Specification.Generators/CSharpSearchParameterLanguage.cs`
+**File**: `codegen/Ignixa.Specification.Generators/CSharpSearchParameterLanguage.cs`
 
-**Input**: Embedded JSON files from `src/Sparky.Search/Data/{Version}/search-parameters.json`
-**Output**: Generated C# files in `src/Sparky.Specification/Generated/{Version}SearchParameterDefinitions.g.cs`
+**Input**: Embedded JSON files from `src/Ignixa.Search/Data/{Version}/search-parameters.json`
+**Output**: Generated C# files in `src/Ignixa.Specification/Generated/{Version}SearchParameterDefinitions.g.cs`
 
 **Generation Process**:
 1. Parse `search-parameters.json` bundle (System.Text.Json)
@@ -64,7 +64,7 @@ SearchParameterDefinitionManager
 **Generated Code Structure**:
 ```csharp
 // R4SearchParameterDefinitions.g.cs (~50K lines)
-namespace Sparky.Specification.Generated;
+namespace Ignixa.Specification.Generated;
 
 public static class R4SearchParameterDefinitions
 {
@@ -264,7 +264,7 @@ SearchParameterDefinitionManager.Start() + AddCustomParameters()
 
 ### Phase 1: Code Generator ✅ COMPLETE
 - ✅ Created `CSharpSearchParameterLanguage.cs`
-- ✅ JSON parsing from `src/Sparky.Search/Data/{Version}/search-parameters.json`
+- ✅ JSON parsing from `src/Ignixa.Search/Data/{Version}/search-parameters.json`
 - ✅ SearchParameterInfo constructor call generation
 - ✅ Component (composite) parameter support
 - ✅ Target resource type extraction (Reference parameters)
@@ -275,7 +275,7 @@ SearchParameterDefinitionManager.Start() + AddCustomParameters()
 - ⏳ Generate R4BSearchParameterDefinitions.g.cs
 - ⏳ Generate R5SearchParameterDefinitions.g.cs
 - ⏳ Generate STU3SearchParameterDefinitions.g.cs
-- ⏳ Add to `Sparky.Specification.csproj`
+- ⏳ Add to `Ignixa.Specification.csproj`
 
 ### Phase 3: SearchParameterDefinitionManager Integration ⏳ PENDING
 - ⏳ Update `Start()` to call `GetGeneratedParameters()`
@@ -293,19 +293,19 @@ SearchParameterDefinitionManager.Start() + AddCustomParameters()
 
 ```
 codegen/
-├── Sparky.Specification.Generators/
+├── Ignixa.Specification.Generators/
 │   ├── CSharpStructureProviderLanguage.cs (existing)
 │   └── CSharpSearchParameterLanguage.cs (NEW)
 └── generate.ps1/generate.sh (updated)
 
-src/Sparky.Specification/Generated/
+src/Ignixa.Specification/Generated/
 ├── R4StructureDefinitionSummaryProvider.g.cs (existing)
 ├── R4SearchParameterDefinitions.g.cs (NEW ~50K lines)
 ├── R4BSearchParameterDefinitions.g.cs (NEW)
 ├── R5SearchParameterDefinitions.g.cs (NEW)
 └── STU3SearchParameterDefinitions.g.cs (NEW)
 
-src/Sparky.Search/Definition/
+src/Ignixa.Search/Definition/
 ├── SearchParameterDefinitionManager.cs (updated)
 └── SearchParameterDefinitionBuilder.cs (unchanged - still used for custom params)
 ```
@@ -468,7 +468,7 @@ public async Task Start()
 ### Stage 3: Cleanup
 
 **Remove Embedded JSON** (optional):
-- Delete `src/Sparky.Search/Data/{Version}/search-parameters.json` (saves ~13 MB in binary)
+- Delete `src/Ignixa.Search/Data/{Version}/search-parameters.json` (saves ~13 MB in binary)
 - Keep `SearchParameterDefinitionBuilder.Build()` for custom tenant parameters
 - Remove `ReadEmbeddedSearchParameters()` method
 

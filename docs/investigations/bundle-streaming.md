@@ -72,7 +72,7 @@ Use .NET 6+ native support for streaming `IAsyncEnumerable<T>` responses. ASP.NE
 #### 1. Update ISearchService
 
 ```csharp
-// Sparky.Domain/Abstractions/ISearchService.cs
+// Ignixa.Domain/Abstractions/ISearchService.cs
 public interface ISearchService
 {
     // Existing buffered method (keep for compatibility)
@@ -92,7 +92,7 @@ public interface ISearchService
 #### 2. Implement Streaming Search
 
 ```csharp
-// Sparky.DataLayer.FileSystem/FileSystem/FileBasedSearchService.cs
+// Ignixa.DataLayer.FileSystem/FileSystem/FileBasedSearchService.cs
 public async IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>(
     TSearchOptions searchOptions,
     [EnumeratorCancellation] CancellationToken ct = default)
@@ -133,7 +133,7 @@ public async IAsyncEnumerable<ResourceWrapper> SearchStreamAsync<TSearchOptions>
 #### 3. Create Bundle DTO for IAsyncEnumerable
 
 ```csharp
-// Sparky.Api/Features/Patient/Models/BundleResponse.cs
+// Ignixa.Api/Features/Patient/Models/BundleResponse.cs
 public record BundleResponse
 {
     public string ResourceType { get; init; } = "Bundle";
@@ -158,7 +158,7 @@ public record BundleEntrySearch
 #### 4. Update Controller
 
 ```csharp
-// Sparky.Api/Features/Patient/Api/PatientController.cs
+// Ignixa.Api/Features/Patient/Api/PatientController.cs
 [HttpGet]
 [ProducesResponseType(StatusCodes.Status200OK)]
 public async Task<IActionResult> Search(CancellationToken cancellationToken)
@@ -234,7 +234,7 @@ Use `Utf8JsonWriter` directly to write JSON incrementally to the response stream
 #### 1. Create BundleResponseBuilder
 
 ```csharp
-// Sparky.Api/Infrastructure/BundleResponseBuilder.cs
+// Ignixa.Api/Infrastructure/BundleResponseBuilder.cs
 public class BundleResponseBuilder
 {
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
@@ -319,7 +319,7 @@ public class BundleResponseBuilder
 #### 2. Update Controller
 
 ```csharp
-// Sparky.Api/Features/Patient/Api/PatientController.cs
+// Ignixa.Api/Features/Patient/Api/PatientController.cs
 private readonly BundleResponseBuilder _bundleBuilder;
 
 [HttpGet]
@@ -381,7 +381,7 @@ Use `System.Threading.Channels` to decouple resource loading (producer) from ser
 ### Implementation
 
 ```csharp
-// Sparky.Api/Features/Patient/Api/PatientController.cs
+// Ignixa.Api/Features/Patient/Api/PatientController.cs
 [HttpGet]
 public async Task<IActionResult> Search(CancellationToken cancellationToken)
 {
@@ -812,7 +812,7 @@ This approach provides the **best of both worlds**:
 
 ### Files Created
 
-#### 1. FhirJsonWriter (`src/Sparky.Api/Infrastructure/FhirJsonWriter.cs`)
+#### 1. FhirJsonWriter (`src/Ignixa.Api/Infrastructure/FhirJsonWriter.cs`)
 
 Fluent wrapper around `Utf8JsonWriter` with:
 - **Method chaining**: `WriteString().WriteNumber().WriteStartObject()`
@@ -836,7 +836,7 @@ writer
 await writer.FlushAsync(cancellationToken);
 ```
 
-#### 2. BundleIfElse (`src/Sparky.Api/Infrastructure/BundleIfElse.cs`)
+#### 2. BundleIfElse (`src/Ignixa.Api/Infrastructure/BundleIfElse.cs`)
 
 Helper for if-elseif chains in fluent API:
 
@@ -845,7 +845,7 @@ writer.ConditionIf(hasLink, w => w.WriteString("link", link))
       .ElseIf(hasNext, w => w.WriteString("next", next));
 ```
 
-#### 3. BundleSerializer (`src/Sparky.Api/Infrastructure/BundleSerializer.cs`)
+#### 3. BundleSerializer (`src/Ignixa.Api/Infrastructure/BundleSerializer.cs`)
 
 Static serializer with streaming support:
 

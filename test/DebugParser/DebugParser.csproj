@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Sparky.Application\Sparky.Application.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.Application\Ignixa.Application.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

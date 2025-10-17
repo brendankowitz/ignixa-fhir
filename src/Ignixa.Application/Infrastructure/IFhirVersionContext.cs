@@ -1,0 +1,33 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using Ignixa.Extensions;
+using Ignixa.Extensions.Schema;
+using Ignixa.Search.Indexing;
+
+namespace Ignixa.Application.Infrastructure;
+
+/// <summary>
+/// Provides version-specific FHIR context (schema provider, search indexer, etc.).
+/// Similar to HAPI FHIR's FhirContext pattern.
+/// Caches instances per FHIR version for performance.
+/// </summary>
+public interface IFhirVersionContext
+{
+    /// <summary>
+    /// Gets the schema provider for the specified FHIR version.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <returns>Schema provider for the specified version.</returns>
+    IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion);
+
+    /// <summary>
+    /// Gets the search indexer for the specified FHIR version.
+    /// Initializes synchronously using pre-generated search parameters.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <returns>Search indexer for the specified version.</returns>
+    ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion);
+}

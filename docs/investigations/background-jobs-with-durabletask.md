@@ -91,7 +91,7 @@ public class ReindexJob
 │  - Worker coordination                                  │
 ├─────────────────────────────────────────────────────────┤
 │  Storage Backend                                        │
-│  - SQL Server (recommended for Sparky)                  │
+│  - SQL Server (recommended for Ignixa)                  │
 │  - Azure Storage (for cloud)                            │
 │  - In-Memory (for testing)                              │
 └─────────────────────────────────────────────────────────┘
@@ -104,8 +104,8 @@ public class ReindexJob
 A long-running workflow written in C# using async/await:
 
 ```csharp
-// Sparky.Api/Features/Reindex/ReindexOrchestration.cs
-namespace Sparky.Features.Reindex;
+// Ignixa.Api/Features/Reindex/ReindexOrchestration.cs
+namespace Ignixa.Features.Reindex;
 
 public class ReindexOrchestration : TaskOrchestration<ReindexResult, ReindexRequest>
 {
@@ -173,8 +173,8 @@ public class ReindexOrchestration : TaskOrchestration<ReindexResult, ReindexRequ
 A stateless, retriable unit of work:
 
 ```csharp
-// Sparky.Api/Features/Reindex/Activities/ReindexBatchActivity.cs
-namespace Sparky.Features.Reindex.Activities;
+// Ignixa.Api/Features/Reindex/Activities/ReindexBatchActivity.cs
+namespace Ignixa.Features.Reindex.Activities;
 
 public class ReindexBatchActivity : TaskActivity<ReindexBatchInput, int>
 {
@@ -241,7 +241,7 @@ public record ReindexBatchInput(
 
 ### Supported Storage Backends
 
-| Backend | Use Case | Sparky Recommendation |
+| Backend | Use Case | Ignixa Recommendation |
 |---------|----------|----------------------|
 | **SQL Server** | Production on-premises | ✅ **PRIMARY** (Phases 8+) |
 | **Azure Storage** | Production cloud | ✅ Cloud deployment |
@@ -249,7 +249,7 @@ public record ReindexBatchInput(
 | **Redis** | Distributed state | ⚠️ Experimental |
 | **In-Memory Emulator** | Testing/development | ✅ Phase 1-7 (F5 experience) |
 
-**Recommendation for Sparky**:
+**Recommendation for Ignixa**:
 - **Phase 1-7** (File/InMemory): In-Memory Emulator (zero external dependencies)
 - **Phase 8+** (SQL Server): SQL Server backend (shared with resource storage)
 - **Cloud Deployment**: Azure Storage or Netherite
@@ -383,7 +383,7 @@ public override async Task RunTask(
 ### 1. Project Structure
 
 ```
-Sparky.Api/
+Ignixa.Api/
   Features/
     Reindex/
       ReindexEndpoints.cs          # POST /$reindex, GET /$reindex/{jobId}
@@ -415,7 +415,7 @@ Sparky.Api/
 ### 2. Registration and Configuration
 
 ```csharp
-// Sparky.Api/Program.cs
+// Ignixa.Api/Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
 // Register DurableTask
@@ -450,8 +450,8 @@ var app = builder.Build();
 ### 3. API Endpoints
 
 ```csharp
-// Sparky.Api/Features/Reindex/ReindexEndpoints.cs
-namespace Sparky.Features.Reindex;
+// Ignixa.Api/Features/Reindex/ReindexEndpoints.cs
+namespace Ignixa.Features.Reindex;
 
 public static class ReindexEndpoints
 {
@@ -518,7 +518,7 @@ public static class ReindexEndpoints
 ### 4. Testing with In-Memory Emulator
 
 ```csharp
-// Sparky.Api.Tests/Features/Reindex/ReindexOrchestrationTests.cs
+// Ignixa.Api.Tests/Features/Reindex/ReindexOrchestrationTests.cs
 public class ReindexOrchestrationTests
 {
     [Fact]

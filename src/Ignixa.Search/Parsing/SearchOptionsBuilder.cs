@@ -1,0 +1,243 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using EnsureThat;
+using Ignixa.Extensions.Exceptions;
+using Ignixa.Extensions.Models;
+using Ignixa.Search.Expressions;
+using Ignixa.Search.Expressions.Parsers;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Models;
+
+namespace Ignixa.Search.Parsing;
+
+/// <summary>
+/// Builds SearchOptions from parsed query parameters using the ExpressionParser.
+/// </summary>
+public class SearchOptionsBuilder : ISearchOptionsBuilder
+{
+    private const int DefaultMaxItemCount = 10;
+    private const int MaxAllowedItemCount = 1000;
+
+    private readonly IExpressionParser _expressionParser;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptionsBuilder"/> class.
+    /// </summary>
+    /// <param name="expressionParser">The expression parser for building search expressions.</param>
+    public SearchOptionsBuilder(IExpressionParser expressionParser)
+    {
+        EnsureArg.IsNotNull(expressionParser, nameof(expressionParser));
+        _expressionParser = expressionParser;
+    }
+
+    /// <summary>
+    /// Builds SearchOptions from parsed query parameters.
+    /// </summary>
+    /// <param name="resourceType">The resource type being searched (e.g., "Patient").</param>
+    /// <param name="parameters">The parsed query parameters.</param>
+    /// <returns>A SearchOptions instance configured according to the parameters.</returns>
+    public SearchOptions Build(string resourceType, IReadOnlyList<QueryParameter> parameters)
+    {
+        EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
+        EnsureArg.IsNotNull(parameters, nameof(parameters));
+
+        var options = new SearchOptions
+        {
+            ResourceType = resourceType,
+            MaxItemCount = DefaultMaxItemCount,
+        };
+
+        // STEP 1: Categorize parameters
+        var searchExpressions = new List<Expression>();
+        var sortParameters = new List<string>();
+        var includeParameters = new List<string>();
+        var revIncludeParameters = new List<string>();
+        var unsupportedParameters = new List<string>();
+
+        string[] resourceTypes = new[] { resourceType };
+
+        foreach (var param in parameters)
+        {
+            try
+            {
+                switch (param.Category)
+                {
+                    case ParameterCategory.ContinuationToken:
+                        options.ContinuationToken = param.Value;
+                        break;
+
+                    case ParameterCategory.Count:
+                        if (int.TryParse(param.Value, out int count))
+                        {
+                            options.MaxItemCount = Math.Min(Math.Max(1, count), MaxAllowedItemCount);
+                        }
+                        break;
+
+                    case ParameterCategory.Total:
+                        options.Total = ParseTotalType(param.Value);
+                        break;
+
+                    case ParameterCategory.Summary:
+                        options.Summary = ParseSummaryType(param.Value);
+                        break;
+
+                    case ParameterCategory.Sort:
+                        sortParameters.Add(param.Value);
+                        break;
+
+                    case ParameterCategory.Include:
+                        includeParameters.Add(param.Value);
+                        break;
+
+                    case ParameterCategory.RevInclude:
+                        revIncludeParameters.Add(param.Value);
+                        break;
+
+                    case ParameterCategory.Search:
+                        // Use ExpressionParser to parse the search parameter
+                        Expression expr = _expressionParser.Parse(resourceTypes, param.Name, param.Value);
+                        searchExpressions.Add(expr);
+                        break;
+
+                    case ParameterCategory.Control:
+                        // Unknown control parameter (starts with _ but not recognized)
+                        unsupportedParameters.Add(param.Name);
+                        break;
+                }
+            }
+            catch (SearchParameterNotSupportedException)
+            {
+                unsupportedParameters.Add(param.Name);
+            }
+            catch (InvalidSearchOperationException)
+            {
+                unsupportedParameters.Add(param.Name);
+            }
+        }
+
+        // STEP 2: Combine search expressions with AND
+        if (searchExpressions.Count == 1)
+        {
+            options.Expression = searchExpressions[0];
+        }
+        else if (searchExpressions.Count > 1)
+        {
+            options.Expression = Expression.And(searchExpressions.ToArray());
+        }
+
+        // STEP 3: Parse sorting
+        if (sortParameters.Count > 0)
+        {
+            options.Sort = ParseSortParameters(resourceTypes, sortParameters);
+        }
+
+        // STEP 4: Parse includes
+        if (includeParameters.Count > 0)
+        {
+            options.Include = ParseIncludeParameters(resourceTypes, includeParameters, isReversed: false);
+        }
+
+        // STEP 5: Parse reverse includes
+        if (revIncludeParameters.Count > 0)
+        {
+            options.RevInclude = ParseIncludeParameters(resourceTypes, revIncludeParameters, isReversed: true);
+        }
+
+        // STEP 6: Record unsupported parameters
+        options.UnsupportedParams = unsupportedParameters;
+
+        return options;
+    }
+
+    private static TotalType ParseTotalType(string value)
+    {
+        return value.ToUpperInvariant() switch
+        {
+            "NONE" => TotalType.None,
+            "ACCURATE" => TotalType.Accurate,
+            "ESTIMATE" => TotalType.Estimate,
+            _ => TotalType.None,
+        };
+    }
+
+    private static SummaryType ParseSummaryType(string value)
+    {
+        return value.ToUpperInvariant() switch
+        {
+            "TRUE" => SummaryType.True,
+            "FALSE" => SummaryType.False,
+            "TEXT" => SummaryType.Text,
+            "DATA" => SummaryType.Data,
+            "COUNT" => SummaryType.Count,
+            _ => SummaryType.False,
+        };
+    }
+
+    private IReadOnlyList<SortExpression> ParseSortParameters(string[] resourceTypes, List<string> sortParameters)
+    {
+        var sortExpressions = new List<SortExpression>();
+
+        foreach (string sortParam in sortParameters)
+        {
+            // Sort format: "field1,-field2" (prefix '-' means descending)
+            string[] fields = sortParam.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string field in fields)
+            {
+                string trimmedField = field.Trim();
+
+                if (string.IsNullOrEmpty(trimmedField))
+                {
+                    continue;
+                }
+
+                // Note: Descending sort indicator ('-' prefix) is preserved for Phase 1.2a Sort implementation
+                // For now, we just create the SortExpression without direction handling
+                string fieldName = trimmedField.StartsWith('-') ? trimmedField.Substring(1) : trimmedField;
+
+                try
+                {
+                    // Parse the field as a search parameter to get the SearchParameterInfo
+                    Expression fieldExpression = _expressionParser.Parse(resourceTypes, fieldName, "dummy");
+
+                    if (fieldExpression is SearchParameterExpression searchParamExpr)
+                    {
+                        sortExpressions.Add(new SortExpression(searchParamExpr.Parameter));
+                    }
+                }
+                catch
+                {
+                    // Skip invalid sort parameters
+                    continue;
+                }
+            }
+        }
+
+        return sortExpressions;
+    }
+
+    private IReadOnlyList<IncludeExpression> ParseIncludeParameters(string[] resourceTypes, List<string> includeParameters, bool isReversed)
+    {
+        var includeExpressions = new List<IncludeExpression>();
+
+        foreach (string includeParam in includeParameters)
+        {
+            try
+            {
+                // Use ExpressionParser to parse include expressions
+                IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeParam, isReversed, iterate: false);
+                includeExpressions.Add(includeExpr);
+            }
+            catch
+            {
+                // Skip invalid include parameters
+                continue;
+            }
+        }
+
+        return includeExpressions;
+    }
+}

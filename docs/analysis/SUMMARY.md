@@ -289,15 +289,15 @@ This investigation is complete. Current implementation is architecturally sound 
   - Lines 362-431: TaskCompletionSource pattern explanation
 
 ### Implementation Files (Current)
-- **C:\Src\fhir-server-contrib\src\Sparky.Application\Features\Bundle\BundleEntryExecutor.cs**
+- **C:\Src\fhir-server-contrib\src\Ignixa.Application\Features\Bundle\BundleEntryExecutor.cs**
   - Lines 138-226: ExecutePostAsync with coordinator branching
   - Lines 228-314: ExecutePutAsync with coordinator branching
 
-- **C:\Src\fhir-server-contrib\src\Sparky.Application\Features\Bundle\DeferredWriteCoordinator.cs**
+- **C:\Src\fhir-server-contrib\src\Ignixa.Application\Features\Bundle\DeferredWriteCoordinator.cs**
   - Lines 61-100: QueueWriteAsync method (bundle-specific)
   - Lines 109-201: ProcessBatchAsync method
 
-- **C:\Src\fhir-server-contrib\src\Sparky.Application\Features\Resource\CreateOrUpdateResourceHandler.cs**
+- **C:\Src\fhir-server-contrib\src\Ignixa.Application\Features\Resource\CreateOrUpdateResourceHandler.cs**
   - Lines 30-56: Generic handler (NO coordinator knowledge)
 
 ---

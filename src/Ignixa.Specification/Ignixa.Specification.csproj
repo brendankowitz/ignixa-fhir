@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- Suppress CLS-compliance warnings for interfaces from Ignixa.Domain -->
+    <NoWarn>$(NoWarn);CS3001;CS3002;CS3027</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Extensions\Ignixa.Extensions.csproj" />
+    <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Schema\FhirJsonSchemaStructureDefinitionSummaryProvider.cs" />
+  </ItemGroup>
+
+</Project>
