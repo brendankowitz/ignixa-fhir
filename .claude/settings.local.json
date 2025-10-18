@@ -57,7 +57,8 @@
       "Bash(awk:*)",
       "Bash(xargs cat:*)",
       "Bash(cmd /c \"netstat -ano | findstr :5000\")",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(Select-Object -Last 20)"
     ],
     "deny": [],
     "ask": []

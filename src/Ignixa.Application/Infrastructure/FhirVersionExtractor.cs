@@ -88,27 +88,10 @@ public static class FhirVersionExtractor
                 versionString = versionString.Trim('"', '\'');
 
                 // Parse string to enum
-                return ParseVersionString(versionString);
+                return FhirSpecificationExtensions.FromVersionString(versionString);
             }
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Parses FHIR version string to FhirSpecification enum.
-    /// </summary>
-    /// <param name="versionString">FHIR version string (e.g., "4.0", "5.0", "3.0").</param>
-    /// <returns>FhirSpecification enum value if valid, null otherwise.</returns>
-    private static FhirSpecification? ParseVersionString(string versionString)
-    {
-        return versionString switch
-        {
-            "3.0" => FhirSpecification.Stu3,
-            "4.0" => FhirSpecification.R4,
-            "4.3" => FhirSpecification.R4B,
-            "5.0" => FhirSpecification.R5,
-            _ => null
-        };
     }
 }

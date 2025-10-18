@@ -210,6 +210,19 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IRequestHandler<Ignixa.Application.Features.History.GetSystemHistoryQuery, Ignixa.Application.Features.History.HistoryResult>>()
         .InstancePerDependency();
 
+    // Patch handlers (Phase 17 - ADR-2520: FHIR Patch operations)
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.PatchResourceHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.Patch.PatchResourceCommand, ResourceWrapper?>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.FhirPatchParametersParser>()
+        .AsSelf()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.FhirPatchEngine>()
+        .AsSelf()
+        .InstancePerDependency();
+
     // NOTE: FileBasedSearchService is no longer registered as singleton
     // It is now created per tenant by FileBasedSearchServiceFactory
 
@@ -377,6 +390,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
+app.MapPatchEndpoints(); // FHIR PATCH endpoints (Phase 17 - ADR-2520)
 Ignixa.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)
 app.MapControllers(); // Keep for MetadataController
 
