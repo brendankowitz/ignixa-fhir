@@ -4,6 +4,7 @@
 // </copyright>
 
 using System.Collections.Concurrent;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.SourceNodeSerialization.Specification;
@@ -198,7 +199,7 @@ public sealed class FastPathValidator
     {
         foreach (var rule in rules)
         {
-            if (!resource.ExtensionData.ContainsKey(rule.Path))
+            if (!resource.MutableNode.ContainsKey(rule.Path))
             {
                 issues.Add(new ValidationIssue(
                     IssueSeverity.Error,
@@ -215,7 +216,7 @@ public sealed class FastPathValidator
     {
         foreach (var rule in rules)
         {
-            if (!resource.ExtensionData.TryGetValue(rule.Path, out var element))
+            if (!resource.MutableNode.TryGetPropertyValue(rule.Path, out var element))
             {
                 // Element not present - min cardinality check
                 if (rule.Min > 0)
@@ -230,9 +231,9 @@ public sealed class FastPathValidator
             }
 
             // Check if it's an array
-            if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
+            if (element is JsonArray array)
             {
-                int count = element.GetArrayLength();
+                int count = array.Count;
 
                 if (count < rule.Min)
                 {
@@ -266,10 +267,9 @@ public sealed class FastPathValidator
 
     private void ValidateIdFormat(ResourceJsonNode resource, List<ValidationIssue> issues)
     {
-        if (resource.ExtensionData.TryGetValue("id", out var idElement) &&
-            idElement.ValueKind == System.Text.Json.JsonValueKind.String)
+        if (resource.MutableNode.TryGetPropertyValue("id", out var idElement) && idElement != null)
         {
-            string? id = idElement.GetString();
+            string? id = idElement.GetValue<string>();
             if (id is not null && !IdPattern.IsMatch(id))
             {
                 issues.Add(new ValidationIssue(
@@ -287,7 +287,7 @@ public sealed class FastPathValidator
     {
         foreach (var field in referenceFields)
         {
-            if (!resource.ExtensionData.TryGetValue(field, out var refElement))
+            if (!resource.MutableNode.TryGetPropertyValue(field, out var refElement))
             {
                 continue;
             }
@@ -299,19 +299,19 @@ public sealed class FastPathValidator
 
     private void ValidateReferenceElement(
         string path,
-        System.Text.Json.JsonElement element,
+        JsonNode? element,
         List<ValidationIssue> issues)
     {
-        if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
+        if (element is JsonArray array)
         {
             int index = 0;
-            foreach (var item in element.EnumerateArray())
+            foreach (var item in array)
             {
                 ValidateSingleReference($"{path}[{index}]", item, issues);
                 index++;
             }
         }
-        else if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+        else if (element is JsonObject)
         {
             ValidateSingleReference(path, element, issues);
         }
@@ -319,13 +319,14 @@ public sealed class FastPathValidator
 
     private void ValidateSingleReference(
         string path,
-        System.Text.Json.JsonElement refObject,
+        JsonNode? refObject,
         List<ValidationIssue> issues)
     {
-        if (refObject.TryGetProperty("reference", out var refValue) &&
-            refValue.ValueKind == System.Text.Json.JsonValueKind.String)
+        if (refObject is JsonObject obj &&
+            obj.TryGetPropertyValue("reference", out var refValue) &&
+            refValue != null)
         {
-            string? reference = refValue.GetString();
+            string? reference = refValue.GetValue<string>();
             if (reference is not null && !IsValidReferenceFormat(reference))
             {
                 issues.Add(new ValidationIssue(
@@ -382,17 +383,22 @@ public sealed class FastPathValidator
     {
         foreach (var rule in rules)
         {
-            if (!resource.ExtensionData.TryGetValue(rule.Path, out var element))
+            if (!resource.MutableNode.TryGetPropertyValue(rule.Path, out var element) || element == null)
             {
                 continue;
             }
 
-            if (element.ValueKind != System.Text.Json.JsonValueKind.String)
+            // Try to get as string value
+            string? value = null;
+            try
+            {
+                value = element.GetValue<string>();
+            }
+            catch
             {
                 continue; // Not a string, type validation will catch this
             }
 
-            string? value = element.GetString();
             if (string.IsNullOrEmpty(value))
             {
                 continue;
@@ -422,23 +428,23 @@ public sealed class FastPathValidator
     {
         foreach (var field in codingFields)
         {
-            if (!resource.ExtensionData.TryGetValue(field, out var element))
+            if (!resource.MutableNode.TryGetPropertyValue(field, out var element))
             {
                 continue;
             }
 
-            if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+            if (element is JsonObject obj)
             {
                 // Could be a Coding or CodeableConcept
                 // CodeableConcept has a 'coding' array property
-                if (element.TryGetProperty("coding", out var codingArray) &&
-                    codingArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+                if (obj.TryGetPropertyValue("coding", out var codingArray) &&
+                    codingArray is JsonArray codingArrayNode)
                 {
                     // This is a CodeableConcept - validate each Coding in the array
                     int index = 0;
-                    foreach (var item in codingArray.EnumerateArray())
+                    foreach (var item in codingArrayNode)
                     {
-                        if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        if (item is JsonObject)
                         {
                             ValidateSingleCoding($"{field}.coding[{index}]", item, issues);
                         }
@@ -449,16 +455,16 @@ public sealed class FastPathValidator
                 else
                 {
                     // This is a Coding directly
-                    ValidateSingleCoding(field, element, issues);
+                    ValidateSingleCoding(field, obj, issues);
                 }
             }
-            else if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
+            else if (element is JsonArray array)
             {
                 // Array of Coding objects
                 int index = 0;
-                foreach (var item in element.EnumerateArray())
+                foreach (var item in array)
                 {
-                    if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    if (item is JsonObject)
                     {
                         ValidateSingleCoding($"{field}[{index}]", item, issues);
                     }
@@ -471,11 +477,16 @@ public sealed class FastPathValidator
 
     private void ValidateSingleCoding(
         string path,
-        System.Text.Json.JsonElement codingObject,
+        JsonNode? codingObject,
         List<ValidationIssue> issues)
     {
-        bool hasSystem = codingObject.TryGetProperty("system", out _);
-        bool hasCode = codingObject.TryGetProperty("code", out _);
+        if (codingObject is not JsonObject obj)
+        {
+            return;
+        }
+
+        bool hasSystem = obj.TryGetPropertyValue("system", out _);
+        bool hasCode = obj.TryGetPropertyValue("code", out _);
 
         if (!hasSystem && !hasCode)
         {
@@ -488,19 +499,18 @@ public sealed class FastPathValidator
 
     private void ValidateNarrativeBasics(ResourceJsonNode resource, List<ValidationIssue> issues)
     {
-        if (!resource.ExtensionData.TryGetValue("text", out var textElement))
+        if (!resource.MutableNode.TryGetPropertyValue("text", out var textElement))
         {
             return; // No narrative present (optional)
         }
 
-        if (textElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+        if (textElement is not JsonObject textObj)
         {
             return;
         }
 
         // Check for status field (required if text present)
-        if (!textElement.TryGetProperty("status", out var statusElement) ||
-            statusElement.ValueKind != System.Text.Json.JsonValueKind.String)
+        if (!textObj.TryGetPropertyValue("status", out var statusElement) || statusElement == null)
         {
             issues.Add(new ValidationIssue(
                 IssueSeverity.Error,
@@ -509,7 +519,7 @@ public sealed class FastPathValidator
             return;
         }
 
-        string? status = statusElement.GetString();
+        string? status = statusElement.GetValue<string>();
         if (status is not ("generated" or "extensions" or "additional" or "empty"))
         {
             issues.Add(new ValidationIssue(
@@ -519,7 +529,7 @@ public sealed class FastPathValidator
         }
 
         // Check for div field (required if status is not 'empty')
-        if (status != "empty" && !textElement.TryGetProperty("div", out _))
+        if (status != "empty" && !textObj.TryGetPropertyValue("div", out _))
         {
             issues.Add(new ValidationIssue(
                 IssueSeverity.Error,

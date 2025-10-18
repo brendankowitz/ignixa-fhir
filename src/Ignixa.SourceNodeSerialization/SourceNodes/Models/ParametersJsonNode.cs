@@ -6,7 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
@@ -14,9 +16,8 @@ namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 /// <summary>
 /// Strongly-typed model for FHIR Parameters resource.
 /// Used for parsing FHIRPath Patch operations.
+/// Uses MutableNode for JsonObject-based storage.
 /// </summary>
-[SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-[SuppressMessage("Design", "CA1819", Justification = "POCO style model")]
 public class ParametersJsonNode : ResourceJsonNode
 {
     public ParametersJsonNode()
@@ -24,131 +25,211 @@ public class ParametersJsonNode : ResourceJsonNode
         ResourceType = "Parameters";
     }
 
-    [JsonPropertyName("parameter")]
-    public IList<ParameterJsonNode> Parameter { get; set; }
+    /// <summary>
+    /// Gets the parameter array from the internal JsonObject.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<ParameterJsonNode> Parameter
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("parameter", out var node) || node is not JsonArray array)
+            {
+                return Array.Empty<ParameterJsonNode>();
+            }
+
+            var parameters = new List<ParameterJsonNode>();
+            foreach (var item in array.OfType<JsonObject>())
+            {
+                var param = JsonSerializer.Deserialize<ParameterJsonNode>(item.ToJsonString());
+                if (param != null)
+                {
+                    parameters.Add(param);
+                }
+            }
+
+            return parameters;
+        }
+    }
 
     /// <summary>
-    /// Parse a JSON string into a ParametersJsonNode.
+    /// Finds a parameter by name.
     /// </summary>
-    public new static ParametersJsonNode Parse(string json)
+    public ParameterJsonNode FindParameter(string name)
     {
-        return JsonSourceNodeFactory.Parse<ParametersJsonNode>(json);
+        return Parameter.FirstOrDefault(p => p.Name == name);
     }
 }
 
 /// <summary>
 /// Represents a single parameter in Parameters.parameter[].
 /// Can contain either a value[x] or nested part[] array.
+/// Uses MutableNode for JsonObject-based storage.
 /// </summary>
-[SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-[SuppressMessage("Design", "CA1819", Justification = "POCO style model")]
-public class ParameterJsonNode : IExtensionData
+public class ParameterJsonNode : BaseJsonNode
 {
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("name")]
-    public string Name { get; set; }
-
-    // Value[x] fields - FHIR allows value[Type] where Type can be many things
-    // For FHIRPath Patch, we commonly see: valueCode, valueString, valueInteger, etc.
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("valueCode")]
-    public string ValueCode { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("valueString")]
-    public string ValueString { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("valueInteger")]
-    public int? ValueInteger { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("valueBoolean")]
-    public bool? ValueBoolean { get; set; }
-
     /// <summary>
-    /// Nested parameters (for operation parts).
-    /// This allows Parameters to have a recursive structure.
+    /// Gets or sets the parameter name.
     /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("part")]
-    [SuppressMessage("Naming", "CA1721:Property names should not match method names", Justification = "FHIR specification uses 'part'")]
-    public IList<ParameterJsonNode> Part { get; set; }
-
-    /// <summary>
-    /// Captures any value[x] or other fields not explicitly modeled.
-    /// Useful for valueHumanName, valueContactPoint, valueAddress, etc.
-    /// </summary>
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement> ExtensionData { get; set; }
-
-    /// <summary>
-    /// Get a part by name.
-    /// </summary>
-    public ParameterJsonNode GetPart(string name)
+    [JsonIgnore]
+    public string Name
     {
-        if (Part == null)
-        {
-            return null;
-        }
-
-        foreach (var part in Part)
-        {
-            if (part.Name == name)
-            {
-                return part;
-            }
-        }
-
-        return null;
+        get => MutableNode.TryGetPropertyValue("name", out var node) && node is JsonValue value
+            ? value.GetValue<string>()
+            : null;
+        set => SetProperty("name", value != null ? JsonValue.Create(value) : null);
     }
 
     /// <summary>
-    /// Get the first value[x] field that is not null.
-    /// Returns the raw JsonElement for complex types.
+    /// Gets nested parameters (part array).
     /// </summary>
-    public object GetValue()
+    [JsonIgnore]
+    [SuppressMessage("Naming", "CA1721:Property names should not match method names", Justification = "FHIR specification uses 'part'")]
+    public IReadOnlyList<ParameterJsonNode> Part
     {
-        // Check explicit properties first
-        if (ValueCode != null) return ValueCode;
-        if (ValueString != null) return ValueString;
-        if (ValueInteger != null) return ValueInteger.Value;
-        if (ValueBoolean != null) return ValueBoolean.Value;
-
-        // Check extension data for other value[x] fields
-        if (ExtensionData != null)
+        get
         {
-            foreach (var kvp in ExtensionData)
+            if (!MutableNode.TryGetPropertyValue("part", out var node) || node is not JsonArray array)
             {
-                if (kvp.Key.StartsWith("value", StringComparison.Ordinal))
+                return Array.Empty<ParameterJsonNode>();
+            }
+
+            var parts = new List<ParameterJsonNode>();
+            foreach (var item in array.OfType<JsonObject>())
+            {
+                var part = JsonSerializer.Deserialize<ParameterJsonNode>(item.ToJsonString());
+                if (part != null)
                 {
-                    return kvp.Value;
+                    parts.Add(part);
                 }
             }
+
+            return parts;
+        }
+    }
+
+    /// <summary>
+    /// Finds a part by name.
+    /// </summary>
+    public ParameterJsonNode FindPart(string name)
+    {
+        return Part.FirstOrDefault(p => p.Name == name);
+    }
+
+    /// <summary>
+    /// Gets the first value[x] field that is not null.
+    /// Returns the value as a JsonNode for maximum flexibility.
+    /// </summary>
+    public JsonNode GetValue()
+    {
+        foreach (var property in MutableNode)
+        {
+            if (property.Key.StartsWith("value", StringComparison.Ordinal))
+            {
+                return property.Value;
+            }
         }
 
         return null;
     }
 
     /// <summary>
-    /// Deserialize a value[x] field from ExtensionData to a specific type.
-    /// Useful for complex FHIR types like HumanName, ContactPoint, etc.
+    /// Gets a specific value[x] field by name (e.g., "valueString", "valueCode").
     /// </summary>
-    public T GetValueAs<T>(string valueName) where T : class
+    public JsonNode GetValue(string valueName)
     {
-        if (ExtensionData == null || !ExtensionData.TryGetValue(valueName, out var element))
+        return MutableNode.TryGetPropertyValue(valueName, out var node) ? node : null;
+    }
+
+    /// <summary>
+    /// Gets a value[x] field as a specific .NET type.
+    /// </summary>
+    public T GetValueAs<T>()
+    {
+        var valueNode = GetValue();
+        if (valueNode == null)
         {
-            return null;
+            return default;
         }
 
         try
         {
-            return JsonSerializer.Deserialize<T>(element.GetRawText());
+            if (valueNode is JsonValue jsonValue)
+            {
+                return jsonValue.GetValue<T>();
+            }
+
+            return JsonSerializer.Deserialize<T>(valueNode.ToJsonString());
         }
         catch
         {
-            return null;
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Gets a named value[x] field as a specific .NET type.
+    /// </summary>
+    public T GetValueAs<T>(string valueName)
+    {
+        if (!MutableNode.TryGetPropertyValue(valueName, out var node) || node == null)
+        {
+            return default;
+        }
+
+        try
+        {
+            if (node is JsonValue jsonValue)
+            {
+                return jsonValue.GetValue<T>();
+            }
+
+            return JsonSerializer.Deserialize<T>(node.ToJsonString());
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Sets a value[x] field.
+    /// </summary>
+    public void SetValue(string valueName, JsonNode value)
+    {
+        SetProperty(valueName, value);
+    }
+
+    /// <summary>
+    /// Sets a value[x] field from a .NET object.
+    /// </summary>
+    public void SetValue<T>(string valueName, T value)
+    {
+        if (value == null)
+        {
+            SetProperty(valueName, null);
+            return;
+        }
+
+        // For primitive types, use JsonValue
+        if (value is string s)
+        {
+            SetProperty(valueName, JsonValue.Create(s));
+        }
+        else if (value is int i)
+        {
+            SetProperty(valueName, JsonValue.Create(i));
+        }
+        else if (value is bool b)
+        {
+            SetProperty(valueName, JsonValue.Create(b));
+        }
+        else
+        {
+            // For complex types, serialize to JsonNode
+            var json = JsonSerializer.Serialize(value);
+            var node = JsonNode.Parse(json);
+            SetProperty(valueName, node);
         }
     }
 }

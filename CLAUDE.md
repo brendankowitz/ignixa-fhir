@@ -513,6 +513,85 @@ public class MyStorageFhirRepository : IFhirRepository
 // 3. Register factory in Program.cs
 ```
 
+### Working with ResourceJsonNode (JsonObject-Based Architecture)
+
+**Pattern**: ResourceJsonNode uses `System.Text.Json.Nodes.JsonObject` as single source of truth for in-place mutation.
+
+```csharp
+// Creating a resource
+var patient = new ResourceJsonNode
+{
+    ResourceType = "Patient",
+    Id = "example-123",
+};
+
+// Accessing the mutable JsonObject via MutableNode property
+patient.MutableNode["active"] = JsonSerializer.SerializeToNode(true);
+patient.MutableNode["birthDate"] = JsonValue.Create("1990-01-15");
+
+// Adding complex objects
+patient.MutableNode["name"] = JsonNode.Parse(@"[{
+    ""family"": ""Doe"",
+    ""given"": [""John""]
+}]");
+
+// Working with Meta extensions
+patient.Meta.LastUpdated = DateTimeOffset.UtcNow;
+patient.Meta.VersionId = "1";
+patient.Meta.RemoveExtension("http://example.com/extension-url");
+
+// Reading values
+if (patient.MutableNode.TryGetPropertyValue("active", out var activeNode))
+{
+    bool isActive = activeNode.GetValue<bool>();
+}
+
+// Serializing to JSON string
+string json = patient.SerializeToString();
+```
+
+**Key Classes**:
+- `BaseJsonNode` - Abstract base class with `MutableNode` property
+- `ResourceJsonNode` - FHIR resource with ResourceType, Id, Meta
+- `MetaJsonNode` - FHIR meta element with VersionId, LastUpdated
+- `ParametersJsonNode` - FHIR Parameters resource
+- `ParameterJsonNode` - Individual parameter with flexible GetValue/SetValue methods
+
+**JsonNode vs JsonElement**:
+| Aspect | JsonNode (Current) | JsonElement (Old) |
+|--------|-------------------|-------------------|
+| **Mutability** | ✅ Mutable in-place | ❌ Immutable (requires cloning) |
+| **API** | Modern System.Text.Json.Nodes | Legacy System.Text.Json |
+| **Performance** | No serialization roundtrips | Serialization required for mutations |
+| **Pattern** | `MutableNode` property | `ExtensionData` dictionary |
+
+**FHIR-Aware Navigation**:
+- `JsonNodeSourceNode` implements ISourceNode with FHIR-specific logic
+- Shadow property pairing (e.g., `birthDate` + `_birthDate`)
+- Extension handling in shadow properties
+- Content vs value distinction for primitives
+- Choice type suffix support (`value*` matches `valueString`, `valueCode`, etc.)
+
+**Test Pattern**:
+```csharp
+// Before (ExtensionData - DEPRECATED)
+var resource = new ResourceJsonNode
+{
+    ResourceType = "Patient",
+    ExtensionData = new Dictionary<string, JsonElement>
+    {
+        ["active"] = JsonSerializer.SerializeToElement(true),
+    },
+};
+
+// After (MutableNode - CORRECT)
+var resource = new ResourceJsonNode
+{
+    ResourceType = "Patient",
+};
+resource.MutableNode["active"] = JsonSerializer.SerializeToNode(true);
+```
+
 ## Anti-Patterns to Avoid
 
 | ❌ Don't | ✅ Do |
@@ -524,6 +603,10 @@ public class MyStorageFhirRepository : IFhirRepository
 | Name parameter `ct` | Name parameter `cancellationToken` |
 | Calculate total count by default | Use `_total=none` (default), only count when requested |
 | Allow access to Partition 0 via API | Block in middleware (system partition only) |
+| Use `ExtensionData` with `JsonElement` | Use `MutableNode` property with `JsonNode` |
+| Call `GetMutableNode()` method | Use `MutableNode` property |
+| Use `JsonSerializer.SerializeToElement()` | Use `JsonSerializer.SerializeToNode()` |
+| Use `JsonDocument.Parse()` | Use `JsonNode.Parse()` |
 
 ## Known Issues
 

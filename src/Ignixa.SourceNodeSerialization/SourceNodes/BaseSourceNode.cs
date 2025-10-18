@@ -14,9 +14,8 @@ using Ignixa.SourceNodeSerialization.Utility;
 namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
 public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IAnnotated
-    where T : IExtensionData
 {
-    private ReadOnlyDictionary<string, Lazy<IEnumerable<ISourceNode>>> _cachedNodes;
+    private ReadOnlyDictionary<string, Lazy<IEnumerable<ISourceNode>>>? _cachedNodes;
 
     protected BaseSourceNode(T resource)
     {
@@ -47,8 +46,9 @@ public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IA
     {
         if (_cachedNodes == null)
         {
+            // All properties are now handled in PropertySourceNodes() via MutableNode
+            // No need for separate ExtensionSourceNodes()
             _cachedNodes = PropertySourceNodes()
-                .Concat(ExtensionSourceNodes())
                 .ToDictionary(x => x.Name, x => x.Node)
                 .AsReadOnly();
         }
@@ -73,13 +73,9 @@ public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IA
         //    .Where(x => string.Equals(name, x.Name, StringComparison.Ordinal))
         //    .SelectMany(x => x.Node.Value);
 
-        return _cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNode>> cachedNodes) ? cachedNodes.Value : [];
-    }
-
-    private List<(string Name, Lazy<IEnumerable<ISourceNode>> Node)> ExtensionSourceNodes()
-    {
-        Dictionary<string, JsonElement> properties = Resource.ExtensionData ?? new Dictionary<string, JsonElement>();
-        return JsonElementSourceNode.ProcessObjectProperties(properties.Select(x => (x.Key, x.Value)), Location);
+        return _cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNode>> cachedNodes)
+            ? cachedNodes.Value
+            : [];
     }
 
     protected abstract IEnumerable<(string Name, Lazy<IEnumerable<ISourceNode>> Node)> PropertySourceNodes();

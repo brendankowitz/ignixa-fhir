@@ -4,7 +4,9 @@
 // </copyright>
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.Helpers;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
@@ -31,7 +33,6 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>(),
         };
 
         // Act
@@ -49,11 +50,8 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""Organization/org-456""}").RootElement,
-            },
         };
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""Organization/org-456""}");
 
         // Act
         var references = ResourceReferenceHelper.GetReferences(resource, "Patient", _metadataProvider);
@@ -77,15 +75,12 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Observation",
             Id = "obs-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["subject"] = JsonDocument.Parse(@"{""reference"": ""Patient/pat-123""}").RootElement,
-                ["performer"] = JsonDocument.Parse(@"[
+        };
+        resource.MutableNode["subject"] = JsonNode.Parse(@"{""reference"": ""Patient/pat-123""}");
+        resource.MutableNode["performer"] = JsonNode.Parse(@"[
                     {""reference"": ""Practitioner/prac-1""},
                     {""reference"": ""Practitioner/prac-2""}
-                ]").RootElement,
-            },
-        };
+                ]");
 
         // Act
         var references = ResourceReferenceHelper.GetReferences(resource, "Observation", _metadataProvider);
@@ -115,11 +110,8 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""https://example.org/fhir/Organization/org-456""}").RootElement,
-            },
         };
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""https://example.org/fhir/Organization/org-456""}");
 
         // Act
         var references = ResourceReferenceHelper.GetReferences(resource, "Patient", _metadataProvider);
@@ -140,11 +132,8 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""urn:uuid:12345678-1234-1234-1234-123456789012""}").RootElement,
-            },
         };
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""urn:uuid:12345678-1234-1234-1234-123456789012""}");
 
         // Act
         var references = ResourceReferenceHelper.GetReferences(resource, "Patient", _metadataProvider);
@@ -165,7 +154,6 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "UnknownResource",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>(),
         };
 
         // Act
@@ -183,12 +171,9 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["name"] = JsonDocument.Parse(@"[{""family"": ""Doe""}]").RootElement,
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""Organization/org-456""}").RootElement,
-            },
         };
+        resource.MutableNode["name"] = JsonNode.Parse(@"[{""family"": ""Doe""}]");
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""Organization/org-456""}");
 
         // Act
         var references = ResourceReferenceHelper.GetReferences(resource, "Patient", _metadataProvider);
@@ -210,19 +195,16 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""Organization/org-old""}").RootElement,
-            },
         };
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""Organization/org-old""}");
 
         // Act
         bool result = ResourceReferenceHelper.UpdateReference(resource, "managingOrganization", "Organization/org-new");
 
         // Assert
         Assert.True(result);
-        var updatedElement = resource.ExtensionData["managingOrganization"];
-        Assert.Equal("Organization/org-new", updatedElement.GetProperty("reference").GetString());
+        var updatedElement = resource.MutableNode["managingOrganization"];
+        Assert.Equal("Organization/org-new", updatedElement["reference"].GetValue<string>());
     }
 
     [Fact]
@@ -233,27 +215,24 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Observation",
             Id = "obs-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["performer"] = JsonDocument.Parse(@"[
+        };
+        resource.MutableNode["performer"] = JsonNode.Parse(@"[
                     {""reference"": ""Practitioner/prac-1""},
                     {""reference"": ""Practitioner/prac-2""},
                     {""reference"": ""Practitioner/prac-3""}
-                ]").RootElement,
-            },
-        };
+                ]");
 
         // Act
         bool result = ResourceReferenceHelper.UpdateReference(resource, "performer", "Practitioner/prac-updated", arrayIndex: 1);
 
         // Assert
         Assert.True(result);
-        var array = resource.ExtensionData["performer"];
-        var items = array.EnumerateArray().ToList();
-        Assert.Equal(3, items.Count);
-        Assert.Equal("Practitioner/prac-1", items[0].GetProperty("reference").GetString());
-        Assert.Equal("Practitioner/prac-updated", items[1].GetProperty("reference").GetString());
-        Assert.Equal("Practitioner/prac-3", items[2].GetProperty("reference").GetString());
+        var array = resource.MutableNode["performer"] as JsonArray;
+        Assert.NotNull(array);
+        Assert.Equal(3, array.Count);
+        Assert.Equal("Practitioner/prac-1", array[0]["reference"].GetValue<string>());
+        Assert.Equal("Practitioner/prac-updated", array[1]["reference"].GetValue<string>());
+        Assert.Equal("Practitioner/prac-3", array[2]["reference"].GetValue<string>());
     }
 
     [Fact]
@@ -264,7 +243,6 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>(),
         };
 
         // Act
@@ -282,13 +260,10 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Observation",
             Id = "obs-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["performer"] = JsonDocument.Parse(@"[
-                    {""reference"": ""Practitioner/prac-1""}
-                ]").RootElement,
-            },
         };
+        resource.MutableNode["performer"] = JsonNode.Parse(@"[
+                    {""reference"": ""Practitioner/prac-1""}
+                ]");
 
         // Act - try to update index 5 when only 1 element exists
         bool result = ResourceReferenceHelper.UpdateReference(resource, "performer", "Practitioner/prac-new", arrayIndex: 5);
@@ -305,13 +280,10 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Observation",
             Id = "obs-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["performer"] = JsonDocument.Parse(@"[
-                    {""reference"": ""Practitioner/prac-1""}
-                ]").RootElement,
-            },
         };
+        resource.MutableNode["performer"] = JsonNode.Parse(@"[
+                    {""reference"": ""Practitioner/prac-1""}
+                ]");
 
         // Act
         bool result = ResourceReferenceHelper.UpdateReference(resource, "performer", "Practitioner/prac-new", arrayIndex: -1);
@@ -328,11 +300,8 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""Organization/org-old""}").RootElement,
-            },
         };
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""Organization/org-old""}");
 
         // Act - try to use array index on a single reference
         bool result = ResourceReferenceHelper.UpdateReference(resource, "managingOrganization", "Organization/org-new", arrayIndex: 0);
@@ -353,22 +322,19 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Observation",
             Id = "obs-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["subject"] = JsonDocument.Parse(@"{""reference"": ""Patient/pat-old""}").RootElement,
-                ["performer"] = JsonDocument.Parse(@"[
-                    {""reference"": ""Practitioner/prac-1""}
-                ]").RootElement,
-            },
         };
+        resource.MutableNode["subject"] = JsonNode.Parse(@"{""reference"": ""Patient/pat-old""}");
+        resource.MutableNode["performer"] = JsonNode.Parse(@"[
+                    {""reference"": ""Practitioner/prac-1""}
+                ]");
 
         // Act
         int count = ResourceReferenceHelper.UpdateAllReferences(resource, "Observation", "Patient/pat-old", "Patient/pat-new", _metadataProvider);
 
         // Assert
         Assert.Equal(1, count);
-        var subjectElement = resource.ExtensionData["subject"];
-        Assert.Equal("Patient/pat-new", subjectElement.GetProperty("reference").GetString());
+        var subjectElement = resource.MutableNode["subject"];
+        Assert.Equal("Patient/pat-new", subjectElement["reference"].GetValue<string>());
     }
 
     [Fact]
@@ -379,26 +345,23 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Observation",
             Id = "obs-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["performer"] = JsonDocument.Parse(@"[
+        };
+        resource.MutableNode["performer"] = JsonNode.Parse(@"[
                     {""reference"": ""Practitioner/prac-old""},
                     {""reference"": ""Practitioner/prac-other""},
                     {""reference"": ""Practitioner/prac-old""}
-                ]").RootElement,
-            },
-        };
+                ]");
 
         // Act
         int count = ResourceReferenceHelper.UpdateAllReferences(resource, "Observation", "Practitioner/prac-old", "Practitioner/prac-new", _metadataProvider);
 
         // Assert
         Assert.Equal(2, count);
-        var array = resource.ExtensionData["performer"];
-        var items = array.EnumerateArray().ToList();
-        Assert.Equal("Practitioner/prac-new", items[0].GetProperty("reference").GetString());
-        Assert.Equal("Practitioner/prac-other", items[1].GetProperty("reference").GetString());
-        Assert.Equal("Practitioner/prac-new", items[2].GetProperty("reference").GetString());
+        var array = resource.MutableNode["performer"] as JsonArray;
+        Assert.NotNull(array);
+        Assert.Equal("Practitioner/prac-new", array[0]["reference"].GetValue<string>());
+        Assert.Equal("Practitioner/prac-other", array[1]["reference"].GetValue<string>());
+        Assert.Equal("Practitioner/prac-new", array[2]["reference"].GetValue<string>());
     }
 
     [Fact]
@@ -409,11 +372,8 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["managingOrganization"] = JsonDocument.Parse(@"{""reference"": ""Organization/org-123""}").RootElement,
-            },
         };
+        resource.MutableNode["managingOrganization"] = JsonNode.Parse(@"{""reference"": ""Organization/org-123""}");
 
         // Act
         int count = ResourceReferenceHelper.UpdateAllReferences(resource, "Patient", "Organization/org-999", "Organization/org-new", _metadataProvider);
@@ -421,8 +381,8 @@ public class ResourceReferenceHelperTests
         // Assert
         Assert.Equal(0, count);
         // Verify original value unchanged
-        var element = resource.ExtensionData["managingOrganization"];
-        Assert.Equal("Organization/org-123", element.GetProperty("reference").GetString());
+        var element = resource.MutableNode["managingOrganization"];
+        Assert.Equal("Organization/org-123", element["reference"].GetValue<string>());
     }
 
     [Fact]
@@ -433,7 +393,6 @@ public class ResourceReferenceHelperTests
         {
             ResourceType = "Patient",
             Id = "test-123",
-            ExtensionData = new Dictionary<string, JsonElement>(),
         };
 
         // Act

@@ -3,9 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.SourceNodeSerialization.ElementModel;
 using Ignixa.SourceNodeSerialization.Specification;
@@ -17,51 +16,107 @@ using ITypedElement = Ignixa.SourceNodeSerialization.ElementModel.ITypedElement;
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-public class ResourceJsonNode : IExtensionData, IResourceNode
+[JsonConverter(typeof(ResourceJsonNodeConverter))]
+public class ResourceJsonNode : BaseJsonNode, IResourceNode
 {
-    private ISourceNode _sourceNode;
-    private ITypedElement _typedElement;
-    private IStructureDefinitionSummaryProvider _cachedProvider;
+    // Cached wrapper for Meta property (reuse same instance)
+    private MetaJsonNode? _cachedMeta;
+    private JsonNodeSourceNode? _cachedSourceNode;
 
-    [JsonPropertyName("resourceType")]
-    public string ResourceType { get; set; }
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
+    public ResourceJsonNode()
+        : base()
+    {
+    }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("id")]
-    public string Id { get; set; }
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal ResourceJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("meta")]
-    public MetaJsonNode Meta { get; set; } = new();
+    [JsonIgnore]
+    public string ResourceType
+    {
+        get => MutableNode["resourceType"]?.GetValue<string>() ?? string.Empty;
+        set => MutableNode["resourceType"] = value;
+    }
 
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement> ExtensionData { get; set; }
+    [JsonIgnore]
+    public string Id
+    {
+        get => MutableNode["id"]?.GetValue<string>() ?? string.Empty;
+        set
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                MutableNode.Remove("id");
+            }
+            else
+            {
+                MutableNode["id"] = value;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public MetaJsonNode Meta
+    {
+        get
+        {
+            // Return cached wrapper if available
+            if (_cachedMeta == null)
+            {
+                var internalNode = MutableNode;
+
+                // Get or create the "meta" JsonObject
+                if (!internalNode.TryGetPropertyValue("meta", out var metaNode) || metaNode is not JsonObject metaObject)
+                {
+                    metaObject = new JsonObject();
+                    internalNode["meta"] = metaObject;
+                }
+
+                // Cache the wrapper (reuse same instance for subsequent accesses)
+                _cachedMeta = new MetaJsonNode(metaObject);
+            }
+
+            return _cachedMeta;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("meta");
+                _cachedMeta = null;
+            }
+            else
+            {
+                // Copy the internal JsonObject from the value
+                MutableNode["meta"] = value.MutableNode;
+                _cachedMeta = value; // Cache the new value
+            }
+        }
+    }
 
     /// <summary>
     /// Wraps the JSON representation of the resource in an ISourceNode.
-    /// Cached after first call.
     /// </summary>
     public ISourceNode ToSourceNode()
     {
-        _sourceNode ??= new ReflectedSourceNode(this, null);
-
-        return _sourceNode;
+        _cachedSourceNode ??= JsonNodeSourceNode.FromRoot(MutableNode, ResourceType);
+        return _cachedSourceNode;
     }
 
     /// <summary>
     /// Converts to ITypedElement using the provided schema provider.
-    /// Caches the result if called with the same provider instance.
     /// </summary>
     public ITypedElement ToTypedElement(IStructureDefinitionSummaryProvider provider)
     {
-        // Cache only if same provider instance (to support multi-version scenarios)
-        if (_typedElement == null || _cachedProvider != provider)
-        {
-            _typedElement = ToSourceNode().ToTypedElement(provider);
-            _cachedProvider = provider;
-        }
-
-        return _typedElement;
+        return ToSourceNode().ToTypedElement(provider);
     }
 
     /// <summary>

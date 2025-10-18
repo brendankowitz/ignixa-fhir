@@ -5,6 +5,8 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.SourceNodeSerialization.Utility;
 
@@ -19,18 +21,161 @@ public class BundleJsonNode : ResourceJsonNode
         ResourceType = "Bundle";
     }
 
-    [JsonPropertyName("type")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public BundleType? Type { get; set; }
+    [JsonIgnore]
+    public BundleType? Type
+    {
+        get
+        {
+            var typeStr = MutableNode["type"]?.GetValue<string>();
+            return typeStr != null ? ParseBundleType(typeStr) : null;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("type");
+            }
+            else
+            {
+                MutableNode["type"] = GetEnumLiteral(value.Value);
+            }
+        }
+    }
 
-    [JsonPropertyName("total")]
-    public int? Total { get; set; }
+    [JsonIgnore]
+    public int? Total
+    {
+        get => MutableNode["total"]?.GetValue<int>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("total");
+            }
+            else
+            {
+                MutableNode["total"] = value.Value;
+            }
+        }
+    }
 
-    [JsonPropertyName("link")]
-    public IReadOnlyList<BundleLinkJsonNode> Link { get; set; }
+    [JsonIgnore]
+    public IReadOnlyList<BundleLinkJsonNode> Link
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("link", out var linkNode) || linkNode is not JsonArray array)
+            {
+                return null;
+            }
 
-    [JsonPropertyName("entry")]
-    public IList<BundleComponentJsonNode> Entry { get; set; }
+            var list = new List<BundleLinkJsonNode>();
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    var json = item.ToJsonString();
+                    list.Add(JsonSerializer.Deserialize<BundleLinkJsonNode>(json));
+                }
+            }
+
+            return list;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("link");
+            }
+            else
+            {
+                var array = new JsonArray();
+                foreach (var item in value)
+                {
+                    var json = JsonSerializer.Serialize(item);
+                    array.Add(JsonNode.Parse(json));
+                }
+
+                MutableNode["link"] = array;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public IList<BundleComponentJsonNode> Entry
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("entry", out var entryNode) || entryNode is not JsonArray array)
+            {
+                return null;
+            }
+
+            var list = new List<BundleComponentJsonNode>();
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    var json = item.ToJsonString();
+                    list.Add(JsonSerializer.Deserialize<BundleComponentJsonNode>(json));
+                }
+            }
+
+            return list;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("entry");
+            }
+            else
+            {
+                var array = new JsonArray();
+                foreach (var item in value)
+                {
+                    var json = JsonSerializer.Serialize(item);
+                    array.Add(JsonNode.Parse(json));
+                }
+
+                MutableNode["entry"] = array;
+            }
+        }
+    }
+
+    private static BundleType? ParseBundleType(string value)
+    {
+        return value switch
+        {
+            "document" => BundleType.Document,
+            "message" => BundleType.Message,
+            "transaction" => BundleType.Transaction,
+            "transaction-response" => BundleType.TransactionResponse,
+            "batch" => BundleType.Batch,
+            "batch-response" => BundleType.BatchResponse,
+            "history" => BundleType.History,
+            "searchset" => BundleType.Searchset,
+            "collection" => BundleType.Collection,
+            _ => null,
+        };
+    }
+
+    private static string GetEnumLiteral(BundleType type)
+    {
+        return type switch
+        {
+            BundleType.Document => "document",
+            BundleType.Message => "message",
+            BundleType.Transaction => "transaction",
+            BundleType.TransactionResponse => "transaction-response",
+            BundleType.Batch => "batch",
+            BundleType.BatchResponse => "batch-response",
+            BundleType.History => "history",
+            BundleType.Searchset => "searchset",
+            BundleType.Collection => "collection",
+            _ => throw new ArgumentOutOfRangeException(nameof(type)),
+        };
+    }
 
     /// <summary>
     /// FHIR Bundle.type value set.

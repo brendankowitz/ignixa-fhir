@@ -3,12 +3,27 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
-public class BundleComponentSearchJsonNode
+public class BundleComponentSearchJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("mode")]
-    public string Mode { get; set; }
+    [JsonIgnore]
+    public string Mode
+    {
+        get => MutableNode["mode"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("mode");
+            }
+            else
+            {
+                MutableNode["mode"] = value;
+            }
+        }
+    }
 }

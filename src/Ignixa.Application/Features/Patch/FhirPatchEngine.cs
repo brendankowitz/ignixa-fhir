@@ -11,7 +11,7 @@ namespace Ignixa.Application.Features.Patch;
 
 /// <summary>
 /// Applies FHIR Patch operations to a FHIR resource.
-/// Converts ResourceJsonNode to mutable JsonNode, applies patches, converts back.
+/// Uses in-place mutation of the internal JsonObject for efficiency.
 /// </summary>
 public class FhirPatchEngine
 {
@@ -23,7 +23,7 @@ public class FhirPatchEngine
     }
 
     /// <summary>
-    /// Apply patch operations to a resource.
+    /// Apply patch operations to a resource using in-place mutation.
     /// </summary>
     public async Task<ResourceJsonNode> ApplyPatchAsync(
         ResourceJsonNode resource,
@@ -33,36 +33,21 @@ public class FhirPatchEngine
         _logger.LogDebug("Applying {OperationCount} patch operations to {ResourceType}/{ResourceId}",
             operations.Length, resource.ResourceType, resource.Id);
 
-        // 1. Serialize resource to JSON
-        var resourceJson = JsonSerializer.Serialize(resource);
+        // Get the internal mutable JsonObject directly
+        var jsonNode = resource.MutableNode;
 
-        // 2. Parse to mutable JsonNode
-        var jsonNode = JsonNode.Parse(resourceJson);
-        if (jsonNode == null)
-        {
-            throw new FhirPatchException("Failed to parse resource JSON");
-        }
-
-        // 3. Apply each operation
+        // Apply each operation in-place
         foreach (var operation in operations)
         {
-            jsonNode = await ApplyOperationAsync(jsonNode, operation, cancellationToken);
-        }
-
-        // 4. Serialize back to JSON string
-        var patchedJson = jsonNode.ToJsonString();
-
-        // 5. Parse back to ResourceJsonNode
-        var patchedResource = JsonSerializer.Deserialize<ResourceJsonNode>(patchedJson);
-        if (patchedResource == null)
-        {
-            throw new FhirPatchException("Failed to deserialize patched resource");
+            // Operations mutate jsonNode in-place, but we keep the reference for consistency
+            _ = await ApplyOperationAsync(jsonNode, operation, cancellationToken);
         }
 
         _logger.LogDebug("Successfully applied {OperationCount} patch operations",
             operations.Length);
 
-        return patchedResource;
+        // Return the same resource instance (mutations were applied in-place)
+        return resource;
     }
 
     private Task<JsonNode> ApplyOperationAsync(

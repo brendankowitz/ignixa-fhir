@@ -2,7 +2,7 @@
 
 ### Setup test data
 # @name batch
-POST https://{{hostname}}
+POST http://{{hostname}}
 Content-Type: application/json
 
 < ./data/SearchDataBatch.json

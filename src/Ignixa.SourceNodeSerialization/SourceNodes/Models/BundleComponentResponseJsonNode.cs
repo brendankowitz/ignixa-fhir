@@ -4,24 +4,127 @@
 // -------------------------------------------------------------------------------------------------
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
-public class BundleComponentResponseJsonNode
+public class BundleComponentResponseJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("status")]
-    public string Status { get; set; }
+    // Cached wrapper for Outcome property
+    private ResourceJsonNode? _cachedOutcome;
 
-    [JsonPropertyName("location")]
-    public string Location { get; set; }
+    [JsonIgnore]
+    public string Status
+    {
+        get => MutableNode["status"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("status");
+            }
+            else
+            {
+                MutableNode["status"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("etag")]
-    public string Etag { get; set; }
+    [JsonIgnore]
+    public string Location
+    {
+        get => MutableNode["location"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("location");
+            }
+            else
+            {
+                MutableNode["location"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("lastModified")]
-    public DateTimeOffset? LastModified { get; set; }
+    [JsonIgnore]
+    public string Etag
+    {
+        get => MutableNode["etag"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("etag");
+            }
+            else
+            {
+                MutableNode["etag"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("outcome")]
-    public ResourceJsonNode Outcome { get; set; }
+    [JsonIgnore]
+    public DateTimeOffset? LastModified
+    {
+        get
+        {
+            var internalNode = MutableNode;
+            if (internalNode.TryGetPropertyValue("lastModified", out var node) && node != null)
+            {
+                var value = node.GetValue<string>();
+                if (DateTimeOffset.TryParse(value, out var result))
+                {
+                    return result;
+                }
+            }
+
+            return null;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("lastModified");
+            }
+            else
+            {
+                // Store as ISO 8601 string
+                MutableNode["lastModified"] = value.Value.ToString("o");
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public ResourceJsonNode Outcome
+    {
+        get
+        {
+            if (_cachedOutcome == null)
+            {
+                var internalNode = MutableNode;
+                if (internalNode.TryGetPropertyValue("outcome", out var outcomeNode) && outcomeNode is JsonObject outcomeObject)
+                {
+                    _cachedOutcome = new ResourceJsonNode(outcomeObject);
+                }
+            }
+
+            return _cachedOutcome;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("outcome");
+                _cachedOutcome = null;
+            }
+            else
+            {
+                MutableNode["outcome"] = value.MutableNode;
+                _cachedOutcome = value;
+            }
+        }
+    }
 }

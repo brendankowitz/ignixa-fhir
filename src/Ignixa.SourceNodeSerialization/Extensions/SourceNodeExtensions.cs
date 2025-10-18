@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Nodes;
 using EnsureThat;
 using Ignixa.SourceNodeSerialization.ElementModel;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
@@ -14,46 +15,44 @@ namespace Ignixa.SourceNodeSerialization.Extensions;
 
 public static class SourceNodeExtensions
 {
-    // depth-first walk of the node tree
-    public static IEnumerable<ISourceNode> Descendants(this ISourceNode node)
-    {
-        EnsureArg.IsNotNull(node, nameof(node));
-
-        foreach (ISourceNode child in node.Children())
-        {
-            yield return child;
-            foreach (ISourceNode g in child.Descendants())
-            {
-                yield return g;
-            }
-        }
-    }
-
-    public static IEnumerable<ITypedElement> Descendants(this ITypedElement node)
-    {
-        EnsureArg.IsNotNull(node, nameof(node));
-
-        foreach (ITypedElement child in node.Children())
-        {
-            yield return child;
-            foreach (ITypedElement g in child.Descendants())
-            {
-                yield return g;
-            }
-        }
-    }
-
+    /// <summary>
+    /// Removes an extension from the meta.extension array that matches the given URL.
+    /// </summary>
+    /// <param name="node">The MetaJsonNode to remove the extension from.</param>
+    /// <param name="url">The URL of the extension to remove.</param>
+    /// <returns>True if an extension was removed, false if no matching extension was found.</returns>
     public static bool RemoveExtension(this MetaJsonNode node, string url)
     {
         EnsureArg.IsNotNull(node, nameof(node));
         EnsureArg.IsNotNullOrWhiteSpace(url, nameof(url));
 
-        if (node.Extensions != null)
+        var metaNode = node.MutableNode;
+        if (metaNode.TryGetPropertyValue("extension", out var extensionNode) && extensionNode is JsonArray extensionArray)
         {
-            ExtensionJsonNode extensionToRemove = node.Extensions.FirstOrDefault(e => string.Equals(e.Url, url, StringComparison.OrdinalIgnoreCase));
-            if (extensionToRemove != null)
+            // Find the index of the extension with matching URL
+            int indexToRemove = -1;
+            for (int i = 0; i < extensionArray.Count; i++)
             {
-                return node.Extensions.Remove(extensionToRemove);
+                if (extensionArray[i] is JsonObject extObj &&
+                    extObj.TryGetPropertyValue("url", out var urlNode) &&
+                    urlNode?.GetValue<string>() == url)
+                {
+                    indexToRemove = i;
+                    break;
+                }
+            }
+
+            if (indexToRemove >= 0)
+            {
+                extensionArray.RemoveAt(indexToRemove);
+
+                // If the array is now empty, remove the extension property entirely
+                if (extensionArray.Count == 0)
+                {
+                    metaNode.Remove("extension");
+                }
+
+                return true;
             }
         }
 

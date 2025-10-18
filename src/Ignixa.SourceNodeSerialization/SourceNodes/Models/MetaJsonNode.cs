@@ -5,36 +5,78 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models.Converters;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-public class MetaJsonNode : IExtensionData
+public class MetaJsonNode : BaseJsonNode
 {
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("versionId")]
-    public string VersionId { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonConverter(typeof(FhirDateTimeConverter))]
-    [JsonPropertyName("lastUpdated")]
-    public DateTimeOffset? LastUpdated { get; set; }
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
+    public MetaJsonNode()
+        : base()
+    {
+    }
 
     /// <summary>
-    /// Collection of FHIR extensions.
+    /// Internal constructor for wrapping existing JsonObject (used by ResourceJsonNode.Meta).
     /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("extension")]
-    public Collection<ExtensionJsonNode> Extensions { get; set; }
+    internal MetaJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
 
-    /// <summary>
-    /// Data not mapped to a model property.
-    /// </summary>
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement> ExtensionData { get; set; }
+    [JsonIgnore]
+    public string? VersionId
+    {
+        get => MutableNode["versionId"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("versionId");
+            }
+            else
+            {
+                MutableNode["versionId"] = value;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public DateTimeOffset? LastUpdated
+    {
+        get
+        {
+            var internalNode = MutableNode;
+            if (internalNode.TryGetPropertyValue("lastUpdated", out var node) && node != null)
+            {
+                var value = node.GetValue<string>();
+                if (DateTimeOffset.TryParse(value, out var result))
+                {
+                    return result;
+                }
+            }
+
+            return null;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("lastUpdated");
+            }
+            else
+            {
+                // Store as ISO 8601 string
+                MutableNode["lastUpdated"] = value.Value.ToString("o");
+            }
+        }
+    }
+
 }

@@ -6,6 +6,7 @@
 #nullable enable
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
@@ -39,20 +40,23 @@ public static class ResourceReferenceHelper
         var metadata = metadataProvider.GetMetadata(resourceType);
         var references = new List<ResourceReference>();
 
+        // Get the internal JsonObject
+        var jsonObject = resource.MutableNode;
+
         // Iterate through all reference fields defined in metadata
         foreach (var fieldMetadata in metadata)
         {
-            // Check if this field exists in the resource's ExtensionData
-            if (resource.ExtensionData.TryGetValue(fieldMetadata.ElementPath, out var element))
+            // Check if this field exists in the resource's JsonObject
+            if (jsonObject.TryGetPropertyValue(fieldMetadata.ElementPath, out var node) && node != null)
             {
                 // Handle both single references and arrays of references
                 if (fieldMetadata.IsCollection)
                 {
-                    ExtractReferencesFromArray(element, fieldMetadata, references);
+                    ExtractReferencesFromJsonArray(node, fieldMetadata, references);
                 }
                 else
                 {
-                    ExtractReferenceFromElement(element, fieldMetadata, references);
+                    ExtractReferenceFromJsonNode(node, fieldMetadata, references);
                 }
             }
         }
@@ -74,8 +78,10 @@ public static class ResourceReferenceHelper
         ArgumentNullException.ThrowIfNull(elementPath);
         ArgumentNullException.ThrowIfNull(newReferenceValue);
 
-        // Check if this field exists in the resource's ExtensionData
-        if (!resource.ExtensionData.TryGetValue(elementPath, out var element))
+        var jsonObject = resource.MutableNode;
+
+        // Check if this field exists in the resource's JsonObject
+        if (!jsonObject.TryGetPropertyValue(elementPath, out var node) || node == null)
         {
             return false;
         }
@@ -83,28 +89,25 @@ public static class ResourceReferenceHelper
         // Handle array references
         if (arrayIndex.HasValue)
         {
-            if (element.ValueKind != JsonValueKind.Array)
+            if (node is not JsonArray array)
             {
                 return false;
             }
 
-            // Rebuild the array with the updated reference
-            var arrayItems = element.EnumerateArray().ToList();
-            if (arrayIndex.Value < 0 || arrayIndex.Value >= arrayItems.Count)
+            if (arrayIndex.Value < 0 || arrayIndex.Value >= array.Count)
             {
                 return false;
             }
 
             // Update the specific array element
-            arrayItems[arrayIndex.Value] = CreateReferenceElement(newReferenceValue);
-            resource.ExtensionData[elementPath] = SerializeArrayToJsonElement(arrayItems);
+            array[arrayIndex.Value] = CreateReferenceJsonObject(newReferenceValue);
             return true;
         }
 
         // Handle single reference
-        if (element.ValueKind == JsonValueKind.Object)
+        if (node is JsonObject)
         {
-            resource.ExtensionData[elementPath] = CreateReferenceElement(newReferenceValue);
+            jsonObject[elementPath] = CreateReferenceJsonObject(newReferenceValue);
             return true;
         }
 
@@ -130,6 +133,7 @@ public static class ResourceReferenceHelper
 
         var currentReferences = GetReferences(resource, resourceType, metadataProvider);
         int updateCount = 0;
+        var jsonObject = resource.MutableNode;
 
         foreach (var reference in currentReferences)
         {
@@ -139,12 +143,11 @@ public static class ResourceReferenceHelper
                 if (reference.IsCollection)
                 {
                     // Find the index in the array
-                    if (resource.ExtensionData.TryGetValue(reference.ElementPath, out var element))
+                    if (jsonObject.TryGetPropertyValue(reference.ElementPath, out var node) && node is JsonArray array)
                     {
-                        var arrayItems = element.EnumerateArray().ToList();
-                        for (int i = 0; i < arrayItems.Count; i++)
+                        for (int i = 0; i < array.Count; i++)
                         {
-                            if (TryExtractReferenceValue(arrayItems[i], out var refValue) &&
+                            if (TryExtractReferenceValue(array[i], out var refValue) &&
                                 refValue.Equals(oldReferenceValue, StringComparison.Ordinal))
                             {
                                 if (UpdateReference(resource, reference.ElementPath, newReferenceValue, i))
@@ -168,42 +171,39 @@ public static class ResourceReferenceHelper
         return updateCount;
     }
 
-    private static void ExtractReferencesFromArray(JsonElement element, ReferenceFieldMetadata fieldMetadata, List<ResourceReference> references)
+    private static void ExtractReferencesFromJsonArray(JsonNode node, ReferenceFieldMetadata fieldMetadata, List<ResourceReference> references)
     {
-        if (element.ValueKind != JsonValueKind.Array)
+        if (node is not JsonArray array)
         {
             return;
         }
 
-        foreach (var item in element.EnumerateArray())
+        foreach (var item in array)
         {
-            if (TryExtractReferenceValue(item, out var referenceValue))
+            if (item != null && TryExtractReferenceValue(item, out var referenceValue))
             {
                 references.Add(CreateResourceReference(referenceValue, fieldMetadata));
             }
         }
     }
 
-    private static void ExtractReferenceFromElement(JsonElement element, ReferenceFieldMetadata fieldMetadata, List<ResourceReference> references)
+    private static void ExtractReferenceFromJsonNode(JsonNode node, ReferenceFieldMetadata fieldMetadata, List<ResourceReference> references)
     {
-        if (TryExtractReferenceValue(element, out var referenceValue))
+        if (TryExtractReferenceValue(node, out var referenceValue))
         {
             references.Add(CreateResourceReference(referenceValue, fieldMetadata));
         }
     }
 
-    private static bool TryExtractReferenceValue(JsonElement element, out string referenceValue)
+    private static bool TryExtractReferenceValue(JsonNode node, out string referenceValue)
     {
         referenceValue = string.Empty;
 
         // Reference objects should have a "reference" property
-        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty("reference", out var refProperty))
+        if (node is JsonObject obj && obj.TryGetPropertyValue("reference", out var refNode) && refNode != null)
         {
-            if (refProperty.ValueKind == JsonValueKind.String)
-            {
-                referenceValue = refProperty.GetString() ?? string.Empty;
-                return !string.IsNullOrEmpty(referenceValue);
-            }
+            referenceValue = refNode.GetValue<string>();
+            return !string.IsNullOrEmpty(referenceValue);
         }
 
         return false;
@@ -267,30 +267,12 @@ public static class ResourceReferenceHelper
         return (ReferenceType.Relative, null, null);
     }
 
-    private static JsonElement CreateReferenceElement(string referenceValue)
+    private static JsonObject CreateReferenceJsonObject(string referenceValue)
     {
         // Create a JSON object: { "reference": "Patient/123" }
-        var json = $"{{\"reference\":\"{referenceValue}\"}}";
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.Clone();
-    }
-
-    private static JsonElement SerializeArrayToJsonElement(List<JsonElement> items)
-    {
-        using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream);
-
-        writer.WriteStartArray();
-        foreach (var item in items)
+        return new JsonObject
         {
-            item.WriteTo(writer);
-        }
-
-        writer.WriteEndArray();
-        writer.Flush();
-
-        stream.Position = 0;
-        using var doc = JsonDocument.Parse(stream);
-        return doc.RootElement.Clone();
+            ["reference"] = referenceValue,
+        };
     }
 }

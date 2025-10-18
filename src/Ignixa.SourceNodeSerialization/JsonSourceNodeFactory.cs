@@ -6,6 +6,7 @@
 using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Ignixa.SourceNodeSerialization.SourceNodes;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
@@ -20,6 +21,10 @@ public static class JsonSourceNodeFactory
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Disallow,
         Encoder = JavaScriptEncoder.Default,
+        Converters =
+        {
+            new ResourceJsonNodeConverter(),
+        },
     };
 
     public static TResource Parse<TResource>(string json)

@@ -23,12 +23,19 @@ public class FhirPatchParametersParser
         }
 
         // Parse using ParametersJsonNode
-        var parameters = ParametersJsonNode.Parse(parametersJson);
+        var resource = ParametersJsonNode.Parse(parametersJson);
 
-        if (parameters.ResourceType != "Parameters")
+        if (resource.ResourceType != "Parameters")
         {
             throw new FhirPatchException(
-                $"Expected resourceType 'Parameters', got '{parameters.ResourceType}'");
+                $"Expected resourceType 'Parameters', got '{resource.ResourceType}'");
+        }
+
+        // Cast to ParametersJsonNode to access Parameter property
+        var parameters = resource as ParametersJsonNode;
+        if (parameters == null)
+        {
+            throw new FhirPatchException("Failed to parse Parameters resource");
         }
 
         if (parameters.Parameter == null || parameters.Parameter.Count == 0)
@@ -64,13 +71,14 @@ public class FhirPatchParametersParser
         }
 
         // Extract required 'type' part
-        var typePart = operationParameter.GetPart("type");
+        var typePart = operationParameter.FindPart("type");
         if (typePart == null)
         {
             throw new FhirPatchException("Operation parameter must contain 'type' part");
         }
 
-        var typeCode = typePart.ValueCode ?? typePart.ValueString;
+        // Try to get valueCode or valueString
+        var typeCode = typePart.GetValueAs<string>("valueCode") ?? typePart.GetValueAs<string>("valueString");
         if (string.IsNullOrEmpty(typeCode))
         {
             throw new FhirPatchException("Operation 'type' part must have a valueCode or valueString");
@@ -79,11 +87,11 @@ public class FhirPatchParametersParser
         var operationType = ParseOperationType(typeCode);
 
         // Extract optional parts based on operation type
-        var pathPart = operationParameter.GetPart("path");
-        var valuePart = operationParameter.GetPart("value");
-        var indexPart = operationParameter.GetPart("index");
-        var sourcePart = operationParameter.GetPart("source");
-        var destinationPart = operationParameter.GetPart("destination");
+        var pathPart = operationParameter.FindPart("path");
+        var valuePart = operationParameter.FindPart("value");
+        var indexPart = operationParameter.FindPart("index");
+        var sourcePart = operationParameter.FindPart("source");
+        var destinationPart = operationParameter.FindPart("destination");
 
         // Validate required parts for each operation type
         ValidateOperationParts(operationType, pathPart, valuePart, indexPart, sourcePart, destinationPart);
@@ -91,11 +99,11 @@ public class FhirPatchParametersParser
         return new FhirPatchOperation
         {
             Type = operationType,
-            Path = pathPart?.ValueString,
+            Path = pathPart?.GetValueAs<string>("valueString"),
             Value = valuePart?.GetValue(),
-            Index = indexPart?.ValueInteger,
-            Source = sourcePart?.ValueString,
-            Destination = destinationPart?.ValueString,
+            Index = indexPart?.GetValueAs<int?>("valueInteger"),
+            Source = sourcePart?.GetValueAs<string>("valueString"),
+            Destination = destinationPart?.GetValueAs<string>("valueString"),
         };
     }
 

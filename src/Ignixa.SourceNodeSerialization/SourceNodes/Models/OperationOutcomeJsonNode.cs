@@ -3,8 +3,12 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.SourceNodeSerialization.Utility;
 
@@ -23,32 +27,294 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         Issue = new List<IssueComponent>();
     }
 
-    [JsonPropertyName("issue")]
-    public IList<IssueComponent> Issue { get; set; }
+    [JsonIgnore]
+    public IList<IssueComponent> Issue
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("issue", out var issueNode) || issueNode is not JsonArray array)
+            {
+                return null;
+            }
+
+            var list = new List<IssueComponent>();
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    var json = item.ToJsonString();
+                    list.Add(JsonSerializer.Deserialize<IssueComponent>(json));
+                }
+            }
+
+            return list;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("issue");
+            }
+            else
+            {
+                var array = new JsonArray();
+                foreach (var item in value)
+                {
+                    var json = JsonSerializer.Serialize(item);
+                    array.Add(JsonNode.Parse(json));
+                }
+
+                MutableNode["issue"] = array;
+            }
+        }
+    }
 
     /// <summary>
     /// Represents an issue detected during validation or processing.
     /// </summary>
     [SuppressMessage("Design", "CA1034", Justification = "Nested type matches FHIR structure")]
     [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-    public class IssueComponent
+    [SuppressMessage("Design", "CA1819", Justification = "POCO style model")]
+    public class IssueComponent : BaseJsonNode
     {
-        [JsonPropertyName("severity")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
-        public IssueSeverity? Severity { get; set; }
+        // Cached wrapper for Details property
+        private CodeableConceptJsonNode? _cachedDetails;
 
-        [JsonPropertyName("code")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
-        public IssueType? Code { get; set; }
+        [JsonIgnore]
+        public IssueSeverity? Severity
+        {
+            get
+            {
+                var severityStr = MutableNode["severity"]?.GetValue<string>();
+                return severityStr != null ? ParseIssueSeverity(severityStr) : null;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    MutableNode.Remove("severity");
+                }
+                else
+                {
+                    MutableNode["severity"] = GetIssueSeverityLiteral(value.Value);
+                }
+            }
+        }
 
-        [JsonPropertyName("diagnostics")]
-        public string Diagnostics { get; set; }
+        [JsonIgnore]
+        public IssueType? Code
+        {
+            get
+            {
+                var codeStr = MutableNode["code"]?.GetValue<string>();
+                return codeStr != null ? ParseIssueType(codeStr) : null;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    MutableNode.Remove("code");
+                }
+                else
+                {
+                    MutableNode["code"] = GetIssueTypeLiteral(value.Value);
+                }
+            }
+        }
 
-        [JsonPropertyName("expression")]
-        public IList<string> Expression { get; set; }
+        [JsonIgnore]
+        public string Diagnostics
+        {
+            get => MutableNode["diagnostics"]?.GetValue<string>();
+            set
+            {
+                if (value == null)
+                {
+                    MutableNode.Remove("diagnostics");
+                }
+                else
+                {
+                    MutableNode["diagnostics"] = value;
+                }
+            }
+        }
 
-        [JsonPropertyName("details")]
-        public CodeableConceptJsonNode Details { get; set; }
+        [JsonIgnore]
+        public IList<string> Expression
+        {
+            get
+            {
+                if (!MutableNode.TryGetPropertyValue("expression", out var expressionNode) || expressionNode is not JsonArray array)
+                {
+                    return null;
+                }
+
+                var list = new List<string>();
+                foreach (var item in array)
+                {
+                    var value = item?.GetValue<string>();
+                    if (value != null)
+                    {
+                        list.Add(value);
+                    }
+                }
+
+                return list;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    MutableNode.Remove("expression");
+                }
+                else
+                {
+                    var array = new JsonArray();
+                    foreach (var item in value)
+                    {
+                        array.Add(item);
+                    }
+
+                    MutableNode["expression"] = array;
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public CodeableConceptJsonNode Details
+        {
+            get
+            {
+                if (_cachedDetails == null)
+                {
+                    var internalNode = MutableNode;
+                    if (internalNode.TryGetPropertyValue("details", out var detailsNode) && detailsNode is JsonObject detailsObject)
+                    {
+                        _cachedDetails = new CodeableConceptJsonNode { };
+                        var json = detailsNode.ToJsonString();
+                        _cachedDetails = JsonSerializer.Deserialize<CodeableConceptJsonNode>(json);
+                    }
+                }
+
+                return _cachedDetails;
+            }
+            set
+            {
+                if (value == null)
+                {
+                    MutableNode.Remove("details");
+                    _cachedDetails = null;
+                }
+                else
+                {
+                    var json = JsonSerializer.Serialize(value);
+                    MutableNode["details"] = JsonNode.Parse(json);
+                    _cachedDetails = value;
+                }
+            }
+        }
+
+        private static IssueSeverity? ParseIssueSeverity(string value)
+        {
+            return value switch
+            {
+                "fatal" => IssueSeverity.Fatal,
+                "error" => IssueSeverity.Error,
+                "warning" => IssueSeverity.Warning,
+                "information" => IssueSeverity.Information,
+                _ => null,
+            };
+        }
+
+        private static string GetIssueSeverityLiteral(IssueSeverity severity)
+        {
+            return severity switch
+            {
+                IssueSeverity.Fatal => "fatal",
+                IssueSeverity.Error => "error",
+                IssueSeverity.Warning => "warning",
+                IssueSeverity.Information => "information",
+                _ => throw new ArgumentOutOfRangeException(nameof(severity)),
+            };
+        }
+
+        private static IssueType? ParseIssueType(string value)
+        {
+            return value switch
+            {
+                "invalid" => IssueType.Invalid,
+                "structure" => IssueType.Structure,
+                "required" => IssueType.Required,
+                "value" => IssueType.Value,
+                "invariant" => IssueType.Invariant,
+                "security" => IssueType.Security,
+                "login" => IssueType.Login,
+                "unknown" => IssueType.Unknown,
+                "expired" => IssueType.Expired,
+                "forbidden" => IssueType.Forbidden,
+                "suppressed" => IssueType.Suppressed,
+                "processing" => IssueType.Processing,
+                "not-supported" => IssueType.NotSupported,
+                "duplicate" => IssueType.Duplicate,
+                "multiple-matches" => IssueType.MultipleMatches,
+                "not-found" => IssueType.NotFound,
+                "deleted" => IssueType.Deleted,
+                "too-long" => IssueType.TooLong,
+                "code-invalid" => IssueType.CodeInvalid,
+                "extension" => IssueType.Extension,
+                "too-costly" => IssueType.TooCostly,
+                "business-rule" => IssueType.BusinessRule,
+                "conflict" => IssueType.Conflict,
+                "transient" => IssueType.Transient,
+                "lock-error" => IssueType.LockError,
+                "no-store" => IssueType.NoStore,
+                "exception" => IssueType.Exception,
+                "timeout" => IssueType.Timeout,
+                "incomplete" => IssueType.Incomplete,
+                "throttled" => IssueType.Throttled,
+                "informational" => IssueType.Informational,
+                _ => null,
+            };
+        }
+
+        private static string GetIssueTypeLiteral(IssueType type)
+        {
+            return type switch
+            {
+                IssueType.Invalid => "invalid",
+                IssueType.Structure => "structure",
+                IssueType.Required => "required",
+                IssueType.Value => "value",
+                IssueType.Invariant => "invariant",
+                IssueType.Security => "security",
+                IssueType.Login => "login",
+                IssueType.Unknown => "unknown",
+                IssueType.Expired => "expired",
+                IssueType.Forbidden => "forbidden",
+                IssueType.Suppressed => "suppressed",
+                IssueType.Processing => "processing",
+                IssueType.NotSupported => "not-supported",
+                IssueType.Duplicate => "duplicate",
+                IssueType.MultipleMatches => "multiple-matches",
+                IssueType.NotFound => "not-found",
+                IssueType.Deleted => "deleted",
+                IssueType.TooLong => "too-long",
+                IssueType.CodeInvalid => "code-invalid",
+                IssueType.Extension => "extension",
+                IssueType.TooCostly => "too-costly",
+                IssueType.BusinessRule => "business-rule",
+                IssueType.Conflict => "conflict",
+                IssueType.Transient => "transient",
+                IssueType.LockError => "lock-error",
+                IssueType.NoStore => "no-store",
+                IssueType.Exception => "exception",
+                IssueType.Timeout => "timeout",
+                IssueType.Incomplete => "incomplete",
+                IssueType.Throttled => "throttled",
+                IssueType.Informational => "informational",
+                _ => throw new ArgumentOutOfRangeException(nameof(type)),
+            };
+        }
     }
 
     /// <summary>
@@ -173,32 +439,156 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
 /// Represents a FHIR CodeableConcept.
 /// </summary>
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-public class CodeableConceptJsonNode
+[SuppressMessage("Design", "CA1819", Justification = "POCO style model")]
+public class CodeableConceptJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("coding")]
-    public IList<CodingJsonNode> Coding { get; set; }
+    [JsonIgnore]
+    public IList<CodingJsonNode> Coding
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("coding", out var codingNode) || codingNode is not JsonArray array)
+            {
+                return null;
+            }
 
-    [JsonPropertyName("text")]
-    public string Text { get; set; }
+            var list = new List<CodingJsonNode>();
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    var json = item.ToJsonString();
+                    list.Add(JsonSerializer.Deserialize<CodingJsonNode>(json));
+                }
+            }
+
+            return list;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("coding");
+            }
+            else
+            {
+                var array = new JsonArray();
+                foreach (var item in value)
+                {
+                    var json = JsonSerializer.Serialize(item);
+                    array.Add(JsonNode.Parse(json));
+                }
+
+                MutableNode["coding"] = array;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public string Text
+    {
+        get => MutableNode["text"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("text");
+            }
+            else
+            {
+                MutableNode["text"] = value;
+            }
+        }
+    }
 }
 
 /// <summary>
 /// Represents a FHIR Coding.
 /// </summary>
-public class CodingJsonNode
+public class CodingJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("system")]
-    public string System { get; set; }
+    [JsonIgnore]
+    public string System
+    {
+        get => MutableNode["system"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("system");
+            }
+            else
+            {
+                MutableNode["system"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("version")]
-    public string Version { get; set; }
+    [JsonIgnore]
+    public string Version
+    {
+        get => MutableNode["version"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("version");
+            }
+            else
+            {
+                MutableNode["version"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("code")]
-    public string Code { get; set; }
+    [JsonIgnore]
+    public string Code
+    {
+        get => MutableNode["code"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("code");
+            }
+            else
+            {
+                MutableNode["code"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("display")]
-    public string Display { get; set; }
+    [JsonIgnore]
+    public string Display
+    {
+        get => MutableNode["display"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("display");
+            }
+            else
+            {
+                MutableNode["display"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("userSelected")]
-    public bool? UserSelected { get; set; }
+    [JsonIgnore]
+    public bool? UserSelected
+    {
+        get => MutableNode["userSelected"]?.GetValue<bool>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("userSelected");
+            }
+            else
+            {
+                MutableNode["userSelected"] = value.Value;
+            }
+        }
+    }
 }

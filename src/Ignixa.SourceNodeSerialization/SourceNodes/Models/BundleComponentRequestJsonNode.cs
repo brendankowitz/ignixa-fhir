@@ -4,17 +4,46 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
 [SuppressMessage("Design", "CA1056", Justification = "POCO style model")]
-public class BundleComponentRequestJsonNode
+public class BundleComponentRequestJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("method")]
-    public string Method { get; set; }
+    [JsonIgnore]
+    public string Method
+    {
+        get => MutableNode["method"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("method");
+            }
+            else
+            {
+                MutableNode["method"] = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("url")]
-    public string Url { get; set; }
+    [JsonIgnore]
+    public string Url
+    {
+        get => MutableNode["url"]?.GetValue<string>();
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("url");
+            }
+            else
+            {
+                MutableNode["url"] = value;
+            }
+        }
+    }
 }

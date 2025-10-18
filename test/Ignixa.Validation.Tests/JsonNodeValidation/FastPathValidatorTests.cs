@@ -4,6 +4,7 @@
 // </copyright>
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.Specification.Generated;
@@ -26,20 +27,16 @@ public class FastPathValidatorTests
 
     #region Helper Methods
 
-    private static ResourceJsonNode CreatePatientResource(Action<Dictionary<string, JsonElement>>? configure = null)
+    private static ResourceJsonNode CreatePatientResource(Action<JsonObject>? configure = null)
     {
-        var data = new Dictionary<string, JsonElement>
-        {
-            ["resourceType"] = JsonSerializer.SerializeToElement("Patient"),
-        };
-
-        configure?.Invoke(data);
-
-        return new ResourceJsonNode
+        var resource = new ResourceJsonNode
         {
             ResourceType = "Patient",
-            ExtensionData = data,
         };
+
+        configure?.Invoke(resource.MutableNode);
+
+        return resource;
     }
 
     #endregion
@@ -52,8 +49,8 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["id"] = JsonSerializer.SerializeToElement("example-123");
-            data["active"] = JsonSerializer.SerializeToElement(true);
+            data["id"] = JsonSerializer.SerializeToNode("example-123");
+            data["active"] = JsonSerializer.SerializeToNode(true);
         });
 
         // Act
@@ -72,7 +69,6 @@ public class FastPathValidatorTests
         var patient = new ResourceJsonNode
         {
             ResourceType = string.Empty,
-            ExtensionData = new Dictionary<string, JsonElement>(),
         };
 
         // Act
@@ -94,7 +90,6 @@ public class FastPathValidatorTests
         var resource = new ResourceJsonNode
         {
             ResourceType = "UnknownResource",
-            ExtensionData = new Dictionary<string, JsonElement>(),
         };
 
         // Act
@@ -123,7 +118,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["id"] = JsonSerializer.SerializeToElement(validId);
+            data["id"] = JsonSerializer.SerializeToNode(validId);
         });
 
         // Act
@@ -143,7 +138,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["id"] = JsonSerializer.SerializeToElement(invalidId);
+            data["id"] = JsonSerializer.SerializeToNode(invalidId);
         });
 
         // Act
@@ -174,14 +169,11 @@ public class FastPathValidatorTests
         var observation = new ResourceJsonNode
         {
             ResourceType = "Observation",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["resourceType"] = JsonSerializer.SerializeToElement("Observation"),
-                ["status"] = JsonSerializer.SerializeToElement("final"),
-                ["code"] = JsonSerializer.SerializeToElement(new { coding = new[] { new { system = "http://loinc.org", code = "15074-8" } } }),
-                ["subject"] = JsonSerializer.SerializeToElement(new { reference = validReference }),
-            },
         };
+        observation.MutableNode["resourceType"] = JsonSerializer.SerializeToNode("Observation");
+        observation.MutableNode["status"] = JsonSerializer.SerializeToNode("final");
+        observation.MutableNode["code"] = JsonSerializer.SerializeToNode(new { coding = new[] { new { system = "http://loinc.org", code = "15074-8" } } });
+        observation.MutableNode["subject"] = JsonSerializer.SerializeToNode(new { reference = validReference });
 
         // Act
         var result = _validator.Validate(observation);
@@ -203,14 +195,11 @@ public class FastPathValidatorTests
         var observation = new ResourceJsonNode
         {
             ResourceType = "Observation",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["resourceType"] = JsonSerializer.SerializeToElement("Observation"),
-                ["status"] = JsonSerializer.SerializeToElement("final"),
-                ["code"] = JsonSerializer.SerializeToElement(new { coding = new[] { new { system = "http://loinc.org", code = "15074-8" } } }),
-                ["subject"] = JsonSerializer.SerializeToElement(new { reference = invalidReference }),
-            },
         };
+        observation.MutableNode["resourceType"] = JsonSerializer.SerializeToNode("Observation");
+        observation.MutableNode["status"] = JsonSerializer.SerializeToNode("final");
+        observation.MutableNode["code"] = JsonSerializer.SerializeToNode(new { coding = new[] { new { system = "http://loinc.org", code = "15074-8" } } });
+        observation.MutableNode["subject"] = JsonSerializer.SerializeToNode(new { reference = invalidReference });
 
         // Act
         var result = _validator.Validate(observation);
@@ -236,7 +225,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["birthDate"] = JsonSerializer.SerializeToElement(validDate);
+            data["birthDate"] = JsonSerializer.SerializeToNode(validDate);
         });
 
         // Act
@@ -255,7 +244,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["birthDate"] = JsonSerializer.SerializeToElement(invalidDate);
+            data["birthDate"] = JsonSerializer.SerializeToNode(invalidDate);
         });
 
         // Act
@@ -277,7 +266,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["active"] = JsonSerializer.SerializeToElement(validBoolean);
+            data["active"] = JsonSerializer.SerializeToNode(validBoolean);
         });
 
         // Act
@@ -297,7 +286,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["active"] = JsonSerializer.SerializeToElement(invalidBoolean);
+            data["active"] = JsonSerializer.SerializeToNode(invalidBoolean);
         });
 
         // Act
@@ -325,7 +314,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["text"] = JsonSerializer.SerializeToElement(new
+            data["text"] = JsonSerializer.SerializeToNode(new
             {
                 status = validStatus,
                 div = "<div xmlns=\"http://www.w3.org/1999/xhtml\">Test</div>",
@@ -345,7 +334,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["text"] = JsonSerializer.SerializeToElement(new
+            data["text"] = JsonSerializer.SerializeToNode(new
             {
                 div = "<div xmlns=\"http://www.w3.org/1999/xhtml\">Test</div>",
             });
@@ -368,7 +357,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["text"] = JsonSerializer.SerializeToElement(new { status = "generated" });
+            data["text"] = JsonSerializer.SerializeToNode(new { status = "generated" });
         });
 
         // Act
@@ -388,7 +377,7 @@ public class FastPathValidatorTests
         // Arrange
         var patient = CreatePatientResource(data =>
         {
-            data["text"] = JsonSerializer.SerializeToElement(new
+            data["text"] = JsonSerializer.SerializeToNode(new
             {
                 status = "invalid-status",
                 div = "<div xmlns=\"http://www.w3.org/1999/xhtml\">Test</div>",
@@ -417,19 +406,16 @@ public class FastPathValidatorTests
         var observation = new ResourceJsonNode
         {
             ResourceType = "Observation",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["resourceType"] = JsonSerializer.SerializeToElement("Observation"),
-                ["status"] = JsonSerializer.SerializeToElement("final"),
-                ["code"] = JsonSerializer.SerializeToElement(new
-                {
-                    coding = new[]
-                    {
-                        new { system = "http://loinc.org", code = "15074-8" },
-                    },
-                }),
-            },
         };
+        observation.MutableNode["resourceType"] = JsonSerializer.SerializeToNode("Observation");
+        observation.MutableNode["status"] = JsonSerializer.SerializeToNode("final");
+        observation.MutableNode["code"] = JsonSerializer.SerializeToNode(new
+        {
+            coding = new[]
+            {
+                new { system = "http://loinc.org", code = "15074-8" },
+            },
+        });
 
         // Act
         var result = _validator.Validate(observation);
@@ -445,19 +431,16 @@ public class FastPathValidatorTests
         var observation = new ResourceJsonNode
         {
             ResourceType = "Observation",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["resourceType"] = JsonSerializer.SerializeToElement("Observation"),
-                ["status"] = JsonSerializer.SerializeToElement("final"),
-                ["code"] = JsonSerializer.SerializeToElement(new
-                {
-                    coding = new[]
-                    {
-                        new { display = "Test" },
-                    },
-                }),
-            },
         };
+        observation.MutableNode["resourceType"] = JsonSerializer.SerializeToNode("Observation");
+        observation.MutableNode["status"] = JsonSerializer.SerializeToNode("final");
+        observation.MutableNode["code"] = JsonSerializer.SerializeToNode(new
+        {
+            coding = new[]
+            {
+                new { display = "Test" },
+            },
+        });
 
         // Act
         var result = _validator.Validate(observation);
@@ -525,8 +508,8 @@ public class FastPathValidatorTests
     public void GivenMultipleValidations_WhenValidatingSameResourceType_ThenUsesCachedRules()
     {
         // Arrange
-        var patient1 = CreatePatientResource(data => data["id"] = JsonSerializer.SerializeToElement("patient-1"));
-        var patient2 = CreatePatientResource(data => data["id"] = JsonSerializer.SerializeToElement("patient-2"));
+        var patient1 = CreatePatientResource(data => data["id"] = JsonSerializer.SerializeToNode("patient-1"));
+        var patient2 = CreatePatientResource(data => data["id"] = JsonSerializer.SerializeToNode("patient-2"));
 
         // Act - First validation builds rules
         var result1 = _validator.Validate(patient1);

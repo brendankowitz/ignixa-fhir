@@ -3,19 +3,18 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
-public class ExtensionJsonNode : IExtensionData
+public class ExtensionJsonNode : BaseJsonNode
 {
     [SuppressMessage("Design", "CA1056:URI-like properties should not be strings", Justification = "This is a POCO.")]
-    [JsonPropertyName("url")]
-    public string Url { get; set; }
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement> ExtensionData { get; set; }
+    [JsonIgnore]
+    public string Url
+    {
+        get => MutableNode["url"]?.GetValue<string>();
+        set => MutableNode["url"] = value;
+    }
 }
