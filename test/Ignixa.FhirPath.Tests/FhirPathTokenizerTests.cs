@@ -323,4 +323,52 @@ public class FhirPathTokenizerTests
         Assert.Equal(FhirPathTokenKind.LeftBrace, tokens[0].Kind);
         Assert.Equal(FhirPathTokenKind.RightBrace, tokens[1].Kind);
     }
+
+    [Theory]
+    [InlineData("issued", "issued")]
+    [InlineData("DiagnosticReport.issued", "DiagnosticReport.issued")]
+    [InlineData("assigned", "assigned")]
+    [InlineData("integer", "integer")]
+    [InlineData("organization", "organization")]
+    [InlineData("android", "android")]
+    public void GivenIdentifierStartingWithKeyword_WhenTokenizing_ThenProducesIdentifierToken(string expression, string expectedText)
+    {
+        var tokens = Tokenize(expression);
+
+        // Should tokenize as identifiers, not keywords
+        var identifiers = tokens.Where(t => t.Kind == FhirPathTokenKind.Identifier).ToArray();
+        Assert.True(identifiers.Length > 0, $"Expected at least one identifier token, but got: {string.Join(", ", tokens.Select(t => $"{t.Kind}:{t.ToStringValue()}"))}");
+
+        // For simple identifiers, should be a single token
+        if (!expression.Contains('.', StringComparison.Ordinal))
+        {
+            Assert.Single(tokens);
+            Assert.Equal(FhirPathTokenKind.Identifier, tokens[0].Kind);
+            Assert.Equal(expectedText, tokens[0].ToStringValue());
+        }
+        else
+        {
+            // For paths like "DiagnosticReport.issued", verify "issued" is an identifier
+            var issuedToken = tokens.Last(t => t.Kind == FhirPathTokenKind.Identifier);
+            Assert.Equal("issued", issuedToken.ToStringValue());
+        }
+    }
+
+    [Theory]
+    [InlineData("is type")]
+    [InlineData("as Type")]
+    [InlineData("in collection")]
+    [InlineData("name or other")]
+    public void GivenKeywordFollowedBySpace_WhenTokenizing_ThenProducesKeywordToken(string expression)
+    {
+        var tokens = Tokenize(expression);
+
+        // Second token should be a keyword "or", not part of first token
+        // For example, "name or other" should tokenize as: Identifier("name"), Or, Identifier("other")
+        // not as: Identifier("nameor"), Identifier("other")
+        var keywordTokens = tokens.Where(t => t.Kind != FhirPathTokenKind.Identifier).ToArray();
+        Assert.True(
+            keywordTokens.Length > 0,
+            $"Expected at least one keyword token, but got only identifiers: {string.Join(", ", tokens.Select(t => $"{t.Kind}:{t.ToStringValue()}"))}");
+    }
 }
