@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Hl7.Fhir.R4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.Extensions\Ignixa.Extensions.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.Application\Ignixa.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="TestData\*.json" />
+  </ItemGroup>
+
+</Project>

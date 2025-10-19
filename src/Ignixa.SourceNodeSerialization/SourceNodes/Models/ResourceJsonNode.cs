@@ -22,6 +22,8 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     // Cached wrapper for Meta property (reuse same instance)
     private MetaJsonNode? _cachedMeta;
     private JsonNodeSourceNode? _cachedSourceNode;
+    private ITypedElement? _cachedTypedElement;
+    private IStructureDefinitionSummaryProvider? _cachedProvider;
 
     /// <summary>
     /// Default constructor for deserialization.
@@ -113,10 +115,20 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
 
     /// <summary>
     /// Converts to ITypedElement using the provided schema provider.
+    /// Caches the result for repeated calls with the same provider (reference equality).
     /// </summary>
     public ITypedElement ToTypedElement(IStructureDefinitionSummaryProvider provider)
     {
-        return ToSourceNode().ToTypedElement(provider);
+        // Cache hit: Same provider (reference equality check is fast and safe for singletons)
+        if (_cachedTypedElement != null && ReferenceEquals(_cachedProvider, provider))
+        {
+            return _cachedTypedElement;
+        }
+
+        // Cache miss: Create and cache new typed element
+        _cachedTypedElement = ToSourceNode().ToTypedElement(provider);
+        _cachedProvider = provider;
+        return _cachedTypedElement;
     }
 
     /// <summary>
