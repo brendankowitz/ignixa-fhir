@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.ValueSets;
 
 namespace Ignixa.Search.Definition;
 

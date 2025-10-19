@@ -6,8 +6,8 @@
 using System.Collections.Concurrent;
 using EnsureThat;
 using Microsoft.Extensions.Logging;
-using Ignixa.Extensions;
-using Ignixa.Extensions.Schema;
+using Ignixa.Domain;
+using Ignixa.Specification;
 using Ignixa.Search.Models;
 using Ignixa.SourceNodeSerialization.ElementModel;
 

@@ -7,7 +7,7 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Serialization;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 
 namespace Ignixa.Api.Features.Metadata.Api;
 

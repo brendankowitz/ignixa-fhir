@@ -81,7 +81,7 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
         sb.AppendLine();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using Ignixa.Extensions.ValueSets;");
+        sb.AppendLine("using Ignixa.Domain.ValueSets;");
         sb.AppendLine("using Ignixa.Search.Models;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");

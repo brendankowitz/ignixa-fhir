@@ -8,7 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Search.Definition;
-using IgnixaSearchParamType = Ignixa.Extensions.ValueSets.SearchParamType;
+using IgnixaSearchParamType = Ignixa.Domain.ValueSets.SearchParamType;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 

@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Extensions.Models;
+using Ignixa.Domain.Constants;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.SourceNodeSerialization.ElementModel;

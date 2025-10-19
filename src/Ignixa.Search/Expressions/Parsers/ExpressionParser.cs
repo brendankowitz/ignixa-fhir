@@ -5,10 +5,10 @@
 
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Extensions.Exceptions;
-using Ignixa.Extensions.Models;
-using Ignixa.Extensions.Schema;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.Exceptions;
+using Ignixa.Domain.Constants;
+using Ignixa.Specification;
+using Ignixa.Domain.ValueSets;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;

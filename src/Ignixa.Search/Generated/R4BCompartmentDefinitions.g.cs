@@ -8,7 +8,7 @@
 
 using System;
 using System.Collections.Generic;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.ValueSets;
 
 namespace Ignixa.Search.Generated;
 

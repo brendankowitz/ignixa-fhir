@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Extensions.Models;
+using Ignixa.Domain.Constants;
 using Ignixa.SourceNodeSerialization.ElementModel;
 
 namespace Ignixa.Search.Definition.BundleNavigators;

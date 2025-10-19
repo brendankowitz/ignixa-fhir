@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Domain.Models;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 
 namespace Ignixa.Application.Features.Metadata.Serialization;
 

@@ -2,7 +2,7 @@ using System.Text;
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 

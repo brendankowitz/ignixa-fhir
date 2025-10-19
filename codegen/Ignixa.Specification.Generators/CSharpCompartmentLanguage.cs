@@ -80,7 +80,7 @@ public sealed class CSharpCompartmentLanguage : ILanguage
         sb.AppendLine();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using Ignixa.Extensions.ValueSets;");
+        sb.AppendLine("using Ignixa.Domain.ValueSets;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 
 namespace Ignixa.Application.Infrastructure.Caching;
 

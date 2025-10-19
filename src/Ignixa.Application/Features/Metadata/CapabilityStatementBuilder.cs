@@ -7,10 +7,10 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
-using IgnixaSearchParamType = Ignixa.Extensions.ValueSets.SearchParamType;
+using IgnixaSearchParamType = Ignixa.Domain.ValueSets.SearchParamType;
 
 namespace Ignixa.Application.Features.Metadata;
 

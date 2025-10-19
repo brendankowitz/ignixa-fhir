@@ -32,7 +32,7 @@
     <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
-    <ProjectReference Include="..\Ignixa.Extensions\Ignixa.Extensions.csproj" />
+    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
   </ItemGroup>
 

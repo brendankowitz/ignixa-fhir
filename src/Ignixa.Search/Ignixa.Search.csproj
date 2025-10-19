@@ -6,13 +6,13 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <!-- Suppress CLS-compliance warnings for interfaces from Ignixa.Domain -->
-    <NoWarn>$(NoWarn);CS3001;CS3002;CS3027</NoWarn>
+    <NoWarn>$(NoWarn);CS3001;CS3002;CS3003;CS3009;CS3027</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\Ignixa.Extensions\Ignixa.Extensions.csproj" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
   </ItemGroup>
 

@@ -10,8 +10,8 @@ using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Extensions;
-using Ignixa.Extensions.Schema;
+using Ignixa.Domain;
+using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Validation.SourceNodeValidation;
 

@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using EnsureThat;
-using Ignixa.Extensions.Exceptions;
+using Ignixa.Domain.Exceptions;
 
 namespace Ignixa.Search.Indexing.SearchValues;
 

@@ -8,7 +8,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.Schema;
 using Xunit;

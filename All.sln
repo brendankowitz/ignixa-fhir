@@ -8,8 +8,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api.Tests", "test\Ig
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SourceNodeSerialization", "src\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj", "{73ACFCE5-F840-42F1-8382-DDFAF74529AF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions", "src\Ignixa.Extensions\Ignixa.Extensions.csproj", "{59D9A4DA-85D7-4327-8609-7279CBA20DB5}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Search", "src\Ignixa.Search\Ignixa.Search.csproj", "{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Domain", "src\Ignixa.Domain\Ignixa.Domain.csproj", "{273139D4-CF7F-4C85-8508-1CDAEAC37AA4}"
@@ -72,6 +70,15 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bench", "bench", "{760AB15A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Benchmarks", "bench\Ignixa.Benchmarks\Ignixa.Benchmarks.csproj", "{31E2CAAA-176E-41DC-AB32-2F0818E08122}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Agents", "Agents", "{C0A088E4-9B1E-40F1-80FC-C22AE3BCAEA1}"
+	ProjectSection(SolutionItems) = preProject
+		.claude\agents\adr-analyzer.md = .claude\agents\adr-analyzer.md
+		.claude\agents\coding-agent.md = .claude\agents\coding-agent.md
+		.claude\agents\fast-coding-agent.md = .claude\agents\fast-coding-agent.md
+		.claude\agents\fhir-agent.md = .claude\agents\fhir-agent.md
+		.claude\agents\fhir-coordinator.md = .claude\agents\fhir-coordinator.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -118,18 +125,6 @@ Global
 		{73ACFCE5-F840-42F1-8382-DDFAF74529AF}.Release|x64.Build.0 = Release|Any CPU
 		{73ACFCE5-F840-42F1-8382-DDFAF74529AF}.Release|x86.ActiveCfg = Release|Any CPU
 		{73ACFCE5-F840-42F1-8382-DDFAF74529AF}.Release|x86.Build.0 = Release|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Debug|x64.Build.0 = Debug|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Debug|x86.Build.0 = Debug|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Release|x64.ActiveCfg = Release|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Release|x64.Build.0 = Release|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Release|x86.ActiveCfg = Release|Any CPU
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5}.Release|x86.Build.0 = Release|Any CPU
 		{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -330,7 +325,6 @@ Global
 		{CBAC04FB-F384-450D-86BD-651FB920672C} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 		{817ACD8E-4EC0-48DF-8AFC-232ADEB168CE} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{73ACFCE5-F840-42F1-8382-DDFAF74529AF} = {0955C698-034D-424C-A981-095EB50A5673}
-		{59D9A4DA-85D7-4327-8609-7279CBA20DB5} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 		{52C9E4FE-4CC1-411B-9D1C-454463B53D9A} = {0955C698-034D-424C-A981-095EB50A5673}
 		{273139D4-CF7F-4C85-8508-1CDAEAC37AA4} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 		{999C64CD-7D66-4F0D-A74C-BCC043176DF4} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
@@ -351,5 +345,6 @@ Global
 		{3AB9C3B3-CB6C-414B-87A7-CAFB3AC9FAAA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{5DB93B3E-65B8-4C0A-A08E-633F2E159FE9} = {81B3F1B8-451F-43ED-A167-8DFC445DB588}
 		{31E2CAAA-176E-41DC-AB32-2F0818E08122} = {760AB15A-8938-8D9B-BEDE-5CE1484B84C3}
+		{C0A088E4-9B1E-40F1-80FC-C22AE3BCAEA1} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
 	EndGlobalSection
 EndGlobal

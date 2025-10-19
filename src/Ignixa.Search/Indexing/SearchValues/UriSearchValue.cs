@@ -8,8 +8,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using EnsureThat;
-using Ignixa.Extensions;
-using Ignixa.Extensions.Schema;
+using Ignixa.Domain;
+using Ignixa.Specification;
 
 namespace Ignixa.Search.Indexing.SearchValues;
 

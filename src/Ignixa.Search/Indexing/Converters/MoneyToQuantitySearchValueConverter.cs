@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Extensions;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain;
+using Ignixa.Domain.ValueSets;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.SourceNodeSerialization.ElementModel;
 

@@ -5,8 +5,9 @@
 
 using System.Diagnostics;
 using EnsureThat;
-using Ignixa.Extensions.Exceptions;
-using Ignixa.Extensions.Models;
+using Ignixa.Domain.Exceptions;
+using Ignixa.Domain.Constants;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.Search.Indexing;
 
@@ -64,9 +65,11 @@ public class SearchParameterNotSupportedException : FhirException
 
     private void AddIssue(string diagnostics)
     {
-        Issues.Add(new OperationOutcomeIssue(
-            OperationOutcomeConstants.IssueSeverity.Error,
-            OperationOutcomeConstants.IssueType.NotSupported,
-            diagnostics));
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+            Diagnostics = diagnostics
+        });
     }
 }

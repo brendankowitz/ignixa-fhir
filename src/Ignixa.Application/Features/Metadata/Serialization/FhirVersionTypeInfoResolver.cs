@@ -6,7 +6,7 @@
 using System;
 using System.Text.Json.Serialization.Metadata;
 using Ignixa.Domain.Models;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 
 namespace Ignixa.Application.Features.Metadata.Serialization;
 

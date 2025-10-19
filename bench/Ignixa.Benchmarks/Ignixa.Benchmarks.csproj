@@ -16,7 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
     <ProjectReference Include="..\..\src\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
-    <ProjectReference Include="..\..\src\Ignixa.Extensions\Ignixa.Extensions.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\src\Ignixa.Application\Ignixa.Application.csproj" />
   </ItemGroup>

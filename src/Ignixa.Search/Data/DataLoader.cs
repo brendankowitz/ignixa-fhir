@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 
 namespace Ignixa.Search.Data;
 

@@ -4,8 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Extensions.Exceptions;
-using Ignixa.Extensions.Models;
+using Ignixa.Domain.Constants;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;

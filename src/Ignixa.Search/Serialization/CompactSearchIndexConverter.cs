@@ -5,7 +5,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.ValueSets;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;

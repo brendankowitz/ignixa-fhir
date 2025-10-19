@@ -58,7 +58,8 @@
       "Bash(xargs cat:*)",
       "Bash(cmd /c \"netstat -ano | findstr :5000\")",
       "Bash(powershell:*)",
-      "Bash(Select-Object -Last 20)"
+      "Bash(Select-Object -Last 20)",
+      "Bash(xargs sed -i 's/namespace Ignixa.Extensions.Schema/namespace Ignixa.Specification/g')"
     ],
     "deny": [],
     "ask": []

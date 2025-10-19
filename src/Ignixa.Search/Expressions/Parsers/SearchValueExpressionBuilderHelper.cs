@@ -5,8 +5,8 @@
 
 using System.Diagnostics;
 using EnsureThat;
-using Ignixa.Extensions.Extensions;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.Extensions;
+using Ignixa.Domain.ValueSets;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 

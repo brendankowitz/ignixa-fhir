@@ -6,7 +6,7 @@
 using EnsureThat;
 using ISourceNode = Ignixa.SourceNodeSerialization.ElementModel.ISourceNode;
 using ITypedElement = Ignixa.SourceNodeSerialization.ElementModel.ITypedElement;
-using Ignixa.Extensions.Schema;
+using Ignixa.Specification;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.SourceNodeSerialization.ElementModel;
 // For ToTypedElement extension method

@@ -5,7 +5,7 @@
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 
 namespace Ignixa.Application.Infrastructure;
 

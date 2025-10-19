@@ -8,10 +8,9 @@
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using Ignixa.Extensions;
-using Ignixa.Extensions.Schema;
-using Ignixa.SourceNodeSerialization.Specification;
+using Ignixa.Domain;
 using Ignixa.Specification;
+using Ignixa.SourceNodeSerialization.Specification;
 
 namespace Ignixa.Specification.Generated;
 

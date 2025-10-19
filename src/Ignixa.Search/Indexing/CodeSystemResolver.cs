@@ -5,7 +5,7 @@
 
 using System.Text.RegularExpressions;
 using EnsureThat;
-using Ignixa.Extensions;
+using Ignixa.Domain;
 using Ignixa.Search.Data;
 using Ignixa.Search.Generated;
 

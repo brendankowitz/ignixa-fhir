@@ -7,11 +7,11 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Reflection;
 using EnsureThat;
-using Ignixa.Extensions;
-using Ignixa.Extensions.Exceptions;
-using Ignixa.Extensions.Models;
-using Ignixa.Extensions.Schema;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.Exceptions;
+using Ignixa.Domain;
+using Ignixa.Domain.Constants;
+using Ignixa.Specification;
+using Ignixa.Domain.ValueSets;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.Search.Data;
 using Ignixa.Search.Definition.BundleNavigators;
@@ -19,6 +19,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.SourceNodeSerialization.ElementModel;
 using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.Search.Definition;
 
@@ -91,7 +92,7 @@ internal static class SearchParameterDefinitionBuilder
         IDictionary<Uri, SearchParameterInfo> uriDictionary,
         IFhirSchemaProvider modelInfoProvider)
     {
-        var issues = new List<OperationOutcomeIssue>();
+        var issues = new List<OperationOutcomeJsonNode.IssueComponent>();
         var searchParameters = searchParamCollection.Select((x, entryIndex) =>
         {
             try
@@ -237,10 +238,12 @@ internal static class SearchParameterDefinitionBuilder
 
         void AddIssue(string format, params object[] args)
         {
-            issues.Add(new OperationOutcomeIssue(
-                OperationOutcomeConstants.IssueSeverity.Fatal,
-                OperationOutcomeConstants.IssueType.Invalid,
-                string.Format(CultureInfo.InvariantCulture, format, args)));
+            issues.Add(new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Fatal,
+                Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                Diagnostics = string.Format(CultureInfo.InvariantCulture, format, args)
+            });
         }
 
         void EnsureNoIssues()

@@ -24,7 +24,7 @@ public sealed class FastPathValidator
     // Cache validation rules by (tenant, resourceType, provider identity)
     // Phase 1: Tenant is always TenantContext.Default
     // Phase 2+: Separate rules per tenant to support custom structure definitions
-    private readonly ConcurrentDictionary<(Ignixa.Extensions.TenantContext Tenant, string ResourceType, IStructureDefinitionSummaryProvider Provider), ValidationRuleSet> _ruleCache;
+    private readonly ConcurrentDictionary<(Ignixa.Domain.TenantContext Tenant, string ResourceType, IStructureDefinitionSummaryProvider Provider), ValidationRuleSet> _ruleCache;
 
     // Regex patterns for primitive type validation
     private static readonly Regex IdPattern = new(@"^[A-Za-z0-9\-\.]{1,64}$", RegexOptions.Compiled);
@@ -37,7 +37,7 @@ public sealed class FastPathValidator
     /// </summary>
     public FastPathValidator()
     {
-        _ruleCache = new ConcurrentDictionary<(Ignixa.Extensions.TenantContext, string, IStructureDefinitionSummaryProvider), ValidationRuleSet>();
+        _ruleCache = new ConcurrentDictionary<(Ignixa.Domain.TenantContext, string, IStructureDefinitionSummaryProvider), ValidationRuleSet>();
     }
 
     /// <summary>
@@ -67,7 +67,7 @@ public sealed class FastPathValidator
         // Get or build cached validation rules for this (tenant, resourceType, provider) combination
         // Phase 1: Always use TenantContext.Default for single-tenant mode
         // Phase 2+: Extract tenant from HttpContext for multi-tenant mode
-        var tenant = Ignixa.Extensions.TenantContext.Default;
+        var tenant = Ignixa.Domain.TenantContext.Default;
         var cacheKey = (tenant, resourceType, provider);
         if (!_ruleCache.TryGetValue(cacheKey, out var rules))
         {

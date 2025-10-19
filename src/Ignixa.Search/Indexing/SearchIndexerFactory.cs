@@ -6,7 +6,7 @@
 using System.Reflection;
 using EnsureThat;
 using Microsoft.Extensions.Logging;
-using Ignixa.Extensions.Schema;
+using Ignixa.Specification;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Indexing.SearchValues;

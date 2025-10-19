@@ -1,0 +1,16 @@
+﻿// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.All rights reserved.
+// Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+
+namespace Ignixa.Domain.Exceptions;
+
+public class UnsupportedConfigurationException : FhirException
+{
+    public UnsupportedConfigurationException(string message, OperationOutcomeJsonNode.IssueComponent[]? issues = null)
+        : base(message, issues)
+    {
+    }
+}

@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Infrastructure;
-using Ignixa.Extensions.Schema;
+using Ignixa.Specification;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -35,7 +35,7 @@ public class AddOperationExecutorTests
         var compiler = new Ignixa.FhirPath.FhirPathCompiler();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var versionContext = new FhirVersionContext(loggerFactory);
-        var structureProvider = versionContext.GetSchemaProvider(Ignixa.Extensions.FhirSpecification.R4);
+        var structureProvider = versionContext.GetSchemaProvider(Ignixa.Domain.FhirSpecification.R4);
 
         _fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
         _executor = new AddOperationExecutor(_logger, _fhirPathHelper);

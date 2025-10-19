@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Extensions;
-using Ignixa.Extensions.Models;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain;
+using Ignixa.Domain.Constants;
+using Ignixa.Domain.ValueSets;
 using Ignixa.Search.Generated;
 
 namespace Ignixa.Search.Definition;

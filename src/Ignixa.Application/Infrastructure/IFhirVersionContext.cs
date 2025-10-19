@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Extensions;
-using Ignixa.Extensions.Schema;
+using Ignixa.Domain;
+using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 
 namespace Ignixa.Application.Infrastructure;

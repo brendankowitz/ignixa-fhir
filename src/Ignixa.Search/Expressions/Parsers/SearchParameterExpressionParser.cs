@@ -5,9 +5,9 @@
 
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Extensions.Exceptions;
-using Ignixa.Extensions.Schema;
-using Ignixa.Extensions.ValueSets;
+using Ignixa.Domain.Exceptions;
+using Ignixa.Specification;
+using Ignixa.Domain.ValueSets;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
