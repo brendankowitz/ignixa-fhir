@@ -3,6 +3,12 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
@@ -11,17 +17,36 @@ namespace Ignixa.Application.Features.Metadata.Models;
 /// - R4+: Simple canonical string
 /// Used for profile, instantiates, and implementationGuide properties.
 /// </summary>
-public class ReferenceOrCanonicalJsonNode
+public class ReferenceOrCanonicalJsonNode : BaseJsonNode
 {
+    public ReferenceOrCanonicalJsonNode()
+    {
+    }
+
+    public ReferenceOrCanonicalJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     /// <summary>
     /// The canonical URL or reference string.
     /// </summary>
-    public string? Reference { get; set; }
+    [JsonIgnore]
+    public string? Reference
+    {
+        get => MutableNode["reference"]?.GetValue<string>();
+        set => SetProperty("reference", value != null ? JsonValue.Create(value) : null);
+    }
 
     /// <summary>
     /// Optional display text (primarily for STU3 Reference objects).
     /// </summary>
-    public string? Display { get; set; }
+    [JsonIgnore]
+    public string? Display
+    {
+        get => MutableNode["display"]?.GetValue<string>();
+        set => SetProperty("display", value != null ? JsonValue.Create(value) : null);
+    }
 
     /// <summary>
     /// Creates a ReferenceOrCanonicalJsonNode from a canonical URL.

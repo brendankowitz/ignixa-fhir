@@ -3,6 +3,7 @@ using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 

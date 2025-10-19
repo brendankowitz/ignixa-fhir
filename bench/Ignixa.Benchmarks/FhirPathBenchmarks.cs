@@ -7,6 +7,7 @@ using Hl7.Fhir.Serialization;
 using Hl7.FhirPath; // SDK 6.0 FHIRPath extension methods
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation; // Ignixa FHIRPath extension methods

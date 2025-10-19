@@ -22,6 +22,7 @@ using Ignixa.Search.Parsing;
 using Ignixa.Search.Definition;
 using Ignixa.Specification;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Validation.SourceNodeValidation;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;

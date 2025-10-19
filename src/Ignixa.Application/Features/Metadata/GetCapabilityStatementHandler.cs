@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Application.Features.Metadata;
 

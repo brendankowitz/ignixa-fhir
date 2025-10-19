@@ -8,9 +8,11 @@ using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
-using IgnixaSearchParamType = Ignixa.Domain.ValueSets.SearchParamType;
+using Ignixa.Specification.ValueSets.Normative;
+using IgnixaSearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Features.Metadata;
 
@@ -84,9 +86,10 @@ public class CapabilityStatementBuilder
             tenantId?.ToString() ?? "system-wide",
             fhirVersion);
 
-        // Create base capability statement
+        // Create base capability statement (version-aware construction)
         var capability = new CapabilityStatementJsonNode
         {
+            FhirVersion = fhirVersion,
             Url = "http://sparky.example.com/fhir/CapabilityStatement",
             Version = "0.1.0",
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
@@ -94,7 +97,7 @@ public class CapabilityStatementBuilder
             Date = DateTimeOffset.UtcNow.ToString("O"),
             Publisher = "Sparky Contributors",
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
-            FhirVersion = fhirVersionString,
+            FhirVersionString = fhirVersionString,
             Format = new List<string> { "application/fhir+json" },
             PatchFormat = new List<string> { "application/json-patch+json" },
             Software = new SoftwareComponentJsonNode
@@ -167,7 +170,7 @@ public class CapabilityStatementBuilder
                 UpdateCreate = true,
                 ConditionalCreate = false,
                 ConditionalUpdate = false,
-                ConditionalDelete = ResourceComponentJsonNode.ConditionalDeleteStatus.NotSupported,
+                ConditionalDelete = ConditionalDeleteStatus.NotSupported,
                 SearchParam = BuildSearchParameters(searchParams),
             };
 
@@ -183,11 +186,11 @@ public class CapabilityStatementBuilder
     {
         return new List<ResourceInteractionJsonNode>
         {
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Read },
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Create },
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Update },
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Delete },
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.SearchType },
+            new() { Code = TypeRestfulInteraction.Read },
+            new() { Code = TypeRestfulInteraction.Create },
+            new() { Code = TypeRestfulInteraction.Update },
+            new() { Code = TypeRestfulInteraction.Delete },
+            new() { Code = TypeRestfulInteraction.SearchType },
         };
     }
 
@@ -195,8 +198,8 @@ public class CapabilityStatementBuilder
     {
         return new List<SystemInteractionJsonNode>
         {
-            new() { Code = SystemInteractionJsonNode.SystemRestfulInteraction.Transaction },
-            new() { Code = SystemInteractionJsonNode.SystemRestfulInteraction.Batch },
+            new() { Code = SystemRestfulInteraction.Transaction },
+            new() { Code = SystemRestfulInteraction.Batch },
         };
     }
 
@@ -218,20 +221,20 @@ public class CapabilityStatementBuilder
         return result;
     }
 
-    private static SearchParamJsonNode.SearchParamType MapSearchParamType(IgnixaSearchParamType type)
+    private static SearchParamType MapSearchParamType(IgnixaSearchParamType type)
     {
         return type switch
         {
-            IgnixaSearchParamType.Number => SearchParamJsonNode.SearchParamType.Number,
-            IgnixaSearchParamType.Date => SearchParamJsonNode.SearchParamType.Date,
-            IgnixaSearchParamType.String => SearchParamJsonNode.SearchParamType.String,
-            IgnixaSearchParamType.Token => SearchParamJsonNode.SearchParamType.Token,
-            IgnixaSearchParamType.Reference => SearchParamJsonNode.SearchParamType.Reference,
-            IgnixaSearchParamType.Composite => SearchParamJsonNode.SearchParamType.Composite,
-            IgnixaSearchParamType.Quantity => SearchParamJsonNode.SearchParamType.Quantity,
-            IgnixaSearchParamType.Uri => SearchParamJsonNode.SearchParamType.Uri,
-            IgnixaSearchParamType.Special => SearchParamJsonNode.SearchParamType.Special,
-            _ => SearchParamJsonNode.SearchParamType.String,
+            IgnixaSearchParamType.Number => SearchParamType.Number,
+            IgnixaSearchParamType.Date => SearchParamType.Date,
+            IgnixaSearchParamType.String => SearchParamType.String,
+            IgnixaSearchParamType.Token => SearchParamType.Token,
+            IgnixaSearchParamType.Reference => SearchParamType.Reference,
+            IgnixaSearchParamType.Composite => SearchParamType.Composite,
+            IgnixaSearchParamType.Quantity => SearchParamType.Quantity,
+            IgnixaSearchParamType.Uri => SearchParamType.Uri,
+            IgnixaSearchParamType.Special => SearchParamType.Special,
+            _ => SearchParamType.String,
         };
     }
 }

@@ -3,38 +3,40 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
 /// Represents a system-level interaction in a FHIR CapabilityStatement.
 /// </summary>
-public class SystemInteractionJsonNode
+public class SystemInteractionJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("code")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public SystemRestfulInteraction Code { get; set; }
-
-    [JsonPropertyName("documentation")]
-    public string? Documentation { get; set; }
-
-    /// <summary>
-    /// FHIR SystemRestfulInteraction value set (system-level operations).
-    /// </summary>
-    public enum SystemRestfulInteraction
+    public SystemInteractionJsonNode()
     {
-        [EnumLiteral("transaction")]
-        Transaction,
+    }
 
-        [EnumLiteral("batch")]
-        Batch,
+    public SystemInteractionJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
 
-        [EnumLiteral("search-system")]
-        SearchSystem,
+    [JsonIgnore]
+    public SystemRestfulInteraction Code
+    {
+        get => EnumUtility.ParseLiteral<SystemRestfulInteraction>(MutableNode["code"]?.GetValue<string>()) ?? default;
+        set => SetProperty("code", JsonValue.Create(value.GetLiteral()));
+    }
 
-        [EnumLiteral("history-system")]
-        HistorySystem,
+    [JsonIgnore]
+    public string? Documentation
+    {
+        get => MutableNode["documentation"]?.GetValue<string>();
+        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
     }
 }

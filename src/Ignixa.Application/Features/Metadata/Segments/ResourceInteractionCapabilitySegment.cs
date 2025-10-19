@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Search.Definition;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 
@@ -81,7 +82,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
                 UpdateCreate = true,
                 ConditionalCreate = false,
                 ConditionalUpdate = false,
-                ConditionalDelete = ResourceComponentJsonNode.ConditionalDeleteStatus.NotSupported,
+                ConditionalDelete = ConditionalDeleteStatus.NotSupported,
                 SearchParam = new List<SearchParamJsonNode>(), // Will be populated by SearchParameterCapabilitySegment
             };
 
@@ -117,16 +118,16 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
     {
         var interactions = new List<ResourceInteractionJsonNode>
         {
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Read },
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Create },
-            new() { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.SearchType },
+            new() { Code = TypeRestfulInteraction.Read },
+            new() { Code = TypeRestfulInteraction.Create },
+            new() { Code = TypeRestfulInteraction.SearchType },
         };
 
         // AuditEvent special case: no update or delete (per FHIR spec)
         if (resourceType != "AuditEvent")
         {
-            interactions.Add(new ResourceInteractionJsonNode { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Update });
-            interactions.Add(new ResourceInteractionJsonNode { Code = ResourceInteractionJsonNode.TypeRestfulInteraction.Delete });
+            interactions.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Update });
+            interactions.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Delete });
         }
 
         return interactions;
@@ -136,8 +137,8 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
     {
         return new List<SystemInteractionJsonNode>
         {
-            new() { Code = SystemInteractionJsonNode.SystemRestfulInteraction.Transaction },
-            new() { Code = SystemInteractionJsonNode.SystemRestfulInteraction.Batch },
+            new() { Code = SystemRestfulInteraction.Transaction },
+            new() { Code = SystemRestfulInteraction.Batch },
         };
     }
 }

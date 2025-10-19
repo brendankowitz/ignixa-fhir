@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Application.Features.Metadata;
 
@@ -131,7 +132,7 @@ public class CapabilityStatementService
         statement.Url = "http://sparky.example.com/fhir/CapabilityStatement";
         statement.Version = "0.1.0";
         statement.Date = DateTimeOffset.UtcNow.ToString("O");
-        statement.FhirVersion = FhirSpecificationExtensions.ToVersionString(context.FhirVersion);
+        statement.FhirVersionString = FhirSpecificationExtensions.ToVersionString(context.FhirVersion);
 
         // Set name based on tenant
         statement.Name = tenantConfig != null

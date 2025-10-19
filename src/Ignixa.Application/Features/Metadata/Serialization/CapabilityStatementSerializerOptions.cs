@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Application.Features.Metadata.Serialization;
 
@@ -17,7 +18,8 @@ public static class CapabilityStatementSerializerOptions
 {
     /// <summary>
     /// Creates JsonSerializerOptions configured for a specific FHIR version.
-    /// Includes version-aware converters like ReferenceOrCanonicalConverter.
+    /// NOTE: FhirVersionTypeInfoResolver and ReferenceOrCanonicalConverter were removed
+    /// in favor of version-aware construction via constructor propagation.
     /// </summary>
     /// <param name="fhirVersion">The FHIR version to serialize for (STU3, R4, R4B, R5).</param>
     /// <returns>Configured JsonSerializerOptions.</returns>
@@ -28,13 +30,7 @@ public static class CapabilityStatementSerializerOptions
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = false,
-
-            // Use custom type info resolver to pass FHIR version to converters
-            TypeInfoResolver = new FhirVersionTypeInfoResolver(fhirVersion),
         };
-
-        // Add version-aware converters
-        options.Converters.Add(new ReferenceOrCanonicalConverter(fhirVersion));
 
         // Add standard enum converter (for Status, Kind, etc.)
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));

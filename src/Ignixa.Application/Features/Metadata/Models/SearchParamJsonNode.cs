@@ -3,61 +3,55 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
 /// Represents a search parameter in a FHIR CapabilityStatement.
 /// </summary>
-public class SearchParamJsonNode
+public class SearchParamJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
-
-    [JsonPropertyName("definition")]
-    public string? Definition { get; set; }
-
-    [JsonPropertyName("type")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public SearchParamType Type { get; set; }
-
-    [JsonPropertyName("documentation")]
-    public string? Documentation { get; set; }
-
-    /// <summary>
-    /// FHIR SearchParamType value set.
-    /// </summary>
-    [SuppressMessage("Naming", "CA1720:Identifier contains type name", Justification = "FHIR-defined value")]
-    public enum SearchParamType
+    public SearchParamJsonNode()
     {
-        [EnumLiteral("number")]
-        Number,
+    }
 
-        [EnumLiteral("date")]
-        Date,
+    public SearchParamJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
 
-        [EnumLiteral("string")]
-        String,
+    [JsonIgnore]
+    public string? Name
+    {
+        get => MutableNode["name"]?.GetValue<string>();
+        set => SetProperty("name", value != null ? JsonValue.Create(value) : null);
+    }
 
-        [EnumLiteral("token")]
-        Token,
+    [JsonIgnore]
+    public string? Definition
+    {
+        get => MutableNode["definition"]?.GetValue<string>();
+        set => SetProperty("definition", value != null ? JsonValue.Create(value) : null);
+    }
 
-        [EnumLiteral("reference")]
-        Reference,
+    [JsonIgnore]
+    public SearchParamType Type
+    {
+        get => EnumUtility.ParseLiteral<SearchParamType>(MutableNode["type"]?.GetValue<string>()) ?? default;
+        set => SetProperty("type", JsonValue.Create(value.GetLiteral()));
+    }
 
-        [EnumLiteral("composite")]
-        Composite,
-
-        [EnumLiteral("quantity")]
-        Quantity,
-
-        [EnumLiteral("uri")]
-        Uri,
-
-        [EnumLiteral("special")]
-        Special,
+    [JsonIgnore]
+    public string? Documentation
+    {
+        get => MutableNode["documentation"]?.GetValue<string>();
+        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
     }
 }

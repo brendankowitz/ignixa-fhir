@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification.Schema;
 using Xunit;
 

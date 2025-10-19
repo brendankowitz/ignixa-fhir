@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using EnsureThat;
 using Microsoft.Extensions.Logging;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing.Converters;

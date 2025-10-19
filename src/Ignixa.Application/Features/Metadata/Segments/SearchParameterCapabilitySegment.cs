@@ -8,7 +8,8 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Search.Definition;
-using IgnixaSearchParamType = Ignixa.Domain.ValueSets.SearchParamType;
+using Ignixa.Specification.ValueSets.Normative;
+using IgnixaSearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 
@@ -115,20 +116,20 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         return result;
     }
 
-    private static SearchParamJsonNode.SearchParamType MapSearchParamType(IgnixaSearchParamType type)
+    private static SearchParamType MapSearchParamType(IgnixaSearchParamType type)
     {
         return type switch
         {
-            IgnixaSearchParamType.Number => SearchParamJsonNode.SearchParamType.Number,
-            IgnixaSearchParamType.Date => SearchParamJsonNode.SearchParamType.Date,
-            IgnixaSearchParamType.String => SearchParamJsonNode.SearchParamType.String,
-            IgnixaSearchParamType.Token => SearchParamJsonNode.SearchParamType.Token,
-            IgnixaSearchParamType.Reference => SearchParamJsonNode.SearchParamType.Reference,
-            IgnixaSearchParamType.Composite => SearchParamJsonNode.SearchParamType.Composite,
-            IgnixaSearchParamType.Quantity => SearchParamJsonNode.SearchParamType.Quantity,
-            IgnixaSearchParamType.Uri => SearchParamJsonNode.SearchParamType.Uri,
-            IgnixaSearchParamType.Special => SearchParamJsonNode.SearchParamType.Special,
-            _ => SearchParamJsonNode.SearchParamType.String,
+            IgnixaSearchParamType.Number => SearchParamType.Number,
+            IgnixaSearchParamType.Date => SearchParamType.Date,
+            IgnixaSearchParamType.String => SearchParamType.String,
+            IgnixaSearchParamType.Token => SearchParamType.Token,
+            IgnixaSearchParamType.Reference => SearchParamType.Reference,
+            IgnixaSearchParamType.Composite => SearchParamType.Composite,
+            IgnixaSearchParamType.Quantity => SearchParamType.Quantity,
+            IgnixaSearchParamType.Uri => SearchParamType.Uri,
+            IgnixaSearchParamType.Special => SearchParamType.Special,
+            _ => SearchParamType.String,
         };
     }
 }

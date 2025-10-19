@@ -7,7 +7,7 @@ using System.Globalization;
 using EnsureThat;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Specification;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;

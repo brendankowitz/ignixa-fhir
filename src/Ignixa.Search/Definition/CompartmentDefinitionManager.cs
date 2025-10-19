@@ -5,8 +5,9 @@
 
 using EnsureThat;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Domain.Constants;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Generated;
 
 namespace Ignixa.Search.Definition;

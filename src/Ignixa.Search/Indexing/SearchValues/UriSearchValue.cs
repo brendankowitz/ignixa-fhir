@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using EnsureThat;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 
 namespace Ignixa.Search.Indexing.SearchValues;

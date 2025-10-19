@@ -3,53 +3,41 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
 /// Represents a resource-level interaction in a FHIR CapabilityStatement.
 /// </summary>
-public class ResourceInteractionJsonNode
+public class ResourceInteractionJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("code")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public TypeRestfulInteraction Code { get; set; }
-
-    [JsonPropertyName("documentation")]
-    public string? Documentation { get; set; }
-
-    /// <summary>
-    /// FHIR TypeRestfulInteraction value set (resource-level operations).
-    /// </summary>
-    public enum TypeRestfulInteraction
+    public ResourceInteractionJsonNode()
     {
-        [EnumLiteral("read")]
-        Read,
+    }
 
-        [EnumLiteral("vread")]
-        Vread,
+    public ResourceInteractionJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
 
-        [EnumLiteral("update")]
-        Update,
+    [JsonIgnore]
+    public TypeRestfulInteraction Code
+    {
+        get => EnumUtility.ParseLiteral<TypeRestfulInteraction>(MutableNode["code"]?.GetValue<string>()) ?? default;
+        set => SetProperty("code", JsonValue.Create(value.GetLiteral()));
+    }
 
-        [EnumLiteral("patch")]
-        Patch,
-
-        [EnumLiteral("delete")]
-        Delete,
-
-        [EnumLiteral("history-instance")]
-        HistoryInstance,
-
-        [EnumLiteral("history-type")]
-        HistoryType,
-
-        [EnumLiteral("create")]
-        Create,
-
-        [EnumLiteral("search-type")]
-        SearchType,
+    [JsonIgnore]
+    public string? Documentation
+    {
+        get => MutableNode["documentation"]?.GetValue<string>();
+        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
     }
 }

@@ -3,21 +3,45 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
 /// Represents the software component of a FHIR CapabilityStatement.
 /// </summary>
-public class SoftwareComponentJsonNode
+public class SoftwareComponentJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
+    public SoftwareComponentJsonNode()
+    {
+    }
 
-    [JsonPropertyName("version")]
-    public string? Version { get; set; }
+    public SoftwareComponentJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
 
-    [JsonPropertyName("releaseDate")]
-    public string? ReleaseDate { get; set; }
+    [JsonIgnore]
+    public string? Name
+    {
+        get => MutableNode["name"]?.GetValue<string>();
+        set => SetProperty("name", value != null ? JsonValue.Create(value) : null);
+    }
+
+    [JsonIgnore]
+    public string? Version
+    {
+        get => MutableNode["version"]?.GetValue<string>();
+        set => SetProperty("version", value != null ? JsonValue.Create(value) : null);
+    }
+
+    [JsonIgnore]
+    public string? ReleaseDate
+    {
+        get => MutableNode["releaseDate"]?.GetValue<string>();
+        set => SetProperty("releaseDate", value != null ? JsonValue.Create(value) : null);
+    }
 }

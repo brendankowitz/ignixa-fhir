@@ -89,7 +89,8 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Collections.Immutable;");
         sb.AppendLine("using Hl7.Fhir.Specification;");
-        sb.AppendLine("using Ignixa.Domain;");
+        sb.AppendLine("using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;");
         sb.AppendLine("using Ignixa.Specification;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");

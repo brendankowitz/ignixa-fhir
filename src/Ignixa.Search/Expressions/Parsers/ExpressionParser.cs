@@ -8,7 +8,7 @@ using EnsureThat;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Constants;
 using Ignixa.Specification;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.SourceNodeSerialization.ElementModel;
 
@@ -25,6 +25,6 @@ public class BooleanToTokenSearchValueConverter : FhirTypedElementToSearchValueC
 
         if (fhirValue == null) yield break;
 
-        yield return new TokenSearchValue(SpecialValues.System, (bool)fhirValue ? "true" : "false", null);
+        yield return new TokenSearchValue("http://terminology.hl7.org/CodeSystem/special-values", (bool)fhirValue ? "true" : "false", null);
     }
 }

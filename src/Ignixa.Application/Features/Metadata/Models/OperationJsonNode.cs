@@ -3,21 +3,45 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
 /// Represents an operation definition reference in a FHIR CapabilityStatement.
 /// </summary>
-public class OperationJsonNode
+public class OperationJsonNode : BaseJsonNode
 {
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
+    public OperationJsonNode()
+    {
+    }
 
-    [JsonPropertyName("definition")]
-    public string? Definition { get; set; }
+    public OperationJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
 
-    [JsonPropertyName("documentation")]
-    public string? Documentation { get; set; }
+    [JsonIgnore]
+    public string? Name
+    {
+        get => MutableNode["name"]?.GetValue<string>();
+        set => SetProperty("name", value != null ? JsonValue.Create(value) : null);
+    }
+
+    [JsonIgnore]
+    public string? Definition
+    {
+        get => MutableNode["definition"]?.GetValue<string>();
+        set => SetProperty("definition", value != null ? JsonValue.Create(value) : null);
+    }
+
+    [JsonIgnore]
+    public string? Documentation
+    {
+        get => MutableNode["documentation"]?.GetValue<string>();
+        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
+    }
 }

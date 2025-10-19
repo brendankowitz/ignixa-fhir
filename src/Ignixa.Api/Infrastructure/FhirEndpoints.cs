@@ -343,7 +343,7 @@ public static class FhirEndpoints
         }
 
         // Get version-specific search options builder
-        var fhirSpec = Ignixa.Domain.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var fhirSpec = Ignixa.SourceNodeSerialization.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
 
         // Parse query parameters

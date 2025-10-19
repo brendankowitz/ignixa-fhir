@@ -6,7 +6,7 @@
 using System.Diagnostics;
 using EnsureThat;
 using Ignixa.Domain.Extensions;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 

@@ -5,6 +5,7 @@
 
 using System.Reflection;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Search.Data;
 

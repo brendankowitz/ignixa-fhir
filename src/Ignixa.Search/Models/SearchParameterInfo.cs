@@ -6,7 +6,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using EnsureThat;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition.BundleNavigators;
 using Ignixa.SourceNodeSerialization.ElementModel;
 using Ignixa.SourceNodeSerialization.Utility;

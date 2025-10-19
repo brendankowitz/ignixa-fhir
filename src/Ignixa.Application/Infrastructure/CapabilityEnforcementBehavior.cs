@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.SourceNodeSerialization.ElementModel;
 

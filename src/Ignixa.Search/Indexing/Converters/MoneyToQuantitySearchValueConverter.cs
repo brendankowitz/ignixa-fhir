@@ -4,7 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain;
-using Ignixa.Domain.ValueSets;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.SourceNodeSerialization.ElementModel;
 
@@ -49,7 +50,7 @@ public class MoneyToQuantitySearchValueConverter : FhirTypedElementToSearchValue
             if (currency == null) yield break;
 
             yield return new QuantitySearchValue(
-                CurrencyValueSet.CodeSystemUri, // TODO: Use ICodeSystemResolver to pull this from resourcepath-codesystem-mappings.json once it's added.
+                "urn:iso:std:iso:4217", // TODO: Use ICodeSystemResolver to pull this from resourcepath-codesystem-mappings.json once it's added.
                 currency,
                 decimalValue.GetValueOrDefault());
         }

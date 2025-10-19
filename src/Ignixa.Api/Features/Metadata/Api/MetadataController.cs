@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Serialization;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Api.Features.Metadata.Api;
 
@@ -54,7 +55,8 @@ public class MetadataController : ControllerBase
         var capabilityStatement = await _mediator.SendAsync(query, cancellationToken);
 
         // Extract FHIR version from CapabilityStatement and use version-aware serialization
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(capabilityStatement.FhirVersion ?? "4.0");
+        var fhirVersionString = capabilityStatement.FhirVersion?.ToVersionString() ?? "4.0";
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
         var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
 
         return new JsonResult(capabilityStatement, serializerOptions)
@@ -83,7 +85,8 @@ public class MetadataController : ControllerBase
         var capabilityStatement = await _mediator.SendAsync(query, cancellationToken);
 
         // Extract FHIR version from CapabilityStatement and use version-aware serialization
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(capabilityStatement.FhirVersion ?? "4.0");
+        var fhirVersionString = capabilityStatement.FhirVersion?.ToVersionString() ?? "4.0";
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
         var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
 
         return new JsonResult(capabilityStatement, serializerOptions)

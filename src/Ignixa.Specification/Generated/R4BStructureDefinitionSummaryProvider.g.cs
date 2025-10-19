@@ -9,6 +9,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Ignixa.Domain;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.SourceNodeSerialization.Specification;
 

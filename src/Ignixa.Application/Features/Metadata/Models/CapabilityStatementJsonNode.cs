@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.SourceNodeSerialization.Utility;
@@ -14,54 +14,202 @@ namespace Ignixa.Application.Features.Metadata.Models;
 /// <summary>
 /// Represents a FHIR CapabilityStatement resource.
 /// </summary>
-[SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
+[SuppressMessage("Design", "CA2227", Justification = "Collection properties for JSON serialization")]
 public class CapabilityStatementJsonNode : ResourceJsonNode
 {
+    private SoftwareComponentJsonNode? _cachedSoftware;
+
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
     public CapabilityStatementJsonNode()
+        : base()
     {
         ResourceType = "CapabilityStatement";
     }
 
-    [JsonPropertyName("url")]
-    public string? Url { get; set; }
+    [JsonIgnore]
+    public string? Url
+    {
+        get => MutableNode["url"]?.GetValue<string>();
+        set => SetProperty("url", value != null ? JsonValue.Create(value) : null);
+    }
 
-    [JsonPropertyName("version")]
-    public string? Version { get; set; }
+    [JsonIgnore]
+    public string? Version
+    {
+        get => MutableNode["version"]?.GetValue<string>();
+        set => SetProperty("version", value != null ? JsonValue.Create(value) : null);
+    }
 
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
+    [JsonIgnore]
+    public string? Name
+    {
+        get => MutableNode["name"]?.GetValue<string>();
+        set => SetProperty("name", value != null ? JsonValue.Create(value) : null);
+    }
 
-    [JsonPropertyName("status")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public PublicationStatus Status { get; set; }
+    [JsonIgnore]
+    public PublicationStatus Status
+    {
+        get => EnumUtility.ParseLiteral<PublicationStatus>(MutableNode["status"]?.GetValue<string>()) ?? default;
+        set => SetProperty("status", JsonValue.Create(value.GetLiteral()));
+    }
 
-    [JsonPropertyName("experimental")]
-    public bool? Experimental { get; set; }
+    [JsonIgnore]
+    public bool? Experimental
+    {
+        get => MutableNode["experimental"]?.GetValue<bool>();
+        set => SetProperty("experimental", value.HasValue ? JsonValue.Create(value.Value) : null);
+    }
 
-    [JsonPropertyName("date")]
-    public string? Date { get; set; }
+    [JsonIgnore]
+    public string? Date
+    {
+        get => MutableNode["date"]?.GetValue<string>();
+        set => SetProperty("date", value != null ? JsonValue.Create(value) : null);
+    }
 
-    [JsonPropertyName("publisher")]
-    public string? Publisher { get; set; }
+    [JsonIgnore]
+    public string? Publisher
+    {
+        get => MutableNode["publisher"]?.GetValue<string>();
+        set => SetProperty("publisher", value != null ? JsonValue.Create(value) : null);
+    }
 
-    [JsonPropertyName("kind")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public CapabilityStatementKind Kind { get; set; }
+    [JsonIgnore]
+    public CapabilityStatementKind Kind
+    {
+        get => EnumUtility.ParseLiteral<CapabilityStatementKind>(MutableNode["kind"]?.GetValue<string>()) ?? default;
+        set => SetProperty("kind", JsonValue.Create(value.GetLiteral()));
+    }
 
-    [JsonPropertyName("software")]
-    public SoftwareComponentJsonNode? Software { get; set; }
+    [JsonIgnore]
+    public SoftwareComponentJsonNode? Software
+    {
+        get
+        {
+            if (_cachedSoftware == null)
+            {
+                if (MutableNode.TryGetPropertyValue("software", out var softwareNode) && softwareNode is JsonObject softwareObject)
+                {
+                    _cachedSoftware = new SoftwareComponentJsonNode(softwareObject);
+                }
+            }
 
-    [JsonPropertyName("fhirVersion")]
-    public string? FhirVersion { get; set; }
+            return _cachedSoftware;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("software");
+                _cachedSoftware = null;
+            }
+            else
+            {
+                MutableNode["software"] = value.MutableNode;
+                _cachedSoftware = value;
+            }
+        }
+    }
 
-    [JsonPropertyName("format")]
-    public IList<string>? Format { get; set; }
+    [JsonIgnore]
+    public string? FhirVersionString
+    {
+        get => MutableNode["fhirVersion"]?.GetValue<string>();
+        set => SetProperty("fhirVersion", value != null ? JsonValue.Create(value) : null);
+    }
 
-    [JsonPropertyName("patchFormat")]
-    public IList<string>? PatchFormat { get; set; }
+    [JsonIgnore]
+    public IList<string>? Format
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("format", out var formatNode) || formatNode is not JsonArray formatArray)
+            {
+                return null;
+            }
 
-    [JsonPropertyName("rest")]
-    public IList<RestComponentJsonNode>? Rest { get; set; }
+            return formatArray.Select(n => n?.GetValue<string>()).Where(s => s != null).ToList()!;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("format");
+            }
+            else
+            {
+                var array = new JsonArray(value.Select(s => JsonValue.Create(s)).ToArray());
+                MutableNode["format"] = array;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public IList<string>? PatchFormat
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("patchFormat", out var patchFormatNode) || patchFormatNode is not JsonArray patchFormatArray)
+            {
+                return null;
+            }
+
+            return patchFormatArray.Select(n => n?.GetValue<string>()).Where(s => s != null).ToList()!;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("patchFormat");
+            }
+            else
+            {
+                var array = new JsonArray(value.Select(s => JsonValue.Create(s)).ToArray());
+                MutableNode["patchFormat"] = array;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public IList<RestComponentJsonNode>? Rest
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("rest", out var restNode) || restNode is not JsonArray restArray)
+            {
+                return null;
+            }
+
+            var result = new List<RestComponentJsonNode>();
+            foreach (var item in restArray.OfType<JsonObject>())
+            {
+                result.Add(new RestComponentJsonNode(item, FhirVersion));
+            }
+
+            return result;
+        }
+        set
+        {
+            if (value == null)
+            {
+                MutableNode.Remove("rest");
+            }
+            else
+            {
+                // Propagate FhirVersion to child components
+                foreach (var restComponent in value)
+                {
+                    restComponent.FhirVersion = FhirVersion;
+                }
+
+                var array = new JsonArray(value.Select(r => r.MutableNode).ToArray());
+                MutableNode["rest"] = array;
+            }
+        }
+    }
 
     /// <summary>
     /// The status of the capability statement (FHIR PublicationStatus value set).

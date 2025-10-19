@@ -5,7 +5,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using EnsureThat;
-using Ignixa.Domain.ValueSets;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Indexing;
 

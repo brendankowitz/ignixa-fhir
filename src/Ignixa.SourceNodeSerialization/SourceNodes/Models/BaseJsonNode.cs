@@ -21,6 +21,13 @@ public abstract class BaseJsonNode : IMutableJsonNode
     private readonly JsonObject _internalNode;
 
     /// <summary>
+    /// Gets or sets the FHIR version for this node.
+    /// Set at root node construction and propagated to children.
+    /// Used to determine version-specific serialization behavior.
+    /// </summary>
+    public FhirSpecification? FhirVersion { get; set; }
+
+    /// <summary>
     /// Default constructor for deserialization.
     /// </summary>
     protected BaseJsonNode()
@@ -29,11 +36,24 @@ public abstract class BaseJsonNode : IMutableJsonNode
     }
 
     /// <summary>
+    /// Constructor with FHIR version awareness.
+    /// </summary>
+    /// <param name="fhirVersion">The FHIR version (Stu3, R4, R4B, R5).</param>
+    protected BaseJsonNode(FhirSpecification fhirVersion)
+        : this()
+    {
+        FhirVersion = fhirVersion;
+    }
+
+    /// <summary>
     /// Internal constructor for wrapping existing JsonObject (used when accessing nested properties).
     /// </summary>
-    protected BaseJsonNode(JsonObject jsonObject)
+    /// <param name="jsonObject">Existing JsonObject to wrap.</param>
+    /// <param name="fhirVersion">Optional FHIR version (inherited from parent).</param>
+    protected BaseJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
     {
         _internalNode = jsonObject ?? throw new ArgumentNullException(nameof(jsonObject));
+        FhirVersion = fhirVersion;
     }
 
     /// <summary>
