@@ -4,9 +4,10 @@
 
 - **ADR Number**: 2520
 - **Title**: Phase 17 - Patch Operations
-- **Status**: In Progress
-- **Date**: 2025-10-17
+- **Status**: In Progress - FHIRPath Integration Phase
+- **Date**: 2025-10-18 (Updated)
 - **Phase**: 17 (Weeks 91-94)
+- **Implementation Status**: 70% Complete (Custom path navigation) → Target: 100% (FHIRPath integrated)
 - **Related Documents**:
   - [ADR-2500: Master Implementation Roadmap](adr-2500-master-implementation-roadmap.md)
   - [ADR-2502: Multi-Tenancy Architecture](adr-2502-multi-tenancy-architecture.md)
@@ -25,7 +26,7 @@ And precedes:
 
 ### Current State
 
-As of 2025-10-17, the Ignixa FHIR Server v2 has completed:
+As of 2025-10-18, the Ignixa FHIR Server v2 has completed:
 - ✅ Phase 22: FHIR _history operations (instance/type/system level)
 - ✅ Multi-tenant data partitioning (Isolation mode)
 - ✅ Minimal API pattern for all CRUD endpoints
@@ -33,7 +34,34 @@ As of 2025-10-17, the Ignixa FHIR Server v2 has completed:
 - ✅ Transaction bundle support with automatic recovery
 - ✅ Background services (IndexLoaderService, TransactionWatcherService)
 
-**Missing**: PATCH operations for partial resource updates.
+**PATCH Operations Status**: 70% Complete (Partial Implementation)
+
+**✅ Completed Components**:
+1. **FhirPatchEngine.cs** - Core patch engine with in-place JsonObject mutation (409 lines)
+2. **FhirPatchOperation.cs** - Operation model with 5 types (Add, Insert, Delete, Replace, Move)
+3. **FhirPatchParametersParser.cs** - Parses Parameters resource → FhirPatchOperation[]
+4. **PatchResourceHandler.cs** - Medino handler orchestrating patch workflow
+5. **PatchEndpoints.cs** - Minimal API endpoints (tenant-explicit and tenant-agnostic)
+6. **Multi-tenant routing** - Works with TenantResolutionMiddleware
+7. **Immutable property protection** - Basic string-based validation
+8. **All 5 operation types** - Add, Insert, Delete, Replace, Move implemented
+
+**❌ Critical Gap**: **Custom Path Navigation (NOT FHIRPath)**
+
+Current implementation uses simple string parsing:
+- ✅ Supports: `Patient.name[0].family` (dot notation + array indexing)
+- ❌ Missing: `Patient.name.where(use='official').family` (FHIRPath functions)
+- ❌ Missing: `Patient.telecom.where(system='phone').first()`
+- ❌ Missing: Complex expressions with `where()`, `first()`, `exists()`
+
+**FHIR Spec Requirement**: FHIRPath evaluation is MANDATORY (per FHIR R4 Section 3.1.0.7.1), not optional.
+
+**Remaining Work**:
+1. ❌ **FHIRPath Integration** - Replace custom parsing with `Ignixa.FhirPath.Evaluation.FhirPathEvaluator`
+2. ❌ **Strategy Pattern Refactor** - IOperationExecutor interface with 5 executors
+3. ❌ **Validation Framework** - FhirPatchValidator, ImmutablePropertyValidator (proper implementation)
+4. ❌ **Tests** - Zero tests currently (need 100+ tests)
+5. ❌ **Documentation** - CLAUDE.md updates, capability statement
 
 ### FHIR Specification Background
 
@@ -91,6 +119,215 @@ Bandwidth savings: 99.5%
 - Requires separate content-type header (`application/json-patch+json`)
 - No built-in immutable property protection
 - Generic tooling (not FHIR-specific validation)
+
+## FHIRPath Integration Strategy
+
+### Research Findings (2025-10-18)
+
+**Critical Discovery**: FHIR R4 specification **REQUIRES** FHIRPath evaluation for PATCH operations, not simple path navigation.
+
+**Evidence**:
+1. **FHIR R4 Spec** (Section 3.1.0.7.1): "The `path` parameter SHALL contain a FHIRPath expression"
+2. **Reference Implementations**: All major FHIR servers (HAPI, Firely, Microsoft) use full FHIRPath evaluation
+3. **Legacy Tests**: Microsoft's `FhirPathPatchTests.cs` demonstrates `where()` function usage:
+   ```csharp
+   // Example from legacy tests (line 171-182)
+   var patchRequest = new Parameters()
+       .AddPatchParameter("replace",
+           "Patient.address.where(use = 'home').city",
+           value: new FhirString("Portland"));
+   ```
+
+### Current Implementation Gap Analysis
+
+| Aspect | Current Implementation | FHIR Spec Requirement | Status |
+|--------|----------------------|----------------------|--------|
+| **Simple Paths** | ✅ `Patient.name` | ✅ REQUIRED | Complete |
+| **Array Indexing** | ✅ `Patient.name[0]` | ✅ REQUIRED | Complete |
+| **where() Function** | ❌ Not supported | ✅ SHOULD support | **Gap** |
+| **first() Function** | ❌ Not supported | ✅ SHOULD support | **Gap** |
+| **exists() Function** | ❌ Not supported | ⚠️ MAY support | Gap |
+| **Comparison Operators** | ❌ Not supported | ✅ SHOULD support | **Gap** |
+| **Path Resolution** | Custom string parsing (Navigate method) | FHIRPath evaluator | **Gap** |
+
+**Current Navigation Logic** (FhirPatchEngine.cs:321-357):
+```csharp
+private JsonNode? Navigate(JsonNode? current, string path)
+{
+    var parts = path.Split('.'); // Simple string split - NOT FHIRPath
+    foreach (var part in parts)
+    {
+        if (part.Contains('['))
+        {
+            // Basic array indexing only
+        }
+        else
+        {
+            current = current?[part];
+        }
+    }
+    return current;
+}
+```
+
+**Problem**: This approach only handles:
+- Simple dot notation: `Patient.name`
+- Basic array indexing: `Patient.name[0]`
+- Does NOT handle: `Patient.name.where(use='official').family`
+
+### FHIRPath Integration Architecture
+
+**Existing Infrastructure** (Already Available):
+- ✅ `Ignixa.FhirPath.Evaluation.FhirPathEvaluator` - Full FHIRPath evaluator (1000+ lines)
+- ✅ `Ignixa.FhirPath.Parsing.FhirPathParser` - Expression parser
+- ✅ `Ignixa.SourceNodeSerialization.ElementModel.ITypedElement` - FHIR-aware navigation
+- ✅ `JsonNodeSourceNode` - Implements ISourceNode for JsonNode resources
+
+**Integration Points**:
+
+1. **Replace Custom Navigation** with FHIRPath Evaluation:
+   ```csharp
+   // BEFORE (Custom - FhirPatchEngine.cs:321)
+   private JsonNode? Navigate(JsonNode? current, string path)
+   {
+       var parts = path.Split('.'); // String parsing
+       // ...
+   }
+
+   // AFTER (FHIRPath-aware)
+   private async Task<IEnumerable<ITypedElement>> EvaluatePath(
+       ResourceJsonNode resource, string fhirPathExpression)
+   {
+       var parser = new FhirPathParser();
+       var expression = parser.Parse(fhirPathExpression);
+
+       var typedElement = resource.ToTypedElement(); // Convert to ITypedElement
+       return _fhirPathEvaluator.Evaluate(typedElement, expression);
+   }
+   ```
+
+2. **Strategy Pattern for Operations**:
+   ```csharp
+   // Create IOperationExecutor interface
+   public interface IOperationExecutor
+   {
+       FhirPatchOperationType OperationType { get; }
+       Task<ResourceJsonNode> ExecuteAsync(
+           ResourceJsonNode resource,
+           FhirPatchOperation operation,
+           CancellationToken cancellationToken);
+   }
+
+   // Implement 5 executors: Add, Insert, Delete, Replace, Move
+   public class ReplaceOperationExecutor : IOperationExecutor
+   {
+       private readonly FhirPathEvaluator _evaluator;
+
+       public async Task<ResourceJsonNode> ExecuteAsync(...)
+       {
+           // 1. Evaluate FHIRPath expression
+           var matches = await _evaluator.EvaluateAsync(resource, operation.Path);
+
+           // 2. Validate single match (for replace)
+           if (matches.Count() != 1)
+               throw new FhirPatchException("Replace requires exactly one match");
+
+           // 3. Replace value using JsonNode manipulation
+           var target = matches.Single();
+           target.Replace(operation.Value); // In-place mutation
+
+           return resource;
+       }
+   }
+   ```
+
+3. **Converter: ResourceJsonNode ↔ ITypedElement**:
+   ```csharp
+   // New helper class needed
+   public static class ResourceJsonNodeExtensions
+   {
+       public static ITypedElement ToTypedElement(this ResourceJsonNode resource)
+       {
+           var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode);
+           return sourceNode.ToTypedElement(provider);
+       }
+
+       public static ResourceJsonNode FromTypedElement(ITypedElement element)
+       {
+           // Convert back after FHIRPath evaluation
+       }
+   }
+   ```
+
+### Implementation Phases (Revised)
+
+**Phase 1: Strategy Pattern Refactor** (16 hours)
+1. Create `IOperationExecutor` interface
+2. Extract operation logic into 5 executors:
+   - `AddOperationExecutor`
+   - `InsertOperationExecutor`
+   - `DeleteOperationExecutor`
+   - `ReplaceOperationExecutor`
+   - `MoveOperationExecutor`
+3. Refactor `FhirPatchEngine` to delegate to executors
+4. Keep custom navigation temporarily (no behavior change)
+
+**Phase 2: FHIRPath Integration** (16 hours)
+1. Add FhirPathEvaluator injection to executors
+2. Replace `Navigate()` calls with `_evaluator.Evaluate()`
+3. Create `ResourceJsonNode.ToTypedElement()` converter
+4. Update executors to use FHIRPath evaluation
+5. Handle multi-match scenarios (delete: allow, replace: error)
+6. Add expression validation (syntax errors)
+
+**Phase 3: Validation & Testing** (16 hours)
+1. Implement `FhirPatchValidator` (Parameters validation)
+2. Implement `ImmutablePropertyValidator` (FHIRPath-aware)
+3. Add OperationOutcome generation
+4. Port 30+ tests from legacy `FhirPathPatchTests.cs`
+5. Add unit tests for executors (50+ tests)
+6. Add integration tests (20+ tests)
+
+**Total Estimated Effort**: 48 hours (1 week)
+
+### Key Design Decisions
+
+**Decision 1: Keep Mutable JsonObject Architecture**
+- ✅ Existing `ResourceJsonNode.MutableNode` provides in-place mutation
+- ✅ FHIRPath evaluation returns `ITypedElement`, we navigate to JsonNode for mutation
+- ✅ Avoids serialization roundtrips
+
+**Decision 2: Strategy Pattern Over Monolithic Engine**
+- ✅ Each executor handles one operation type (Single Responsibility)
+- ✅ Easier to test (5 focused executors vs 1 large engine)
+- ✅ Easier to extend (add new operation types)
+- ✅ Matches ADR-2520 original design (lines 453-459)
+
+**Decision 3: FHIRPath Evaluator Integration (NOT Custom Parsing)**
+- ✅ Meets FHIR spec requirement (FHIRPath is MANDATORY)
+- ✅ Reuses existing `Ignixa.FhirPath` infrastructure (no new dependencies)
+- ✅ Supports complex expressions (`where()`, `first()`, `exists()`)
+- ✅ All reference implementations use FHIRPath (HAPI, Firely, Microsoft)
+
+**Decision 4: Multi-Match Behavior**
+- ✅ **delete**: Allow multiple matches (delete all matched elements)
+- ✅ **replace**: Require single match (error if multiple)
+- ✅ **add/insert**: Path must resolve to collection
+- ✅ **move**: Source and destination must each match exactly one element
+
+### Migration Path
+
+**No Breaking Changes**:
+- Existing Parameters parsing remains compatible
+- Existing simple paths (`Patient.name[0]`) continue to work
+- New FHIRPath expressions work seamlessly (`Patient.name.where(use='official')`)
+- Backward compatible with any partial PATCH implementation in use
+
+**Validation Strategy**:
+1. Port all 30+ legacy tests from `FhirPathPatchTests.cs`
+2. Add new tests for `where()`, `first()`, `exists()` functions
+3. Verify simple paths still work (regression testing)
+4. Performance benchmark (<100ms overhead for FHIRPath evaluation)
 
 ## Decision
 

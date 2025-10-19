@@ -32,6 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `PUT/GET /tenant/{tenantId}/{resourceType}/{id}` - CRUD operations
 - `GET /tenant/{tenantId}/{resourceType}` - Search
 - `POST /tenant/{tenantId}/` - Transaction bundles
+- `PATCH /tenant/{tenantId}/{resourceType}/{id}` - FHIRPath Patch operations
 - `GET /tenant/{tenantId}/{resourceType}/{id}/_history` - Instance history
 - `GET /tenant/{tenantId}/{resourceType}/_history` - Type-level history
 - `GET /tenant/{tenantId}/_history` - System-level history
@@ -40,6 +41,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `PUT/GET /{resourceType}/{id}` - CRUD operations
 - `GET /{resourceType}` - Search
 - `POST /` - Transaction bundles
+- `PATCH /{resourceType}/{id}` - FHIRPath Patch operations
 - `GET /{resourceType}/{id}/_history` - Instance history
 - `GET /{resourceType}/_history` - Type-level history
 - `GET /_history` - System-level history
@@ -448,6 +450,85 @@ fhir-coordinator (Orchestrator - Sonnet)
 
 ## Common Patterns Cheat Sheet
 
+### PATCH Operations (FHIRPath Patch)
+
+**Pattern**: FHIRPath expressions with Parameters resource
+
+```http
+PATCH /Patient/123
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [{
+    "name": "operation",
+    "part": [
+      { "name": "type", "valueCode": "replace" },
+      { "name": "path", "valueString": "Patient.name.where(use='official').family" },
+      { "name": "value", "valueString": "NewLastName" }
+    ]
+  }]
+}
+```
+
+**Supported Operations**:
+- **add** - Add element to collection: `{ type: "add", path: "Patient.telecom", value: {...} }`
+- **insert** - Insert at index: `{ type: "insert", path: "Patient.name", index: 0, value: {...} }`
+- **delete** - Remove element: `{ type: "delete", path: "Patient.telecom[1]" }`
+- **replace** - Replace value: `{ type: "replace", path: "Patient.gender", value: "female" }`
+- **move** - Move element: `{ type: "move", source: "Patient.name[1]", destination: "Patient.name[0]" }`
+
+**FHIRPath Support**:
+```csharp
+// Simple paths
+"Patient.gender" → Replace primitive value
+
+// Array indexing
+"Patient.name[0].family" → Replace array element property
+
+// Complex FHIRPath expressions (NEW!)
+"Patient.name.where(use='official').family" → Uses where() function
+"Patient.telecom.where(system='phone').first()" → Uses where() + first()
+"Patient.address.where(use='home').city" → Filter + property access
+```
+
+**Architecture**:
+```
+FHIRPath Expression → FhirPathEvaluator → ITypedElement
+                                              ↓
+                                    IAnnotated.Annotation<JsonNode>()
+                                              ↓
+                                        Mutate in-place
+```
+
+**Immutable Properties** (Protected):
+- ❌ Cannot PATCH: `id`, `meta.versionId`, `meta.lastUpdated`
+- ✅ Use PUT to change resource ID
+- ✅ Server auto-manages versionId and lastUpdated
+
+**Implementation Files**:
+- `Ignixa.Application/Features/Patch/FhirPatchEngine.cs` - Orchestrator (strategy pattern)
+- `Ignixa.Application/Features/Patch/Executors/IOperationExecutor.cs` - Strategy interface
+- `Ignixa.Application/Features/Patch/Executors/*OperationExecutor.cs` - 5 executors
+- `Ignixa.Application/Features/Patch/FhirPathPatchHelper.cs` - FHIRPath evaluation with IAnnotated
+- `Ignixa.Application/Features/Patch/Validation/*Validator.cs` - Validators
+- `Ignixa.Api/Infrastructure/PatchEndpoints.cs` - Minimal API routes
+
+**Key Pattern - IAnnotated for JsonNode Extraction**:
+```csharp
+// Evaluate FHIRPath expression
+var matches = _fhirPathEvaluator.Evaluate(typedElement, expression);
+
+// Extract JsonNode using IAnnotated (part of resource tree)
+var jsonNode = (matches.First() as IAnnotated)?.Annotation<JsonNode>();
+
+// Mutate in-place (no serialization roundtrip needed)
+if (jsonNode.Parent is JsonObject parentObj)
+{
+    parentObj[propertyName] = newValue; // Direct mutation
+}
+```
+
 ### Adding a New Minimal API Endpoint
 
 ```csharp
@@ -627,6 +708,7 @@ resource.MutableNode["active"] = JsonSerializer.SerializeToNode(true);
 - ✅ CRUD operations (all resource types via generic endpoints)
 - ✅ Search (basic implementation)
 - ✅ Transaction bundles (POST /)
+- ✅ **PATCH operations (FHIRPath Patch with full expression support)**
 - ✅ Multi-tenant data partitioning (Isolation mode)
 - ✅ Background transaction recovery
 - ✅ FHIR _history operations (instance/type/system)

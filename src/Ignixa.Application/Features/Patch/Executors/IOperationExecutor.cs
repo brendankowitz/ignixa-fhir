@@ -1,28 +1,29 @@
 using System.Threading;
 using System.Threading.Tasks;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.Application.Features.Patch.Executors;
 
 /// <summary>
-/// Executes a specific patch operation type on a FHIR resource.
+/// Executes a specific FHIR Patch operation type.
+/// Part of strategy pattern refactor (Phase 2).
 /// </summary>
 public interface IOperationExecutor
 {
     /// <summary>
-    /// Operation type this executor handles
+    /// The FHIR Patch operation type this executor handles.
     /// </summary>
     FhirPatchOperationType OperationType { get; }
 
     /// <summary>
-    /// Execute the operation on the resource
+    /// Execute the operation on the resource, mutating it in-place.
     /// </summary>
-    /// <param name="resource">Resource to patch (ITypedElement)</param>
-    /// <param name="operation">Operation to execute</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Patched resource (ITypedElement)</returns>
-    Task<ITypedElement> ExecuteAsync(
-        ITypedElement resource,
+    /// <param name="resource">The FHIR resource to mutate.</param>
+    /// <param name="operation">The patch operation to apply.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The mutated resource (same instance).</returns>
+    Task<ResourceJsonNode> ExecuteAsync(
+        ResourceJsonNode resource,
         FhirPatchOperation operation,
         CancellationToken cancellationToken);
 }

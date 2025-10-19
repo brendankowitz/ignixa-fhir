@@ -223,6 +223,64 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .AsSelf()
         .InstancePerDependency();
 
+    // Patch validators (Phase 4 - Validation Framework)
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Validation.FhirPatchValidator>()
+        .AsSelf()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Validation.ImmutablePropertyValidator>()
+        .AsSelf()
+        .InstancePerDependency();
+
+    // FHIRPath dependencies for PATCH operations
+    containerBuilder.RegisterType<Ignixa.FhirPath.Evaluation.FhirPathEvaluator>()
+        .AsSelf()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.FhirPath.FhirPathCompiler>()
+        .AsSelf()
+        .InstancePerDependency();
+
+    // FhirPathPatchHelper with structure provider from FhirVersionContext
+    containerBuilder.Register<Ignixa.Application.Features.Patch.FhirPathPatchHelper>(c =>
+    {
+        var evaluator = c.Resolve<Ignixa.FhirPath.Evaluation.FhirPathEvaluator>();
+        var compiler = c.Resolve<Ignixa.FhirPath.FhirPathCompiler>();
+        var versionContext = c.Resolve<IFhirVersionContext>();
+
+        // Use R4 as default structure provider (Phase 1)
+        // TODO Phase 2+: Extract version from tenant context
+        var structureProvider = versionContext.GetSchemaProvider(FhirSpecification.R4);
+
+        return new Ignixa.Application.Features.Patch.FhirPathPatchHelper(
+            evaluator,
+            compiler,
+            structureProvider);
+    })
+    .AsSelf()
+    .InstancePerDependency();
+
+    // Patch operation executors (Phase 2 - Strategy Pattern)
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.AddOperationExecutor>()
+        .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .InstancePerLifetimeScope();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.InsertOperationExecutor>()
+        .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .InstancePerLifetimeScope();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.DeleteOperationExecutor>()
+        .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .InstancePerLifetimeScope();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.ReplaceOperationExecutor>()
+        .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .InstancePerLifetimeScope();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.MoveOperationExecutor>()
+        .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .InstancePerLifetimeScope();
+
     // NOTE: FileBasedSearchService is no longer registered as singleton
     // It is now created per tenant by FileBasedSearchServiceFactory
 

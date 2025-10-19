@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
@@ -18,17 +19,23 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly FhirPatchParametersParser _parametersParser;
     private readonly FhirPatchEngine _patchEngine;
+    private readonly FhirPatchValidator _fhirPatchValidator;
+    private readonly ImmutablePropertyValidator _immutablePropertyValidator;
     private readonly ILogger<PatchResourceHandler> _logger;
 
     public PatchResourceHandler(
         IFhirRepositoryFactory repositoryFactory,
         FhirPatchParametersParser parametersParser,
         FhirPatchEngine patchEngine,
+        FhirPatchValidator fhirPatchValidator,
+        ImmutablePropertyValidator immutablePropertyValidator,
         ILogger<PatchResourceHandler> logger)
     {
         _repositoryFactory = repositoryFactory;
         _parametersParser = parametersParser;
         _patchEngine = patchEngine;
+        _fhirPatchValidator = fhirPatchValidator;
+        _immutablePropertyValidator = immutablePropertyValidator;
         _logger = logger;
     }
 
@@ -74,7 +81,21 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             throw;
         }
 
-        // 4. Deserialize existing resource from bytes
+        // 4. Validate patch operations structure
+        try
+        {
+            _fhirPatchValidator.Validate(operations);
+        }
+        catch (FhirPatchException ex)
+        {
+            _logger.LogError(ex,
+                "PATCH failed: Validation error for {ResourceType}/{ResourceId}",
+                request.ResourceType,
+                request.ResourceId);
+            throw;
+        }
+
+        // 5. Deserialize existing resource from bytes
         var existingJson = System.Text.Encoding.UTF8.GetString(existing.ResourceBytes.Span);
         var existingResource = JsonSerializer.Deserialize<ResourceJsonNode>(existingJson);
         if (existingResource == null)
@@ -82,13 +103,30 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             throw new FhirPatchException("Failed to deserialize existing resource");
         }
 
-        // 5. Apply patch operations
+        // 6. Clone resource before patching for immutable property validation
+        var beforeClone = CloneResource(existingResource);
+
+        // 7. Apply patch operations
         var patchedResource = await _patchEngine.ApplyPatchAsync(
             existingResource,
             operations,
             cancellationToken);
 
-        // 6. Create updated ResourceWrapper
+        // 8. Validate immutable properties have not changed
+        try
+        {
+            _immutablePropertyValidator.Validate(beforeClone, patchedResource);
+        }
+        catch (FhirPatchException ex)
+        {
+            _logger.LogError(ex,
+                "PATCH failed: Immutable property violation for {ResourceType}/{ResourceId}",
+                request.ResourceType,
+                request.ResourceId);
+            throw;
+        }
+
+        // 9. Create updated ResourceWrapper
         var updated = new ResourceWrapper(
             patchedResource.ResourceType,
             patchedResource.Id ?? request.ResourceId,
@@ -103,15 +141,15 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             FhirVersion = "4.0", // Default to R4
         };
 
-        // 7. Save via repository (increments versionId, updates lastUpdated)
+        // 10. Save via repository (increments versionId, updates lastUpdated)
         var savedKey = await repository.CreateOrUpdateAsync(updated, cancellationToken);
 
-        // 8. Update patchedResource meta with saved version info
+        // 11. Update patchedResource meta with saved version info
         patchedResource.Meta ??= new();
         patchedResource.Meta.VersionId = savedKey.VersionId ?? "1";
         patchedResource.Meta.LastUpdated = DateTimeOffset.UtcNow;
 
-        // 9. Create final ResourceWrapper with updated meta
+        // 12. Create final ResourceWrapper with updated meta
         var result = new ResourceWrapper(
             patchedResource.ResourceType,
             patchedResource.Id ?? request.ResourceId,
@@ -134,5 +172,15 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             request.TenantId);
 
         return result;
+    }
+
+    /// <summary>
+    /// Clone a ResourceJsonNode for immutable property validation.
+    /// </summary>
+    private static ResourceJsonNode CloneResource(ResourceJsonNode source)
+    {
+        var json = JsonSerializer.Serialize(source);
+        return JsonSerializer.Deserialize<ResourceJsonNode>(json)
+            ?? throw new FhirPatchException("Failed to clone resource for validation");
     }
 }

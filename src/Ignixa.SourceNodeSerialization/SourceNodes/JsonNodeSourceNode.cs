@@ -90,6 +90,17 @@ internal class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotat
             return [this];
         }
 
+        // Expose the underlying JsonNode for direct mutation
+        if (type == typeof(JsonNode))
+        {
+            // Return the content node (JsonObject) if available, otherwise the value node
+            var node = _contentNode ?? _valueNode;
+            if (node != null)
+            {
+                return [node];
+            }
+        }
+
         return [];
     }
 
