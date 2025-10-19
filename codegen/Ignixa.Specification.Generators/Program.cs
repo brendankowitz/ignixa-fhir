@@ -15,6 +15,7 @@ mode = mode switch
     "search" => "search",
     "compartment" => "compartment",
     "codesystem" => "codesystem",
+    "valueset" => "valueset",
     _ => "structure"
 };
 
@@ -23,6 +24,7 @@ string fhirVersion = (mode != "structure" && args.Length > 1) ? args[1] : (args.
 string defaultOutputDir = mode switch
 {
     "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Search", "Generated"),
+    "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "ValueSets", "Normative"),
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Specification", "Generated")
 };
 
@@ -35,6 +37,7 @@ string title = mode switch
     "search" => "Sparky FHIR Search Parameter Generator",
     "compartment" => "Sparky FHIR Compartment Definition Generator",
     "codesystem" => "Sparky FHIR Code System Mappings Generator",
+    "valueset" => "Sparky FHIR ValueSet Enum Generator",
     _ => "Sparky FHIR Structure Definition Provider Generator"
 };
 
@@ -113,6 +116,17 @@ switch (mode)
             Namespace = "Sparky.Search.Generated"
         };
         codeSystemLanguage.Export(codeSystemConfig, definitions);
+        break;
+
+    case "valueset":
+        Console.WriteLine("Generating ValueSet enum code...");
+        var valueSetLanguage = new CSharpValueSetLanguage();
+        var valueSetConfig = new CSharpValueSetConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Ignixa.Specification.ValueSets.Normative"
+        };
+        valueSetLanguage.Export(valueSetConfig, definitions);
         break;
 
     default: // structure

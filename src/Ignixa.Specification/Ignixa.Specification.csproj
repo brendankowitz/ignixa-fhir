@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <!-- Suppress CLS-compliance warnings for interfaces from Ignixa.Domain -->
-    <NoWarn>$(NoWarn);CS3001;CS3002;CS3003;CS3027;CS3009</NoWarn>
+    <NoWarn>$(NoWarn);CS3001;CS3002;CS3003;CS3009;CS3027</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
