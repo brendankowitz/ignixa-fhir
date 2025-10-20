@@ -19,7 +19,7 @@ namespace Ignixa.SourceNodeSerialization.SourceNodes;
 /// Implements FHIR-specific logic for shadow properties, extensions, and choice types.
 /// Ported from JsonElementSourceNode to support JsonNode-based architecture.
 /// </summary>
-internal class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
+public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
 {
     private const string _resourceType = "resourceType";
     private const char _shadowNodePrefix = '_';
@@ -146,6 +146,22 @@ internal class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotat
         }
 
         return [];
+    }
+
+    /// <summary>
+    /// Creates a new JsonNodeSourceNode from a JsonNode (public factory method for external use).
+    /// </summary>
+    /// <param name="node">The JsonNode to wrap.</param>
+    /// <param name="name">The name of the root node (default: "root").</param>
+    /// <returns>An ISourceNode wrapping the JsonNode.</returns>
+    public static ISourceNode Create(JsonNode node, string name = "root")
+    {
+        if (node is JsonObject obj)
+        {
+            return FromRoot(obj, name);
+        }
+
+        return new JsonNodeSourceNode(node, node, name, null, name);
     }
 
     internal static JsonNodeSourceNode FromRoot(JsonObject rootNode, string name = "")

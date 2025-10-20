@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Ignixa.Benchmarks.NavigationBenchmarks-20251019-092410</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.6725)
+Intel Core i7-14700K, 1 CPU, 28 logical and 20 physical cores
+.NET SDK 9.0.201
+  [Host]   : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+  .NET 9.0 : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=.NET 9.0  Runtime=.NET 9.0  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                      </th><th>Mean   </th><th>Error</th><th>StdDev</th><th>Rank</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Ignixa: Access array element (JsonNode direct)&#39;</td><td>45.4391 ns</td><td>0.1049 ns</td><td>0.0930 ns</td><td>7</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Ignixa: Access array element (ITypedElement)&#39;</td><td>293.4296 ns</td><td>1.0220 ns</td><td>0.9060 ns</td><td>12</td><td>0.0443</td><td>-</td><td>768 B</td>
+</tr><tr><td>&#39;Firely: Access array element (POCO)&#39;</td><td>7.9425 ns</td><td>0.0214 ns</td><td>0.0200 ns</td><td>5</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Firely: Access array element (ITypedElement)&#39;</td><td>4,009.0398 ns</td><td>21.2646 ns</td><td>17.7569 ns</td><td>15</td><td>0.6714</td><td>0.0076</td><td>11664 B</td>
+</tr><tr><td>&#39;Ignixa: Convert to ISourceNode&#39;</td><td>0.8749 ns</td><td>0.0120 ns</td><td>0.0107 ns</td><td>2</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Firely: Already ISourceNode (no-op)&#39;</td><td>0.5437 ns</td><td>0.0123 ns</td><td>0.0102 ns</td><td>1</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Ignixa: Convert to ITypedElement&#39;</td><td>5.6935 ns</td><td>0.1301 ns</td><td>0.1277 ns</td><td>3</td><td>0.0023</td><td>-</td><td>40 B</td>
+</tr><tr><td>&#39;Firely: Convert to ITypedElement&#39;</td><td>64.7614 ns</td><td>0.3254 ns</td><td>0.2885 ns</td><td>9</td><td>0.0143</td><td>-</td><td>248 B</td>
+</tr><tr><td>&#39;Ignixa: Access nested object (JsonNode direct)&#39;</td><td>49.2744 ns</td><td>0.0525 ns</td><td>0.0438 ns</td><td>8</td><td>0.0042</td><td>-</td><td>72 B</td>
+</tr><tr><td>&#39;Ignixa: Access nested object (ITypedElement)&#39;</td><td>245.3421 ns</td><td>1.7679 ns</td><td>1.4763 ns</td><td>11</td><td>0.0486</td><td>-</td><td>840 B</td>
+</tr><tr><td>&#39;Firely: Access nested object (POCO)&#39;</td><td>6.1009 ns</td><td>0.0296 ns</td><td>0.0277 ns</td><td>4</td><td>-</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Firely: Access nested object (ITypedElement)&#39;</td><td>3,381.4469 ns</td><td>22.6514 ns</td><td>20.0799 ns</td><td>14</td><td>0.6065</td><td>0.0038</td><td>10528 B</td>
+</tr><tr><td>&#39;Ignixa: Access simple property (JsonNode direct)&#39;</td><td>33.8593 ns</td><td>0.2102 ns</td><td>0.1966 ns</td><td>6</td><td>0.0037</td><td>-</td><td>64 B</td>
+</tr><tr><td>&#39;Ignixa: Access simple property (ITypedElement)&#39;</td><td>111.4390 ns</td><td>0.2982 ns</td><td>0.2644 ns</td><td>10</td><td>0.0185</td><td>-</td><td>320 B</td>
+</tr><tr><td>&#39;Firely: Access simple property (POCO)&#39;</td><td>5.8899 ns</td><td>0.0516 ns</td><td>0.0458 ns</td><td>3</td><td>0.0014</td><td>-</td><td>24 B</td>
+</tr><tr><td>&#39;Firely: Access simple property (ITypedElement)&#39;</td><td>1,490.4520 ns</td><td>10.0386 ns</td><td>9.3901 ns</td><td>13</td><td>0.2804</td><td>0.0019</td><td>4848 B</td>
+</tr></tbody></table>
+</body>
+</html>

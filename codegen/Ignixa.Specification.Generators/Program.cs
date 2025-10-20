@@ -16,6 +16,7 @@ mode = mode switch
     "compartment" => "compartment",
     "codesystem" => "codesystem",
     "valueset" => "valueset",
+    "invariant" => "invariant",
     _ => "structure"
 };
 
@@ -25,6 +26,7 @@ string defaultOutputDir = mode switch
 {
     "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "ValueSets", "Normative"),
+    "invariant" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated"),
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Specification", "Generated")
 };
 
@@ -38,6 +40,7 @@ string title = mode switch
     "compartment" => "Sparky FHIR Compartment Definition Generator",
     "codesystem" => "Sparky FHIR Code System Mappings Generator",
     "valueset" => "Sparky FHIR ValueSet Enum Generator",
+    "invariant" => "Ignixa FHIR Invariant Provider Generator",
     _ => "Sparky FHIR Structure Definition Provider Generator"
 };
 
@@ -129,13 +132,24 @@ switch (mode)
         valueSetLanguage.Export(valueSetConfig, definitions);
         break;
 
+    case "invariant":
+        Console.WriteLine("Generating invariant provider code...");
+        var invariantLanguage = new CSharpInvariantLanguage();
+        var invariantConfig = new CSharpInvariantConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Ignixa.Specification.Generated"
+        };
+        invariantLanguage.Export(invariantConfig, definitions);
+        break;
+
     default: // structure
         Console.WriteLine("Generating provider code...");
         var structureLanguage = new CSharpStructureProviderLanguage();
         var providerConfig = new CSharpStructureProviderConfig
         {
             OutputDirectory = Path.GetFullPath(outputDir),
-            Namespace = "Sparky.Specification.Generated"
+            Namespace = "Ignixa.Specification.Generated"
         };
         structureLanguage.Export(providerConfig, definitions);
         break;

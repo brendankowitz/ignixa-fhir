@@ -25,7 +25,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Specification;
 using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.Validation.SourceNodeValidation;
+// using Ignixa.Validation.SourceNodeValidation; // Removed - migrating to new FastValidator in Phase 3
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 
@@ -427,12 +427,12 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .SingleInstance();
 #pragma warning restore CS0618 // Type or member is obsolete
 
-    // Register FastPathValidator (SourceNodeValidation version - fixes missing property bug)
-    // Registered as singleton - caches rules per (resourceType, provider) pair
-    // Provider is passed at runtime via Validate(node, provider) to support multi-version requests
-    containerBuilder.RegisterType<FastPathValidator>()
-        .AsSelf()
-        .SingleInstance();
+    // TODO: Register FastValidator with schema resolver in Phase 3
+    // Temporarily disabled - migrating from legacy FastPathValidator
+    // OLD CODE:
+    // containerBuilder.RegisterType<FastPathValidator>()
+    //     .AsSelf()
+    //     .SingleInstance();
 
     // Register bundle processing services
     containerBuilder.RegisterType<BundleReferencePreProcessor>()

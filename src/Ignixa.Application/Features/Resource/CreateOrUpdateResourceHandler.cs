@@ -14,9 +14,11 @@ using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
-using Ignixa.Validation.SourceNodeValidation;
+// using Ignixa.Validation.SourceNodeValidation;
 
 namespace Ignixa.Application.Features.Resource;
+
+// #pragma warning disable CS0618 // Type or member is obsolete - TODO: Migrate to new FastValidator in Phase 3
 
 /// <summary>
 /// Generic handler for creating or updating any FHIR resource.
@@ -37,7 +39,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
-    private readonly FastPathValidator _validator;
+    // private readonly FastPathValidator _validator; // TODO: Migrate to new FastValidator with schema resolver in Phase 3
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
@@ -45,14 +47,14 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRepositoryFactory repositoryFactory,
         IHttpContextAccessor httpContextAccessor,
         IFhirVersionContext fhirVersionContext,
-        FastPathValidator validator,
+        // FastPathValidator validator, // TODO: Migrate to new FastValidator with schema resolver in Phase 3
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
-        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+        // _validator = validator ?? throw new ArgumentNullException(nameof(validator)); // TODO: Migrate to new FastValidator with schema resolver in Phase 3
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -67,12 +69,14 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Extract FHIR version from headers (defaults to R4) - needed for version-specific validation
         var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
 
-        // VALIDATE INCOMING RESOURCE (fast-path validation)
+        // TODO: VALIDATE INCOMING RESOURCE (fast-path validation)
+        // Temporarily disabled - migrating to new FastValidator with schema resolver in Phase 3
         // Uses cached ToSourceNode() from command.JsonNode (ResourceJsonNode)
         // This prevents repeated ReflectedSourceNode allocations (15-60ms per validation)
         // Uses version-specific schema provider from FhirVersionContext
+        /*
         _logger.LogDebug(
-            "Validating incoming resource {ResourceType}/{Id} with FastPathValidator (FHIR {Version})",
+            "Validating incoming resource {ResourceType}/{Id} with FastValidator (FHIR {Version})",
             command.ResourceType,
             command.Id,
             fhirVersionEnum);
@@ -100,6 +104,9 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.ResourceType,
             command.Id,
             fhirVersionEnum);
+        */
+
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
 
         // Create wrapper (needed for both paths now)
         var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider);

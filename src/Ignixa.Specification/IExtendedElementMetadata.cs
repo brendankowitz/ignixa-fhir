@@ -47,7 +47,7 @@ public interface IExtendedElementMetadata
     /// Empty array if no constraints specified.
     /// </summary>
     [SuppressMessage("Performance", "CA1819:Properties should not return arrays", Justification = "Array is appropriate for readonly metadata")]
-    ConstraintMetadata[]? Constraints { get; }
+    ConstraintDefinition[]? Constraints { get; }
 
     /// <summary>
     /// Gets the slicing information for elements that can be sliced.
@@ -100,15 +100,6 @@ public interface IExtendedElementMetadata
 /// <param name="ValueSetUrl">The canonical URL of the ValueSet (may include version suffix).</param>
 /// <param name="Strength">The binding strength: Required, Extensible, Preferred, or Example.</param>
 public record BindingMetadata(string ValueSetUrl, string Strength);
-
-/// <summary>
-/// FHIRPath constraint (invariant) metadata.
-/// </summary>
-/// <param name="Key">The constraint key (e.g., "pat-1", "dom-1").</param>
-/// <param name="Severity">The severity level: Error or Warning.</param>
-/// <param name="Human">Human-readable description of the constraint.</param>
-/// <param name="Expression">The FHIRPath expression to evaluate.</param>
-public record ConstraintMetadata(string Key, string Severity, string Human, string Expression);
 
 /// <summary>
 /// Slicing metadata for elements that can be sliced in profiles.

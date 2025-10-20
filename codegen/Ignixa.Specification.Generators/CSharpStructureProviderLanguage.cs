@@ -19,6 +19,7 @@ namespace Ignixa.Specification.Generators;
 public sealed class CSharpStructureProviderLanguage : ILanguage
 {
     private const string LanguageName = "CSharpStructureProvider";
+    private HashSet<string>? _commonConstraintKeys;
 
     /// <summary>Gets the language name.</summary>
     public string Name => LanguageName;
@@ -88,9 +89,9 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Collections.Immutable;");
-        sb.AppendLine("using Hl7.Fhir.Specification;");
-        sb.AppendLine("using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;");
+        sb.AppendLine("using Ignixa.Domain;");
+        sb.AppendLine("using Ignixa.SourceNodeSerialization;");
+        sb.AppendLine("using Ignixa.SourceNodeSerialization.Specification;");
         sb.AppendLine("using Ignixa.Specification;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
@@ -153,6 +154,12 @@ using Ignixa.SourceNodeSerialization;");
         sb.AppendLine("        return null;");
         sb.AppendLine("    }");
         sb.AppendLine();
+
+        // Pre-scan for common constraints (must happen before generating elements)
+        CollectCommonConstraints(definitions);
+
+        // Generate common constraints dictionary (optimization)
+        GenerateCommonConstraintsDict(sb);
 
         // Generate types dictionary with lazy element initialization
         GenerateTypesDictionary(sb, definitions);
@@ -277,7 +284,7 @@ using Ignixa.SourceNodeSerialization;");
         int order = 0;
         foreach (var element in elements)
         {
-            GenerateElementDefinition(sb, element, definitions, order);
+            GenerateElementDefinition(sb, element, definitions, order, typeName);
             order++;
         }
 
@@ -286,7 +293,7 @@ using Ignixa.SourceNodeSerialization;");
         sb.AppendLine();
     }
 
-    private void GenerateElementDefinition(StringBuilder sb, ElementDefinition element, DefinitionCollection definitions, int order)
+    private void GenerateElementDefinition(StringBuilder sb, ElementDefinition element, DefinitionCollection definitions, int order, string resourceTypeName)
     {
         string elementName = element.cgName();
         bool isCollection = element.cgIsArray();
@@ -315,7 +322,7 @@ using Ignixa.SourceNodeSerialization;");
 
         // Extract extended metadata
         var (referenceTargets, binding, constraints, slicing, fixedValue, patternValue, defaultValue, contentReference, min, max) =
-            ExtractExtendedMetadata(element, definitions);
+            ExtractExtendedMetadata(element, definitions, resourceTypeName);
 
         sb.AppendLine($"            new GeneratedElementDefinitionSummary(");
         sb.AppendLine($"                elementName: \"{elementName}\",");
@@ -366,7 +373,7 @@ using Ignixa.SourceNodeSerialization;");
     }
 
     private (string referenceTargets, string binding, string constraints, string slicing, string fixedValue, string patternValue, string defaultValue, string contentReference, string min, string max)
-        ExtractExtendedMetadata(ElementDefinition element, DefinitionCollection definitions)
+        ExtractExtendedMetadata(ElementDefinition element, DefinitionCollection definitions, string resourceTypeName)
     {
         // 1. Reference Targets
         string referenceTargets = "null";
@@ -397,7 +404,28 @@ using Ignixa.SourceNodeSerialization;");
         if (element.Constraint != null && element.Constraint.Any())
         {
             var constraintList = element.Constraint
-                .Select(c => $"new ConstraintMetadata(\"{EscapeString(c.Key ?? "")}\", \"{EscapeString(c.Severity?.ToString() ?? "")}\", \"{EscapeString(c.Human ?? "")}\", \"{EscapeString(c.Expression ?? "")}\")")
+                .Select(c =>
+                {
+                    string key = c.Key ?? "";
+                    string escapedKey = EscapeString(key);
+
+                    // Use helper method for common constraints (>100 occurrences)
+                    if (_commonConstraintKeys != null && _commonConstraintKeys.Contains(key))
+                    {
+                        return $"C(\"{escapedKey}\", \"{EscapeString(resourceTypeName)}\")";
+                    }
+
+                    // For uncommon constraints, generate inline
+                    string severityValue = c.Severity?.ToString() ?? "error";
+                    string severity = severityValue.Equals("error", StringComparison.OrdinalIgnoreCase)
+                        ? "ConstraintSeverity.Error"
+                        : "ConstraintSeverity.Warning";
+                    string human = EscapeString(c.Human ?? "");
+                    string expression = EscapeString(c.Expression ?? "");
+                    string xpath = string.IsNullOrEmpty(c.Xpath) ? "null" : $"\"{EscapeString(c.Xpath)}\"";
+
+                    return $"new ConstraintDefinition {{ Key = \"{escapedKey}\", Severity = {severity}, Human = \"{human}\", Expression = \"{expression}\", Xpath = {xpath}, AppliesTo = new[] {{ \"{EscapeString(resourceTypeName)}\" }} }}";
+                })
                 .ToList();
 
             if (constraintList.Count > 0)
@@ -576,7 +604,7 @@ using Ignixa.SourceNodeSerialization;");
         sb.AppendLine("            int order,");
         sb.AppendLine("            string[]? referenceTargets = null,");
         sb.AppendLine("            BindingMetadata? binding = null,");
-        sb.AppendLine("            ConstraintMetadata[]? constraints = null,");
+        sb.AppendLine("            ConstraintDefinition[]? constraints = null,");
         sb.AppendLine("            SlicingMetadata? slicing = null,");
         sb.AppendLine("            string? fixedValue = null,");
         sb.AppendLine("            string? patternValue = null,");
@@ -631,7 +659,7 @@ using Ignixa.SourceNodeSerialization;");
         sb.AppendLine("        public BindingMetadata? Binding { get; }");
         sb.AppendLine();
         sb.AppendLine("        /// <summary>FHIRPath constraints (invariants).</summary>");
-        sb.AppendLine("        public ConstraintMetadata[]? Constraints { get; }");
+        sb.AppendLine("        public ConstraintDefinition[]? Constraints { get; }");
         sb.AppendLine();
         sb.AppendLine("        /// <summary>Slicing definition.</summary>");
         sb.AppendLine("        public SlicingMetadata? Slicing { get; }");
@@ -788,6 +816,102 @@ using Ignixa.SourceNodeSerialization;");
         sb.AppendLine("}");
 
         return sb.ToString();
+    }
+
+    private Dictionary<string, (ElementDefinition.ConstraintComponent Constraint, int Count)>? _constraintData;
+
+    private void CollectCommonConstraints(DefinitionCollection definitions)
+    {
+        // Collect all constraints across all types and count their frequency
+        _constraintData = new Dictionary<string, (ElementDefinition.ConstraintComponent Constraint, int Count)>();
+
+        foreach (var sd in definitions.ResourcesByName.Values
+            .Concat(definitions.ComplexTypesByName.Values)
+            .Concat(definitions.PrimitiveTypesByName.Values))
+        {
+            if (sd.Snapshot?.Element == null)
+            {
+                continue;
+            }
+
+            foreach (var element in sd.Snapshot.Element)
+            {
+                if (element.Constraint == null || !element.Constraint.Any())
+                {
+                    continue;
+                }
+
+                foreach (var constraint in element.Constraint)
+                {
+                    string key = constraint.Key ?? "";
+                    if (string.IsNullOrEmpty(key))
+                    {
+                        continue;
+                    }
+
+                    if (!_constraintData.ContainsKey(key))
+                    {
+                        _constraintData[key] = (constraint, 1);
+                    }
+                    else
+                    {
+                        _constraintData[key] = (constraint, _constraintData[key].Count + 1);
+                    }
+                }
+            }
+        }
+
+        // Only consider constraints that appear >100 times as "common"
+        _commonConstraintKeys = new HashSet<string>(
+            _constraintData
+                .Where(kvp => kvp.Value.Count > 100)
+                .Select(kvp => kvp.Key));
+    }
+
+    private void GenerateCommonConstraintsDict(StringBuilder sb)
+    {
+        if (_constraintData == null || _commonConstraintKeys == null || _commonConstraintKeys.Count == 0)
+        {
+            return;
+        }
+
+        var commonConstraints = _constraintData
+            .Where(kvp => _commonConstraintKeys.Contains(kvp.Key))
+            .OrderByDescending(kvp => kvp.Value.Count)
+            .ToList();
+
+        sb.AppendLine("    // Common constraints dictionary (frequency-optimized)");
+        sb.AppendLine("    // These constraints appear >100 times and are shared to reduce code duplication");
+        sb.AppendLine("    private static readonly Dictionary<string, ConstraintDefinition> _commonConstraints = new()");
+        sb.AppendLine("    {");
+
+        foreach (var (key, (constraint, count)) in commonConstraints)
+        {
+            string severityValue = constraint.Severity?.ToString() ?? "error";
+            string severity = severityValue.Equals("error", StringComparison.OrdinalIgnoreCase)
+                ? "ConstraintSeverity.Error"
+                : "ConstraintSeverity.Warning";
+            string human = EscapeString(constraint.Human ?? "");
+            string expression = EscapeString(constraint.Expression ?? "");
+            string xpath = string.IsNullOrEmpty(constraint.Xpath) ? "null" : $"\"{EscapeString(constraint.Xpath)}\"";
+
+            sb.AppendLine($"        [\"{EscapeString(key)}\"] = new ConstraintDefinition");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            Key = \"{EscapeString(key)}\",");
+            sb.AppendLine($"            Severity = {severity},");
+            sb.AppendLine($"            Human = \"{human}\",");
+            sb.AppendLine($"            Expression = \"{expression}\",");
+            sb.AppendLine($"            Xpath = {xpath},");
+            sb.AppendLine("            AppliesTo = Array.Empty<string>()");
+            sb.AppendLine($"        }}, // Used {count} times");
+        }
+
+        sb.AppendLine("    };");
+        sb.AppendLine();
+        sb.AppendLine("    // Helper method to create constraint with specific AppliesTo");
+        sb.AppendLine("    private static ConstraintDefinition C(string key, string resourceType) =>");
+        sb.AppendLine("        _commonConstraints[key] with { AppliesTo = new[] { resourceType } };");
+        sb.AppendLine();
     }
 }
 

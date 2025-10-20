@@ -8,7 +8,8 @@
     <IsTestProject>true</IsTestProject>
     <LangVersion>latest</LangVersion>
     <!-- Allow BDD-style test naming with underscores (Given_When_Then) -->
-    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <!-- Suppress CA1307 (StringComparison) and CS8604 (nullable) in test code for brevity -->
+    <NoWarn>$(NoWarn);CA1307;CA1707;CS8604</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Ignixa.Benchmarks.SerializationBenchmarks-20251019-074027</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.6725)
+Intel Core i7-14700K, 1 CPU, 28 logical and 20 physical cores
+.NET SDK 9.0.201
+  [Host]   : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+  .NET 9.0 : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=.NET 9.0  Runtime=.NET 9.0  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                       </th><th>Mean  </th><th>Error</th><th>StdDev</th><th>Rank</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Ignixa: Parse large Bundle (JsonSerializer)&#39;</td><td>70.543 &mu;s</td><td>0.3103 &mu;s</td><td>0.2903 &mu;s</td><td>9</td><td>2.6855</td><td>-</td><td>47.05 KB</td>
+</tr><tr><td>&#39;Firely: Parse large Bundle (FhirJsonNode)&#39;</td><td>135.833 &mu;s</td><td>1.9942 &mu;s</td><td>1.8654 &mu;s</td><td>11</td><td>24.1699</td><td>15.8691</td><td>411.28 KB</td>
+</tr><tr><td>&#39;Firely: Parse large Bundle (POCO)&#39;</td><td>1,010.586 &mu;s</td><td>4.2605 &mu;s</td><td>3.5577 &mu;s</td><td>12</td><td>121.0938</td><td>29.2969</td><td>2070.08 KB</td>
+</tr><tr><td>&#39;Ignixa: Parse medium Observation (JsonSerializer)&#39;</td><td>5.799 &mu;s</td><td>0.0238 &mu;s</td><td>0.0223 &mu;s</td><td>4</td><td>0.2136</td><td>-</td><td>3.61 KB</td>
+</tr><tr><td>&#39;Firely: Parse medium Observation (FhirJsonNode)&#39;</td><td>8.290 &mu;s</td><td>0.0540 &mu;s</td><td>0.0451 &mu;s</td><td>5</td><td>1.6327</td><td>0.1526</td><td>27.63 KB</td>
+</tr><tr><td>&#39;Firely: Parse medium Observation (POCO)&#39;</td><td>60.676 &mu;s</td><td>0.3766 &mu;s</td><td>0.3523 &mu;s</td><td>8</td><td>7.3242</td><td>0.2441</td><td>125 KB</td>
+</tr><tr><td>&#39;Ignixa: Parse small Patient (JsonSerializer)&#39;</td><td>2.178 &mu;s</td><td>0.0097 &mu;s</td><td>0.0091 &mu;s</td><td>1</td><td>0.0801</td><td>-</td><td>1.36 KB</td>
+</tr><tr><td>&#39;Firely: Parse small Patient (FhirJsonNode)&#39;</td><td>3.114 &mu;s</td><td>0.0382 &mu;s</td><td>0.0357 &mu;s</td><td>3</td><td>0.8163</td><td>0.0381</td><td>13.77 KB</td>
+</tr><tr><td>&#39;Firely: Parse small Patient (POCO)&#39;</td><td>22.800 &mu;s</td><td>0.2180 &mu;s</td><td>0.2039 &mu;s</td><td>6</td><td>2.8076</td><td>-</td><td>47.52 KB</td>
+</tr><tr><td>&#39;Ignixa: Serialize large Bundle&#39;</td><td>90.981 &mu;s</td><td>0.3904 &mu;s</td><td>0.3652 &mu;s</td><td>10</td><td>4.6387</td><td>-</td><td>79.47 KB</td>
+</tr><tr><td>&#39;Firely: Serialize large Bundle (POCO)&#39;</td><td>1,140.588 &mu;s</td><td>8.3045 &mu;s</td><td>7.7680 &mu;s</td><td>13</td><td>140.6250</td><td>35.1563</td><td>2372.87 KB</td>
+</tr><tr><td>&#39;Ignixa: Serialize small Patient&#39;</td><td>2.897 &mu;s</td><td>0.0147 &mu;s</td><td>0.0130 &mu;s</td><td>2</td><td>0.1297</td><td>-</td><td>2.24 KB</td>
+</tr><tr><td>&#39;Firely: Serialize small Patient (POCO)&#39;</td><td>26.080 &mu;s</td><td>0.2344 &mu;s</td><td>0.2192 &mu;s</td><td>7</td><td>3.4180</td><td>-</td><td>58.41 KB</td>
+</tr></tbody></table>
+</body>
+</html>

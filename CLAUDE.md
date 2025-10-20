@@ -356,6 +356,12 @@ cd codegen
 
 ## Code Standards
 
+**File Organization**:
+- ❌ **ONE class/interface/enum per file** (strict rule)
+- ✅ File name must match type name exactly (e.g., `ValidationSchema.cs` contains only `ValidationSchema` class)
+- ❌ Never bundle multiple types in a single file (even if closely related)
+- ✅ Use separate files even for small types (interfaces, enums, records)
+
 **StyleCop/Analysis**:
 - 4 spaces, no tabs
 - System usings first, outside namespace
@@ -534,6 +540,49 @@ if (jsonNode.Parent is JsonObject parentObj)
     parentObj[propertyName] = newValue; // Direct mutation
 }
 ```
+
+### FHIR Validation System
+
+**Three-Tier Architecture** (ADR-2527):
+
+| Tier | Performance | Checks | Blocking |
+|------|-------------|--------|----------|
+| **Fast** | <25ms | JSON structure, required fields | Yes (API) |
+| **Spec** | <200ms | + Cardinality, types, FHIRPath | Yes (API) |
+| **Profile** | <1000ms | + Profiles, slicing, terminology | No ($validate) |
+
+**Key Files**:
+- `Ignixa.Validation/FastValidator.cs` - Tier 1 validator
+- `Ignixa.Validation/Checks/*.cs` - Validation checks (JsonStructure, RequiredField, Cardinality, Type)
+- `Ignixa.Validation/Abstractions/IValidationCheck.cs` - Check interface
+- `Ignixa.Validation/README.md` - Usage guide
+
+**Pattern**: All checks implement `IValidationCheck` and use `ISourceNode` for FHIR-aware navigation.
+
+**HAPI Compatibility**: Validation results use `OperationOutcomeJsonNode` with HAPI-compatible error codes (bdl-*, ele-*, etc.).
+
+**Example**:
+```csharp
+var validator = new FastValidator();
+var result = validator.Validate(jsonNode);
+if (!result.IsValid) {
+    var outcome = result.ToOperationOutcome(); // HAPI-compatible
+    throw new ValidationException(result);
+}
+```
+
+**Custom Checks**:
+```csharp
+var checks = new List<IValidationCheck>
+{
+    new RequiredFieldCheck("id", isRequired: true),
+    new CardinalityCheck("name", min: 1, max: null) // 1..*
+};
+var result = validator.Validate(sourceNode, checks);
+```
+
+**Legacy Code**:
+- `Ignixa.Validation/SourceNodeValidation/FastPathValidator.cs` - DEPRECATED (marked [Obsolete]), use FastValidator instead
 
 ### Adding a New Minimal API Endpoint
 

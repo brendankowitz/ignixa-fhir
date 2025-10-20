@@ -5,7 +5,7 @@
 
 # Ignixa
 
-A blazing-fast FHIR server built in .NET/C# that ignites your healthcare data exchange.
+A blazing-fast Reference Implementation FHIR server built in .NET/C# that ignites your healthcare data exchange.
 
 [![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
 [![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20STU3-orange)](https://hl7.org/fhir/)

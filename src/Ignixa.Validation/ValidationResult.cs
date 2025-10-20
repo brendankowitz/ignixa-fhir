@@ -3,6 +3,8 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+
 namespace Ignixa.Validation;
 
 /// <summary>
@@ -62,4 +64,115 @@ public sealed record ValidationResult
     /// <param name="issue">The validation issue.</param>
     /// <returns>A validation result indicating failure.</returns>
     public static ValidationResult Failure(ValidationIssue issue) => new(isValid: false, issues: new[] { issue });
+
+    /// <summary>
+    /// Combines multiple validation results into a single result.
+    /// The combined result is valid only if all input results are valid.
+    /// </summary>
+    /// <param name="results">The validation results to combine.</param>
+    /// <returns>A single validation result containing all issues from the input results.</returns>
+    public static ValidationResult Combine(IEnumerable<ValidationResult> results)
+    {
+        var resultsList = results.ToList();
+        if (!resultsList.Any())
+        {
+            return Success();
+        }
+
+        var allIssues = resultsList.SelectMany(r => r.Issues).ToList();
+        var hasErrors = allIssues.Any(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal);
+
+        return new ValidationResult(isValid: !hasErrors, issues: allIssues);
+    }
+
+    /// <summary>
+    /// Converts this validation result to a FHIR OperationOutcome resource.
+    /// Follows HAPI FHIR patterns for ecosystem compatibility.
+    /// </summary>
+    /// <returns>An OperationOutcomeJsonNode resource with issues from this validation result.</returns>
+    public OperationOutcomeJsonNode ToOperationOutcome()
+    {
+        var outcome = new OperationOutcomeJsonNode();
+        var issueList = new List<OperationOutcomeJsonNode.IssueComponent>();
+
+        foreach (var issue in Issues)
+        {
+            var issueComponent = new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = MapSeverity(issue.Severity),
+                Code = DetermineIssueType(issue.Code),
+                Diagnostics = issue.Message,
+                Expression = new[] { issue.Path }
+            };
+
+            // Set details if available
+            if (issue.Details != null)
+            {
+                var detailsNode = new CodeableConceptJsonNode
+                {
+                    Text = issue.Details.Text ?? string.Empty
+                };
+
+                if (issue.Details.Coding?.Any() == true)
+                {
+                    var codingList = new List<CodingJsonNode>();
+                    foreach (var coding in issue.Details.Coding)
+                    {
+                        codingList.Add(new CodingJsonNode
+                        {
+                            System = coding.System ?? string.Empty,
+                            Code = coding.Code ?? string.Empty,
+                            Display = coding.Display ?? string.Empty
+                        });
+                    }
+                    detailsNode.Coding = codingList;
+                }
+
+                issueComponent.Details = detailsNode;
+            }
+            else
+            {
+                // Fallback: Use code as text
+                issueComponent.Details = new CodeableConceptJsonNode
+                {
+                    Text = issue.Code
+                };
+            }
+
+            issueList.Add(issueComponent);
+        }
+
+        // Use the setter to properly set the issues in the mutable node
+        outcome.Issue = issueList;
+
+        return outcome;
+    }
+
+    private static OperationOutcomeJsonNode.IssueSeverity MapSeverity(IssueSeverity severity)
+    {
+        return severity switch
+        {
+            IssueSeverity.Fatal => OperationOutcomeJsonNode.IssueSeverity.Fatal,
+            IssueSeverity.Error => OperationOutcomeJsonNode.IssueSeverity.Error,
+            IssueSeverity.Warning => OperationOutcomeJsonNode.IssueSeverity.Warning,
+            IssueSeverity.Information => OperationOutcomeJsonNode.IssueSeverity.Information,
+            _ => OperationOutcomeJsonNode.IssueSeverity.Error
+        };
+    }
+
+    private static OperationOutcomeJsonNode.IssueType DetermineIssueType(string code)
+    {
+        // Map constraint keys to FHIR IssueType
+        return code switch
+        {
+            "code-invalid" or "not-in-vs" or "invalid-code" => OperationOutcomeJsonNode.IssueType.CodeInvalid,
+            "cardinality-violation" => OperationOutcomeJsonNode.IssueType.Required,
+            var c when c.StartsWith("bdl-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
+            var c when c.StartsWith("ele-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
+            var c when c.StartsWith("ext-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
+            var c when c.StartsWith("dom-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
+            var c when c.StartsWith("ref-", StringComparison.Ordinal) => OperationOutcomeJsonNode.IssueType.Invariant,
+            _ => OperationOutcomeJsonNode.IssueType.Invariant
+        };
+    }
 }
