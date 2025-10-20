@@ -43,6 +43,8 @@ internal class BundleParserState
     private string? _requestMethod;
     private string? _requestUrl;
     private string? _fullUrl;
+    private string? _ifNoneExist;
+    private string? _ifMatch;
     private readonly StringBuilder _resourceJsonBuilder = new();
     private int _resourceDepth;
     private bool _inResource;
@@ -134,6 +136,8 @@ internal class BundleParserState
         _requestMethod = null;
         _requestUrl = null;
         _fullUrl = null;
+        _ifNoneExist = null;
+        _ifMatch = null;
         _resourceJsonBuilder.Clear();
         _resourceDepth = 0;
         _inResource = false;
@@ -176,7 +180,9 @@ internal class BundleParserState
             ResourceType = resourceType,
             ResourceId = resourceId,
             FullUrl = _fullUrl,
-            RawJson = _resourceJsonBuilder.Length > 0 ? _resourceJsonBuilder.ToString() : null
+            RawJson = _resourceJsonBuilder.Length > 0 ? _resourceJsonBuilder.ToString() : null,
+            IfNoneExist = _ifNoneExist,
+            IfMatch = _ifMatch
         };
 
         _entryIndex++;
@@ -218,6 +224,12 @@ internal class BundleParserState
                     break;
                 case "url":
                     _requestUrl = value;
+                    break;
+                case "ifNoneExist":
+                    _ifNoneExist = value;
+                    break;
+                case "ifMatch":
+                    _ifMatch = value;
                     break;
             }
         }

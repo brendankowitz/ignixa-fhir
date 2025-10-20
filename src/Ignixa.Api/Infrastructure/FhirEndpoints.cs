@@ -8,11 +8,17 @@ using System.Text;
 using System.Text.Json;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IO;
 using Ignixa.Application.Features;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Features.ConditionalOperations;
+using Ignixa.Application.Features.ConditionalOperations.ConditionalDelete;
+using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
+using Ignixa.Application.Features.ConditionalOperations.ConditionalRead;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Utilities;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.SourceNodeSerialization;
@@ -65,6 +71,15 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status404NotFound);
 
+        // PUT /tenant/{tenantId:int}/{resourceType} - Conditional Update (no ID in URL, uses query string)
+        // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
+        endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}", HandleConditionalUpdateResourceExplicit)
+            .WithName("ConditionalUpdateResourceExplicit")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status201Created, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson);
+
         // PUT /tenant/{tenantId:int}/{resourceType}/{id} - Create or update resource
         endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}/{id}", HandlePutResource)
             .WithName("PutResource")
@@ -72,10 +87,35 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status201Created);
 
+        // DELETE /tenant/{tenantId:int}/{resourceType} - Conditional Delete (no ID in URL, uses query string)
+        // IMPORTANT: Must be registered BEFORE DELETE /{resourceType}/{id} to match correctly
+        endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}", HandleConditionalDeleteResourceExplicit)
+            .WithName("ConditionalDeleteResourceExplicit")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson);
+
         // DELETE /tenant/{tenantId:int}/{resourceType}/{id} - Delete resource
         endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}/{id}", HandleDeleteResource)
             .WithName("DeleteResource")
             .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // PATCH /tenant/{tenantId:int}/{resourceType} - Conditional Patch (no ID in URL, uses query string)
+        // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
+        endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}", HandleConditionalPatchResourceExplicit)
+            .WithName("ConditionalPatchResourceExplicit")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson);
+
+        // PATCH /tenant/{tenantId:int}/{resourceType}/{id} - Patch resource
+        endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}/{id}", HandlePatchResource)
+            .WithName("PatchResource")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
             .Produces(StatusCodes.Status404NotFound);
 
         // GET /tenant/{tenantId:int}/{resourceType} - Search resources
@@ -113,6 +153,18 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status400BadRequest);
 
+        // PUT /{resourceType} - Conditional Update (agnostic, no ID in URL, uses query string)
+        // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
+        endpoints.MapPut("/{resourceType}", (HttpContext context, string resourceType,
+            [FromServices] IMediator mediator, CancellationToken ct) =>
+            HandleConditionalUpdateResource(context, resourceType, mediator, ct))
+            .WithName("ConditionalUpdateResourceAgnostic")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status201Created, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest);
+
         // PUT /{resourceType}/{id} - Create or update resource (agnostic)
         endpoints.MapPut("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
@@ -124,12 +176,46 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest);
 
+        // DELETE /{resourceType} - Conditional Delete (agnostic, no ID in URL, uses query string)
+        // IMPORTANT: Must be registered BEFORE DELETE /{resourceType}/{id} to match correctly
+        endpoints.MapDelete("/{resourceType}", (HttpContext context, string resourceType,
+            [FromServices] IMediator mediator, CancellationToken ct) =>
+            HandleConditionalDeleteResource(context, resourceType, mediator, ct))
+            .WithName("ConditionalDeleteResourceAgnostic")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest);
+
         // DELETE /{resourceType}/{id} - Delete resource (agnostic)
         endpoints.MapDelete("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleDeleteResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
             .WithName("DeleteResourceAgnostic")
             .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // PATCH /{resourceType} - Conditional Patch (agnostic, no ID in URL, uses query string)
+        // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
+        endpoints.MapPatch("/{resourceType}", (HttpContext context, string resourceType,
+            [FromServices] IMediator mediator, CancellationToken ct) =>
+            HandleConditionalPatchResource(context, resourceType, mediator, ct))
+            .WithName("ConditionalPatchResourceAgnostic")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest);
+
+        // PATCH /{resourceType}/{id} - Patch resource (agnostic)
+        endpoints.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+            [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePatchResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
+            .WithName("PatchResourceAgnostic")
+            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -181,6 +267,7 @@ public static class FhirEndpoints
 
     /// <summary>
     /// GET /tenant/{tenantId:int}/{resourceType}/{id}
+    /// Supports conditional read via If-None-Match and If-Modified-Since headers.
     /// </summary>
     private static async Task<IResult> HandleGetResource(
         HttpContext context,
@@ -200,7 +287,51 @@ public static class FhirEndpoints
             return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
         }
 
-        // Send generic query
+        // Check for conditional read headers
+        var ifNoneMatch = context.Request.Headers["If-None-Match"].FirstOrDefault();
+        var ifModifiedSince = context.Request.Headers["If-Modified-Since"].FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(ifNoneMatch) || !string.IsNullOrWhiteSpace(ifModifiedSince))
+        {
+            // Conditional read operation
+            var parsedETag = ConditionalHeaderParser.ParseIfNoneMatch(ifNoneMatch);
+            var parsedDate = ConditionalHeaderParser.ParseIfModifiedSince(ifModifiedSince);
+
+            var conditionalQuery = new ConditionalReadQuery(
+                tenantId,
+                resourceType,
+                id,
+                parsedETag,
+                parsedDate);
+
+            var conditionalResult = await mediator.SendAsync(conditionalQuery, ct);
+
+            if (conditionalResult.Resource == null)
+            {
+                // Resource not found
+                logger.LogInformation("Resource {ResourceType}/{Id} not found in tenant {TenantId}", resourceType, id, tenantId);
+                return Results.NotFound();
+            }
+
+            if (conditionalResult.NotModified)
+            {
+                // 304 Not Modified: Include ETag and Last-Modified headers but no body
+                context.Response.Headers["ETag"] = ConditionalHeaderParser.FormatETag(conditionalResult.Resource.VersionId);
+                context.Response.Headers["Last-Modified"] = ConditionalHeaderParser.FormatHttpDate(conditionalResult.Resource.LastModified);
+
+                logger.LogInformation("Resource {ResourceType}/{Id} not modified, returning 304", resourceType, id);
+                return Results.StatusCode(StatusCodes.Status304NotModified);
+            }
+
+            // Resource modified: Add headers and return resource
+            context.Response.Headers["ETag"] = ConditionalHeaderParser.FormatETag(conditionalResult.Resource.VersionId);
+            context.Response.Headers["Last-Modified"] = ConditionalHeaderParser.FormatHttpDate(conditionalResult.Resource.LastModified);
+
+            logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", resourceType, id);
+            return Results.Bytes(conditionalResult.Resource.ResourceBytes, _contentTypeApplicationFhirJson);
+        }
+
+        // Normal GET (no conditional headers)
         var query = new GetResourceQuery(resourceType, id);
         SearchEntryResult? result = await mediator.SendAsync(query, ct);
 
@@ -228,9 +359,9 @@ public static class FhirEndpoints
                 detail: $"{resourceType}/{id} has been deleted (last version: {result.VersionId})");
         }
 
-        // Add headers
-        context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
-        context.Response.Headers.Append("Last-Modified", result.LastModified.ToString("R"));
+        // ALWAYS include ETag and Last-Modified headers in normal GET responses
+        context.Response.Headers["ETag"] = ConditionalHeaderParser.FormatETag(result.VersionId);
+        context.Response.Headers["Last-Modified"] = result.LastModified.ToString("R");
 
         // Return raw JSON bytes (zero-copy serialization)
         return Results.Bytes(result.ResourceBytes, _contentTypeApplicationFhirJson);
@@ -378,7 +509,7 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// POST /tenant/{tenantId:int}/{resourceType} - Create (server assigns ID)
+    /// POST /tenant/{tenantId:int}/{resourceType} - Create (server assigns ID) or Conditional Create
     /// </summary>
     private static async Task<IResult> HandlePostResource(
         HttpContext context,
@@ -391,10 +522,88 @@ public static class FhirEndpoints
     {
         logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}", tenantId, resourceType);
 
-        // Generate ID
-        string id = Guid.NewGuid().ToString("N");
+        // Check for If-None-Exist header (conditional create)
+        if (context.Request.Headers.TryGetValue("If-None-Exist", out var ifNoneExist))
+        {
+            logger.LogInformation(
+                "Conditional create detected for {ResourceType} with search criteria: {SearchCriteria}",
+                resourceType,
+                ifNoneExist.ToString());
 
-        logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
+            // Read request body
+            string requestBody;
+            await using (RecyclableMemoryStream memoryStream = memoryStreamManager.GetStream("request-body"))
+            {
+                await context.Request.Body.CopyToAsync(memoryStream, ct);
+                requestBody = System.Text.Encoding.UTF8.GetString(memoryStream.ToArray());
+            }
+
+            // Execute conditional create
+            var command = new Application.Features.ConditionalOperations.ConditionalCreate.ConditionalCreateCommand(
+                TenantId: tenantId,
+                ResourceType: resourceType,
+                IfNoneExist: ifNoneExist.ToString(),
+                RequestBody: requestBody,
+                RequestId: context.TraceIdentifier);
+
+            var result = await mediator.SendAsync(command, ct);
+
+            // Return appropriate status code based on WasCreated
+            var statusCode = result.WasCreated ? StatusCodes.Status201Created : StatusCodes.Status200OK;
+
+            // Add headers
+            context.Response.Headers.Append("ETag", $"W/\"{result.Resource.VersionId}\"");
+            context.Response.Headers.Append("Last-Modified", result.Resource.LastModified.ToString("R"));
+
+            if (result.WasCreated)
+            {
+                // 201 Created - return Location header
+                var location = $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
+                context.Response.Headers.Append("Location", location);
+
+                logger.LogInformation(
+                    "Conditional create: Created new {ResourceType}/{Id} (version {VersionId})",
+                    result.Resource.ResourceType,
+                    result.Resource.ResourceId,
+                    result.Resource.VersionId);
+
+                return Results.Created(location, new
+                {
+                    resourceType = result.Resource.ResourceType,
+                    id = result.Resource.ResourceId,
+                    meta = new { versionId = result.Resource.VersionId }
+                });
+            }
+            else
+            {
+                // 200 OK - existing resource returned
+                logger.LogInformation(
+                    "Conditional create: Returned existing {ResourceType}/{Id} (version {VersionId})",
+                    result.Resource.ResourceType,
+                    result.Resource.ResourceId,
+                    result.Resource.VersionId);
+
+                // Serialize the resource and return
+                var resourceJson = result.Resource.Resource.SerializeToString();
+                return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: statusCode);
+            }
+        }
+
+        // Standard create (no If-None-Exist header)
+
+        // Check if we're in a bundle context with a pre-assigned ID (for urn:uuid references)
+        string id;
+        if (context.Items.TryGetValue("BundleAssignedResourceId", out var assignedIdObj) && assignedIdObj is string assignedId)
+        {
+            id = assignedId;
+            logger.LogInformation("Using bundle-assigned ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
+        }
+        else
+        {
+            // Generate ID
+            id = Guid.NewGuid().ToString("N");
+            logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
+        }
 
         // Delegate to PUT handler logic
         return await HandlePutResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct);
@@ -551,6 +760,85 @@ public static class FhirEndpoints
     }
 
     /// <summary>
+    /// PUT /{resourceType} - Conditional Update (tenant-agnostic)
+    /// Delegates to tenant-explicit handler with extracted tenant ID.
+    /// </summary>
+    private static async Task<IResult> HandleConditionalUpdateResource(
+        HttpContext context,
+        string resourceType,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        var tenantId = ExtractTenantId(context);
+        return await HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, ct);
+    }
+
+    /// <summary>
+    /// PUT /tenant/{tenantId:int}/{resourceType} - Conditional Update (tenant-explicit)
+    /// Updates resource based on query string parameters.
+    /// - 0 matches: Create new resource (201 Created)
+    /// - 1 match: Update existing resource (200 OK)
+    /// - Multiple matches: Error (412 Precondition Failed)
+    /// </summary>
+    private static async Task<IResult> HandleConditionalUpdateResourceExplicit(
+        HttpContext context,
+        int tenantId,
+        string resourceType,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        // Extract query string (search criteria)
+        var queryString = context.Request.QueryString.Value;
+
+        if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
+        {
+            return Results.BadRequest(new
+            {
+                error = "Conditional update requires search parameters in query string"
+            });
+        }
+
+        // Remove leading '?'
+        var searchCriteria = queryString.TrimStart('?');
+
+        // Read request body
+        using var memoryStream = new MemoryStream();
+        await context.Request.Body.CopyToAsync(memoryStream, ct);
+        var requestBody = Encoding.UTF8.GetString(memoryStream.ToArray());
+
+        // Execute conditional update via mediator
+        var command = new Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateCommand(
+            TenantId: tenantId,
+            ResourceType: resourceType,
+            SearchCriteria: searchCriteria,
+            RequestBody: requestBody,
+            RequestId: context.TraceIdentifier);
+
+        var result = await mediator.SendAsync(command, ct);
+
+        // Return 201 Created or 200 OK based on WasCreated
+        var statusCode = result.WasCreated ? StatusCodes.Status201Created : StatusCodes.Status200OK;
+
+        // Add ETag header
+        context.Response.Headers.Append("ETag", $"W/\"{result.Resource.VersionId}\"");
+
+        // Serialize resource to JSON
+        var resourceJson = result.Resource.Resource.SerializeToString();
+
+        if (result.WasCreated)
+        {
+            // 201 Created - include Location header
+            var location = $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
+            return Results.Created(location, resourceJson);
+        }
+        else
+        {
+            // 200 OK
+            return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: statusCode);
+        }
+    }
+
+    /// <summary>
     /// Validates resource type against capability statement or schema provider.
     /// For now, returns true for all resource types (will implement proper validation later).
     /// </summary>
@@ -559,6 +847,222 @@ public static class FhirEndpoints
         // TODO: Implement proper validation using IFhirSchemaProvider or ICapabilityStatementService
         // For now, accept all resource types to support dynamic routing
         return true;
+    }
+
+    /// <summary>
+    /// DELETE /{resourceType} - Conditional Delete (tenant-agnostic)
+    /// Delegates to tenant-explicit handler with extracted tenant ID.
+    /// </summary>
+    private static async Task<IResult> HandleConditionalDeleteResource(
+        HttpContext context,
+        string resourceType,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        var tenantId = ExtractTenantId(context);
+        return await HandleConditionalDeleteResourceExplicit(context, tenantId, resourceType, mediator, ct);
+    }
+
+    /// <summary>
+    /// DELETE /tenant/{tenantId:int}/{resourceType} - Conditional Delete (tenant-explicit)
+    /// Deletes resources based on query string parameters.
+    ///
+    /// Single mode (no _count parameter):
+    /// - 0 matches: 404 Not Found
+    /// - 1 match: 204 No Content (delete resource)
+    /// - Multiple matches: 412 Precondition Failed
+    ///
+    /// Multiple mode (with _count parameter):
+    /// - 0 matches: 404 Not Found
+    /// - 1-N (≤ _count): 200 OK with OperationOutcome (all deleted)
+    /// - > _count: 200 OK with partial delete warning
+    /// </summary>
+    private static async Task<IResult> HandleConditionalDeleteResourceExplicit(
+        HttpContext context,
+        int tenantId,
+        string resourceType,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        // Extract query string (search criteria)
+        var queryString = context.Request.QueryString.Value;
+
+        if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
+        {
+            return Results.BadRequest(new
+            {
+                error = "Conditional delete requires search parameters in query string"
+            });
+        }
+
+        // Parse query string to extract _count and search criteria
+        var searchCriteria = queryString.TrimStart('?');
+        int? count = null;
+
+        // Extract _count parameter
+        var queryParams = QueryHelpers.ParseQuery(queryString);
+        if (queryParams.TryGetValue("_count", out var countValue) && int.TryParse(countValue.FirstOrDefault(), out var parsedCount))
+        {
+            count = parsedCount;
+
+            // Remove _count from search criteria (it's not a search parameter)
+            var criteriaWithoutCount = queryParams
+                .Where(kvp => kvp.Key != "_count")
+                .Select(kvp => $"{kvp.Key}={kvp.Value}");
+            searchCriteria = string.Join("&", criteriaWithoutCount);
+        }
+
+        // Execute conditional delete
+        var command = new ConditionalDeleteCommand(
+            tenantId,
+            resourceType,
+            searchCriteria,
+            count,
+            context.TraceIdentifier);
+
+        var result = await mediator.SendAsync(command, ct);
+
+        // Return appropriate response based on mode
+        if (!count.HasValue && result.DeletedCount == 1)
+        {
+            // Single mode: 204 No Content
+            return Results.NoContent();
+        }
+        else
+        {
+            // Multiple mode: 200 OK with verbose OperationOutcome
+            var outcome = new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "information",
+                        code = "informational",
+                        diagnostics = result.IsPartialDelete
+                            ? $"Partial delete: Deleted {result.DeletedCount} of {result.TotalMatches} matching resources (limit: {count}). " +
+                              $"Deleted IDs: {string.Join(", ", result.DeletedIds)}"
+                            : $"Deleted {result.DeletedCount} matching resource(s). Deleted IDs: {string.Join(", ", result.DeletedIds)}"
+                    }
+                }
+            };
+
+            return Results.Json(outcome, statusCode: StatusCodes.Status200OK, contentType: "application/fhir+json");
+        }
+    }
+
+    /// <summary>
+    /// PATCH /{resourceType} - Conditional Patch (tenant-agnostic)
+    /// Delegates to tenant-explicit handler with extracted tenant ID.
+    /// </summary>
+    private static async Task<IResult> HandleConditionalPatchResource(
+        HttpContext context,
+        string resourceType,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = ExtractTenantId(context);
+        return await HandleConditionalPatchResourceExplicit(context, tenantId, resourceType, mediator, cancellationToken);
+    }
+
+    /// <summary>
+    /// PATCH /tenant/{tenantId:int}/{resourceType} - Conditional Patch (tenant-explicit)
+    /// Patches resource based on query string parameters.
+    /// - 0 matches: 404 Not Found (different from conditional update!)
+    /// - 1 match: Patch existing resource (200 OK)
+    /// - Multiple matches: 412 Precondition Failed
+    /// </summary>
+    private static async Task<IResult> HandleConditionalPatchResourceExplicit(
+        HttpContext context,
+        int tenantId,
+        string resourceType,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        // Extract query string (search criteria)
+        var queryString = context.Request.QueryString.Value;
+
+        if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
+        {
+            return Results.BadRequest(new
+            {
+                error = "Conditional patch requires search parameters in query string"
+            });
+        }
+
+        // Remove leading '?'
+        var searchCriteria = queryString.TrimStart('?');
+
+        // Read request body (Parameters resource with patch operations)
+        using var memoryStream = new MemoryStream();
+        await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+        var patchBody = Encoding.UTF8.GetString(memoryStream.ToArray());
+
+        // Execute conditional patch
+        var command = new ConditionalPatchCommand(
+            tenantId,
+            resourceType,
+            searchCriteria,
+            patchBody,
+            context.TraceIdentifier);
+
+        var result = await mediator.SendAsync(command, cancellationToken);
+
+        // Return 200 OK with patched resource
+        var resourceJson = result.Resource.Resource.SerializeToString();
+        return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+    }
+
+    /// <summary>
+    /// PATCH /tenant/{tenantId:int}/{resourceType}/{id} or PATCH /{resourceType}/{id}
+    /// Patches a specific resource by ID using FHIR Parameters patch operations.
+    /// </summary>
+    private static async Task<IResult> HandlePatchResource(
+        HttpContext context,
+        int tenantId,
+        string resourceType,
+        string id,
+        IMediator mediator,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("PATCH /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
+
+        // Validate resource type
+        if (!IsValidResourceType(resourceType, context))
+        {
+            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
+            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
+        }
+
+        // Read request body (Parameters resource with patch operations)
+        using var memoryStream = new MemoryStream();
+        await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+        var patchBody = Encoding.UTF8.GetString(memoryStream.ToArray());
+
+        // Execute patch via mediator
+        var command = new Ignixa.Application.Features.Patch.PatchResourceCommand(
+            tenantId,
+            resourceType,
+            id,
+            patchBody);
+
+        var result = await mediator.SendAsync(command, cancellationToken);
+
+        if (result == null)
+        {
+            logger.LogInformation("Resource {ResourceType}/{Id} not found for patch", resourceType, id);
+            return Results.NotFound();
+        }
+
+        // Add ETag header
+        context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
+
+        // Return 200 OK with patched resource
+        var resourceJson = result.Resource.SerializeToString();
+        logger.LogInformation("Patched {ResourceType}/{Id} (version {Version})", resourceType, id, result.VersionId);
+        return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: StatusCodes.Status200OK);
     }
 
     /// <summary>

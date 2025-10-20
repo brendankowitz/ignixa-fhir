@@ -103,8 +103,24 @@ public class BundleEntryExecutor
                 // Set response body to MemoryStream so we can capture output
                 httpContext.Response.Body = responseBodyStream;
 
-                // TODO: Add conditional operation headers when BundleEntryContext supports them
-                // Future support: If-None-Exist, If-Match, If-None-Match, If-Modified-Since
+                // Add conditional operation headers from bundle entry
+                if (!string.IsNullOrWhiteSpace(entry.IfNoneExist))
+                {
+                    httpContext.Request.Headers["If-None-Exist"] = entry.IfNoneExist;
+                    _logger.LogDebug(
+                        "Added If-None-Exist header to entry {Index}: {IfNoneExist}",
+                        entry.Index,
+                        entry.IfNoneExist);
+                }
+
+                if (!string.IsNullOrWhiteSpace(entry.IfMatch))
+                {
+                    httpContext.Request.Headers["If-Match"] = entry.IfMatch;
+                    _logger.LogDebug(
+                        "Added If-Match header to entry {Index}: {IfMatch}",
+                        entry.Index,
+                        entry.IfMatch);
+                }
 
                 // Serialize resource to request body (if present)
                 if (entry.Resource != null)
@@ -119,6 +135,17 @@ public class BundleEntryExecutor
                 {
                     httpContext.Items["DeferredWriteCoordinator"] = deferredWriteCoordinator;
                     httpContext.Items["BundleEntryIndex"] = entry.Index;
+                }
+
+                // Pass assigned resource ID for POST operations with urn:uuid fullUrls
+                // This ensures conditional creates use the pre-assigned ID for reference resolution
+                if (!string.IsNullOrWhiteSpace(entry.AssignedResourceId))
+                {
+                    httpContext.Items["BundleAssignedResourceId"] = entry.AssignedResourceId;
+                    _logger.LogDebug(
+                        "Passed assigned resource ID to entry {Index}: {AssignedId}",
+                        entry.Index,
+                        entry.AssignedResourceId);
                 }
 
                 // Execute through ASP.NET Core pipeline

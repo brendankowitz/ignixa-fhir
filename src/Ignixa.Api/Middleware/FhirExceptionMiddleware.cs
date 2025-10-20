@@ -5,6 +5,7 @@
 
 using System.Net;
 using System.Text.Json;
+using Ignixa.Application.Features.ConditionalOperations;
 using Ignixa.Application.Features.Resource;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
@@ -49,6 +50,41 @@ public class FhirExceptionMiddleware
             // Serialize OperationOutcomeJsonNode with System.Text.Json
             var operationOutcomeJson = JsonSerializer.Serialize(validationException.OperationOutcome, JsonOptions);
             return context.Response.WriteAsync(operationOutcomeJson);
+        }
+
+        // Handle ConditionalOperationException with verbose FHIR OperationOutcome
+        if (exception is ConditionalOperationException conditionalEx)
+        {
+            context.Response.ContentType = "application/fhir+json";
+
+            // Determine status code based on match count
+            // 0 matches: 404 Not Found
+            // Multiple matches: 412 Precondition Failed
+            context.Response.StatusCode = conditionalEx.MatchCount == 0
+                ? StatusCodes.Status404NotFound
+                : StatusCodes.Status412PreconditionFailed;
+
+            var issueCode = conditionalEx.MatchCount == 0 ? "not-found" : "duplicate";
+
+            var conditionalOutcome = new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = issueCode,
+                        diagnostics = conditionalEx.Message,
+                        location = !string.IsNullOrEmpty(conditionalEx.SearchCriteria)
+                            ? new[] { conditionalEx.SearchCriteria }
+                            : Array.Empty<string>()
+                    }
+                }
+            };
+
+            var conditionalJson = JsonSerializer.Serialize(conditionalOutcome, JsonOptions);
+            return context.Response.WriteAsync(conditionalJson);
         }
 
         // Handle other exceptions with generic OperationOutcome

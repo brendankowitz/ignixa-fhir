@@ -77,4 +77,18 @@ public record BundleEntryContext
     /// Null for GET/DELETE operations without a resource body.
     /// </summary>
     public string? RawJson { get; init; }
+
+    /// <summary>
+    /// Gets the If-None-Exist header value from bundle.entry.request.ifNoneExist.
+    /// Used for conditional create operations in bundle entries.
+    /// Format: Search query string (e.g., "identifier=http://hospital.org/mrn|12345").
+    /// </summary>
+    public string? IfNoneExist { get; init; }
+
+    /// <summary>
+    /// Gets the If-Match header value from bundle.entry.request.ifMatch.
+    /// Used for conditional update/delete operations in bundle entries.
+    /// Format: ETag value (e.g., "W/\"2\"").
+    /// </summary>
+    public string? IfMatch { get; init; }
 }

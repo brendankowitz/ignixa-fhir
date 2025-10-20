@@ -197,6 +197,27 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IRequestHandler<SearchResourcesQuery, SearchResourcesResult>>()
         .InstancePerDependency();
 
+    // Conditional Operations (Phase 23 - ADR-2525: FHIR Conditional Operations)
+    containerBuilder.RegisterType<Ignixa.Application.Features.ConditionalOperations.ConditionalCreate.ConditionalCreateHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.ConditionalOperations.ConditionalCreate.ConditionalCreateCommand, Ignixa.Application.Features.ConditionalOperations.ConditionalCreate.ConditionalCreateResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateCommand, Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.ConditionalOperations.ConditionalDelete.ConditionalDeleteHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.ConditionalOperations.ConditionalDelete.ConditionalDeleteCommand, Ignixa.Application.Features.ConditionalOperations.ConditionalDelete.ConditionalDeleteResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.ConditionalOperations.ConditionalPatch.ConditionalPatchHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.ConditionalOperations.ConditionalPatch.ConditionalPatchCommand, Ignixa.Application.Features.ConditionalOperations.ConditionalPatch.ConditionalPatchResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.ConditionalOperations.ConditionalRead.ConditionalReadHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.ConditionalOperations.ConditionalRead.ConditionalReadQuery, Ignixa.Application.Features.ConditionalOperations.ConditionalRead.ConditionalReadResult>>()
+        .InstancePerDependency();
+
     // History handlers (Phase 22 - ADR-2524: FHIR _history operations)
     // NOW WITH STREAMING: Returns HistoryResult with IAsyncEnumerable<SearchEntryResult> for efficient memory usage
     containerBuilder.RegisterType<Ignixa.Application.Features.History.GetResourceHistoryHandler>()
