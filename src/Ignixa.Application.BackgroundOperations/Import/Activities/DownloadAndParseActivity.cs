@@ -6,10 +6,10 @@
 using System.Text;
 using DurableTask.Core;
 using Ignixa.Domain.Models;
-using Ignixa.Api.Features.Import.Models;
+using Ignixa.Application.BackgroundOperations.Import.Models;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Api.Features.Import.Activities;
+namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 
 /// <summary>
 /// Downloads NDJSON file from blob storage or local file system and parses into batches.

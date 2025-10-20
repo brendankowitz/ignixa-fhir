@@ -3,13 +3,12 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.Api.Features.Import.Models;
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
-/// Output from ValidateFileActivity.
+/// Output from CompleteJobActivity.
 /// </summary>
-public record ValidateFileOutput
+public record CompleteJobOutput
 {
-    public required bool IsValid { get; init; }
-    public string? ErrorMessage { get; init; }
+    public string? ErrorFileUrl { get; init; }
 }

@@ -1,7 +1,7 @@
 using DurableTask.Core;
-using Ignixa.Api.Features.Export.Activities;
+using Ignixa.Application.BackgroundOperations.Export.Activities;
 
-namespace Ignixa.Api.Features.Export.Orchestrations;
+namespace Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 
 /// <summary>
 /// Durable Task orchestration for FHIR bulk export operations.

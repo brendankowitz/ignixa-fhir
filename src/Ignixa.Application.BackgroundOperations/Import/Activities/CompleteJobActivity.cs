@@ -6,10 +6,10 @@
 using System.Text;
 using System.Text.Json;
 using DurableTask.Core;
-using Ignixa.Api.Features.Import.Models;
+using Ignixa.Application.BackgroundOperations.Import.Models;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Api.Features.Import.Activities;
+namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 
 /// <summary>
 /// Completes import job by uploading error logs (if any) and finalizing job status.

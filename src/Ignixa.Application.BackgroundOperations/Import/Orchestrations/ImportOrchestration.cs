@@ -4,11 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using DurableTask.Core;
-using Ignixa.Api.Features.Import.Activities;
+using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Domain.Models;
-using Ignixa.Api.Features.Import.Models;
+using Ignixa.Application.BackgroundOperations.Import.Models;
 
-namespace Ignixa.Api.Features.Import.Orchestrations;
+namespace Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 
 /// <summary>
 /// DurableTask orchestration for FHIR bulk data import.

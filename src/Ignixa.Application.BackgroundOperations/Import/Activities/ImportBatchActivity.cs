@@ -8,7 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain;
-using Ignixa.Api.Features.Import.Models;
+using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Infrastructure;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
@@ -16,7 +16,7 @@ using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Api.Features.Import.Activities;
+namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 
 /// <summary>
 /// Imports a batch of resources using BatchWriteAsync for optimal performance.

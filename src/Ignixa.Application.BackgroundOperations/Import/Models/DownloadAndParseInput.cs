@@ -3,19 +3,16 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
-
-namespace Ignixa.Api.Features.Import.Models;
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
-/// Input for import orchestration.
+/// Input for DownloadAndParseActivity.
 /// </summary>
-public record ImportOrchestrationInput
+public record DownloadAndParseInput
 {
     public required string JobId { get; init; }
     public required int TenantId { get; init; }
-    public required IReadOnlyList<InputFileInfo> InputFiles { get; init; }
-    public required string Mode { get; init; } // "InitialLoad" or "IncrementalLoad"
-    public ParametersJsonNode? StorageDetail { get; init; } // SAS tokens, etc.
+    public required string FileUrl { get; init; }
+    public required string ResourceType { get; init; }
+    public required int BatchSize { get; init; } // Default: 100
 }

@@ -5,10 +5,10 @@
 
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Api.Features.Import.Models;
+using Ignixa.Application.BackgroundOperations.Import.Models;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Api.Features.Import.Activities;
+namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 
 /// <summary>
 /// Updates import job progress in job store.

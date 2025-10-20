@@ -6,8 +6,8 @@
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Api.Features.Import.Models;
-using Ignixa.Api.Features.Import.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Microsoft.AspNetCore.Mvc;

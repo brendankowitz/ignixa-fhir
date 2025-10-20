@@ -1,7 +1,10 @@
 using DurableTask.Core;
-using Ignixa.Api.Features.Export.Activities;
-using Ignixa.Api.Features.Export.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Export.Activities;
+using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.DataLayer.FileSystem.DurableTask;
+using ExportCompleteJobActivity = Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity;
+using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activities;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -44,10 +47,18 @@ public static class DurableTaskConfiguration
 
             // Register orchestrations
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
+            worker.AddTaskOrchestrations(typeof(ImportOrchestration));
 
-            // Register activities with service provider for DI
+            // Register Export activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<SearchAndWriteChunkActivity>(sp);
-            worker.AddTaskActivitiesFromInterface<CompleteJobActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ExportCompleteJobActivity>(sp);
+
+            // Register Import activities with service provider for DI
+            worker.AddTaskActivitiesFromInterface<ImportActivities.ValidateFileActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ImportActivities.DownloadAndParseActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ImportActivities.ImportBatchActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ImportActivities.UpdateProgressActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ImportActivities.CompleteJobActivity>(sp);
 
             return worker;
         });

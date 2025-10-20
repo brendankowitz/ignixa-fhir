@@ -3,16 +3,19 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.Api.Features.Import.Models;
+using Ignixa.Domain.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
-/// Input for ImportBatchActivity.
+/// Input for import orchestration.
 /// </summary>
-public record ImportBatchInput
+public record ImportOrchestrationInput
 {
     public required string JobId { get; init; }
     public required int TenantId { get; init; }
-    public required string ResourceType { get; init; }
-    public required IReadOnlyList<string> Resources { get; init; } // NDJSON lines (raw JSON strings)
+    public required IReadOnlyList<InputFileInfo> InputFiles { get; init; }
     public required string Mode { get; init; } // "InitialLoad" or "IncrementalLoad"
+    public ParametersJsonNode? StorageDetail { get; init; } // SAS tokens, etc.
 }

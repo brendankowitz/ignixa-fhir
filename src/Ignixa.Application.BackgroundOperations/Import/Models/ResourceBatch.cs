@@ -3,16 +3,15 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Domain.Models;
-
-namespace Ignixa.Api.Features.Import.Models;
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
-/// Input for ValidateFileActivity.
+/// Batch of resources from NDJSON file.
 /// </summary>
-public record ValidateFileInput
+public record ResourceBatch
 {
-    public required string JobId { get; init; }
-    public required int TenantId { get; init; }
-    public required IReadOnlyList<InputFileInfo> InputFiles { get; init; }
+    public required int BatchNumber { get; init; }
+    public required IReadOnlyList<string> Resources { get; init; } // NDJSON lines (raw JSON strings)
+    public required int StartLine { get; init; }
+    public required int EndLine { get; init; }
 }

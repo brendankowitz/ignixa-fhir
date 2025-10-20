@@ -34,6 +34,7 @@
     <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj" />
   </ItemGroup>
 
 </Project>

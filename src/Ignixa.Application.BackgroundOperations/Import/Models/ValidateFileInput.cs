@@ -3,17 +3,16 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.Api.Features.Import.Models;
+using Ignixa.Domain.Models;
+
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
-/// Input for UpdateProgressActivity.
+/// Input for ValidateFileActivity.
 /// </summary>
-public record UpdateProgressInput
+public record ValidateFileInput
 {
     public required string JobId { get; init; }
     public required int TenantId { get; init; }
-    public required int ProcessedResources { get; init; }
-    public required int ProcessedFiles { get; init; }
-    public required int TotalFiles { get; init; }
-    public string? CurrentFile { get; init; }
+    public required IReadOnlyList<InputFileInfo> InputFiles { get; init; }
 }

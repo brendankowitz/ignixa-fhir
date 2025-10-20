@@ -55,12 +55,22 @@ builder.Services.AddHttpContextAccessor();
 // Register IndexLoaderService as hosted service
 builder.Services.AddHostedService<IndexLoaderService>();
 
-// Register DurableTask framework for background job processing ($export)
+// Register HTTP client factory for background operations (Import activities need this)
+builder.Services.AddHttpClient();
+
+// Register DurableTask framework for background job processing ($export, $import)
 builder.Services.AddDurableTask();
 
-// Register export activities for dependency injection
-builder.Services.AddTransient<Ignixa.Api.Features.Export.Activities.SearchAndWriteChunkActivity>();
-builder.Services.AddTransient<Ignixa.Api.Features.Export.Activities.CompleteJobActivity>();
+// Register Export activities for dependency injection
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Export.Activities.SearchAndWriteChunkActivity>();
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity>();
+
+// Register Import activities for dependency injection
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.ValidateFileActivity>();
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.DownloadAndParseActivity>();
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.ImportBatchActivity>();
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.UpdateProgressActivity>();
+builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.CompleteJobActivity>();
 
 // Configure Autofac container
 builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
@@ -170,6 +180,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Register export job store (in-memory for prototype, SQL Server for production)
     containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.InMemoryExportJobStore>()
         .As<IExportJobStore>()
+        .SingleInstance();
+
+    // Register import job store (in-memory for prototype, SQL Server for production)
+    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.InMemoryImportJobStore>()
+        .As<IImportJobStore>()
         .SingleInstance();
 
     // Register Medino service provider

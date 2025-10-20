@@ -60,19 +60,22 @@ See `docs/investigations/*.md` for details.
 ## Solution Architecture
 
 ```
-All.sln (9 projects)
+All.sln (10 projects)
 ├── 1. Ignixa.Domain              - Domain models, abstractions (no dependencies)
 ├── 2. Ignixa.Application         - Medino handlers, business logic (→ Domain)
-├── 3. Ignixa.DataLayer.*         - Storage implementations (→ Domain)
+├── 3. Ignixa.Application.BackgroundOperations - DurableTask orchestrations/activities (→ Application, Domain)
+├── 4. Ignixa.DataLayer.*         - Storage implementations (→ Domain)
 │   ├── Ignixa.DataLayer.FileSystem      - File-based repository
 │   ├── Ignixa.DataLayer.InMemoryIndex   - Resource location tracking
+│   ├── Ignixa.DataLayer.BlobStorage     - Blob storage for exports/imports
 │   └── Ignixa.DataLayer.LegacySqlEF     - Legacy SQL Server (EF Core)
-├── 4. Ignixa.Api                 - ASP.NET Core minimal API (→ all layers)
+├── 5. Ignixa.Api                 - ASP.NET Core minimal API (→ all layers)
 └── Supporting Libraries
-    ├── Ignixa.Extensions         - FHIR extensions, utilities
+    ├── Ignixa.FhirPath           - FHIRPath evaluation engine
     ├── Ignixa.Search             - Search parameters, indexing
     ├── Ignixa.Specification      - Generated structure providers
-    └── Ignixa.SourceNodeSerialization - Custom FHIR serialization
+    ├── Ignixa.SourceNodeSerialization - Custom FHIR serialization
+    └── Ignixa.Validation         - FHIR resource validation
 ```
 
 ### Key Project Dependencies
@@ -81,7 +84,8 @@ All.sln (9 projects)
 |---------|---------|--------------|
 | **Ignixa.Domain** | Core models (ResourceKey, ResourceWrapper, IFhirRepository) | Hl7.Fhir.R4 only |
 | **Ignixa.Application** | Medino handlers (CreateOrUpdateHandler, GetHandler, SearchHandler) | Domain, Medino, Logging |
-| **Ignixa.DataLayer.\*** | Storage (FileSystem, SQL, future CosmosDB) | Domain only |
+| **Ignixa.Application.BackgroundOperations** | DurableTask orchestrations/activities for $import/$export | Application, Domain, Search, DurableTask.Core |
+| **Ignixa.DataLayer.\*** | Storage (FileSystem, SQL, BlobStorage, future CosmosDB) | Domain only |
 | **Ignixa.Api** | Minimal API endpoints, middleware | All layers |
 
 ## Architecture Principles
@@ -89,7 +93,9 @@ All.sln (9 projects)
 ### 1. Layer Separation (Strict Dependency Rules)
 
 ```
-API Layer (HTTP concerns)
+API Layer (HTTP concerns, endpoints)
+    ↓ depends on
+Application.BackgroundOperations Layer (DurableTask orchestrations/activities)
     ↓ depends on
 Application Layer (Business logic, Medino handlers)
     ↓ depends on

@@ -1,7 +1,8 @@
 using DurableTask.Core;
+using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
 
-namespace Ignixa.Api.Features.Export.Activities;
+namespace Ignixa.Application.BackgroundOperations.Export.Activities;
 
 /// <summary>
 /// DurableTask activity that updates the export job status to completed or failed.

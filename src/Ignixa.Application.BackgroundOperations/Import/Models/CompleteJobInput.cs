@@ -5,7 +5,7 @@
 
 using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
-namespace Ignixa.Api.Features.Import.Models;
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
 /// Input for CompleteJobActivity.

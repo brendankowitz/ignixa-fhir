@@ -3,16 +3,17 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.Api.Features.Import.Models;
+namespace Ignixa.Application.BackgroundOperations.Import.Models;
 
 /// <summary>
-/// Input for DownloadAndParseActivity.
+/// Output from import orchestration.
 /// </summary>
-public record DownloadAndParseInput
+public record ImportOrchestrationOutput
 {
     public required string JobId { get; init; }
-    public required int TenantId { get; init; }
-    public required string FileUrl { get; init; }
-    public required string ResourceType { get; init; }
-    public required int BatchSize { get; init; } // Default: 100
+    public required string Status { get; init; } // "Completed", "Failed"
+    public int TotalResources { get; init; }
+    public int TotalErrors { get; init; }
+    public string? ErrorFileUrl { get; init; }
+    public string? ErrorMessage { get; init; }
 }

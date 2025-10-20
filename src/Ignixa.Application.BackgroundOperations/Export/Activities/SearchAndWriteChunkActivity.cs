@@ -1,5 +1,6 @@
 using System.Text;
 using DurableTask.Core;
+using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
@@ -7,7 +8,7 @@ using Ignixa.SourceNodeSerialization;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 
-namespace Ignixa.Api.Features.Export.Activities;
+namespace Ignixa.Application.BackgroundOperations.Export.Activities;
 
 /// <summary>
 /// DurableTask activity that searches for a chunk of resources and writes them to NDJSON.
