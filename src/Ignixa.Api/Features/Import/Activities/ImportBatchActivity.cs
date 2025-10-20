@@ -1,0 +1,225 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using DurableTask.Core;
+using Ignixa.Domain.Models;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
+using Ignixa.Domain;
+using Ignixa.Api.Features.Import.Models;
+using Ignixa.Application.Infrastructure;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.Specification;
+using Ignixa.Search.Indexing;
+using Microsoft.Extensions.Logging;
+
+namespace Ignixa.Api.Features.Import.Activities;
+
+/// <summary>
+/// Imports a batch of resources using BatchWriteAsync for optimal performance.
+/// Uses same batching pattern as bundle transactions but optimized for bulk import.
+/// Phase 4: Uses BatchWriteAsync instead of individual writes (10-100x faster).
+/// Phase 5: Supports import modes (InitialLoad/IncrementalLoad).
+///
+/// Import Modes:
+/// - **IncrementalLoad** (default): Standard mode for ongoing data updates.
+///   Server auto-assigns version IDs, performs full validation.
+///
+/// - **InitialLoad**: Optimized mode for initial bulk data loading.
+///   Currently uses same BatchWriteAsync path (already optimized).
+///   Future: May skip certain validations, preserve source version IDs.
+/// </summary>
+public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBatchOutput>
+{
+    private readonly IFhirRepositoryFactory _repositoryFactory;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ILogger<ImportBatchActivity> _logger;
+
+    public ImportBatchActivity(
+        IFhirRepositoryFactory repositoryFactory,
+        IFhirVersionContext fhirVersionContext,
+        ILogger<ImportBatchActivity> logger)
+    {
+        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+        _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    protected override async Task<ImportBatchOutput> ExecuteAsync(
+        TaskContext context,
+        ImportBatchInput input)
+    {
+        // Validate import mode
+        if (input.Mode != "InitialLoad" && input.Mode != "IncrementalLoad")
+        {
+            _logger.LogError("Invalid import mode: {Mode}. Supported modes: InitialLoad, IncrementalLoad", input.Mode);
+            return new ImportBatchOutput
+            {
+                SuccessCount = 0,
+                ErrorCount = input.Resources.Count,
+                Errors = new List<ImportErrorLogEntry>
+                {
+                    new ImportErrorLogEntry
+                    {
+                        ResourceType = input.ResourceType,
+                        ResourceId = "N/A",
+                        ErrorCode = "InvalidMode",
+                        ErrorMessage = $"Invalid import mode: {input.Mode}. Supported modes: InitialLoad, IncrementalLoad",
+                        ResourceJson = string.Empty
+                    }
+                }
+            };
+        }
+
+        _logger.LogInformation(
+            "Importing batch of {ResourceCount} {ResourceType} resources (mode: {Mode}) using BatchWriteAsync",
+            input.Resources.Count,
+            input.ResourceType,
+            input.Mode);
+
+        // 1. Get system repository to allocate transaction ID
+        var systemRepository = await _repositoryFactory.GetRepositoryAsync(
+            SystemConstants.SystemPartitionId,
+            CancellationToken.None);
+
+        var transactionId = await systemRepository.GetNextTransactionIdAsync(CancellationToken.None);
+
+        _logger.LogDebug(
+            "Allocated transaction ID {TransactionId} for import batch",
+            transactionId);
+
+        // 2. Get tenant repository
+        var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
+
+        // 3. Parse and validate resources, build batch operations
+        var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)>();
+        var errors = new List<ImportErrorLogEntry>();
+        var fhirVersion = FhirSpecification.R4; // TODO: Extract from tenant config
+
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
+        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion);
+
+        foreach (var resourceJson in input.Resources)
+        {
+            try
+            {
+                // Parse JSON to ResourceJsonNode
+                var jsonNode = JsonSourceNodeFactory.Parse(resourceJson);
+
+                // Validate resource type matches expected type
+                if (jsonNode.ResourceType != input.ResourceType)
+                {
+                    errors.Add(new ImportErrorLogEntry
+                    {
+                        ResourceType = input.ResourceType,
+                        ResourceId = jsonNode.Id ?? "unknown",
+                        ErrorCode = "InvalidResourceType",
+                        ErrorMessage = $"Expected {input.ResourceType}, got {jsonNode.ResourceType}",
+                        ResourceJson = resourceJson
+                    });
+                    continue;
+                }
+
+                // Generate ID if missing
+                var resourceId = jsonNode.Id;
+                if (string.IsNullOrEmpty(resourceId))
+                {
+                    resourceId = Guid.NewGuid().ToString("N");
+                    jsonNode.Id = resourceId;
+                    _logger.LogDebug("Generated ID for {ResourceType}: {Id}", input.ResourceType, resourceId);
+                }
+
+                // Extract search indices (best effort)
+                IReadOnlyList<object> searchIndices = Array.Empty<object>();
+                try
+                {
+                    var typedElement = jsonNode.ToTypedElement(schemaProvider);
+                    var indices = searchIndexer.Extract(typedElement);
+                    searchIndices = indices.ToArray();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to extract search indices for {ResourceType}/{Id}, skipping indexing",
+                        input.ResourceType,
+                        resourceId);
+                }
+
+                // Add to batch operations
+                operations.Add((input.ResourceType, resourceId, jsonNode, searchIndices));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing resource");
+                errors.Add(new ImportErrorLogEntry
+                {
+                    ResourceType = input.ResourceType,
+                    ResourceId = "unknown",
+                    ErrorCode = "ParseError",
+                    ErrorMessage = ex.Message,
+                    ResourceJson = resourceJson
+                });
+            }
+        }
+
+        // 4. Execute batch write if we have valid operations
+        var successCount = 0;
+        if (operations.Count > 0)
+        {
+            try
+            {
+                _logger.LogDebug(
+                    "Executing BatchWriteAsync for {Count} resources with transaction {TransactionId}",
+                    operations.Count,
+                    transactionId);
+
+                var keys = await repository.BatchWriteAsync(transactionId, operations, CancellationToken.None);
+
+                // 5. Commit transaction
+                await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
+
+                successCount = keys.Count;
+
+                _logger.LogInformation(
+                    "Batch write completed: {SuccessCount} resources written",
+                    successCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during batch write");
+
+                // Mark all operations as failed
+                foreach (var op in operations)
+                {
+                    errors.Add(new ImportErrorLogEntry
+                    {
+                        ResourceType = op.resourceType,
+                        ResourceId = op.resourceId,
+                        ErrorCode = "BatchWriteError",
+                        ErrorMessage = ex.Message,
+                        ResourceJson = op.resource.SerializeToString()
+                    });
+                }
+            }
+        }
+
+        var errorCount = errors.Count;
+
+        _logger.LogInformation(
+            "Import batch completed: {SuccessCount} success, {ErrorCount} errors",
+            successCount,
+            errorCount);
+
+        return new ImportBatchOutput
+        {
+            SuccessCount = successCount,
+            ErrorCount = errorCount,
+            Errors = errors
+        };
+    }
+
+}

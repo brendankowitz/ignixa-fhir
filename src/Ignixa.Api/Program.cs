@@ -10,6 +10,7 @@ using Microsoft.IO;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Middleware;
 using Ignixa.Api.Services;
+using Ignixa.Api.Features.Metadata.Api;
 using Ignixa.Application.Features;
 using Ignixa.Domain.Abstractions;
 using Ignixa.DataLayer.FileSystem.FileSystem;
@@ -33,7 +34,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
 
 // Add services to the container
-builder.Services.AddControllers();
+// Note: Using Minimal API endpoints, not MVC controllers
 builder.Services.AddOpenApi();
 
 // Register MemoryCache for CapabilityStatement caching (Phase 1.2)
@@ -471,8 +472,8 @@ app.UseHttpsRedirection();
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (Phase 17 - ADR-2520)
+app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)
 Ignixa.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)
-app.MapControllers(); // Keep for MetadataController
 
 app.Logger.LogInformation("Ignixa FHIR starting...");
 app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",

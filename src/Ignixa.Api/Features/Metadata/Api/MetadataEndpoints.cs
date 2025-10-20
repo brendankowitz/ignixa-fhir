@@ -13,21 +13,25 @@ using Ignixa.SourceNodeSerialization;
 namespace Ignixa.Api.Features.Metadata.Api;
 
 /// <summary>
-/// Controller for FHIR metadata endpoints (CapabilityStatement).
+/// Minimal API endpoints for FHIR metadata (CapabilityStatement).
 /// Supports both tenant-agnostic (/metadata) and tenant-explicit (/tenant/{tenantId}/metadata) routes.
 /// </summary>
-[ApiController]
-public class MetadataController : ControllerBase
+public static class MetadataEndpoints
 {
-    private readonly IMediator _mediator;
-    private readonly ILogger<MetadataController> _logger;
-
-    public MetadataController(
-        IMediator mediator,
-        ILogger<MetadataController> logger)
+    public static IEndpointRouteBuilder MapMetadataEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        // Tenant-agnostic route: GET /metadata
+        endpoints.MapGet("/metadata", HandleGetMetadata)
+            .WithName("GetMetadata")
+            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json");
+
+        // Tenant-explicit route: GET /tenant/{tenantId}/metadata
+        endpoints.MapGet("/tenant/{tenantId:int}/metadata", HandleGetTenantMetadata)
+            .WithName("GetTenantMetadata")
+            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status404NotFound);
+
+        return endpoints;
     }
 
     /// <summary>
@@ -36,62 +40,58 @@ public class MetadataController : ControllerBase
     /// In multi-tenant scenarios, returns system-wide capabilities.
     /// In single-tenant scenarios, returns the single tenant's capabilities.
     /// </summary>
-    [HttpGet("metadata")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetMetadata(CancellationToken cancellationToken)
+    private static async Task<IResult> HandleGetMetadata(
+        HttpContext context,
+        [FromServices] IMediator mediator,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
     {
-        _logger.LogInformation("GET /metadata (tenant-agnostic)");
+        logger.LogInformation("GET /metadata (tenant-agnostic)");
 
         // Check if TenantId was resolved by TenantResolutionMiddleware (single-tenant auto-detect)
         int? tenantId = null;
-        if (HttpContext.Items.TryGetValue("TenantId", out var tenantIdObj) &&
+        if (context.Items.TryGetValue("TenantId", out var tenantIdObj) &&
             tenantIdObj is int resolvedTenantId)
         {
             tenantId = resolvedTenantId;
-            _logger.LogDebug("Tenant auto-detected: {TenantId}", tenantId);
+            logger.LogDebug("Tenant auto-detected: {TenantId}", tenantId);
         }
 
         var query = new GetCapabilityStatementQuery(tenantId);
-        var capabilityStatement = await _mediator.SendAsync(query, cancellationToken);
+        var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
         // Extract FHIR version from CapabilityStatement and use version-aware serialization
         var fhirVersionString = capabilityStatement.FhirVersion?.ToVersionString() ?? "4.0";
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
         var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
 
-        return new JsonResult(capabilityStatement, serializerOptions)
-        {
-            ContentType = "application/fhir+json",
-        };
+        return Results.Json(capabilityStatement, serializerOptions, "application/fhir+json");
     }
 
     /// <summary>
     /// GET /tenant/{tenantId}/metadata
     /// Returns the FHIR server's capability statement for a specific tenant.
     /// </summary>
-    [HttpGet("tenant/{tenantId:int}/metadata")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetTenantMetadata(
+    private static async Task<IResult> HandleGetTenantMetadata(
+        HttpContext context,
         int tenantId,
+        [FromServices] IMediator mediator,
+        [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("GET /tenant/{TenantId}/metadata", tenantId);
+        logger.LogInformation("GET /tenant/{TenantId}/metadata", tenantId);
 
         // TenantResolutionMiddleware already validated the tenant exists and is active
         // The tenantId is stored in HttpContext.Items
 
         var query = new GetCapabilityStatementQuery(tenantId);
-        var capabilityStatement = await _mediator.SendAsync(query, cancellationToken);
+        var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
         // Extract FHIR version from CapabilityStatement and use version-aware serialization
         var fhirVersionString = capabilityStatement.FhirVersion?.ToVersionString() ?? "4.0";
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
         var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
 
-        return new JsonResult(capabilityStatement, serializerOptions)
-        {
-            ContentType = "application/fhir+json",
-        };
+        return Results.Json(capabilityStatement, serializerOptions, "application/fhir+json");
     }
 }
