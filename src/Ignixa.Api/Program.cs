@@ -10,6 +10,7 @@ using Microsoft.IO;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Middleware;
 using Ignixa.Api.Services;
+using Ignixa.Api.Features.Compartment;
 using Ignixa.Api.Features.Metadata.Api;
 using Ignixa.Application.Features;
 using Ignixa.Domain.Abstractions;
@@ -196,6 +197,10 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     containerBuilder.RegisterType<SearchResourcesHandler>()
         .As<IRequestHandler<SearchResourcesQuery, SearchResourcesResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Compartment.SearchCompartmentHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.Compartment.SearchCompartmentQuery, SearchResourcesResult>>()
         .InstancePerDependency();
 
     // Conditional Operations (Phase 23 - ADR-2525: FHIR Conditional Operations)
@@ -472,6 +477,7 @@ app.UseHttpsRedirection();
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (Phase 17 - ADR-2520)
+app.MapCompartmentEndpoints(); // FHIR compartment search endpoints (GET /Patient/123/Observation)
 app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)
 Ignixa.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)
 
