@@ -68,7 +68,7 @@ ValueTask<ResourceKey?> DeleteAsync(
 6. Write metadata with `IsDeleted=true`
 7. Update current symlink
 
-#### LegacySqlEfRepository (LegacySqlEfRepository.cs:147-251)
+#### SqlEntityFrameworkRepository (SqlEntityFrameworkRepository.cs:147-251)
 
 **Implementation**:
 1. Query for current version (IsHistory=false)
@@ -147,7 +147,7 @@ See `docs/rest/delete-integration-test.http` for comprehensive test scenarios:
 |------|---------|-------|
 | `Ignixa.Domain/Abstractions/IFhirRepository.cs` | Added DeleteAsync method | 139-143 |
 | `Ignixa.DataLayer.FileSystem/FileBasedFhirRepository.cs` | Implemented DeleteAsync | 183-283 |
-| `Ignixa.DataLayer.LegacySqlEF/LegacySqlEfRepository.cs` | Implemented DeleteAsync | 147-251 |
+| `Ignixa.DataLayer.SqlEntityFramework/SqlEntityFrameworkRepository.cs` | Implemented DeleteAsync | 147-251 |
 | `Ignixa.Application/Features/Resource/DeleteResourceHandler.cs` | Full implementation | 37-91 |
 | `Ignixa.Api/Infrastructure/FhirEndpoints.cs` | Added 410 Gone check | 211-229 |
 

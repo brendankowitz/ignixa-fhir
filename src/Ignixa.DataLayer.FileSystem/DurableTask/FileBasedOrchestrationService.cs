@@ -472,12 +472,8 @@ public class FileBasedOrchestrationService : IOrchestrationService, IOrchestrati
 
         try
         {
-            _logger.LogTrace("Flushing orchestration state to disk...");
-
             // Note: State is persisted on-demand when work items are processed
             // This flush is mainly for ensuring everything is saved on shutdown
-
-            _logger.LogTrace("State flush completed");
         }
         catch (Exception ex)
         {

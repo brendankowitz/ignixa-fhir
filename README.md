@@ -81,7 +81,7 @@ Ignixa follows a **layered architecture** with clear separation of concerns:
 ├─────────────────────────────────────┤
 │    Ignixa.DataLayer.*               │  ← Storage implementations
 │  • FileSystem  • BlobStorage        │
-│  • LegacySqlEF • InMemoryIndex      │
+│  • SqlEntityFramework • InMemoryIndex      │
 └─────────────────────────────────────┘
 ```
 
@@ -123,7 +123,7 @@ fhir-server-contrib/
 │   ├── Ignixa.DataLayer.FileSystem/   # File-based storage (prototype)
 │   ├── Ignixa.DataLayer.InMemoryIndex/# Resource location index
 │   ├── Ignixa.DataLayer.BlobStorage/  # Azure Blob Storage
-│   ├── Ignixa.DataLayer.LegacySqlEF/  # SQL Server with EF Core
+│   ├── Ignixa.DataLayer.SqlEntityFramework/  # SQL Server with EF Core
 │   ├── Ignixa.Extensions/             # FHIR extensions
 │   ├── Ignixa.Search/                 # Search infrastructure
 │   ├── Ignixa.Specification/          # Structure definitions

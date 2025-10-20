@@ -15,7 +15,7 @@ using Ignixa.Api.Features.Metadata.Api;
 using Ignixa.Application.Features;
 using Ignixa.Domain.Abstractions;
 using Ignixa.DataLayer.FileSystem.FileSystem;
-using Ignixa.DataLayer.LegacySqlEF;
+using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.InMemoryIndex;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
@@ -98,8 +98,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .Named<ISearchServiceFactory>("FileSystem")
         .SingleInstance();
 
-    // LegacySqlEfRepositoryFactory implements both interfaces, register with both names
-    containerBuilder.RegisterType<LegacySqlEfRepositoryFactory>()
+    // SqlEntityFrameworkRepositoryFactory implements both interfaces, register with both names
+    containerBuilder.RegisterType<SqlEntityFrameworkRepositoryFactory>()
         .Named<IFhirRepositoryFactory>("SqlEf")
         .Named<ISearchServiceFactory>("SqlEf")
         .SingleInstance();

@@ -45,7 +45,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath", "src\Igni
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Tests", "test\Ignixa.FhirPath.Tests\Ignixa.FhirPath.Tests.csproj", "{6D7B9490-CB5B-43E2-B149-C6CA54C18502}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.LegacySqlEF", "src\Ignixa.DataLayer.LegacySqlEF\Ignixa.DataLayer.LegacySqlEF.csproj", "{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.SqlEntityFramework", "src\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj", "{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{FCFC50C1-D38A-46A1-BFB6-950E201302FA}"
 EndProject

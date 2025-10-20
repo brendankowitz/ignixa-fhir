@@ -9,7 +9,7 @@ namespace Ignixa.Application.Infrastructure;
 
 /// <summary>
 /// Composite repository factory that routes to the appropriate storage provider
-/// based on tenant configuration (FileSystem, LegacySqlEF, etc.).
+/// based on tenant configuration (FileSystem, SqlEntityFramework, etc.).
 /// Multi-tenancy: Each tenant can use a different storage backend.
 /// </summary>
 public class CompositeRepositoryFactory : IFhirRepositoryFactory
@@ -48,7 +48,7 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory
         return tenantConfig.Storage.Type switch
         {
             "FileSystem" => await _fileSystemFactory.GetRepositoryAsync(tenantId, ct),
-            "LegacySqlEF" or "SqlServer" => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
+            "SqlEntityFramework" or "SqlServer" => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
             _ => throw new NotSupportedException($"Storage type '{tenantConfig.Storage.Type}' is not supported")
         };
     }

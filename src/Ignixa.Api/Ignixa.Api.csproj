@@ -27,7 +27,7 @@
     <ProjectReference Include="..\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
     <ProjectReference Include="..\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
-    <ProjectReference Include="..\Ignixa.DataLayer.LegacySqlEF\Ignixa.DataLayer.LegacySqlEF.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
     <ProjectReference Include="..\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj" />
     <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />

@@ -68,7 +68,7 @@ All.sln (10 projects)
 │   ├── Ignixa.DataLayer.FileSystem      - File-based repository
 │   ├── Ignixa.DataLayer.InMemoryIndex   - Resource location tracking
 │   ├── Ignixa.DataLayer.BlobStorage     - Blob storage for exports/imports
-│   └── Ignixa.DataLayer.LegacySqlEF     - Legacy SQL Server (EF Core)
+│   └── Ignixa.DataLayer.SqlEntityFramework     - SQL Server (EF Core)
 ├── 5. Ignixa.Api                 - ASP.NET Core minimal API (→ all layers)
 └── Supporting Libraries
     ├── Ignixa.FhirPath           - FHIRPath evaluation engine

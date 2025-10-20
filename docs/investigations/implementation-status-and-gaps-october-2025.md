@@ -23,7 +23,7 @@
 - Active Tenants: 3 configured (+ system partition)
 - Resource Types Supported: 136 (R4B)
 - FHIR Versions: R4, R4B, R5, STU3
-- Storage Providers: FileSystem, LegacySqlEF
+- Storage Providers: FileSystem, SqlEntityFramework
 
 **🎯 Production Readiness**: 40% (functional but lacks testing, security, operational features)
 
@@ -690,7 +690,7 @@ TenantMode.Distributed => throw new NotSupportedException(
 
 #### F2. Additional Storage Providers 🗄️
 
-**Current State**: FileSystem (prototype) + LegacySqlEF (legacy schema)
+**Current State**: FileSystem (prototype) + SqlEntityFramework (legacy schema)
 
 **Missing**:
 1. **Ignixa.DataLayer.SqlServer.Optimized** (Phase 8a)
