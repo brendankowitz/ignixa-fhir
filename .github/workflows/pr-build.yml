@@ -1,0 +1,59 @@
+name: PR Build
+
+on:
+  pull_request:
+    branches: [ main, fhir-v2 ]
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'bench/**'
+      - 'All.sln'
+      - '.github/workflows/pr-build.yml'
+      - '.github/actions/dotnet-build-and-test/**'
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet-version: [ '9.0.x' ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and test solution
+        uses: ./.github/actions/dotnet-build-and-test
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+          solution-file: 'All.sln'
+          build-configuration: 'Release'
+
+      - name: Comment PR on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **PR Build Successful** - All tests passed!'
+            })
+
+      - name: Comment PR on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **PR Build Failed** - Check the workflow logs for details'
+            })

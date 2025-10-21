@@ -1,0 +1,53 @@
+name: '.NET Build and Test'
+description: 'Composite action for building and testing .NET solution'
+
+inputs:
+  dotnet-version:
+    description: '.NET SDK version'
+    required: false
+    default: '9.0.x'
+  solution-file:
+    description: 'Path to solution file'
+    required: false
+    default: 'All.sln'
+  build-configuration:
+    description: 'Build configuration (Debug/Release)'
+    required: false
+    default: 'Release'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Restore dependencies
+      run: dotnet restore "${{ inputs.solution-file }}"
+      shell: bash
+
+    - name: Build solution
+      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal
+      shell: bash
+
+    - name: Run unit tests
+      run: dotnet test "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-build --verbosity minimal --logger "trx;LogFileName=test-results.trx"
+      shell: bash
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ runner.os }}
+        path: '**/test-results.trx'
+        if-no-files-found: 'ignore'
+        retention-days: 30
+
+    - name: Publish test results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        files: '**/test-results.trx'
+        check_name: 'Test Results'
+        comment_mode: 'off'

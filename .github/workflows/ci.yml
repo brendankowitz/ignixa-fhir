@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet-version: [ '9.0.x' ]
+      fail-fast: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and test solution
+        uses: ./.github/actions/dotnet-build-and-test
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+          solution-file: 'All.sln'
+          build-configuration: 'Release'
+
+  check-code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    needs: [ build-and-test ]
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore All.sln
+
+      - name: Run static analysis
+        run: dotnet build All.sln --configuration Release --no-restore --verbosity minimal /p:TreatWarningsAsErrors=true
+        continue-on-error: true
+
+      - name: Check for code style violations
+        run: |
+          dotnet format All.sln --verify-no-changes --verbosity diagnostic || \
+          (echo "⚠️ Code formatting issues detected. Run 'dotnet format' locally." && exit 0)
+        continue-on-error: true
+
+  notify-success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [ build-and-test ]
+    if: success()
+
+    steps:
+      - name: Create success status
+        run: echo "✅ CI pipeline completed successfully"
+
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [ build-and-test ]
+    if: failure()
+
+    steps:
+      - name: Create failure status
+        run: |
+          echo "❌ CI pipeline failed"
+          exit 1
