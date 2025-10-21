@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 using BenchmarkDotNet.Attributes;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.SourceNodes;
 using Ignixa.Validation;
 

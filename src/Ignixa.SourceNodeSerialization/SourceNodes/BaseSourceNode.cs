@@ -8,8 +8,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
-using Ignixa.SourceNodeSerialization.ElementModel;
-using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.SourceNodeSerialization.Abstractions;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
@@ -58,10 +57,10 @@ public abstract class BaseSourceNode<T> : ISourceNode, IResourceTypeSupplier, IA
             return _cachedNodes.SelectMany(x => x.Value.Value);
         }
 
-        if (name.EndsWith(JsonElementSourceNode.ChoiceTypeSuffix))
+        if (name.EndsWith(JsonNodeSourceNode.ChoiceTypeSuffix))
         {
             // e.g. value* which should return valueString etc.
-            string matchPrefix = name.TrimEnd(JsonElementSourceNode.ChoiceTypeSuffix);
+            string matchPrefix = name.TrimEnd(JsonNodeSourceNode.ChoiceTypeSuffix);
             return _cachedNodes
                 .Where(x => x.Key.StartsWith(matchPrefix, StringComparison.Ordinal))
                 .SelectMany(x => x.Value.Value)

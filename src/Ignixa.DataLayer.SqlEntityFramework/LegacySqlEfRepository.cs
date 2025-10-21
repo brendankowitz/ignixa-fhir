@@ -11,8 +11,8 @@ using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.ElementModel;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.DataLayer.SqlEntityFramework;
 

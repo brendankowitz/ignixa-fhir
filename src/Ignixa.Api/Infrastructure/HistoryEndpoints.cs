@@ -30,6 +30,17 @@ public static class HistoryEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapFhirHistoryEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapFhirHistoryTenantEndpoints();
+        endpoints.MapFhirHistoryAgnosticEndpoints();
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-explicit FHIR _history endpoints (/tenant/{tenantId}/.../_history).
+    /// Always supported in all multi-tenancy scenarios.
+    /// </summary>
+    public static IEndpointRouteBuilder MapFhirHistoryTenantEndpoints(this IEndpointRouteBuilder endpoints)
+    {
         // TENANT-EXPLICIT ROUTES (always supported)
 
         // GET /tenant/{tenantId:int}/{resourceType}/{id}/_history - Instance-level history
@@ -48,6 +59,16 @@ public static class HistoryEndpoints
             .WithName("GetSystemHistory")
             .Produces(StatusCodes.Status200OK);
 
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-agnostic FHIR _history endpoints (/.../_history).
+    /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
+    /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// </summary>
+    public static IEndpointRouteBuilder MapFhirHistoryAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
+    {
         // TENANT-AGNOSTIC ROUTES (FHIR-compliant, single-tenant auto-detection)
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)

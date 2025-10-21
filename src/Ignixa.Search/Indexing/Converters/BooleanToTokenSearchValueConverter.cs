@@ -5,7 +5,7 @@
 
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 
 namespace Ignixa.Search.Indexing.Converters;
 
@@ -25,6 +25,21 @@ public class BooleanToTokenSearchValueConverter : FhirTypedElementToSearchValueC
 
         if (fhirValue == null) yield break;
 
-        yield return new TokenSearchValue("http://terminology.hl7.org/CodeSystem/special-values", (bool)fhirValue ? "true" : "false", null);
+        bool boolValue;
+        if (fhirValue is bool b)
+        {
+            boolValue = b;
+        }
+        else if (fhirValue is string s && bool.TryParse(s, out bool parsed))
+        {
+            boolValue = parsed;
+        }
+        else
+        {
+            // Unable to convert value to boolean, skip this value
+            yield break;
+        }
+
+        yield return new TokenSearchValue("http://terminology.hl7.org/CodeSystem/special-values", boolValue ? "true" : "false", null);
     }
 }

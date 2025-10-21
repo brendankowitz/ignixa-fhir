@@ -8,17 +8,17 @@ using Hl7.Fhir.Serialization;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Ignixa.Specification;
-using Ignixa.SourceNodeSerialization.ElementModel;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ISourceNode = Ignixa.SourceNodeSerialization.ElementModel.ISourceNode;
-using ITypedElement = Ignixa.SourceNodeSerialization.ElementModel.ITypedElement;
+using ISourceNode = Ignixa.SourceNodeSerialization.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
 
 // Static using for extension methods
-using static Ignixa.SourceNodeSerialization.ElementModel.TypedElementExtensions;
+using static Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
+using TypedElementExtensions = Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
 
 namespace Ignixa.Benchmarks;
 
@@ -49,7 +49,7 @@ public class NavigationBenchmarks
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance);
         _ignixaSchemaProvider = _versionContext.GetSchemaProvider(FhirSpecification.R4);
         var sourceNode = _ignixaObservation.ToSourceNode();
-        _ignixaTypedElement = Ignixa.SourceNodeSerialization.ElementModel.TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
+        _ignixaTypedElement = TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
 
         // Firely setup
         _firelySourceNode = Hl7.Fhir.Serialization.FhirJsonNode.Parse(json);
@@ -197,7 +197,7 @@ public class NavigationBenchmarks
     public ITypedElement IgnixaToTypedElement()
     {
         var sourceNode = _ignixaObservation.ToSourceNode();
-        return Ignixa.SourceNodeSerialization.ElementModel.TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
+        return TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
     }
 
     [Benchmark(Description = "Firely: Convert to ITypedElement")]

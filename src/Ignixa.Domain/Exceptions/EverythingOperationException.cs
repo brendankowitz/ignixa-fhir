@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Domain.Exceptions;
 

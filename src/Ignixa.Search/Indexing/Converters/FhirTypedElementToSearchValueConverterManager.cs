@@ -6,7 +6,7 @@
 using EnsureThat;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 
 namespace Ignixa.Search.Indexing.Converters;
 

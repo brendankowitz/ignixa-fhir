@@ -8,9 +8,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json.Nodes;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.Utilities;
-using Ignixa.SourceNodeSerialization.Utility;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
@@ -28,7 +27,7 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
     private readonly JsonNode? _contentNode;
     private readonly int? _arrayIndex;
     private readonly JsonNode? _valueNode;
-    private Dictionary<string, Lazy<IEnumerable<ISourceNode>>> _cachedNodes;
+    private Dictionary<string, Lazy<IEnumerable<ISourceNode>>>? _cachedNodes;
 
     protected JsonNodeSourceNode(JsonNode? valueNode, JsonNode? contentNode, string name, int? arrayIndex, string location)
     {
@@ -304,53 +303,5 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
         }
 
         return null;
-    }
-}
-
-/// <summary>
-/// Specialized source node for JsonArray - maintains type distinction.
-/// </summary>
-internal class JsonArraySourceNode : JsonNodeSourceNode
-{
-    private JsonArraySourceNode(JsonNode? valueNode, JsonNode? contentNode, string name, int? arrayIndex, string location)
-        : base(valueNode, contentNode, name, arrayIndex, location)
-    {
-    }
-
-    internal static JsonArraySourceNode Create(JsonNode node, string location, string name)
-    {
-        return new JsonArraySourceNode(null, node, name, null, location);
-    }
-}
-
-/// <summary>
-/// Specialized source node for JsonObject - maintains type distinction.
-/// </summary>
-internal class JsonObjectSourceNode : JsonNodeSourceNode
-{
-    private JsonObjectSourceNode(JsonNode? valueNode, JsonNode? contentNode, string name, int? arrayIndex, string location)
-        : base(valueNode, contentNode, name, arrayIndex, location)
-    {
-    }
-
-    internal static JsonObjectSourceNode Create(JsonNode node, string location, string name)
-    {
-        return new JsonObjectSourceNode(null, node, name, null, location);
-    }
-}
-
-/// <summary>
-/// Specialized source node for JsonValue - maintains type distinction.
-/// </summary>
-internal class JsonValueSourceNode : JsonNodeSourceNode
-{
-    private JsonValueSourceNode(JsonNode? valueNode, JsonNode? contentNode, string name, int? arrayIndex, string location)
-        : base(valueNode, contentNode, name, arrayIndex, location)
-    {
-    }
-
-    internal static JsonValueSourceNode Create(JsonNode node, string location, string name)
-    {
-        return new JsonValueSourceNode(node, null, name, null, location);
     }
 }

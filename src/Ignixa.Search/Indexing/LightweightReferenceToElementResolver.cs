@@ -4,13 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using ISourceNode = Ignixa.SourceNodeSerialization.ElementModel.ISourceNode;
-using ITypedElement = Ignixa.SourceNodeSerialization.ElementModel.ITypedElement;
+using ISourceNode = Ignixa.SourceNodeSerialization.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 // For ToTypedElement extension method
-using Ignixa.SourceNodeSerialization.SourceNodes.Models; // For ResourceJsonNode
+
+// For ResourceJsonNode
 
 namespace Ignixa.Search.Indexing;
 
@@ -24,13 +25,17 @@ namespace Ignixa.Search.Indexing;
 public class LightweightReferenceToElementResolver : IReferenceToElementResolver
 {
     private readonly IReferenceSearchValueParser _referenceParser;
+    private readonly IFhirSchemaProvider _schemaProvider;
 
     public LightweightReferenceToElementResolver(
-        IReferenceSearchValueParser referenceParser)
+        IReferenceSearchValueParser referenceParser,
+        IFhirSchemaProvider schemaProvider)
     {
         EnsureArg.IsNotNull(referenceParser, nameof(referenceParser));
+        EnsureArg.IsNotNull(schemaProvider, nameof(schemaProvider));
 
         _referenceParser = referenceParser;
+        _schemaProvider = schemaProvider;
     }
 
     public ITypedElement Resolve(string reference)
@@ -45,6 +50,6 @@ public class LightweightReferenceToElementResolver : IReferenceToElementResolver
         string json = $"{{\"resourceType\":\"{parsed.ResourceType}\",\"id\":\"{parsed.ResourceId}\"}}";
         ISourceNode node = ResourceJsonNode.Parse(json).ToSourceNode();
 
-        return node.ToTypedElement(InstanceInferredStructureDefinitionSummaryProvider.CreateFrom(node));
+        return node.ToTypedElement(_schemaProvider);
     }
 }

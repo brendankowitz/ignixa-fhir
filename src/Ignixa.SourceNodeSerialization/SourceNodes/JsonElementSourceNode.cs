@@ -8,12 +8,12 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.Utilities;
-using Ignixa.SourceNodeSerialization.Utility;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
+[Obsolete]
 internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
 {
     private const string _resourceType = "resourceType";

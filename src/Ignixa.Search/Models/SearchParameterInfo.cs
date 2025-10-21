@@ -8,8 +8,9 @@ using System.Diagnostics.CodeAnalysis;
 using EnsureThat;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition.BundleNavigators;
-using Ignixa.SourceNodeSerialization.ElementModel;
-using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Search.Models;
 

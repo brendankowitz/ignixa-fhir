@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Models;
 

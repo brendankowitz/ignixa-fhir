@@ -6,7 +6,7 @@
 using System;
 using Ignixa.Specification.Generated;
 using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Specification.Providers;
 

@@ -491,7 +491,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
-app.MapPatchEndpoints(); // FHIR PATCH endpoints (Phase 17 - ADR-2520)
+app.MapPatchEndpoints(); // FHIR PATCH endpoints (direct and conditional)
 app.MapCompartmentEndpoints(); // FHIR compartment search endpoints (GET /Patient/123/Observation)
 app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)
 Ignixa.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)

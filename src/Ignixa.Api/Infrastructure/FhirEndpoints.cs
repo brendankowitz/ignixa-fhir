@@ -15,14 +15,14 @@ using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.ConditionalOperations;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalDelete;
-using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalRead;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using DeferredWriteCoordinator = Ignixa.Application.Features.Bundle.DeferredWriteCoordinator;
 
 namespace Ignixa.Api.Infrastructure;
@@ -63,6 +63,17 @@ public static class FhirEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapFhirEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapFhirTenantEndpoints();
+        endpoints.MapFhirAgnosticEndpoints();
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-explicit FHIR endpoints (/tenant/{tenantId}/...).
+    /// Always supported in all multi-tenancy scenarios.
+    /// </summary>
+    public static IEndpointRouteBuilder MapFhirTenantEndpoints(this IEndpointRouteBuilder endpoints)
+    {
         // TENANT-EXPLICIT ROUTES (always supported, all scenarios)
 
         // GET /tenant/{tenantId:int}/{resourceType}/{id} - Read resource
@@ -102,21 +113,6 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
-        // PATCH /tenant/{tenantId:int}/{resourceType} - Conditional Patch (no ID in URL, uses query string)
-        // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
-        endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}", HandleConditionalPatchResourceExplicit)
-            .WithName("ConditionalPatchResourceExplicit")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson);
-
-        // PATCH /tenant/{tenantId:int}/{resourceType}/{id} - Patch resource
-        endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}/{id}", HandlePatchResource)
-            .WithName("PatchResource")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces(StatusCodes.Status404NotFound);
 
         // GET /tenant/{tenantId:int}/{resourceType} - Search resources
         endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
@@ -140,6 +136,16 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
             .Produces(StatusCodes.Status501NotImplemented);
 
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-agnostic FHIR endpoints (/{resourceType}/...).
+    /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
+    /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// </summary>
+    public static IEndpointRouteBuilder MapFhirAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
+    {
         // TENANT-AGNOSTIC ROUTES (FHIR-compliant, single-tenant auto-detection)
         // Middleware validates: single tenant = auto-apply, multi-tenant = 400 Bad Request
         // These routes delegate to the same handlers - middleware provides tenant context
@@ -197,27 +203,6 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status400BadRequest);
 
-        // PATCH /{resourceType} - Conditional Patch (agnostic, no ID in URL, uses query string)
-        // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
-        endpoints.MapPatch("/{resourceType}", (HttpContext context, string resourceType,
-            [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleConditionalPatchResource(context, resourceType, mediator, ct))
-            .WithName("ConditionalPatchResourceAgnostic")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status400BadRequest);
-
-        // PATCH /{resourceType}/{id} - Patch resource (agnostic)
-        endpoints.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandlePatchResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
-            .WithName("PatchResourceAgnostic")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces(StatusCodes.Status404NotFound)
-            .Produces(StatusCodes.Status400BadRequest);
 
         // GET /{resourceType} - Search resources (agnostic)
         endpoints.MapGet("/{resourceType}", (HttpContext context, string resourceType,
@@ -952,118 +937,6 @@ public static class FhirEndpoints
         }
     }
 
-    /// <summary>
-    /// PATCH /{resourceType} - Conditional Patch (tenant-agnostic)
-    /// Delegates to tenant-explicit handler with extracted tenant ID.
-    /// </summary>
-    private static async Task<IResult> HandleConditionalPatchResource(
-        HttpContext context,
-        string resourceType,
-        IMediator mediator,
-        CancellationToken cancellationToken)
-    {
-        var tenantId = ExtractTenantId(context);
-        return await HandleConditionalPatchResourceExplicit(context, tenantId, resourceType, mediator, cancellationToken);
-    }
-
-    /// <summary>
-    /// PATCH /tenant/{tenantId:int}/{resourceType} - Conditional Patch (tenant-explicit)
-    /// Patches resource based on query string parameters.
-    /// - 0 matches: 404 Not Found (different from conditional update!)
-    /// - 1 match: Patch existing resource (200 OK)
-    /// - Multiple matches: 412 Precondition Failed
-    /// </summary>
-    private static async Task<IResult> HandleConditionalPatchResourceExplicit(
-        HttpContext context,
-        int tenantId,
-        string resourceType,
-        IMediator mediator,
-        CancellationToken cancellationToken)
-    {
-        // Extract query string (search criteria)
-        var queryString = context.Request.QueryString.Value;
-
-        if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
-        {
-            return Results.BadRequest(new
-            {
-                error = "Conditional patch requires search parameters in query string"
-            });
-        }
-
-        // Remove leading '?'
-        var searchCriteria = queryString.TrimStart('?');
-
-        // Read request body (Parameters resource with patch operations)
-        using var memoryStream = new MemoryStream();
-        await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
-        var patchBody = Encoding.UTF8.GetString(memoryStream.ToArray());
-
-        // Execute conditional patch
-        var command = new ConditionalPatchCommand(
-            tenantId,
-            resourceType,
-            searchCriteria,
-            patchBody,
-            context.TraceIdentifier);
-
-        var result = await mediator.SendAsync(command, cancellationToken);
-
-        // Return 200 OK with patched resource
-        var resourceJson = result.Resource.Resource.SerializeToString();
-        return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: StatusCodes.Status200OK);
-    }
-
-    /// <summary>
-    /// PATCH /tenant/{tenantId:int}/{resourceType}/{id} or PATCH /{resourceType}/{id}
-    /// Patches a specific resource by ID using FHIR Parameters patch operations.
-    /// </summary>
-    private static async Task<IResult> HandlePatchResource(
-        HttpContext context,
-        int tenantId,
-        string resourceType,
-        string id,
-        IMediator mediator,
-        ILogger<Program> logger,
-        CancellationToken cancellationToken)
-    {
-        logger.LogInformation("PATCH /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
-
-        // Validate resource type
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
-        }
-
-        // Read request body (Parameters resource with patch operations)
-        using var memoryStream = new MemoryStream();
-        await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
-        var patchBody = Encoding.UTF8.GetString(memoryStream.ToArray());
-
-        // Execute patch via mediator
-        var command = new Ignixa.Application.Features.Patch.PatchResourceCommand(
-            tenantId,
-            resourceType,
-            id,
-            patchBody);
-
-        var result = await mediator.SendAsync(command, cancellationToken);
-
-        if (result == null)
-        {
-            logger.LogInformation("Resource {ResourceType}/{Id} not found for patch", resourceType, id);
-            return Results.NotFound();
-        }
-
-        // Add ETag header
-        context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
-
-        // Return 200 OK with patched resource
-        var resourceJson = result.Resource.SerializeToString();
-        logger.LogInformation("Patched {ResourceType}/{Id} (version {Version})", resourceType, id, result.VersionId);
-        return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: StatusCodes.Status200OK);
-    }
 
     /// <summary>
     /// Converts a list to an async enumerable.

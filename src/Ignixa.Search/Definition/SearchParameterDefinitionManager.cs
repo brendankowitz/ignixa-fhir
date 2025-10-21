@@ -15,7 +15,7 @@ using Ignixa.Specification;
 using Ignixa.Search.Generated;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 
 namespace Ignixa.Search.Definition;
 

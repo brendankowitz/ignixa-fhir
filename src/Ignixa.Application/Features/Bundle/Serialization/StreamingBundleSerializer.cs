@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using EnsureThat;
 using Ignixa.Domain.Models;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
 
@@ -129,7 +130,7 @@ public static class StreamingBundleSerializer
         string bundleType,
         int? total,
         IAsyncEnumerable<SearchEntryResult> entries,
-        IReadOnlyList<SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode>? links = null,
+        IReadOnlyList<BundleLinkJsonNode>? links = null,
         bool pretty = false,
         CancellationToken cancellationToken = default)
     {
@@ -306,7 +307,7 @@ public static class StreamingBundleSerializer
     /// <summary>
     /// Writes bundle links from a list of BundleLinkJsonNode.
     /// </summary>
-    private static void WriteBundleLinks(FhirJsonWriter writer, IReadOnlyList<SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode>? links)
+    private static void WriteBundleLinks(FhirJsonWriter writer, IReadOnlyList<BundleLinkJsonNode>? links)
     {
         if (links is null || links.Count == 0)
         {
@@ -337,11 +338,11 @@ public static class StreamingBundleSerializer
             return;
         }
 
-        var links = new List<SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode>();
+        var links = new List<BundleLinkJsonNode>();
 
         if (!string.IsNullOrEmpty(selfLink))
         {
-            links.Add(new SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode
+            links.Add(new BundleLinkJsonNode
             {
                 Relation = "self",
                 Url = selfLink
@@ -350,7 +351,7 @@ public static class StreamingBundleSerializer
 
         if (!string.IsNullOrEmpty(nextLink))
         {
-            links.Add(new SourceNodeSerialization.SourceNodes.Models.BundleLinkJsonNode
+            links.Add(new BundleLinkJsonNode
             {
                 Relation = "next",
                 Url = nextLink

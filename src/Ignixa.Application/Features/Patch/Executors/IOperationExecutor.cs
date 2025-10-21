@@ -1,6 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch.Executors;
 

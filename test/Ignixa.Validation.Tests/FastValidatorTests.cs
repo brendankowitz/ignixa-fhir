@@ -4,7 +4,6 @@
 // </copyright>
 
 using System.Text.Json.Nodes;
-using Ignixa.SourceNodeSerialization.ElementModel;
 using Ignixa.SourceNodeSerialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;

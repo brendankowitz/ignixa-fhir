@@ -13,8 +13,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Serialization;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.ElementModel;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.DataLayer.FileSystem.FileSystem;
 

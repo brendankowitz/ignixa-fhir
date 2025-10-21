@@ -12,7 +12,7 @@ using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Search.Expressions.Parsers;
 

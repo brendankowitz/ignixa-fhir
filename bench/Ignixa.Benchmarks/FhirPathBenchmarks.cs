@@ -10,15 +10,15 @@ using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.FhirPath;
-using Ignixa.FhirPath.Evaluation; // Ignixa FHIRPath extension methods
-using Ignixa.SourceNodeSerialization.ElementModel;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.SourceNodeSerialization.SourceNodes; // Ignixa FHIRPath extension methods
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ITypedElement = Ignixa.SourceNodeSerialization.ElementModel.ITypedElement;
+using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
 
 // Static using for extension methods
-using static Ignixa.SourceNodeSerialization.ElementModel.TypedElementExtensions;
+using static Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
+using TypedElementExtensions = Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
 
 namespace Ignixa.Benchmarks;
 
@@ -55,8 +55,8 @@ public class FhirPathBenchmarks
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance);
         _ignixaSchemaProvider = _versionContext.GetSchemaProvider(FhirSpecification.R4);
 
-        _ignixaPatientTyped = Ignixa.SourceNodeSerialization.ElementModel.TypedElementExtensions.ToTypedElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
-        _ignixaObservationTyped = Ignixa.SourceNodeSerialization.ElementModel.TypedElementExtensions.ToTypedElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);
+        _ignixaPatientTyped = TypedElementExtensions.ToTypedElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
+        _ignixaObservationTyped = TypedElementExtensions.ToTypedElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);
 
         _ignixaCompiler = new Ignixa.FhirPath.FhirPathCompiler();
 

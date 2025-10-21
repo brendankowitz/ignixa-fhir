@@ -20,7 +20,7 @@ public static class SearchIndexerFactory
         var definitionManager = new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());
 
         var referenceParser = new ReferenceSearchValueParser(fhirSchemaProvider);
-        var elementResolver = new LightweightReferenceToElementResolver(referenceParser);
+        var elementResolver = new LightweightReferenceToElementResolver(referenceParser, fhirSchemaProvider);
         var codesystems = new CodeSystemResolver(fhirSchemaProvider.Version);
 
         ITypedElementToSearchValueConverter[] converters = typeof(TypedElementSearchIndexer)

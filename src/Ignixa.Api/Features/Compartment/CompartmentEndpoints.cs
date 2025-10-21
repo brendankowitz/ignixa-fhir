@@ -25,16 +25,37 @@ public static class CompartmentEndpoints
 {
     public static IEndpointRouteBuilder MapCompartmentEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}
-        endpoints.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentAsync)
-            .WithName("SearchCompartment")
+        endpoints.MapCompartmentTenantEndpoints();
+        endpoints.MapCompartmentAgnosticEndpoints();
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-explicit FHIR compartment endpoints (/tenant/{tenantId}/{compartmentType}/...).
+    /// Always supported in all multi-tenancy scenarios.
+    /// </summary>
+    public static IEndpointRouteBuilder MapCompartmentTenantEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        // Tenant-explicit route: GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}
+        endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentExplicitAsync)
+            .WithName("SearchCompartmentExplicit")
             .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
-        // Tenant-explicit route: GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}
-        endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentExplicitAsync)
-            .WithName("SearchCompartmentExplicit")
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-agnostic FHIR compartment endpoints (/{compartmentType}/...).
+    /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
+    /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// </summary>
+    public static IEndpointRouteBuilder MapCompartmentAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}
+        endpoints.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentAsync)
+            .WithName("SearchCompartment")
             .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);

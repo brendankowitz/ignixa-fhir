@@ -20,16 +20,37 @@ public static class MetadataEndpoints
 {
     public static IEndpointRouteBuilder MapMetadataEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // Tenant-agnostic route: GET /metadata
-        endpoints.MapGet("/metadata", HandleGetMetadata)
-            .WithName("GetMetadata")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json");
+        endpoints.MapMetadataTenantEndpoints();
+        endpoints.MapMetadataAgnosticEndpoints();
+        return endpoints;
+    }
 
+    /// <summary>
+    /// Registers tenant-explicit FHIR metadata endpoints (/tenant/{tenantId}/metadata).
+    /// Always supported in all multi-tenancy scenarios.
+    /// </summary>
+    public static IEndpointRouteBuilder MapMetadataTenantEndpoints(this IEndpointRouteBuilder endpoints)
+    {
         // Tenant-explicit route: GET /tenant/{tenantId}/metadata
         endpoints.MapGet("/tenant/{tenantId:int}/metadata", HandleGetTenantMetadata)
             .WithName("GetTenantMetadata")
             .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
             .Produces(StatusCodes.Status404NotFound);
+
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Registers tenant-agnostic FHIR metadata endpoints (/metadata).
+    /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
+    /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// </summary>
+    public static IEndpointRouteBuilder MapMetadataAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        // Tenant-agnostic route: GET /metadata
+        endpoints.MapGet("/metadata", HandleGetMetadata)
+            .WithName("GetMetadata")
+            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json");
 
         return endpoints;
     }

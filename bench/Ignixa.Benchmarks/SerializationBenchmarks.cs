@@ -4,7 +4,7 @@ using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 
 namespace Ignixa.Benchmarks;

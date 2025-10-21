@@ -8,8 +8,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Ignixa.SourceNodeSerialization.Models;
 using Ignixa.SourceNodeSerialization.SourceNodes;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 
 namespace Ignixa.SourceNodeSerialization;
 

@@ -6,7 +6,7 @@
 
 // Generated from FHIR R4 ValueSet: http://hl7.org/fhir/ValueSet/search-param-type
 
-using Ignixa.SourceNodeSerialization.Utility;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Specification.ValueSets.Normative;
 

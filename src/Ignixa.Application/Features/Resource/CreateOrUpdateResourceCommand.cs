@@ -8,7 +8,7 @@ using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Resource;
 

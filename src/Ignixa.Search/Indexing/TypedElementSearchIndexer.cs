@@ -13,7 +13,8 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing;
 
@@ -107,6 +108,28 @@ public class TypedElementSearchIndexer : ISearchIndexer
 
                 // First find the type of the component.
                 SearchParameterInfo componentSearchParameterDefinition = searchParameter.Component[i].ResolvedSearchParameter;
+
+                // Skip if the component's search parameter is not resolved
+                if (componentSearchParameterDefinition == null)
+                {
+                    _logger.LogWarning(
+                        "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null ResolvedSearchParameter. Skipping this composite value.",
+                        i,
+                        searchParameter.Code);
+                    skip = true;
+                    break;
+                }
+
+                // Skip if the component expression is null or empty
+                if (string.IsNullOrEmpty(component.Expression))
+                {
+                    _logger.LogWarning(
+                        "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.",
+                        i,
+                        searchParameter.Code);
+                    skip = true;
+                    break;
+                }
 
                 IReadOnlyList<ISearchValue> extractedComponentValues = ExtractSearchValues(
                     componentSearchParameterDefinition.Url.ToString(),
@@ -204,7 +227,7 @@ public class TypedElementSearchIndexer : ISearchIndexer
             // the values ourselves.
             extractedValues = extractedValues.Where(ev =>
             {
-                if (ev.InstanceType.Equals("ResourceReference", StringComparison.OrdinalIgnoreCase)) return ev.Scalar("reference") is string rr && targetResourceTypes.Any(trt => rr.Contains(trt, StringComparison.Ordinal));
+                if (ev.InstanceType != null && ev.InstanceType.Equals("ResourceReference", StringComparison.OrdinalIgnoreCase)) return ev.Scalar("reference") is string rr && targetResourceTypes.Any(trt => rr.Contains(trt, StringComparison.Ordinal));
 
                 return true;
             });
@@ -212,6 +235,13 @@ public class TypedElementSearchIndexer : ISearchIndexer
 
         foreach (ITypedElement extractedValue in extractedValues)
         {
+            if (string.IsNullOrEmpty(extractedValue.InstanceType))
+            {
+                _logger.LogWarning(
+                    "Skipping element with null or empty InstanceType during search indexing.");
+                continue;
+            }
+
             if (!_fhirElementTypeConverterManager.TryGetConverter(extractedValue.InstanceType, GetSearchValueTypeForSearchParamType(searchParameterType), out ITypedElementToSearchValueConverter converter))
             {
                 _logger.LogWarning(

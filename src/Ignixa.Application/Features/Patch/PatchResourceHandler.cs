@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Medino;
 using Microsoft.Extensions.Logging;
 

@@ -9,7 +9,8 @@ using Ignixa.Domain.Models;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Ignixa.Api.Features.Import.Api;

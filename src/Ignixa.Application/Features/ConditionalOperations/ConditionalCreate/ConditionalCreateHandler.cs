@@ -14,7 +14,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
 

@@ -5,7 +5,7 @@
 
 using System.Text;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.Features.History;
 

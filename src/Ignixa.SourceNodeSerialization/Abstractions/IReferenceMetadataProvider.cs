@@ -5,7 +5,7 @@
 
 #nullable enable
 
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.SourceNodeSerialization.Abstractions;
 

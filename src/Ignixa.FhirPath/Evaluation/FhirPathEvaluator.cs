@@ -6,7 +6,7 @@
  */
 
 using Ignixa.FhirPath.Expressions;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.Specification;
 
 namespace Ignixa.FhirPath.Evaluation;

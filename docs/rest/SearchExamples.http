@@ -7,32 +7,29 @@ Content-Type: application/json
 
 < ./data/SearchDataBatch.json
 
+### metadata
+GET {{hostname}}/metadata
+
 ### Include
 GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
 
 ### Revinclude
 GET {{hostname}}/Patient?_revinclude=Encounter:subject
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Elements
 GET {{hostname}}/Patient?_elements=identifier,active
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Not modifier
 GET {{hostname}}/Patient?gender:not=female
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Missing modifier
 GET {{hostname}}/Patient?birthdate:missing=true
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Exact modifier
 GET {{hostname}}/Patient?name:exact=Jon
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Contains modifier
 GET {{hostname}}/Patient?address:contains=Meadow
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Chained search 1
 GET {{hostname}}/DiagnosticReport?subject:Patient.name=Sarah

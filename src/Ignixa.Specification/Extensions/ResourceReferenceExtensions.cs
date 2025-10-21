@@ -6,7 +6,8 @@
 using System;
 using Ignixa.Specification.Providers;
 using Ignixa.SourceNodeSerialization.Helpers;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Specification.Extensions;
 

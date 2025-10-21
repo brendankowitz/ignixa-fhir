@@ -12,7 +12,6 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.SourceNodeSerialization.ElementModel;
 
 namespace Ignixa.Application.Infrastructure;
 

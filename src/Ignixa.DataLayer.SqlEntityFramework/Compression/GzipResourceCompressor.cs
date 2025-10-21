@@ -6,7 +6,7 @@
 using System.IO.Compression;
 using System.Text;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Compression;
 

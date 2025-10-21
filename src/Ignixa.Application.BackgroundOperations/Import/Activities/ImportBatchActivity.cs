@@ -11,9 +11,9 @@ using Ignixa.Domain;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Infrastructure;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;

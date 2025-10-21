@@ -5,7 +5,7 @@
 
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Ignixa.SourceNodeSerialization.ElementModel;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Checks;

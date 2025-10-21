@@ -9,7 +9,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.Helpers;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Xunit;
 
 namespace Ignixa.SourceNodeSerialization.Tests;
