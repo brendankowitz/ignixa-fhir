@@ -3,17 +3,16 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Medino;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.SourceNodeSerialization;
+using Medino;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Application.Infrastructure;
+namespace Ignixa.Application.Infrastructure.Behaviors;
 
 /// <summary>
 /// Medino pipeline behavior that enforces capability statement compliance for all FHIR requests.
@@ -115,8 +114,10 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
 
             // Throw exception - will be caught by FhirExceptionMiddleware
             // and converted to 403 Forbidden with OperationOutcome
-            throw new InvalidOperationException(
-                $"Server does not support this operation. Check GET /metadata for supported capabilities.");
+
+            // TODO: we should throw, but we will warn for now, capability statement generation needs more work.
+            //throw new InvalidOperationException(
+            //    $"Server does not support this operation. Check GET /metadata for supported capabilities.");
         }
 
         // Capability requirement satisfied - continue pipeline

@@ -21,10 +21,7 @@ public static class JsonSourceNodeFactory
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Disallow,
         Encoder = JavaScriptEncoder.Default,
-        Converters =
-        {
-            new ResourceJsonNodeConverter(),
-        },
+        Converters = { new JsonNodeConverterFactory() }
     };
 
     public static TResource Parse<TResource>(string json)

@@ -4,12 +4,13 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
 /// <summary>
 /// Base class for all *JsonNode model classes that wrap a mutable JsonObject.
-/// Provides common GetMutableNode() and SetProperty() implementations.
 /// </summary>
 public abstract class BaseJsonNode : IMutableJsonNode
 {
@@ -23,10 +24,12 @@ public abstract class BaseJsonNode : IMutableJsonNode
     /// Set at root node construction and propagated to children.
     /// Used to determine version-specific serialization behavior.
     /// </summary>
+    [JsonIgnore]
     public FhirSpecification? FhirVersion { get; set; }
 
     /// <summary>
     /// Default constructor for deserialization.
+    /// Creates a new empty JsonObject.
     /// </summary>
     protected BaseJsonNode()
     {
@@ -34,21 +37,22 @@ public abstract class BaseJsonNode : IMutableJsonNode
     }
 
     /// <summary>
-    /// Constructor with FHIR version awareness.
+    /// Constructor for wrapping an existing JsonObject without FHIR version.
+    /// Used by BaseJsonNodeConverter in Converters folder.
     /// </summary>
-    /// <param name="fhirVersion">The FHIR version (Stu3, R4, R4B, R5).</param>
-    protected BaseJsonNode(FhirSpecification fhirVersion)
-        : this()
+    /// <param name="jsonObject">Existing JsonObject to wrap.</param>
+    protected BaseJsonNode(JsonObject jsonObject)
     {
-        FhirVersion = fhirVersion;
+        _internalNode = jsonObject ?? throw new ArgumentNullException(nameof(jsonObject));
     }
 
     /// <summary>
-    /// Internal constructor for wrapping existing JsonObject (used when accessing nested properties).
+    /// Internal constructor for wrapping existing JsonObject with optional FHIR version.
+    /// Used by BaseJsonNodeConverter in Models folder and when accessing nested properties.
     /// </summary>
     /// <param name="jsonObject">Existing JsonObject to wrap.</param>
-    /// <param name="fhirVersion">Optional FHIR version (inherited from parent).</param>
-    protected BaseJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    /// <param name="fhirVersion">Optional FHIR version (inherited from parent). Can be null.</param>
+    protected BaseJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion)
     {
         _internalNode = jsonObject ?? throw new ArgumentNullException(nameof(jsonObject));
         FhirVersion = fhirVersion;

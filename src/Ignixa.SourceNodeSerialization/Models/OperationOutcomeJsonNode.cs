@@ -57,8 +57,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
                 var array = new JsonArray();
                 foreach (var item in value)
                 {
-                    var json = JsonSerializer.Serialize(item);
-                    array.Add(JsonNode.Parse(json));
+                    array.Add(item.MutableNode);
                 }
 
                 MutableNode["issue"] = array;
@@ -204,8 +203,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
                 }
                 else
                 {
-                    var json = JsonSerializer.Serialize(value);
-                    MutableNode["details"] = JsonNode.Parse(json);
+                    MutableNode["details"] = value.MutableNode;
                     _cachedDetails = value;
                 }
             }
@@ -472,8 +470,7 @@ public class CodeableConceptJsonNode : BaseJsonNode
                 var array = new JsonArray();
                 foreach (var item in value)
                 {
-                    var json = JsonSerializer.Serialize(item);
-                    array.Add(JsonNode.Parse(json));
+                    array.Add(item.MutableNode);
                 }
 
                 MutableNode["coding"] = array;

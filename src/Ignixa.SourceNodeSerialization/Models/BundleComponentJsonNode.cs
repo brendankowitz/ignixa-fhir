@@ -97,8 +97,7 @@ public class BundleComponentJsonNode : BaseJsonNode
             }
             else
             {
-                var json = JsonSerializer.Serialize(value);
-                MutableNode["request"] = JsonNode.Parse(json);
+                MutableNode["request"] = value.MutableNode;
                 _cachedRequest = value;
             }
         }
@@ -130,8 +129,7 @@ public class BundleComponentJsonNode : BaseJsonNode
             }
             else
             {
-                var json = JsonSerializer.Serialize(value);
-                MutableNode["response"] = JsonNode.Parse(json);
+                MutableNode["response"] = value.MutableNode;
                 _cachedResponse = value;
             }
         }
@@ -163,8 +161,7 @@ public class BundleComponentJsonNode : BaseJsonNode
             }
             else
             {
-                var json = JsonSerializer.Serialize(value);
-                MutableNode["search"] = JsonNode.Parse(json);
+                MutableNode["search"] = value.MutableNode;
                 _cachedSearch = value;
             }
         }

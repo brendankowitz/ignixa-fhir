@@ -5,8 +5,6 @@
 
 using System.Net;
 using System.Text.Json;
-using Ignixa.Application.Features.ConditionalOperations;
-using Ignixa.Application.Features.Resource;
 using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Api.Middleware;
@@ -32,6 +30,11 @@ public class FhirExceptionMiddleware
         {
             await _next(context);
         }
+        catch (Domain.Exceptions.FhirException fhirEx)
+        {
+            _logger.LogWarning(fhirEx, "FHIR exception occurred: {ExceptionType}", fhirEx.GetType().Name);
+            await HandleExceptionAsync(context, fhirEx);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception occurred");
@@ -41,50 +44,14 @@ public class FhirExceptionMiddleware
 
     private static Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        // Handle ValidationException with proper FHIR OperationOutcome
-        if (exception is ValidationException validationException)
+        // Handle all FhirException types generically
+        if (exception is Domain.Exceptions.FhirException fhirException)
         {
             context.Response.ContentType = "application/fhir+json";
-            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            context.Response.StatusCode = fhirException.StatusCode;
 
-            // Use MutableNode.ToJsonString() to get clean FHIR JSON (not the wrapper object)
-            var operationOutcomeJson = validationException.OperationOutcome.SerializeToString();
+            var operationOutcomeJson = fhirException.OperationOutcome.SerializeToString();
             return context.Response.WriteAsync(operationOutcomeJson);
-        }
-
-        // Handle ConditionalOperationException with verbose FHIR OperationOutcome
-        if (exception is ConditionalOperationException conditionalEx)
-        {
-            context.Response.ContentType = "application/fhir+json";
-
-            // Determine status code based on match count
-            // 0 matches: 404 Not Found
-            // Multiple matches: 412 Precondition Failed
-            context.Response.StatusCode = conditionalEx.MatchCount == 0
-                ? StatusCodes.Status404NotFound
-                : StatusCodes.Status412PreconditionFailed;
-
-            var issueCode = conditionalEx.MatchCount == 0 ? "not-found" : "duplicate";
-
-            var conditionalOutcome = new
-            {
-                resourceType = "OperationOutcome",
-                issue = new[]
-                {
-                    new
-                    {
-                        severity = "error",
-                        code = issueCode,
-                        diagnostics = conditionalEx.Message,
-                        location = !string.IsNullOrEmpty(conditionalEx.SearchCriteria)
-                            ? new[] { conditionalEx.SearchCriteria }
-                            : Array.Empty<string>()
-                    }
-                }
-            };
-
-            var conditionalJson = JsonSerializer.Serialize(conditionalOutcome, JsonOptions);
-            return context.Response.WriteAsync(conditionalJson);
         }
 
         // Handle other exceptions with generic OperationOutcome

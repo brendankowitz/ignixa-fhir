@@ -222,9 +222,14 @@ public class ParameterJsonNode : BaseJsonNode
         {
             SetProperty(valueName, JsonValue.Create(b));
         }
+        else if (value is BaseJsonNode baseJsonNode)
+        {
+            // For BaseJsonNode types, use MutableNode directly
+            SetProperty(valueName, baseJsonNode.MutableNode);
+        }
         else
         {
-            // For complex types, serialize to JsonNode
+            // For other complex types, serialize to JsonNode
             var json = JsonSerializer.Serialize(value);
             var node = JsonNode.Parse(json);
             SetProperty(valueName, node);

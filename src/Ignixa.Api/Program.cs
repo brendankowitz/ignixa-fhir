@@ -27,6 +27,7 @@ using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
 // using Ignixa.Validation.SourceNodeValidation; // Removed - migrating to new FastValidator in Phase 3
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Domain.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -196,6 +197,10 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // Register Medino mediator
     containerBuilder.RegisterType<Mediator>().As<IMediator>().SingleInstance();
+
+    // CRITICAL: Register pipeline behaviors BEFORE handlers
+    // Medino resolves behaviors as IEnumerable<IPipelineBehavior<TRequest, TResponse>>
+    // Order matters: CapabilityEnforcementBehavior runs first, then ValidationBehavior
 
     // Generic resource handlers (replaces Patient-specific handlers)
     containerBuilder.RegisterType<GetResourceHandler>()
@@ -401,13 +406,20 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // PHASE 3: Capability Enforcement with FHIRPath
 
-    // Register CapabilityEnforcementBehavior (Medino pipeline behavior)
-    // Validates all Medino requests by evaluating FHIRPath expressions against CapabilityStatement
-    // Commands/queries implement IRequiresCapability to declare their capability requirements
-    // No brittle pattern matching - each command self-declares its FHIRPath expression
+    // Register Medino pipeline behaviors
+    // CRITICAL FIX: For behaviors to work with Medino + Autofac, they must be registered
+    // in a way that allows enumeration. Autofac supports this for open generics via RegisterGeneric.
+    // The key is using InstancePerLifetimeScope (NOT InstancePerDependency) to ensure proper resolution.
+
+    // Register CapabilityEnforcementBehavior (generic - applies to ALL requests implementing IRequireCapability)
     containerBuilder.RegisterGeneric(typeof(CapabilityEnforcementBehavior<,>))
         .As(typeof(IPipelineBehavior<,>))
-        .InstancePerDependency();
+        .InstancePerLifetimeScope();
+
+    // Register ValidationBehavior (specific to CreateOrUpdateResourceCommand)
+    containerBuilder.RegisterType<ValidationBehavior>()
+        .As<IPipelineBehavior<CreateOrUpdateResourceCommand, ResourceKey>>()
+        .InstancePerLifetimeScope();
 
     // Register capability cache invalidator (Phase 3)
     containerBuilder.RegisterType<Ignixa.Application.Infrastructure.Caching.CapabilityCacheInvalidator>()

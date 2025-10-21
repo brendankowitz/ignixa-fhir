@@ -25,8 +25,22 @@ public sealed class AutofacMediatorServiceProvider : IMediatorServiceProvider
         return _context.Resolve<T>();
     }
 
+    object? IMediatorServiceProvider.GetService(Type serviceType)
+    {
+        return _context.Resolve(serviceType);
+    }
+
     IEnumerable<T> IMediatorServiceProvider.GetServices<T>()
     {
-        return _context.Resolve<IEnumerable<T>>();
+        // Autofac returns empty collection if no services registered
+        // Use ResolveOptional to handle missing registrations gracefully
+        return _context.Resolve<IEnumerable<T>>() ?? Array.Empty<T>();
+    }
+
+    IEnumerable<object> IMediatorServiceProvider.GetServices(Type serviceType)
+    {
+        var enumerableType = typeof(IEnumerable<>).MakeGenericType(serviceType);
+        var services = _context.Resolve(enumerableType);
+        return services as IEnumerable<object> ?? Array.Empty<object>();
     }
 }

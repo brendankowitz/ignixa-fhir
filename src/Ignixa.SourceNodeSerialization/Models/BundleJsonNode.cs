@@ -91,8 +91,7 @@ public class BundleJsonNode : ResourceJsonNode
                 var array = new JsonArray();
                 foreach (var item in value)
                 {
-                    var json = JsonSerializer.Serialize(item);
-                    array.Add(JsonNode.Parse(json));
+                    array.Add(item.MutableNode);
                 }
 
                 MutableNode["link"] = array;
@@ -133,8 +132,7 @@ public class BundleJsonNode : ResourceJsonNode
                 var array = new JsonArray();
                 foreach (var item in value)
                 {
-                    var json = JsonSerializer.Serialize(item);
-                    array.Add(JsonNode.Parse(json));
+                    array.Add(item.MutableNode);
                 }
 
                 MutableNode["entry"] = array;

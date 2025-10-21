@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Domain.Exceptions;
 using Ignixa.SourceNodeSerialization.Models;
 using Ignixa.Validation;
 
@@ -12,8 +13,10 @@ namespace Ignixa.Application.Features.Resource;
 /// Exception thrown when a FHIR resource fails validation.
 /// Contains the validation result that can be converted to an OperationOutcome.
 /// </summary>
-public class ValidationException : Exception
+public class ValidationException : FhirException
 {
+    private readonly OperationOutcomeJsonNode _operationOutcome;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ValidationException"/> class.
     /// </summary>
@@ -22,7 +25,7 @@ public class ValidationException : Exception
         : base("Resource validation failed")
     {
         ValidationResult = validationResult ?? throw new ArgumentNullException(nameof(validationResult));
-        OperationOutcome = validationResult.ToOperationOutcome();
+        _operationOutcome = validationResult.ToOperationOutcome();
     }
 
     /// <summary>
@@ -33,5 +36,5 @@ public class ValidationException : Exception
     /// <summary>
     /// Gets the OperationOutcome representation of the validation issues.
     /// </summary>
-    public OperationOutcomeJsonNode OperationOutcome { get; }
+    public override OperationOutcomeJsonNode OperationOutcome => _operationOutcome;
 }

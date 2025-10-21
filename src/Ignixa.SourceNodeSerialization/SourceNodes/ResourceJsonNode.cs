@@ -16,7 +16,6 @@ using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
 namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
 [SuppressMessage("Design", "CA2227", Justification = "POCO style model")]
-[JsonConverter(typeof(ResourceJsonNodeConverter))]
 public class ResourceJsonNode : BaseJsonNode, IResourceNode
 {
     // Cached wrapper for Meta property (reuse same instance)
@@ -29,12 +28,11 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     /// Default constructor for deserialization.
     /// </summary>
     public ResourceJsonNode()
-        : base()
     {
     }
 
     /// <summary>
-    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// Internal constructor for JsonConverter and other types in this assembly (accepts pre-parsed JsonObject).
     /// </summary>
     internal ResourceJsonNode(JsonObject jsonObject)
         : base(jsonObject)

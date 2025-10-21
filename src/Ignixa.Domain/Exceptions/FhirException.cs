@@ -28,4 +28,24 @@ public abstract class FhirException : Exception
     }
 
     public ICollection<OperationOutcomeJsonNode.IssueComponent> Issues { get; } = new List<OperationOutcomeJsonNode.IssueComponent>();
+
+    /// <summary>
+    /// Gets the HTTP status code for this exception. Default is 400 (Bad Request).
+    /// </summary>
+    public virtual int StatusCode => 400;
+
+    /// <summary>
+    /// Gets the OperationOutcome for this exception.
+    /// </summary>
+    public virtual OperationOutcomeJsonNode OperationOutcome
+    {
+        get
+        {
+            var outcome = new OperationOutcomeJsonNode
+            {
+                Issue = Issues.ToList()
+            };
+            return outcome;
+        }
+    }
 }
