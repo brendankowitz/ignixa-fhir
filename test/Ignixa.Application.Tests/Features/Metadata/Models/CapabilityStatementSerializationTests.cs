@@ -600,7 +600,7 @@ public class CapabilityStatementSerializationTests
 
         // Act
         var json = original.SerializeToString();
-        var deserializedResource = JsonSerializer.Deserialize<ResourceJsonNode>(json);
+        var deserializedResource = JsonSourceNodeFactory.Parse(json);
 
         // Assert - Deserialize as ResourceJsonNode, then access as CapabilityStatement
         deserializedResource.Should().NotBeNull();

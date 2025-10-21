@@ -25,17 +25,18 @@ public class ResourceConverter : JsonConverter<ResourceJsonNode>
         }
 
         var node = JsonNode.Parse(ref reader);
-        if (node == null)
+        if (node == null || node is not JsonObject jsonObject)
         {
             throw new JsonException();
         }
 
-        if (node["resourceType"]?.ToString() == Searchparameter)
+        if (jsonObject["resourceType"]?.GetValue<string>() == Searchparameter)
         {
-            return node.Deserialize<SearchParameterJsonNode>();
+            return jsonObject.Deserialize<SearchParameterJsonNode>(options);
         }
 
-        return node.Deserialize<ResourceJsonNode>();
+        // Directly construct ResourceJsonNode from the JsonObject to avoid infinite recursion
+        return new ResourceJsonNode(jsonObject);
     }
 
     public override void Write(Utf8JsonWriter writer, ResourceJsonNode value, JsonSerializerOptions options)
