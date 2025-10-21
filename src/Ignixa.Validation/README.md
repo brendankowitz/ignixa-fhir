@@ -52,12 +52,22 @@ var result = validator.Validate(sourceNode, checks);
 Ignixa.Validation/
 ├── Abstractions/
 │   ├── IValidationCheck.cs           - Base interface for all checks
-│   └── IValidationSchemaResolver.cs  - Schema resolution (Phase 3)
+│   ├── IValidationSchemaResolver.cs  - Schema resolution interface
+│   └── ValidationSchema.cs           - Schema container with checks
 ├── Checks/
 │   ├── JsonStructureCheck.cs         - Validates JSON structure
 │   ├── RequiredFieldCheck.cs         - Validates required fields
 │   ├── CardinalityCheck.cs           - Validates min/max cardinality
-│   └── TypeCheck.cs                  - Validates FHIR data types
+│   ├── TypeCheck.cs                  - Validates FHIR data types
+│   ├── ReferenceFormatCheck.cs       - Validates Reference elements
+│   ├── CodingStructureCheck.cs       - Validates Coding/CodeableConcept
+│   ├── FhirPathInvariantCheck.cs     - Validates FHIRPath constraints (ele-1, etc.)
+│   ├── ChoiceElementCheck.cs         - Validates value[x] choice types
+│   └── ExtensionStructureCheck.cs    - Validates extension structure
+├── Schema/
+│   ├── StructureDefinitionSchemaBuilder.cs      - Builds schemas from metadata
+│   ├── StructureDefinitionSchemaResolver.cs     - Resolves by canonical URL
+│   └── CachedValidationSchemaResolver.cs        - Caching decorator
 ├── FastValidator.cs                  - Tier 1 validator service
 ├── ValidationResult.cs               - Result model with ToOperationOutcome()
 ├── ValidationIssue.cs                - Issue model (HAPI-compatible)
@@ -73,11 +83,49 @@ Ignixa.Validation/
 4. **Immutable State**: ValidationState uses record pattern for thread-safety
 5. **Composable Checks**: IValidationCheck interface enables pluggable validators
 
+## Available Validators
+
+### Tier 1 (Fast) - Universal Checks
+
+| Check | Purpose | Error Code |
+|-------|---------|------------|
+| **JsonStructureCheck** | Validates JSON is well-formed object | `structure-invalid` |
+| **IdFormatCheck** | Validates id format (64 char max, a-zA-Z0-9.-) | `id-format-invalid` |
+| **NarrativeCheck** | Validates Narrative.status and Narrative.div | `narrative-invalid` |
+
+### Tier 2 (Spec) - Schema-Driven Checks
+
+| Check | Purpose | Error Code | Extracted From |
+|-------|---------|------------|----------------|
+| **RequiredFieldCheck** | Validates required fields present | `required-field-missing` | `IsRequired` |
+| **CardinalityCheck** | Validates min/max element count | `cardinality-violation` | `Min`, `Max` |
+| **TypeCheck** | Validates primitive types (string, integer, etc.) | `type-mismatch` | `DefaultTypeName` |
+| **ReferenceFormatCheck** | Validates Reference format (relative/literal) | `reference-format-invalid` | Type == "Reference" |
+| **CodingStructureCheck** | Validates Coding/CodeableConcept structure | `coding-structure-invalid` | Type == "Coding\|CodeableConcept" |
+| **FhirPathInvariantCheck** | Validates FHIRPath constraints (ele-1, dom-1, etc.) | Constraint key (e.g., `ele-1`) | `Constraints[]` |
+| **ChoiceElementCheck** | Validates choice type elements (value[x] one variant only) | `choice-multiple`, `choice-invalid-type` | `IsChoiceElement` |
+| **ExtensionStructureCheck** | Validates extension structure (url + value/nested) | `ext-url-required`, `ext-content-required`, `ext-both-value-and-nested` | Type == "Extension" |
+
+### Schema-Driven Validation Example
+
+```csharp
+// Build schema from StructureDefinition
+var provider = new MemoryStructureDefinitionSummaryProvider();
+var builder = new StructureDefinitionSchemaBuilder();
+var schema = builder.BuildSchema(provider.Provide("Patient"), provider);
+
+// Validate using schema
+var sourceNode = JsonNodeSourceNode.Create(patientJson);
+var result = schema.Validate(sourceNode, settings, state);
+```
+
 ## Phase Status
 
-- ✅ **Phase 1**: Core abstractions (COMPLETE)
-- ✅ **Phase 2**: Basic checks (COMPLETE)
-- 🚧 **Phase 3**: Schema building & FHIRPath invariants (PLANNED)
-- 📋 **Phase 4**: Profile validation & terminology (PLANNED)
+- ✅ **Phase 1**: Core abstractions (COMPLETED Oct 20, 2025)
+- ✅ **Phase 2**: Basic checks (COMPLETED Oct 20, 2025)
+- ✅ **Phase 3**: Schema building (COMPLETED Oct 20, 2025)
+- ✅ **Phase 4 Week 1**: FHIRPath invariants (COMPLETED Oct 20, 2025)
+- ✅ **Phase 4 Week 2**: Cardinality & choice types (COMPLETED Oct 20, 2025)
+- 📋 **Phase 5-6**: Terminology, slicing, integration (PLANNED)
 
 See [ADR-2527](../../docs/investigations/ADR-2527-comprehensive-validation-system.md) for details.

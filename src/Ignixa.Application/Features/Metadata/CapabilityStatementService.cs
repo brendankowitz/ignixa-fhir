@@ -129,15 +129,15 @@ public class CapabilityStatementService
         }
 
         // Set basic properties that change per request
-        statement.Url = "http://sparky.example.com/fhir/CapabilityStatement";
+        statement.Url = "http://Ignixa.example.com/fhir/CapabilityStatement";
         statement.Version = "0.1.0";
         statement.Date = DateTimeOffset.UtcNow.ToString("O");
         statement.FhirVersionString = FhirSpecificationExtensions.ToVersionString(context.FhirVersion);
 
         // Set name based on tenant
         statement.Name = tenantConfig != null
-            ? $"SparkyFhirServer_{tenantConfig.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal)}"
-            : "SparkyFhirServer";
+            ? $"IgnixaFhirServer_{tenantConfig.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal)}"
+            : "IgnixaFhirServer";
 
         // Apply segments in priority order
         var orderedSegments = _segments.OrderBy(s => s.Priority).ToList();

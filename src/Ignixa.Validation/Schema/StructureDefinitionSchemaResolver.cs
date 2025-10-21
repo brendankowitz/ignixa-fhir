@@ -22,11 +22,14 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaResolver"/> class.
     /// </summary>
     /// <param name="provider">The structure definition summary provider.</param>
+    /// <param name="builder">The schema builder (optional, creates default if null).</param>
     /// <exception cref="ArgumentNullException">Thrown if provider is null.</exception>
-    public StructureDefinitionSchemaResolver(IStructureDefinitionSummaryProvider provider)
+    public StructureDefinitionSchemaResolver(
+        IStructureDefinitionSummaryProvider provider,
+        StructureDefinitionSchemaBuilder? builder = null)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _builder = new StructureDefinitionSchemaBuilder();
+        _builder = builder ?? new StructureDefinitionSchemaBuilder();
     }
 
     /// <summary>

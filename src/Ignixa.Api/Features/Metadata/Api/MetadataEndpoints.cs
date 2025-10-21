@@ -6,7 +6,6 @@
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Application.Features.Metadata;
-using Ignixa.Application.Features.Metadata.Serialization;
 using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
 
@@ -81,12 +80,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        // Extract FHIR version from CapabilityStatement and use version-aware serialization
-        var fhirVersionString = capabilityStatement.FhirVersion?.ToVersionString() ?? "4.0";
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
-        var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
-
-        return Results.Json(capabilityStatement, serializerOptions, "application/fhir+json");
+        return Results.Content(capabilityStatement.SerializeToString(), "application/fhir+json");
     }
 
     /// <summary>
@@ -108,11 +102,6 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        // Extract FHIR version from CapabilityStatement and use version-aware serialization
-        var fhirVersionString = capabilityStatement.FhirVersion?.ToVersionString() ?? "4.0";
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
-        var serializerOptions = CapabilityStatementSerializerOptions.Create(fhirVersion);
-
-        return Results.Json(capabilityStatement, serializerOptions, "application/fhir+json");
+        return Results.Content(capabilityStatement.SerializeToString(), "application/fhir+json");
     }
 }

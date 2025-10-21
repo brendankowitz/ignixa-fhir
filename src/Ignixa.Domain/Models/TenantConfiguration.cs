@@ -46,6 +46,15 @@ public record TenantConfiguration
     /// Search configuration for this tenant
     /// </summary>
     public TenantSearchConfiguration Search { get; init; } = new();
+
+    /// <summary>
+    /// Validation tier for this tenant (None, Fast, Spec, Profile).
+    /// Defaults to Spec (recommended for production).
+    /// Fast = Universal checks only (less than 25ms).
+    /// Spec = Fast + Schema checks (less than 200ms).
+    /// Profile = Spec + Advanced profile validation (less than 1000ms).
+    /// </summary>
+    public string ValidationTier { get; init; } = "Spec";
 }
 
 /// <summary>

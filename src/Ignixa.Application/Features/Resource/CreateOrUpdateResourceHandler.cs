@@ -14,11 +14,10 @@ using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
-// using Ignixa.Validation.SourceNodeValidation;
+using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Application.Features.Resource;
-
-// #pragma warning disable CS0618 // Type or member is obsolete - TODO: Migrate to new FastValidator in Phase 3
 
 /// <summary>
 /// Generic handler for creating or updating any FHIR resource.
@@ -27,7 +26,7 @@ namespace Ignixa.Application.Features.Resource;
 /// Coordinator can be passed via command parameter OR via HttpContext.Items (pipeline routing).
 ///
 /// Flow:
-/// 1. Validate resource
+/// 1. Validate resource using tenant-configured validation tier
 /// 2. Determine partition using IPartitionStrategy (for write)
 /// 3. Validate single partition (writes always go to one partition)
 /// 4. Get repository from IFhirRepositoryFactory
@@ -39,7 +38,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
-    // private readonly FastPathValidator _validator; // TODO: Migrate to new FastValidator with schema resolver in Phase 3
+    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly ITerminologyService _terminologyService;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
@@ -47,14 +47,16 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRepositoryFactory repositoryFactory,
         IHttpContextAccessor httpContextAccessor,
         IFhirVersionContext fhirVersionContext,
-        // FastPathValidator validator, // TODO: Migrate to new FastValidator with schema resolver in Phase 3
+        Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
+        ITerminologyService terminologyService,
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
-        // _validator = validator ?? throw new ArgumentNullException(nameof(validator)); // TODO: Migrate to new FastValidator with schema resolver in Phase 3
+        _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
+        _terminologyService = terminologyService ?? throw new ArgumentNullException(nameof(terminologyService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -69,42 +71,77 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Extract FHIR version from headers (defaults to R4) - needed for version-specific validation
         var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
 
-        // TODO: VALIDATE INCOMING RESOURCE (fast-path validation)
-        // Temporarily disabled - migrating to new FastValidator with schema resolver in Phase 3
+        // Get tenant configuration to determine validation tier
+        var currentHttpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("HttpContext is null");
+        var currentTenantConfig = currentHttpContext.Items["TenantConfiguration"] as TenantConfiguration;
+
+        // Determine validation tier from tenant configuration (defaults to Spec)
+        var validationTier = ParseValidationTier(currentTenantConfig?.ValidationTier ?? "Spec");
+
+        // VALIDATE INCOMING RESOURCE using tier-aware ValidationSchema
         // Uses cached ToSourceNode() from command.JsonNode (ResourceJsonNode)
         // This prevents repeated ReflectedSourceNode allocations (15-60ms per validation)
-        // Uses version-specific schema provider from FhirVersionContext
-        /*
-        _logger.LogDebug(
-            "Validating incoming resource {ResourceType}/{Id} with FastValidator (FHIR {Version})",
-            command.ResourceType,
-            command.Id,
-            fhirVersionEnum);
-
-        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
-        var sourceNode = command.JsonNode.ToSourceNode(); // Use cached ISourceNode
-        var validationResult = _validator.Validate(sourceNode, schemaProvider);
-
-        if (!validationResult.IsValid)
+        if (validationTier != ValidationTier.None)
         {
-            _logger.LogWarning(
-                "Validation failed for {ResourceType}/{Id}: {ErrorCount} error(s), {WarningCount} warning(s)",
+            _logger.LogDebug(
+                "Validating incoming resource {ResourceType}/{Id} with tier {Tier} (FHIR {Version})",
                 command.ResourceType,
                 command.Id,
-                validationResult.Issues.Count(i => i.Severity == Validation.IssueSeverity.Error || i.Severity == Validation.IssueSeverity.Fatal),
-                validationResult.Issues.Count(i => i.Severity == Validation.IssueSeverity.Warning));
+                validationTier,
+                fhirVersionEnum);
 
-            // Throw ValidationException which will be caught by FhirExceptionMiddleware
-            // and converted to HTTP 400 with OperationOutcome
-            throw new ValidationException(validationResult);
+            // Get version-specific schema resolver from factory
+            var schemaResolver = _schemaResolverFactory(fhirVersionEnum);
+            var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{command.ResourceType}";
+            var schema = schemaResolver.GetSchema(canonicalUrl);
+
+            if (schema != null)
+            {
+                var sourceNode = command.JsonNode.ToSourceNode(); // Use cached ISourceNode
+                var settings = new ValidationSettings
+                {
+                    Tier = validationTier,
+                    TerminologyService = _terminologyService
+                };
+                var state = new ValidationState();
+                var validationResult = schema.Validate(sourceNode, settings, state);
+
+                if (!validationResult.IsValid)
+                {
+                    _logger.LogWarning(
+                        "Validation failed for {ResourceType}/{Id}: {ErrorCount} error(s), {WarningCount} warning(s)",
+                        command.ResourceType,
+                        command.Id,
+                        validationResult.Issues.Count(i => i.Severity == IssueSeverity.Error || i.Severity == IssueSeverity.Fatal),
+                        validationResult.Issues.Count(i => i.Severity == IssueSeverity.Warning));
+
+                    // Throw ValidationException which will be caught by FhirExceptionMiddleware
+                    // and converted to HTTP 400 with OperationOutcome
+                    throw new ValidationException(validationResult);
+                }
+
+                _logger.LogDebug(
+                    "Validation passed for {ResourceType}/{Id} (FHIR {Version})",
+                    command.ResourceType,
+                    command.Id,
+                    fhirVersionEnum);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "No validation schema found for {ResourceType} (canonical URL: {CanonicalUrl})",
+                    command.ResourceType,
+                    canonicalUrl);
+            }
         }
-
-        _logger.LogDebug(
-            "Validation passed for {ResourceType}/{Id} (FHIR {Version})",
-            command.ResourceType,
-            command.Id,
-            fhirVersionEnum);
-        */
+        else
+        {
+            _logger.LogDebug(
+                "Validation skipped for {ResourceType}/{Id} (tier: None)",
+                command.ResourceType,
+                command.Id);
+        }
 
         var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
 
@@ -255,6 +292,23 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         {
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
             SearchIndices = searchIndices?.ToArray()
+        };
+    }
+
+    /// <summary>
+    /// Parses a validation tier string from tenant configuration.
+    /// </summary>
+    /// <param name="tierString">The validation tier string (None, Fast, Spec, Profile).</param>
+    /// <returns>The parsed ValidationTier enum value.</returns>
+    private static ValidationTier ParseValidationTier(string tierString)
+    {
+        return tierString switch
+        {
+            "None" => ValidationTier.None,
+            "Fast" => ValidationTier.Fast,
+            "Spec" => ValidationTier.Spec,
+            "Profile" => ValidationTier.Profile,
+            _ => ValidationTier.Spec // Default to Spec if unknown
         };
     }
 }

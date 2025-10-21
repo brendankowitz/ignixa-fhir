@@ -3,6 +3,8 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.Validation.Abstractions;
+
 namespace Ignixa.Validation;
 
 /// <summary>
@@ -24,6 +26,12 @@ public class ValidationSettings
     /// Gets or sets the mode for handling terminology service failures.
     /// </summary>
     public TerminologyFailureMode TerminologyFailureMode { get; set; } = TerminologyFailureMode.Warning;
+
+    /// <summary>
+    /// Gets or sets the terminology service for code validation.
+    /// If null, terminology validation will be skipped.
+    /// </summary>
+    public ITerminologyService? TerminologyService { get; set; }
 }
 
 /// <summary>

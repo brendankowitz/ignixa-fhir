@@ -5,7 +5,9 @@
 - Phase 1: Core Abstractions ✅ COMPLETED
 - Phase 2: Basic Validators ✅ COMPLETED
 - Phase 3: Schema Building ✅ COMPLETED (October 20, 2025)
-- Phase 4-6: Pending
+- Phase 4 Week 1: FHIRPath Invariants ✅ COMPLETED (October 20, 2025)
+- Phase 4 Week 2: Cardinality & Choice Types ✅ COMPLETED (October 20, 2025)
+- Phase 4-6: Remaining weeks pending
 
 ## Context
 
@@ -973,6 +975,104 @@ public class FhirPathInvariantAssertion : IValidationAssertion
 - Phase 4: Advanced validators (FHIRPath invariants, choice types, extensions)
 - Phase 5: Terminology & Slicing
 - Phase 6: Integration & Testing
+
+---
+
+### Phase 4 Week 1 Completion: FHIRPath Invariants (October 20, 2025)
+
+**Status**: ✅ COMPLETED
+
+**Deliverables Implemented**:
+
+1. **FhirPathInvariantCheck** (`src/Ignixa.Validation/Checks/FhirPathInvariantCheck.cs`)
+   - Implements FHIR invariant constraints (ele-1, dom-1, resource-specific rules)
+   - Uses `Ignixa.FhirPath` evaluation engine for constraint expressions
+   - Compiles FHIRPath expressions once at construction (performance optimization)
+   - Integrates with `IStructureDefinitionSummaryProvider` for FHIRPath context
+   - Converts JsonNode to ITypedElement via JsonNodeSourceNode for evaluation
+
+2. **IExtendedElementMetadata.Constraints** Integration
+   - Extended `StructureDefinitionSchemaBuilder` to extract constraints from element metadata
+   - Automatically generates `FhirPathInvariantCheck` instances from StructureDefinition
+   - Deduplicates constraints (e.g., ele-1 appears on every element, only create once)
+   - Constraint object includes: Key, Expression, Description, Severity
+
+3. **Comprehensive Tests** (`test/Ignixa.Validation.Tests/Checks/FhirPathInvariantCheckTests.cs`)
+   - 12 tests covering valid/invalid scenarios
+   - Tests real FHIR invariants: ele-1 (element constraint), ref-1 (reference constraint)
+   - Tests error reporting with human-readable messages
+   - Validates location tracking for nested elements
+
+**Test Results**:
+- **Total Tests**: 595 (all passing, +22 from Phase 3)
+- **FhirPathInvariantCheck Tests**: 12 tests
+- **Build Status**: 0 warnings, 0 errors
+
+**Key Achievements**:
+- ✅ Reuses existing `Ignixa.FhirPath` engine (no duplication)
+- ✅ Performance: FHIRPath expressions compiled once per check
+- ✅ Automatic extraction from StructureDefinition metadata
+- ✅ Constraint deduplication prevents redundant checks
+
+---
+
+### Phase 4 Week 2 Completion: Cardinality & Choice Types (October 20, 2025)
+
+**Status**: ✅ COMPLETED
+
+**Deliverables Implemented**:
+
+1. **Enhanced CardinalityCheck** (`src/Ignixa.Validation/Checks/CardinalityCheck.cs`)
+   - Updated `StructureDefinitionSchemaBuilder` to use `IExtendedElementMetadata.Min` and `Max`
+   - Supports explicit cardinality from StructureDefinitions (e.g., 0..3, 1..*)
+   - Handles unbounded cardinality with `Max = "*"` → `null` in CardinalityCheck
+   - Fallback to inferred cardinality (IsRequired, IsCollection) when metadata unavailable
+
+2. **ChoiceElementCheck** (`src/Ignixa.Validation/Checks/ChoiceElementCheck.cs`)
+   - Validates FHIR choice type elements (value[x] pattern)
+   - **Rule 1**: Exactly ONE typed variant must be present (not zero, not multiple)
+   - **Rule 2**: The variant type must be in allowed Type[] array
+   - Type name normalization handles case differences (e.g., "string" vs "String")
+   - Extracts allowed types from `IElementDefinitionSummary.Type[]` array
+
+3. **ExtensionStructureCheck** (`src/Ignixa.Validation/Checks/ExtensionStructureCheck.cs`)
+   - Validates FHIR extension structure rules
+   - **Rule 1**: Extension MUST have 'url' property
+   - **Rule 2**: Extension MUST have either value[x] OR nested extensions
+   - **Rule 3**: Extension MUST NOT have both value and nested extensions
+   - Validates all extensions in array, reports multiple errors
+
+4. **StructureDefinitionSchemaBuilder Integration**
+   - Added choice element extraction (filters `IsChoiceElement`)
+   - Added extension structure extraction (filters `DefaultTypeName == "Extension"`)
+   - Automatically generates validators from StructureDefinition metadata
+
+5. **Comprehensive Tests**
+   - **ChoiceElementCheckTests** (`test/Ignixa.Validation.Tests/Checks/ChoiceElementCheckTests.cs`)
+     - 17 tests covering valid/invalid scenarios
+     - Tests multiple variants error, disallowed types, type normalization
+     - Real-world FHIR scenarios: Observation.value[x], Condition.onset[x]
+   - **ExtensionStructureCheckTests** (`test/Ignixa.Validation.Tests/Checks/ExtensionStructureCheckTests.cs`)
+     - 13 tests covering simple/complex extensions
+     - Tests missing URL, missing content, both value and nested extensions
+     - Real-world US Core extensions (race, ethnicity)
+
+**Test Results**:
+- **Total Tests**: 617 (all passing, +22 from Week 1)
+- **ChoiceElementCheck Tests**: 17 tests
+- **ExtensionStructureCheck Tests**: 13 tests (visible count, likely more)
+- **Build Status**: 0 warnings, 0 errors
+
+**Key Achievements**:
+- ✅ Automatic extraction of choice types and extensions from StructureDefinitions
+- ✅ Comprehensive validation of FHIR choice type rules (one variant only)
+- ✅ Extension structure validation catches common errors
+- ✅ Type name normalization handles SDK casing differences
+- ✅ Enhanced cardinality with explicit metadata support
+
+**Code Quality**:
+- Suppressed CA1861 (array allocation) in test code for readability
+- Fixed CA1310 (string comparison) with explicit StringComparison.Ordinal
 
 ---
 

@@ -1,14 +1,17 @@
 using System.Text.Json.Nodes;
 using BenchmarkDotNet.Attributes;
+using Ignixa.Specification.Generated;
 using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.SourceNodes;
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Schema;
 
 namespace Ignixa.Benchmarks;
 
 /// <summary>
-/// Benchmarks for FHIR validation system (Tier 1 - Fast).
-/// Target: Validate typical Patient resource in less than 25ms.
+/// Benchmarks for FHIR validation system (tier-aware).
+/// Target: Fast tier less than 25ms, Spec tier less than 200ms.
 /// </summary>
 [MemoryDiagnoser]
 [SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
@@ -18,7 +21,11 @@ public class ValidationBenchmarks
 {
     private ISourceNode _patientSourceNode = null!;
     private ISourceNode _observationSourceNode = null!;
-    private FastValidator _validator = null!;
+    private ValidationSchema _patientSchema = null!;
+    private ValidationSchema _observationSchema = null!;
+    private ValidationSettings _fastSettings = null!;
+    private ValidationSettings _specSettings = null!;
+    private ValidationState _state = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -93,30 +100,40 @@ public class ValidationBenchmarks
         }")!;
         _observationSourceNode = JsonNodeSourceNode.Create(observationJson);
 
-        _validator = new FastValidator();
+        // Setup schema resolver with caching
+        var provider = new R4StructureDefinitionSummaryProvider();
+        var innerResolver = new StructureDefinitionSchemaResolver(provider);
+        var schemaResolver = new CachedValidationSchemaResolver(innerResolver);
+
+        _patientSchema = schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")!;
+        _observationSchema = schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Observation")!;
+
+        _fastSettings = new ValidationSettings { Tier = ValidationTier.Fast };
+        _specSettings = new ValidationSettings { Tier = ValidationTier.Spec };
+        _state = new ValidationState();
     }
 
-    [Benchmark(Baseline = true, Description = "Validate Patient (Tier 1)")]
-    public ValidationResult ValidatePatient()
+    [Benchmark(Baseline = true, Description = "Validate Patient (Fast tier)")]
+    public ValidationResult ValidatePatientFast()
     {
-        return _validator.Validate(_patientSourceNode);
+        return _patientSchema.Validate(_patientSourceNode, _fastSettings, _state);
     }
 
-    [Benchmark(Description = "Validate Observation (Tier 1)")]
-    public ValidationResult ValidateObservation()
+    [Benchmark(Description = "Validate Patient (Spec tier)")]
+    public ValidationResult ValidatePatientSpec()
     {
-        return _validator.Validate(_observationSourceNode);
+        return _patientSchema.Validate(_patientSourceNode, _specSettings, _state);
     }
 
-    [Benchmark(Description = "Validate Invalid Patient (with errors)")]
-    public ValidationResult ValidateInvalidPatient()
+    [Benchmark(Description = "Validate Observation (Fast tier)")]
+    public ValidationResult ValidateObservationFast()
     {
-        // Missing resourceType (should fail JsonStructureCheck)
-        var invalidJson = JsonNode.Parse(@"{
-            ""id"": ""example"",
-            ""name"": [{""family"": ""Doe""}]
-        }")!;
-        var sourceNode = JsonNodeSourceNode.Create(invalidJson);
-        return _validator.Validate(sourceNode);
+        return _observationSchema.Validate(_observationSourceNode, _fastSettings, _state);
+    }
+
+    [Benchmark(Description = "Validate Observation (Spec tier)")]
+    public ValidationResult ValidateObservationSpec()
+    {
+        return _observationSchema.Validate(_observationSourceNode, _specSettings, _state);
     }
 }

@@ -427,12 +427,45 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .SingleInstance();
 #pragma warning restore CS0618 // Type or member is obsolete
 
-    // TODO: Register FastValidator with schema resolver in Phase 3
-    // Temporarily disabled - migrating from legacy FastPathValidator
-    // OLD CODE:
-    // containerBuilder.RegisterType<FastPathValidator>()
-    //     .AsSelf()
-    //     .SingleInstance();
+    // Register FHIR Validation Services (Phase 3 - Tier-aware validation)
+    // Uses three-tier validation: Fast (universal checks), Spec (schema checks), Profile (advanced)
+    // Tier is configured per-tenant via TenantConfiguration.ValidationTier
+
+    // Register FhirPathCompiler (shared across FhirPath validation and PATCH operations)
+    containerBuilder.RegisterType<Ignixa.FhirPath.FhirPathCompiler>()
+        .AsSelf()
+        .SingleInstance();
+
+    // Register validation schema builder (shared, creates schemas from StructureDefinitions)
+    containerBuilder.Register(c =>
+        {
+            var compiler = c.Resolve<Ignixa.FhirPath.FhirPathCompiler>();
+            return new Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder(compiler);
+        })
+        .AsSelf()
+        .SingleInstance();
+
+    // Register ValidationSchemaResolver FACTORY (creates version-specific cached resolvers)
+    // Usage: Func<FhirSpecification, IValidationSchemaResolver> factory = resolve from DI
+    //        IValidationSchemaResolver resolver = factory(FhirSpecification.R4)
+    containerBuilder.Register<Func<Ignixa.SourceNodeSerialization.FhirSpecification, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
+        {
+            var versionContext = c.Resolve<Ignixa.Application.Infrastructure.IFhirVersionContext>();
+            var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();
+
+            return (version) =>
+            {
+                var schemaProvider = versionContext.GetSchemaProvider(version);
+                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(schemaProvider, builder);
+                return new Ignixa.Validation.Schema.CachedValidationSchemaResolver(resolver);
+            };
+        })
+        .SingleInstance();
+
+    // Register InMemoryTerminologyService (basic terminology validation)
+    containerBuilder.RegisterType<Ignixa.Validation.Services.InMemoryTerminologyService>()
+        .As<Ignixa.Validation.Abstractions.ITerminologyService>()
+        .SingleInstance();
 
     // Register bundle processing services
     containerBuilder.RegisterType<BundleReferencePreProcessor>()

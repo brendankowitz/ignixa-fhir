@@ -90,19 +90,19 @@ public class CapabilityStatementBuilder
         var capability = new CapabilityStatementJsonNode
         {
             FhirVersion = fhirVersion,
-            Url = "http://sparky.example.com/fhir/CapabilityStatement",
+            Url = "http://ignixa.example.com/fhir/CapabilityStatement",
             Version = "0.1.0",
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Experimental = false,
             Date = DateTimeOffset.UtcNow.ToString("O"),
-            Publisher = "Sparky Contributors",
+            Publisher = "Ignixa Contributors",
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
             FhirVersionString = fhirVersionString,
             Format = new List<string> { "application/fhir+json" },
             PatchFormat = new List<string> { "application/json-patch+json" },
             Software = new SoftwareComponentJsonNode
             {
-                Name = "Sparky FHIR Server",
+                Name = "Ignixa FHIR Server",
                 Version = "0.1.0",
                 ReleaseDate = "2025-10-16",
             },
@@ -111,11 +111,11 @@ public class CapabilityStatementBuilder
         // Update name/title based on tenant
         if (tenantConfig != null)
         {
-            capability.Name = $"SparkyFhirServer_{tenantConfig.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal)}";
+            capability.Name = $"IgnixaFhirServer_{tenantConfig.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal)}";
         }
         else
         {
-            capability.Name = "SparkyFhirServer";
+            capability.Name = "IgnixaFhirServer";
         }
 
         // Build REST component

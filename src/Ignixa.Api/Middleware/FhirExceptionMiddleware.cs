@@ -7,6 +7,7 @@ using System.Net;
 using System.Text.Json;
 using Ignixa.Application.Features.ConditionalOperations;
 using Ignixa.Application.Features.Resource;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Api.Middleware;
 
@@ -46,8 +47,8 @@ public class FhirExceptionMiddleware
             context.Response.ContentType = "application/fhir+json";
             context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
 
-            // Serialize OperationOutcomeJsonNode with System.Text.Json
-            var operationOutcomeJson = JsonSerializer.Serialize(validationException.OperationOutcome, JsonOptions);
+            // Use MutableNode.ToJsonString() to get clean FHIR JSON (not the wrapper object)
+            var operationOutcomeJson = validationException.OperationOutcome.SerializeToString();
             return context.Response.WriteAsync(operationOutcomeJson);
         }
 

@@ -53,11 +53,11 @@ public static class JsonSourceNodeFactory
 
     public static string SerializeToString(this ResourceJsonNode resource)
     {
-        return JsonSerializer.Serialize(resource, _jsonSerializerOptions);
+        return resource.MutableNode.ToJsonString(_jsonSerializerOptions);
     }
 
     public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream)
     {
-        JsonSerializer.Serialize(outStream, resource, _jsonSerializerOptions);
+        JsonSerializer.Serialize(outStream, resource.MutableNode, _jsonSerializerOptions);
     }
 }
