@@ -9,6 +9,8 @@ namespace Ignixa.SourceNodeSerialization.SourceNodes;
 
 /// <summary>
 /// Wraps an ISourceNode and adds type information from a structure definition provider.
+/// Includes caching for performance optimization: structure definitions and typed children are cached
+/// to eliminate O(n) property lookups and redundant schema queries.
 /// </summary>
 internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
 {
@@ -16,11 +18,21 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
     private readonly IStructureDefinitionSummaryProvider _provider;
     private readonly IElementDefinitionSummary? _definition;
 
+    // OPTIMIZATION: Cache structure definition (immutable, safe to cache per-instance)
+    private readonly Lazy<IStructureDefinitionSummary?> _structureDefinition;
+
     public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _definition = definition;
+
+        // Lazy initialization - only fetch structure definition if needed
+        _structureDefinition = new Lazy<IStructureDefinitionSummary?>(() =>
+        {
+            var currentType = InstanceType;
+            return currentType != null ? _provider.Provide(currentType) : null;
+        });
     }
 
     public string Name => _source.Name;
@@ -73,26 +85,20 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
             // If no exact match and we have a definition, check for polymorphic (choice) properties
             if (!sourceChildren.Any())
             {
-                var currentType = InstanceType;
-                if (currentType != null)
+                var cachedStructureDef = _structureDefinition.Value;
+                if (cachedStructureDef != null)
                 {
-                    var structureDef = _provider.Provide(currentType);
-
                     // Check if this is a choice element (IsChoiceElement == true)
                     // OR if there's an element with [x] suffix
-                    var choiceElement = structureDef?.GetElements()
-                        .FirstOrDefault(e => e.ElementName == name && e.IsChoiceElement);
-
-                    if (choiceElement == null)
-                    {
-                        choiceElement = structureDef?.GetElements()
-                            .FirstOrDefault(e => e.ElementName == name + "[x]");
-                    }
+                    var choiceElement = cachedStructureDef.GetElements()
+                        .FirstOrDefault(e => (e.ElementName == name && e.IsChoiceElement) ||
+                                              e.ElementName == name + "[x]");
 
                     // If this element is polymorphic, match any child starting with the name
                     if (choiceElement != null)
                     {
-                        sourceChildren = _source.Children().Where(c => c.Name.StartsWith(name, StringComparison.Ordinal));
+                        sourceChildren = _source.Children()
+                            .Where(c => c.Name.StartsWith(name, StringComparison.Ordinal) && c.Name.Length > name.Length);
                     }
                 }
             }
@@ -103,17 +109,27 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
             sourceChildren = _source.Children(name);
         }
 
+        // Wrap source children in ITypedElement
         foreach (var child in sourceChildren)
         {
-            // Try to find definition for this child
-            // We can look up child definitions even when _definition is null,
-            // as long as we have an InstanceType (e.g., root resources have no parent definition)
+            // OPTIMIZATION: Cache structure definition lookup (immutable per instance)
             IElementDefinitionSummary? childDef = null;
-            var currentType = InstanceType;
-            if (currentType != null)
+            var cachedStructureDef = _structureDefinition.Value;
+            if (cachedStructureDef != null)
             {
-                var structureDef = _provider.Provide(currentType);
-                childDef = structureDef?.GetElements().FirstOrDefault(e => e.ElementName == child.Name);
+                childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == child.Name);
+
+                // If no exact match, check if this is a choice type variant (e.g., valueString for value[x])
+                if (childDef == null)
+                {
+                    var choiceElement = cachedStructureDef.GetElements()
+                        .FirstOrDefault(e => e.ElementName.EndsWith("[x]", StringComparison.Ordinal) &&
+                                              child.Name.StartsWith(e.ElementName.TrimEnd("[x]".ToCharArray()), StringComparison.Ordinal));
+                    if (choiceElement != null)
+                    {
+                        childDef = choiceElement;
+                    }
+                }
             }
 
             yield return new TypedElementOnSourceNode(child, _provider, childDef);
