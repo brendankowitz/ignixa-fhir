@@ -395,6 +395,46 @@ Claude Code must always ask for user approval before creating git commits:
 - AAA pattern (Arrange-Act-Assert)
 - Group with `#region` blocks
 
+## Copyright Headers
+
+**Policy**: Copyright headers reflect code origin, with clarity about degree of derivation:
+
+| Origin | Header | Examples | Notes |
+|--------|--------|----------|-------|
+| **Microsoft FHIR Server** (True Derivation) | `// Copyright (c) Microsoft Corporation. All rights reserved.` | `IFhirRepository.cs`, `ISearchService.cs`, FHIR exceptions | Core abstractions with minimal modifications |
+| **Microsoft FHIR Server** (Architectural Pattern) | `// Copyright (c) Microsoft Corporation. All rights reserved.` | `FhirEndpoints.cs`, `*Handler.cs`, `BundleProcessor.cs` | Substantially rewritten implementations based on MS patterns |
+| **Firely SDK Libraries** | `// Copyright (c) 2015-2023, Firely (info@fire.ly) and contributors` | `ISourceNode.cs`, `ITypedElement.cs`, `IAnnotated.cs` | Derived interface definitions |
+| **Ignixa Contributors** | `// Copyright (c) Ignixa Contributors. All rights reserved.` | `FhirPatchEngine.cs`, `FhirPathEvaluator.cs`, streaming code | Newly created implementations |
+
+**Understanding the Microsoft Headers**:
+Most files with Microsoft copyright were inspired by or adapted from Microsoft FHIR Server architectural patterns, but have been substantially rewritten for Ignixa's needs:
+- **Truly Derived** (~5-10 files): Core abstractions (IFhirRepository, ISearchService, exception base classes)
+- **Substantially Rewritten** (~30-50 files): Handlers, endpoints, bundle processing (migrated to Minimal API, streaming, Medino)
+- **New Implementations** (~400+ files): Everything else is newly created or generated
+
+See `LICENSE` file section "Microsoft FHIR Server - Architectural Inspiration" for detailed breakdown.
+
+**When Creating New Files**:
+1. Copying from Microsoft FHIR Server? Keep Microsoft copyright and note modifications in file header
+2. Using Firely SDK code? Keep Firely copyright and cite source in header
+3. Brand new Ignixa implementation? Use Ignixa copyright
+4. Majority Ignixa but inspired by Microsoft pattern? Use Ignixa copyright with optional note
+
+**Do NOT**:
+- ❌ Add headers to generated files (`obj/`, `bin/`, `.g.cs`)
+- ❌ Add headers to test projects (inherit from source they test)
+- ❌ Add headers to `.csproj` or configuration files
+- ❌ Over-attribute to Microsoft for code that's substantially different
+
+**Quick Audit**:
+```bash
+# Count files by header
+grep -l "Copyright (c) Microsoft" src/ -r --include="*.cs" | wc -l    # ~250
+grep -l "Firely" src/ -r --include="*.cs" | wc -l                     # ~11
+find src/ -name "*.cs" ! -path "*/obj/*" | wc -l                      # ~492 total
+# Note: Microsoft headers are used conservatively for architectural attribution
+```
+
 ## Key Dependencies
 
 | Package | Version | Purpose |
