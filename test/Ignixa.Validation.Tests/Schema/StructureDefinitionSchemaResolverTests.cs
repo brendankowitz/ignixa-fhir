@@ -105,7 +105,7 @@ public class StructureDefinitionSchemaResolverTests
 
         // Assert
         schema.Should().NotBeNull();
-        schema!.Checks.OfType<RequiredFieldCheck>().Should().NotBeEmpty();
+        schema!.Checks.OfType<CardinalityCheck>().Should().NotBeEmpty();
     }
 
     [Fact]

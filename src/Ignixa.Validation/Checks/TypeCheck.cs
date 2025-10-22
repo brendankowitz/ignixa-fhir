@@ -26,6 +26,12 @@ public class TypeCheck : IValidationCheck
     private static readonly Regex DateTimePattern = new(@"^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[\+\-]\d{2}:\d{2})?)?)?)?$", RegexOptions.Compiled);
     private static readonly Regex TimePattern = new(@"^\d{2}:\d{2}:\d{2}(\.\d+)?$", RegexOptions.Compiled);
 
+    // FHIR instant: YYYY-MM-DDThh:mm:ss.sss(Z|+/-HH:MM) - timezone REQUIRED
+    // Timezone is mandatory and must be Z (UTC) or explicit offset like +02:00
+    private static readonly Regex InstantPattern = new(
+        @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[\+\-]((0[0-9]|1[0-3]):[0-5][0-9]|14:00))$",
+        RegexOptions.Compiled);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="TypeCheck"/> class.
     /// </summary>
@@ -50,7 +56,7 @@ public class TypeCheck : IValidationCheck
 
         if (fieldNode == null)
         {
-            return ValidationResult.Success(); // RequiredFieldCheck handles missing fields
+            return ValidationResult.Success(); // CardinalityCheck handles missing/required fields
         }
 
         var text = fieldNode.Text;
@@ -70,9 +76,11 @@ public class TypeCheck : IValidationCheck
             "decimal" => decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out _),
             "date" => DatePattern.IsMatch(text),
             "dateTime" => DateTimePattern.IsMatch(text),
+            "instant" => InstantPattern.IsMatch(text), // Requires timezone (Z or +/-HH:MM)
             "time" => TimePattern.IsMatch(text),
             "id" => IdPattern.IsMatch(text),
-            "uri" or "url" or "canonical" or "oid" or "uuid" or "code" or "markdown" or "base64Binary" => true,
+            "uri" or "url" or "oid" or "uuid" or "code" or "markdown" or "base64Binary" => true, // Permissive for general URIs
+            "canonical" => Uri.TryCreate(text, UriKind.Absolute, out _), // Canonical MUST be absolute
             _ => true // Unknown types pass
         };
 

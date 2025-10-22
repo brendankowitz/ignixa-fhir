@@ -36,7 +36,7 @@ public class IdFormatCheck : IValidationCheck
         string? id = idNode.Text;
         if (string.IsNullOrEmpty(id))
         {
-            return ValidationResult.Success(); // Empty is handled by RequiredFieldCheck if needed
+            return ValidationResult.Success(); // Empty is handled by CardinalityCheck if required
         }
 
         if (!IdPattern.IsMatch(id))

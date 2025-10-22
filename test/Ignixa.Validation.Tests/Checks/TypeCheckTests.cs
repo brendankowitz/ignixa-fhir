@@ -177,4 +177,114 @@ public class TypeCheckTests
         Assert.True(result.IsValid); // Missing fields handled by RequiredFieldCheck
         Assert.Empty(result.Issues);
     }
+
+    [Fact]
+    public void GivenValidInstantWithZUtc_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse("{\"resourceType\":\"AuditEvent\",\"recorded\":\"2021-05-28T00:00:00.000Z\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recorded", "instant");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode, settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenValidInstantWithPositiveOffset_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse("{\"resourceType\":\"AuditEvent\",\"recorded\":\"2021-05-28T13:28:17.239+02:00\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recorded", "instant");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode, settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenValidInstantWithNegativeOffset_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse("{\"resourceType\":\"AuditEvent\",\"recorded\":\"2021-05-28T00:00:00-05:00\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recorded", "instant");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode, settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenInstantWithoutTimezone_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - This is the error from validate.fhir.org (line 374 of SearchDataBatch.json)
+        var json = JsonNode.Parse("{\"resourceType\":\"AuditEvent\",\"recorded\":\"2021-05-28T00:00:00.000\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("recorded", "instant");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode, settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Single(result.Issues);
+        Assert.Contains("instant", result.Issues[0].Message);
+    }
+
+    [Fact]
+    public void GivenValidAbsoluteCanonical_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange
+        var json = JsonNode.Parse("{\"resourceType\":\"StructureDefinition\",\"url\":\"http://hl7.org/fhir/StructureDefinition/Patient|4.0.1\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("url", "canonical");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode, settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void GivenRelativeCanonical_WhenValidating_ThenReturnsError()
+    {
+        // Arrange
+        var json = JsonNode.Parse("{\"resourceType\":\"StructureDefinition\",\"url\":\"StructureDefinition/Patient\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("url", "canonical");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode, settings, state);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Single(result.Issues);
+        Assert.Contains("canonical", result.Issues[0].Message);
+    }
 }

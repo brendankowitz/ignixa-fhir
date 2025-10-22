@@ -33,19 +33,28 @@ public class UnknownPropertyCheck : IValidationCheck
     /// Initializes a new instance of the <see cref="UnknownPropertyCheck"/> class.
     /// </summary>
     /// <param name="allowedPropertyNames">The collection of allowed property names from the StructureDefinition.</param>
-    public UnknownPropertyCheck(IEnumerable<string> allowedPropertyNames)
+    /// <param name="choiceElementBases">Optional: explicitly provided choice element base names (e.g., "value", "effective").</param>
+    public UnknownPropertyCheck(IEnumerable<string> allowedPropertyNames, IEnumerable<string>? choiceElementBases = null)
     {
         _allowedPropertyNames = new HashSet<string>(allowedPropertyNames, StringComparer.Ordinal);
 
-        // Extract choice element base names (properties ending with [x])
-        _choiceElementBases = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var name in allowedPropertyNames)
+        // Use provided choice element bases, or extract from property names
+        if (choiceElementBases != null)
         {
-            if (name.EndsWith("[x]", StringComparison.Ordinal))
+            _choiceElementBases = new HashSet<string>(choiceElementBases, StringComparer.Ordinal);
+        }
+        else
+        {
+            // Extract choice element base names (properties ending with [x])
+            _choiceElementBases = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var name in allowedPropertyNames)
             {
-                // Extract base name (e.g., "value[x]" → "value")
-                var baseName = name.Substring(0, name.Length - 3);
-                _choiceElementBases.Add(baseName);
+                if (name.EndsWith("[x]", StringComparison.Ordinal))
+                {
+                    // Extract base name (e.g., "value[x]" → "value")
+                    var baseName = name.Substring(0, name.Length - 3);
+                    _choiceElementBases.Add(baseName);
+                }
             }
         }
     }

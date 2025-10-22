@@ -9,6 +9,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Validation;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -19,15 +20,16 @@ namespace Ignixa.Application.Features.Resource;
 /// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
 /// <param name="Id">The resource ID.</param>
 /// <param name="Resource">The resource as ResourceJsonNode (provides cached ISourceNode and ITypedElement).</param>
-/// <param name="RawJson">The raw JSON for fast storage.</param>
 /// <param name="Coordinator">Optional deferred write coordinator for bundle operations. When provided, the handler queues the write for batch processing. When null, the handler writes immediately.</param>
 /// <param name="IfMatch">Optional ETag for optimistic concurrency control. If specified, update only succeeds if resource version matches. Format: version ID (e.g., "5"), not weak ETag format.</param>
+/// <param name="ValidationTierOverride">Optional validation tier override from Prefer header. When provided, overrides tenant configuration. Null means use tenant default.</param>
 public record CreateOrUpdateResourceCommand(
     string ResourceType,
     string Id,
     ResourceJsonNode JsonNode,
     DeferredWriteCoordinator? Coordinator = null,
-    string? IfMatch = null) : IRequest<ResourceKey>, IRequireCapability
+    string? IfMatch = null,
+    ValidationTier? ValidationTierOverride = null) : IRequest<ResourceKey>, IRequireCapability
 {
     /// <summary>
     /// Returns FHIRPath expression to validate update capability for this resource type.

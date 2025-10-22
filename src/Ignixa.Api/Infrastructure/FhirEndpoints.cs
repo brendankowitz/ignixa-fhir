@@ -19,6 +19,7 @@ using Ignixa.Application.Features.ConditionalOperations.ConditionalRead;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Models;
+using Ignixa.Validation;
 using Ignixa.Search.Parsing;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.Models;
@@ -398,12 +399,26 @@ public static class FhirEndpoints
             ? coordinatorObj as DeferredWriteCoordinator
             : null;
 
-        // Send generic command with optional coordinator
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, coordinator);
+        // Extract validation tier preference from Prefer header, or from HttpContext.Items if in bundle
+        var validationOverride = PreferHeaderParser.TryParseValidationLevel(context.Request.Headers, logger);
+        if (!validationOverride.HasValue &&
+            context.Items.TryGetValue("ValidationTierOverride", out var contextOverride) &&
+            contextOverride is ValidationTier bundleValidationTier)
+        {
+            validationOverride = bundleValidationTier;
+            logger.LogDebug("Using bundle validation tier override: {ValidationTier}", validationOverride.Value);
+        }
+
+        // Send generic command with optional coordinator and validation override
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, coordinator, null, validationOverride);
         ResourceKey result = await mediator.SendAsync(command, ct);
 
-        // Add ETag header
+        // Add ETag and Preference-Applied headers
         context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
+        if (validationOverride.HasValue)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
+        }
 
         // Determine if created or updated
         bool isCreated = result.VersionId == "1";
@@ -644,6 +659,14 @@ public static class FhirEndpoints
     {
         logger.LogInformation("POST /tenant/{TenantId} (Bundle)", tenantId);
 
+        // Extract validation preference from Prefer header (applies to all entries in bundle)
+        var validationOverride = PreferHeaderParser.TryParseValidationLevel(context.Request.Headers, logger);
+        if (validationOverride.HasValue)
+        {
+            context.Items["ValidationTierOverride"] = validationOverride;
+            logger.LogInformation("Bundle validation preference set to {ValidationTier}", validationOverride.Value);
+        }
+
         // ALWAYS parse with streaming parser - returns metadata + streaming entries
         var bundleContext = await streamingParser.ParseStreamAsync(context.Request.Body, ct);
 
@@ -700,6 +723,11 @@ public static class FhirEndpoints
             }
 
             logger.LogInformation("Successfully processed bundle (buffered mode)");
+            if (validationOverride.HasValue)
+            {
+                context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
+            }
+
             return Results.Content(responseJson, _contentTypeApplicationFhirJson);
         }
         else
@@ -714,10 +742,16 @@ public static class FhirEndpoints
                 var streamingContext = await bundleProcessor.ProcessBatchStreamingAsync(
                     bundleContext.Entries, options, ct);
 
-                // Set response content type
+                // Set response content type and headers BEFORE streaming starts (headers are locked once body writes begin)
                 context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
-                // Stream responses directly to HTTP
+                // Add Preference-Applied header if validation override was used (MUST be before SerializeStreamAsync)
+                if (validationOverride.HasValue)
+                {
+                    context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
+                }
+
+                // Stream responses directly to HTTP (headers are now locked)
                 await StreamingBundleSerializer.SerializeStreamAsync(
                     outputStream: context.Response.Body,
                     bundleType: "batch-response",

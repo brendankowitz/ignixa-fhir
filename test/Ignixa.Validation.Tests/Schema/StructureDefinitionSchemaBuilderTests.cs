@@ -42,17 +42,17 @@ public class StructureDefinitionSchemaBuilderTests
         schema.CanonicalUrl.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
 
         // Note: Patient may not have many required elements in base profile
-        // The builder should still create RequiredFieldCheck objects for elements marked as required
-        var requiredChecks = schema.Checks.OfType<RequiredFieldCheck>().ToList();
+        // The builder creates CardinalityCheck objects for all elements (which includes required fields as min=1)
+        var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
 
-        // If there are required elements, they should be represented as RequiredFieldCheck
+        // All elements should have cardinality checks
         var elements = summary!.GetElements();
-        var requiredElementsCount = elements.Count(e => e.IsRequired);
-        requiredChecks.Should().HaveCount(requiredElementsCount);
+        var elementCount = elements.Count(e => !e.ElementName.Contains('.'));  // Top-level only
+        cardinalityChecks.Should().HaveCount(elementCount);
     }
 
     [Fact]
-    public void GivenObservationStructure_WhenBuildingSchema_ThenCreatesRequiredChecks()
+    public void GivenObservationStructure_WhenBuildingSchema_ThenCreatesCardinalityChecks()
     {
         // Arrange
         var summary = _provider.Provide("Observation");
@@ -64,8 +64,8 @@ public class StructureDefinitionSchemaBuilderTests
         schema.Should().NotBeNull();
         schema.ResourceType.Should().Be("Observation");
 
-        var requiredChecks = schema.Checks.OfType<RequiredFieldCheck>().ToList();
-        requiredChecks.Should().NotBeEmpty();
+        var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
+        cardinalityChecks.Should().NotBeEmpty();
     }
 
     #endregion
@@ -335,7 +335,6 @@ public class StructureDefinitionSchemaBuilderTests
 
         // Assert - Observation should have all types of checks
         schema.Checks.Should().NotBeEmpty();
-        schema.Checks.OfType<RequiredFieldCheck>().Should().NotBeEmpty();
         schema.Checks.OfType<CardinalityCheck>().Should().NotBeEmpty();
         schema.Checks.OfType<TypeCheck>().Should().NotBeEmpty();
         schema.Checks.OfType<ReferenceFormatCheck>().Should().NotBeEmpty();

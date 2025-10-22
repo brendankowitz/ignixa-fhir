@@ -354,6 +354,26 @@ cd codegen
 ./generate.sh         # Bash (Linux/Mac)
 ```
 
+## Git Workflow
+
+**IMPORTANT**: ⛔ **DO NOT commit changes without explicit user permission**
+
+Claude Code must always ask for user approval before creating git commits:
+- Present a summary of changes and proposed commit message
+- Wait for user approval/rejection
+- Only proceed with `git commit` after user explicitly confirms
+- This applies to all commits, including squash commits or amends
+- Exception: Only automatically commit if user explicitly requests automation in their workflow
+
+**Pattern**:
+```
+1. Make changes and test them
+2. Present git diff, status, and proposed commit message
+3. Ask: "Should I commit these changes with message: [message]?"
+4. Wait for user response
+5. Execute `git commit` only upon approval
+```
+
 ## Code Standards
 
 **File Organization**:

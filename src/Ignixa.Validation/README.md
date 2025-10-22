@@ -97,8 +97,7 @@ Ignixa.Validation/
 
 | Check | Purpose | Error Code | Extracted From |
 |-------|---------|------------|----------------|
-| **RequiredFieldCheck** | Validates required fields present | `required-field-missing` | `IsRequired` |
-| **CardinalityCheck** | Validates min/max element count | `cardinality-violation` | `Min`, `Max` |
+| **CardinalityCheck** | Validates min/max element count (includes required fields) | `cardinality-violation` | `Min`, `Max` |
 | **TypeCheck** | Validates primitive types (string, integer, etc.) | `type-mismatch` | `DefaultTypeName` |
 | **ReferenceFormatCheck** | Validates Reference format (relative/literal) | `reference-format-invalid` | Type == "Reference" |
 | **CodingStructureCheck** | Validates Coding/CodeableConcept structure | `coding-structure-invalid` | Type == "Coding\|CodeableConcept" |

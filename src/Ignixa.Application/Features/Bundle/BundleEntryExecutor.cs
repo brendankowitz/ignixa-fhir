@@ -12,7 +12,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -86,6 +88,16 @@ public class BundleEntryExecutor
                 if (_httpContextAccessor.HttpContext.Items.TryGetValue("TenantConfiguration", out var tenantConfig))
                 {
                     httpContext.Items["TenantConfiguration"] = tenantConfig;
+                }
+
+                // Propagate validation tier override from parent HttpContext (for Prefer header)
+                if (_httpContextAccessor.HttpContext.Items.TryGetValue("ValidationTierOverride", out var validationOverride))
+                {
+                    httpContext.Items["ValidationTierOverride"] = validationOverride;
+                    _logger.LogDebug(
+                        "Propagated validation tier override to bundle entry {Index}: {ValidationTier}",
+                        entry.Index,
+                        validationOverride);
                 }
             }
 
@@ -164,11 +176,36 @@ public class BundleEntryExecutor
                 }
             }
         }
+        catch (FhirException fhirEx)
+        {
+            // FHIR exceptions have proper HTTP status codes and OperationOutcomes
+            // Examples: ValidationException (400), etc.
+            _logger.LogWarning(
+                "FHIR error in bundle entry {Index} {Verb} {Url}: {Message}",
+                entry.Index,
+                entry.HttpVerb,
+                entry.RequestUrl,
+                fhirEx.Message);
+
+            var operationOutcome = fhirEx.OperationOutcome;
+            var resourceJson = operationOutcome.SerializeToString();
+
+            return new BundleEntryResponse
+            {
+                StatusCode = fhirEx.StatusCode,
+                Status = $"{fhirEx.StatusCode} {GetReasonPhrase(fhirEx.StatusCode)}",
+                Location = null,
+                ETag = null,
+                ResourceJson = resourceJson,
+                LastModified = null
+            };
+        }
         catch (Exception ex)
         {
+            // Non-FHIR exceptions: Internal server errors
             _logger.LogError(
                 ex,
-                "Error executing bundle entry {Index}: {Verb} {Url}",
+                "Unexpected error executing bundle entry {Index}: {Verb} {Url}",
                 entry.Index,
                 entry.HttpVerb,
                 entry.RequestUrl);
@@ -301,6 +338,7 @@ public class BundleEntryExecutor
             404 => "Not Found",
             409 => "Conflict",
             412 => "Precondition Failed",
+            422 => "Unprocessable Entity",
             500 => "Internal Server Error",
             _ => string.Empty
         };

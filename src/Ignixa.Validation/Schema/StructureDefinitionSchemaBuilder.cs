@@ -34,10 +34,10 @@ public class StructureDefinitionSchemaBuilder
     /// Builds a ValidationSchema from a StructureDefinition summary.
     /// </summary>
     /// <param name="summary">The StructureDefinition summary containing element metadata.</param>
-    /// <param name="provider">The provider used to resolve type references (currently unused but included for future extensibility).</param>
+    /// <param name="provider">The provider used to resolve type references and build nested schemas.</param>
     /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
     /// <returns>A ValidationSchema with checks derived from the StructureDefinition metadata.</returns>
-    /// <exception cref="ArgumentNullException">Thrown if summary is null.</exception>
+    /// <exception cref="ArgumentNullException">Thrown if summary or provider is null.</exception>
     public ValidationSchema BuildSchema(
         IStructureDefinitionSummary summary,
         IStructureDefinitionSummaryProvider provider,
@@ -59,13 +59,9 @@ public class StructureDefinitionSchemaBuilder
         // Tier 2 (Spec): Schema-driven checks from StructureDefinition
         var specChecks = new List<IValidationCheck>();
 
-        // Extract required field checks
-        var requiredChecks = elements
-            .Where(e => e.IsRequired)
-            .Select(e => new RequiredFieldCheck(e.ElementName, isRequired: true));
-        specChecks.AddRange(requiredChecks);
-
         // Extract cardinality checks
+        // Cardinality checks enforce both minimum (required fields have min=1) and maximum cardinality
+        // This eliminates the need for a separate RequiredFieldCheck
         // Use explicit Min/Max from IExtendedElementMetadata if available, otherwise infer from IsRequired/IsCollection
         var cardinalityChecks = elements
             .Select(e =>
@@ -169,12 +165,27 @@ public class StructureDefinitionSchemaBuilder
             specChecks.AddRange(bindingChecks);
         }
 
+        // Extract nested complex type checks (BackboneElement, complex datatypes)
+        var nestedTypeChecks = ExtractNestedTypeChecks(elements.ToArray(), summary, provider);
+        specChecks.AddRange(nestedTypeChecks);
+
         // Extract unknown property check (only first-level elements)
         var allPropertyNames = elements
             .Select(e => e.ElementName)
             .Where(name => !string.IsNullOrEmpty(name) && !name.Contains('.', StringComparison.Ordinal))
             .ToArray();
-        specChecks.Add(new UnknownPropertyCheck(allPropertyNames));
+
+        // Extract choice element base names for proper validation
+        // Some StructureDefinitions store choice elements with just the base name (e.g., "value" not "value[x]")
+        var choiceElementBases = elements
+            .Where(e => e.IsChoiceElement)
+            .Select(e => e.ElementName.EndsWith("[x]", StringComparison.Ordinal)
+                ? e.ElementName.Substring(0, e.ElementName.Length - 3)
+                : e.ElementName)
+            .Distinct()
+            .ToArray();
+
+        specChecks.Add(new UnknownPropertyCheck(allPropertyNames, choiceElementBases));
 
         // Tier 3 (Profile): Advanced checks - FHIRPath invariants, slicing, advanced terminology
         var profileChecks = new List<IValidationCheck>();
@@ -248,6 +259,85 @@ public class StructureDefinitionSchemaBuilder
         }
 
         return checks;
+    }
+
+    /// <summary>
+    /// Extracts nested complex type checks for BackboneElement and complex datatypes.
+    /// Recursively builds schemas for nested types and creates validation checks.
+    /// </summary>
+    /// <param name="elements">The element definitions to extract nested types from.</param>
+    /// <param name="summary">The parent StructureDefinition summary (for building nested type names).</param>
+    /// <param name="provider">The structure definition provider for resolving nested types.</param>
+    /// <returns>A collection of NestedComplexTypeCheck instances.</returns>
+    private static IEnumerable<IValidationCheck> ExtractNestedTypeChecks(
+        IElementDefinitionSummary[] elements,
+        IStructureDefinitionSummary summary,
+        IStructureDefinitionSummaryProvider provider)
+    {
+        var checks = new List<IValidationCheck>();
+
+        foreach (var element in elements)
+        {
+            // Skip if not a complex type
+            var typeName = element.DefaultTypeName;
+            if (string.IsNullOrEmpty(typeName) || IsPrimitiveType(typeName))
+            {
+                continue;
+            }
+
+            // Skip special types that have dedicated checks
+            if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension")
+            {
+                continue;
+            }
+
+            // Determine the nested type name
+            string nestedTypeName;
+            if (typeName == "BackboneElement")
+            {
+                // BackboneElement: ResourceType.ElementName (e.g., "AuditEvent.Agent")
+                nestedTypeName = $"{summary.TypeName}.{CapitalizeFirst(element.ElementName)}";
+            }
+            else
+            {
+                // Complex datatype: Use as-is (e.g., "Address", "HumanName")
+                nestedTypeName = typeName;
+            }
+
+            // Try to get the nested type schema
+            var nestedSummary = provider.Provide(nestedTypeName);
+            if (nestedSummary == null)
+            {
+                // Nested type not found - may be older FHIR version or unsupported type
+                // Skip silently to avoid breaking existing validations
+                continue;
+            }
+
+            // Build the nested schema
+            var nestedBuilder = new StructureDefinitionSchemaBuilder();
+            var nestedSchema = nestedBuilder.BuildSchema(nestedSummary, provider);
+
+            // Create the nested type check
+            var check = new NestedComplexTypeCheck(element.ElementName, element.IsCollection, nestedSchema);
+            checks.Add(check);
+        }
+
+        return checks;
+    }
+
+    /// <summary>
+    /// Capitalizes the first character of a string.
+    /// </summary>
+    /// <param name="str">The string to capitalize.</param>
+    /// <returns>The capitalized string, or original if empty.</returns>
+    private static string CapitalizeFirst(string str)
+    {
+        if (string.IsNullOrEmpty(str) || char.IsUpper(str[0]))
+        {
+            return str;
+        }
+
+        return char.ToUpperInvariant(str[0]) + str.Substring(1);
     }
 
     /// <summary>

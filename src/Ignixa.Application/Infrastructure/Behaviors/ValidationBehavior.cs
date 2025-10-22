@@ -51,8 +51,22 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
             ?? throw new InvalidOperationException("HttpContext is null");
         var currentTenantConfig = currentHttpContext.Items["TenantConfiguration"] as TenantConfiguration;
 
-        // Determine validation tier from tenant configuration (defaults to Spec)
-        var validationTier = ParseValidationTier(currentTenantConfig?.ValidationTier ?? "Spec");
+        // Determine validation tier: Prefer header override takes precedence, then tenant config, then default to Spec
+        var validationTier = request.ValidationTierOverride
+            ?? ParseValidationTier(currentTenantConfig?.ValidationTier ?? "Spec");
+
+        // Log if header overrode tenant config
+        if (request.ValidationTierOverride.HasValue && currentTenantConfig != null)
+        {
+            var tenantTier = ParseValidationTier(currentTenantConfig.ValidationTier);
+            if (request.ValidationTierOverride.Value != tenantTier)
+            {
+                _logger.LogInformation(
+                    "Validation tier overridden by Prefer header: {HeaderTier} (tenant default: {TenantTier})",
+                    request.ValidationTierOverride.Value,
+                    tenantTier);
+            }
+        }
 
         // VALIDATE INCOMING RESOURCE using tier-aware ValidationSchema
         if (validationTier != ValidationTier.None)

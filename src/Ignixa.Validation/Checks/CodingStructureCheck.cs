@@ -81,5 +81,28 @@ public class CodingStructureCheck : IValidationCheck
                 path,
                 "Coding should have at least a system or code"));
         }
+
+        // Validate that Coding.system is an absolute URI if present
+        var systemNode = codingNode.Children("system").FirstOrDefault();
+        if (systemNode != null)
+        {
+            string? systemValue = systemNode.Text;
+            if (!string.IsNullOrEmpty(systemValue) && !IsAbsoluteUri(systemValue))
+            {
+                issues.Add(ValidationIssue.InvariantFailure(
+                    "coding-system-absolute",
+                    "Coding.system must be an absolute reference, not a local reference",
+                    systemNode.Location ?? $"{path}.system"));
+            }
+        }
     }
+
+    /// <summary>
+    /// Determines if a URI string is an absolute URI.
+    /// Absolute URIs have a scheme (http://, https://, urn:, etc.) and are globally resolvable.
+    /// </summary>
+    /// <param name="uri">The URI string to validate.</param>
+    /// <returns>True if the URI is absolute; false if it's relative or null/empty.</returns>
+    private static bool IsAbsoluteUri(string? uri) =>
+        !string.IsNullOrEmpty(uri) && Uri.TryCreate(uri, UriKind.Absolute, out _);
 }
