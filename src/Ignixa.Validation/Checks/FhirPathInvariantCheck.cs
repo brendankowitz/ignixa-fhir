@@ -31,6 +31,11 @@ public class FhirPathInvariantCheck : IValidationCheck
     private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
 
     /// <summary>
+    /// Gets the constraint key (e.g., "ele-1", "ext-1", "bdl-5").
+    /// </summary>
+    public string ConstraintKey => _constraint.Key;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="FhirPathInvariantCheck"/> class.
     /// </summary>
     /// <param name="constraint">The constraint definition to evaluate.</param>
