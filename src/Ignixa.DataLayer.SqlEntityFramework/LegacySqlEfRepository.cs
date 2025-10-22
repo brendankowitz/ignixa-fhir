@@ -396,7 +396,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             .Where(r => r.ResourceTypeId == resourceTypeId
                 && r.ResourceId == resourceId
                 && !r.IsHistory)
-            .OrderByDescending(r => r.Version)
+            .OrderByDescending(r => r.ResourceSurrogateId)
             .FirstOrDefaultAsync(ct);
 
         int newVersion = currentEntity?.Version + 1 ?? 1;

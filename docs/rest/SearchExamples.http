@@ -3,6 +3,7 @@
 ### Setup test data
 # @name batch
 POST http://{{hostname}}
+Prefer: validation=none
 Content-Type: application/json
 
 < ./data/SearchDataBatch.json

@@ -27,7 +27,7 @@ string defaultOutputDir = mode switch
     "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "ValueSets", "Normative"),
     "invariant" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated"),
-    _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Specification", "Generated")
+    _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa, not Sparky
 };
 
 string outputDir = args.Length > 2 ? args[2] :
@@ -41,7 +41,7 @@ string title = mode switch
     "codesystem" => "Sparky FHIR Code System Mappings Generator",
     "valueset" => "Sparky FHIR ValueSet Enum Generator",
     "invariant" => "Ignixa FHIR Invariant Provider Generator",
-    _ => "Sparky FHIR Structure Definition Provider Generator"
+    _ => "Ignixa FHIR Structure Definition Provider Generator"  // structure mode: use Ignixa
 };
 
 Console.WriteLine(title);

@@ -193,7 +193,8 @@ public class StructureDefinitionSchemaBuilder
         // Extract FHIRPath invariant checks from IExtendedElementMetadata
         // This includes constraints like ele-1, dom-1, resource-specific invariants
         // Moved to Profile tier to avoid false positives on minimal resources
-        var invariantChecks = ExtractInvariantChecks(elements.ToArray(), provider, _compiler);
+        // Constraints are scoped to the current resource type (see ExtractInvariantChecks for filtering)
+        var invariantChecks = ExtractInvariantChecks(elements.ToArray(), summary, provider, _compiler);
         profileChecks.AddRange(invariantChecks);
 
         // Build the canonical URL from the type name
@@ -210,13 +211,16 @@ public class StructureDefinitionSchemaBuilder
     /// <summary>
     /// Extracts FHIRPath invariant checks from element metadata.
     /// Constraints are provided by IExtendedElementMetadata interface.
+    /// Only includes constraints that apply to the resource type being validated.
     /// </summary>
     /// <param name="elements">The element definitions to extract constraints from.</param>
+    /// <param name="summary">The structure definition being built (for scoping constraints to correct resource type).</param>
     /// <param name="provider">The structure definition provider for FHIRPath evaluation.</param>
     /// <param name="compiler">The FhirPath compiler for parsing constraint expressions.</param>
     /// <returns>A collection of FhirPathInvariantCheck instances.</returns>
     private static IEnumerable<IValidationCheck> ExtractInvariantChecks(
         IElementDefinitionSummary[] elements,
+        IStructureDefinitionSummary summary,
         IStructureDefinitionSummaryProvider provider,
         FhirPathCompiler compiler)
     {
@@ -247,6 +251,16 @@ public class StructureDefinitionSchemaBuilder
                 if (seenConstraints.Contains(constraint.Key))
                 {
                     continue;
+                }
+
+                // ✅ Filter constraints by AppliesTo scope
+                // Only include constraints that either:
+                // - Apply to all resources/types (AppliesTo is empty), OR
+                // - Explicitly apply to this resource type
+                // This prevents constraints like ext-1 (Extension-only) from being applied to MedicationRequest
+                if (constraint.AppliesTo.Count > 0 && !constraint.AppliesTo.Contains(summary.TypeName))
+                {
+                    continue; // Constraint doesn't apply to this resource type
                 }
 
                 seenConstraints.Add(constraint.Key);

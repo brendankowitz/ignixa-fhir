@@ -59,7 +59,12 @@
       "Bash(cmd /c \"netstat -ano | findstr :5000\")",
       "Bash(powershell:*)",
       "Bash(Select-Object -Last 20)",
-      "Bash(xargs sed -i 's/namespace Ignixa.Extensions.Schema/namespace Ignixa.Specification/g')"
+      "Bash(xargs sed -i 's/namespace Ignixa.Extensions.Schema/namespace Ignixa.Specification/g')",
+      "Bash(pwsh -NoProfile -Command \"./generate.ps1 -FhirVersion All\")",
+      "Bash(do echo \"Generating $version provider...\")",
+      "Bash(exit 1)",
+      "Bash(fhir-codegen/src/fhir-codegen/bin/Release/net8.0/fhir-codegen.exe generate:*)",
+      "Bash(do echo \"✓ Generating $version provider...\")"
     ],
     "deny": [],
     "ask": []

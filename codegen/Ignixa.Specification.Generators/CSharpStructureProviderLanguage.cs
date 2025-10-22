@@ -91,6 +91,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("using System.Collections.Immutable;");
         sb.AppendLine("using Ignixa.Domain;");
         sb.AppendLine("using Ignixa.SourceNodeSerialization;");
+        sb.AppendLine("using Ignixa.SourceNodeSerialization.Abstractions;");
         sb.AppendLine("using Ignixa.SourceNodeSerialization.Specification;");
         sb.AppendLine("using Ignixa.Specification;");
         sb.AppendLine();
@@ -322,7 +323,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
 
         // Extract extended metadata
         var (referenceTargets, binding, constraints, slicing, fixedValue, patternValue, defaultValue, contentReference, min, max) =
-            ExtractExtendedMetadata(element, definitions, resourceTypeName);
+            ExtractExtendedMetadata(element, definitions, resourceTypeName, defaultTypeName);
 
         sb.AppendLine($"            new GeneratedElementDefinitionSummary(");
         sb.AppendLine($"                elementName: \"{elementName}\",");
@@ -373,7 +374,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
     }
 
     private (string referenceTargets, string binding, string constraints, string slicing, string fixedValue, string patternValue, string defaultValue, string contentReference, string min, string max)
-        ExtractExtendedMetadata(ElementDefinition element, DefinitionCollection definitions, string resourceTypeName)
+        ExtractExtendedMetadata(ElementDefinition element, DefinitionCollection definitions, string resourceTypeName, string elementTypeName)
     {
         // 1. Reference Targets
         string referenceTargets = "null";
@@ -410,12 +411,15 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
                     string escapedKey = EscapeString(key);
 
                     // Use helper method for common constraints (>100 occurrences)
+                    // Use element's type for AppliesTo, not parent resource
+                    // e.g., ext-1 on Account.extension (type=Extension) → AppliesTo=["Extension"]
                     if (_commonConstraintKeys != null && _commonConstraintKeys.Contains(key))
                     {
-                        return $"C(\"{escapedKey}\", \"{EscapeString(resourceTypeName)}\")";
+                        return $"C(\"{escapedKey}\", \"{EscapeString(elementTypeName)}\")";
                     }
 
                     // For uncommon constraints, generate inline
+                    // Use element's type for AppliesTo, consistent with common constraints
                     string severityValue = c.Severity?.ToString() ?? "error";
                     string severity = severityValue.Equals("error", StringComparison.OrdinalIgnoreCase)
                         ? "ConstraintSeverity.Error"
@@ -424,7 +428,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
                     string expression = EscapeString(c.Expression ?? "");
                     string xpath = string.IsNullOrEmpty(c.Xpath) ? "null" : $"\"{EscapeString(c.Xpath)}\"";
 
-                    return $"new ConstraintDefinition {{ Key = \"{escapedKey}\", Severity = {severity}, Human = \"{human}\", Expression = \"{expression}\", Xpath = {xpath}, AppliesTo = new[] {{ \"{EscapeString(resourceTypeName)}\" }} }}";
+                    return $"new ConstraintDefinition {{ Key = \"{escapedKey}\", Severity = {severity}, Human = \"{human}\", Expression = \"{expression}\", Xpath = {xpath}, AppliesTo = new[] {{ \"{EscapeString(elementTypeName)}\" }} }}";
                 })
                 .ToList();
 
@@ -720,7 +724,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using Ignixa.SourceNodeSerialization.SourceNodes.Models;");
+        sb.AppendLine("using Ignixa.SourceNodeSerialization.Models;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();
