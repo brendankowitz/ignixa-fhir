@@ -18,7 +18,7 @@ public class StaticCapabilitySegment : ICapabilitySegment
 
     // Software version - could be injected from ProductVersionInfo in future
     private const string SoftwareVersion = "0.1.0";
-    private const string SoftwareName = "Sparky FHIR Server";
+    private const string SoftwareName = "Ignixa FHIR Server";
     private const string ReleaseDate = "2025-10-16";
 
     public StaticCapabilitySegment(ILogger<StaticCapabilitySegment> logger)
@@ -40,7 +40,7 @@ public class StaticCapabilitySegment : ICapabilitySegment
         // Basic metadata
         statement.Status = CapabilityStatementJsonNode.PublicationStatus.Active;
         statement.Experimental = false;
-        statement.Publisher = "Sparky Contributors";
+        statement.Publisher = "Ignixa Contributors";
         statement.Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance;
 
         // Supported formats

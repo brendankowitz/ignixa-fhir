@@ -69,7 +69,7 @@ public class RestComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<ResourceComponentJsonNode>? Resource
+    public IReadOnlyList<ResourceComponentJsonNode>? Resource
     {
         get
         {
@@ -106,8 +106,27 @@ public class RestComponentJsonNode : BaseJsonNode
         }
     }
 
+    /// <summary>
+    /// Helper method to add a resource component to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddResource(ResourceComponentJsonNode resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        resource.FhirVersion = FhirVersion;
+
+        if (!MutableNode.TryGetPropertyValue("resource", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["resource"] = array;
+        }
+
+        array.Add(resource.MutableNode);
+    }
+
     [JsonIgnore]
-    public IList<SystemInteractionJsonNode>? Interaction
+    public IReadOnlyList<SystemInteractionJsonNode>? Interaction
     {
         get
         {
@@ -139,7 +158,7 @@ public class RestComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<SearchParamJsonNode>? SearchParam
+    public IReadOnlyList<SearchParamJsonNode>? SearchParam
     {
         get
         {
@@ -171,7 +190,7 @@ public class RestComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<OperationJsonNode>? Operation
+    public IReadOnlyList<OperationJsonNode>? Operation
     {
         get
         {

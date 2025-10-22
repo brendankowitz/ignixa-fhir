@@ -157,7 +157,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<ResourceInteractionJsonNode>? Interaction
+    public IReadOnlyList<ResourceInteractionJsonNode>? Interaction
     {
         get
         {
@@ -237,7 +237,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<string>? SearchInclude
+    public IReadOnlyList<string>? SearchInclude
     {
         get
         {
@@ -263,7 +263,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<string>? SearchRevInclude
+    public IReadOnlyList<string>? SearchRevInclude
     {
         get
         {
@@ -289,7 +289,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<SearchParamJsonNode>? SearchParam
+    public IReadOnlyList<SearchParamJsonNode>? SearchParam
     {
         get
         {
@@ -325,6 +325,26 @@ public class ResourceComponentJsonNode : BaseJsonNode
             }
         }
     }
+
+    /// <summary>
+    /// Helper method to add a search parameter to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddSearchParam(SearchParamJsonNode searchParam)
+    {
+        ArgumentNullException.ThrowIfNull(searchParam);
+
+        searchParam.FhirVersion = FhirVersion;
+
+        if (!MutableNode.TryGetPropertyValue("searchParam", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["searchParam"] = array;
+        }
+
+        array.Add(searchParam.MutableNode);
+    }
+
 
     /// <summary>
     /// FHIR ResourceVersionPolicy value set.

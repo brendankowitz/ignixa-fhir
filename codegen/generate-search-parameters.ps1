@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 
 # Paths
 $scriptDir = $PSScriptRoot
-$outputDir = Join-Path $scriptDir ".." "src" "Sparky.Specification" "Generated"
+$outputDir = Join-Path $scriptDir ".." "src" "Ignixa.Search" "Generated"
 $codegenExe = Join-Path $scriptDir "fhir-codegen" "src" "fhir-codegen" "bin" "Release" "net8.0" "fhir-codegen.exe"
 
 # Create output directory
@@ -30,8 +30,8 @@ finally {
     Pop-Location
 }
 
-Write-Host "Building Sparky.Specification.Generators..." -ForegroundColor Cyan
-dotnet build -c Release (Join-Path $scriptDir "Sparky.Specification.Generators" "Sparky.Specification.Generators.csproj")
+Write-Host "Building Ignixa.Specification.Generators..." -ForegroundColor Cyan
+dotnet build -c Release (Join-Path $scriptDir "Ignixa.Specification.Generators" "Ignixa.Specification.Generators.csproj")
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to build Sparky.Specification.Generators"
 }
@@ -55,7 +55,7 @@ function Generate-Version {
     & $codegenExe `
         --fhir-package $package `
         --language CSharpSearchParameter `
-        --language-options "{`"OutputDirectory`":`"$outputDir`",`"Namespace`":`"Sparky.Specification.Generated`"}"
+        --language-options "{`"OutputDirectory`":`"$outputDir`",`"Namespace`":`"Ignixa.Search.Generated`"}"
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to generate $Version search parameters"

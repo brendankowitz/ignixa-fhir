@@ -98,7 +98,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         return Convert.ToBase64String(hashBytes);
     }
 
-    private IList<SearchParamJsonNode> BuildSearchParameters(List<Search.Models.SearchParameterInfo> searchParams)
+    private IReadOnlyList<SearchParamJsonNode> BuildSearchParameters(List<Search.Models.SearchParameterInfo> searchParams)
     {
         var result = new List<SearchParamJsonNode>();
 

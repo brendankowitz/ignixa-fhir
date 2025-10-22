@@ -49,17 +49,14 @@ public class StructureDefinitionSchemaBuilder
         var elements = summary.GetElements();
 
         // Tier 1 (Fast): Universal checks - always run regardless of tier
+        // Includes basic cardinality and type checks to align with Microsoft FHIR Server default
         var universalChecks = new List<IValidationCheck>
         {
             new JsonStructureCheck(),
-            new IdFormatCheck(),
             new NarrativeCheck()
         };
 
-        // Tier 2 (Spec): Schema-driven checks from StructureDefinition
-        var specChecks = new List<IValidationCheck>();
-
-        // Extract cardinality checks
+        // Extract cardinality checks (moved to Fast tier for Microsoft FHIR Server alignment)
         // Cardinality checks enforce both minimum (required fields have min=1) and maximum cardinality
         // This eliminates the need for a separate RequiredFieldCheck
         // Use explicit Min/Max from IExtendedElementMetadata if available, otherwise infer from IsRequired/IsCollection
@@ -80,14 +77,18 @@ public class StructureDefinitionSchemaBuilder
                     min: e.IsRequired ? 1 : 0,
                     max: e.IsCollection ? (int?)null : 1);
             });
-        specChecks.AddRange(cardinalityChecks);
+        universalChecks.AddRange(cardinalityChecks);
 
-        // Extract type checks (only for primitive types)
+        // Extract type checks (only for primitive types, moved to Fast tier)
+        // This covers ID format validation and other primitive type checks
         var typeChecks = elements
             .Where(e => !string.IsNullOrEmpty(e.DefaultTypeName))
             .Where(e => IsPrimitiveType(e.DefaultTypeName!))
             .Select(e => new TypeCheck(e.ElementName, e.DefaultTypeName!));
-        specChecks.AddRange(typeChecks);
+        universalChecks.AddRange(typeChecks);
+
+        // Tier 2 (Spec): Schema-driven checks from StructureDefinition
+        var specChecks = new List<IValidationCheck>();
 
         // Extract reference format checks
         var referenceChecks = elements

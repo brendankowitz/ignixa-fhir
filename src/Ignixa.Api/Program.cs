@@ -395,6 +395,10 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<Ignixa.Application.Features.Metadata.Segments.ICapabilitySegment>()
         .SingleInstance();
 
+    containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.Segments.IncludeRevIncludeCapabilitySegment>()
+        .As<Ignixa.Application.Features.Metadata.Segments.ICapabilitySegment>()
+        .SingleInstance();
+
     containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.Segments.ProfileCapabilitySegment>()
         .As<Ignixa.Application.Features.Metadata.Segments.ICapabilitySegment>()
         .SingleInstance();
@@ -430,14 +434,6 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.GetCapabilityStatementHandler>()
         .As<IRequestHandler<Ignixa.Application.Features.Metadata.GetCapabilityStatementQuery, Ignixa.Application.Features.Metadata.Models.CapabilityStatementJsonNode>>()
         .InstancePerDependency();
-
-    // OLD: CapabilityStatementBuilder - marked obsolete, will be removed in Phase 3
-    // Kept for reference during Phase 1.2 migration
-#pragma warning disable CS0618 // Type or member is obsolete
-    containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.CapabilityStatementBuilder>()
-        .AsSelf()
-        .SingleInstance();
-#pragma warning restore CS0618 // Type or member is obsolete
 
     // Register FHIR Validation Services (Phase 3 - Tier-aware validation)
     // Uses three-tier validation: Fast (universal checks), Spec (schema checks), Profile (advanced)

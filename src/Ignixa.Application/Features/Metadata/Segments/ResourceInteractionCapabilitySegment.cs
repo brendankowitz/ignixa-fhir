@@ -86,7 +86,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
                 SearchParam = new List<SearchParamJsonNode>(), // Will be populated by SearchParameterCapabilitySegment
             };
 
-            restComponent.Resource!.Add(resourceComponent);
+            restComponent.AddResource(resourceComponent);
         }
 
         // Add system-level interactions
@@ -114,7 +114,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         return Convert.ToBase64String(hashBytes);
     }
 
-    private IList<ResourceInteractionJsonNode> BuildResourceInteractions(string resourceType)
+    private IReadOnlyList<ResourceInteractionJsonNode> BuildResourceInteractions(string resourceType)
     {
         var interactions = new List<ResourceInteractionJsonNode>
         {
@@ -133,7 +133,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         return interactions;
     }
 
-    private IList<SystemInteractionJsonNode> BuildSystemInteractions()
+    private IReadOnlyList<SystemInteractionJsonNode> BuildSystemInteractions()
     {
         return new List<SystemInteractionJsonNode>
         {
