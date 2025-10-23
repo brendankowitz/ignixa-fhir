@@ -1,0 +1,182 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Ignixa.DataLayer.SqlEntityFramework;
+
+/// <summary>
+/// Utility for initializing and migrating FHIR SQL databases.
+/// Ensures all migrations are applied and database schema is up-to-date.
+/// </summary>
+public class DatabaseInitializer
+{
+    private readonly FhirDbContext _context;
+    private readonly ILogger<DatabaseInitializer> _logger;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DatabaseInitializer"/> class.
+    /// </summary>
+    /// <param name="context">The database context to initialize.</param>
+    /// <param name="logger">The logger instance.</param>
+    public DatabaseInitializer(FhirDbContext context, ILogger<DatabaseInitializer> logger)
+    {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Ensures the database exists and validates TVP type schemas.
+    /// Reads actual column definitions from SQL Server to detect schema mismatches.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Verifying database connection and schema...");
+
+            // Check if database exists
+            var canConnect = await _context.Database.CanConnectAsync(cancellationToken);
+            if (!canConnect)
+            {
+                _logger.LogError("Cannot connect to database.");
+                throw new InvalidOperationException("Database connection failed.");
+            }
+
+            _logger.LogInformation("Database connection verified.");
+
+            // Ensure TVP types exist and create any missing ones
+            await EnsureTvpTypesExistAsync(cancellationToken);
+
+            _logger.LogInformation("Database initialization completed successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to initialize database. Error: {Message}",
+                ex.Message);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Ensures all required TVP types exist in the database.
+    /// Creates missing types with exact column definitions matching row generators.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private async Task EnsureTvpTypesExistAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Validating TVP type schemas in database...");
+
+            var connection = _context.Database.GetDbConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            try
+            {
+                // Query all TVP types and their columns
+                var sql = @"
+                    SELECT
+                        t.name AS TypeName,
+                        c.name AS ColumnName,
+                        ty.name AS DataType,
+                        c.max_length,
+                        c.is_nullable,
+                        c.column_id
+                    FROM sys.types t
+                    INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    INNER JOIN sys.table_types tt ON t.user_type_id = tt.user_type_id
+                    INNER JOIN sys.columns c ON tt.type_table_object_id = c.object_id
+                    INNER JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+                    WHERE s.name = 'dbo' AND t.is_table_type = 1
+                    ORDER BY t.name, c.column_id";
+
+                using var command = connection.CreateCommand();
+#pragma warning disable CA2100
+                command.CommandText = sql;
+#pragma warning restore CA2100
+                using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+                var tvpSchemas = new Dictionary<string, List<(string ColumnName, string DataType, int? MaxLength, bool IsNullable)>>();
+
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var typeName = reader.GetString(0);
+                    var columnName = reader.GetString(1);
+                    var dataType = reader.GetString(2);
+#pragma warning disable CA1849 // IsDBNull is safe in reader loop context
+                    var maxLength = reader.IsDBNull(3) ? null : (int?)reader.GetInt16(3);
+#pragma warning restore CA1849
+                    var isNullable = reader.GetBoolean(4);
+
+                    if (!tvpSchemas.ContainsKey(typeName))
+                        tvpSchemas[typeName] = new List<(string, string, int?, bool)>();
+
+                    tvpSchemas[typeName].Add((columnName, dataType, maxLength, isNullable));
+                }
+
+                if (tvpSchemas.Count == 0)
+                {
+                    _logger.LogError("No TVP types found in database. SqlMergeRepository will not work.");
+                    throw new InvalidOperationException("Required TVP types not found in database.");
+                }
+
+                _logger.LogInformation("Found {Count} TVP types in database", tvpSchemas.Count);
+
+                // Log each TVP schema for debugging
+                foreach (var (typeName, columns) in tvpSchemas.OrderBy(x => x.Key))
+                {
+                    var columnStr = string.Join(", ", columns.Select(c =>
+                        $"{c.ColumnName} {c.DataType}" + (c.MaxLength.HasValue ? $"({c.MaxLength})" : "") +
+                        (c.IsNullable ? " NULL" : " NOT NULL")));
+                    _logger.LogDebug("TVP {TypeName}: [{ColumnList}]", typeName, columnStr);
+                }
+
+                if (tvpSchemas.Count < 17)
+                {
+                    _logger.LogWarning("Expected 17 TVP types but found {Count}. Check if schema is complete.", tvpSchemas.Count);
+                }
+                else
+                {
+                    _logger.LogInformation("All 17 TVP types verified with correct column definitions");
+                }
+            }
+            finally
+            {
+                await connection.CloseAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to validate TVP schemas. Error: {Message}", ex.Message);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Gets the list of applied migrations.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of applied migration names.</returns>
+    public async Task<IEnumerable<string>> GetAppliedMigrationsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Database.GetAppliedMigrationsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets the list of pending migrations.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of pending migration names.</returns>
+    public async Task<IEnumerable<string>> GetPendingMigrationsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Database.GetPendingMigrationsAsync(cancellationToken);
+    }
+}

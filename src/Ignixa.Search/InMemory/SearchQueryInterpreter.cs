@@ -217,6 +217,25 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         throw new NotImplementedException();
     }
 
+    public SearchPredicate VisitIn<T>(InExpression<T> expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        throw new NotImplementedException("InExpression is not yet supported for in-memory search.");
+    }
+
+    public SearchPredicate VisitUnion(UnionExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        // Union expressions: combine results from each sub-expression with Union
+        return expression.Expressions
+            .Select(x => x.AcceptVisitor(this, context))
+            .Aggregate((x, y) => p => x(p).Union(y(p)));
+    }
+
     /// <summary>
     /// Context that is passed through the visit.
     /// </summary>

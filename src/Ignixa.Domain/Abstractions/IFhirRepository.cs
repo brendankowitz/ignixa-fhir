@@ -40,12 +40,13 @@ public interface IFhirRepository
     /// Accepts ResourceJsonNode so data layer can set metadata before serialization.
     /// </summary>
     /// <param name="transactionId">Transaction ID to use for this batch (from GetNextTransactionIdAsync).</param>
-    /// <param name="operations">List of resources to write (resourceType, resourceId, resource, searchIndexes).</param>
+    /// <param name="operations">List of resources to write (resourceType, resourceId, resource, searchIndexes, httpMethod, entryIndex).
+    /// The entryIndex is the bundle entry index (0-based) used to calculate unique surrogate IDs.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>List of resource keys with versions.</returns>
     Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         CancellationToken ct = default);
 
     /// <summary>

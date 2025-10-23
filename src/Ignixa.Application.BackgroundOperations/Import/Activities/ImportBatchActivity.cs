@@ -95,15 +95,16 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
         var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
 
         // 3. Parse and validate resources, build batch operations
-        var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)>();
+        var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
         var errors = new List<ImportErrorLogEntry>();
         var fhirVersion = FhirSpecification.R4; // TODO: Extract from tenant config
 
         var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
         var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion);
 
-        foreach (var resourceJson in input.Resources)
+        for (int entryIndex = 0; entryIndex < input.Resources.Count; entryIndex++)
         {
+            var resourceJson = input.Resources[entryIndex];
             try
             {
                 // Parse JSON to ResourceJsonNode
@@ -149,8 +150,8 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
                         resourceId);
                 }
 
-                // Add to batch operations
-                operations.Add((input.ResourceType, resourceId, jsonNode, searchIndices));
+                // Add to batch operations with entry index for surrogate ID calculation
+                operations.Add((input.ResourceType, resourceId, jsonNode, searchIndices, "PUT", entryIndex)); // Import uses PUT (upsert)
             }
             catch (Exception ex)
             {

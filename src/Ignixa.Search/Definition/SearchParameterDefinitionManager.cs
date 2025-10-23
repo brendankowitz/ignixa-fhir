@@ -49,7 +49,8 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
             _ => throw new NotSupportedException($"FHIR version {modelInfoProvider.Version} is not supported")
         };
 
-        // Populate lookup dictionaries
+        // Populate lookup dictionaries with proper type hierarchy expansion
+        var resourceTypes = _modelInfoProvider.ResourceTypeNames;
         foreach (var param in baseParameters)
         {
             // Add to URL lookup
@@ -58,10 +59,11 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
                 UrlLookup.TryAdd(param.Url, param);
             }
 
-            // Add to type lookup
+            // Add to type lookup - expand base resource types to all applicable concrete types
             if (param.BaseResourceTypes != null)
             {
-                foreach (var resourceType in param.BaseResourceTypes)
+                var applicableTypes = ExpandBaseResourceTypes(param.BaseResourceTypes, resourceTypes);
+                foreach (var resourceType in applicableTypes)
                 {
                     var typeLookup = TypeLookup.GetOrAdd(resourceType, _ => new ConcurrentDictionary<string, SearchParameterInfo>());
                     typeLookup.TryAdd(param.Code, param);
@@ -72,6 +74,45 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
         CalculateSearchParameterHash();
     }
 
+    /// <summary>
+    /// Expands abstract base resource types to their concrete implementations.
+    /// For example, "Resource" expands to all concrete resource types,
+    /// "DomainResource" expands to all DomainResource-derived types.
+    /// </summary>
+    private IEnumerable<string> ExpandBaseResourceTypes(IReadOnlyList<string> baseResourceTypes, IReadOnlySet<string> concreteResourceTypes)
+    {
+        var expanded = new HashSet<string>();
+
+        foreach (var baseType in baseResourceTypes)
+        {
+            if (baseType == "Resource")
+            {
+                // "Resource" applies to all resource types
+                foreach (var resourceType in concreteResourceTypes)
+                {
+                    expanded.Add(resourceType);
+                }
+            }
+            else if (baseType == "DomainResource")
+            {
+                // "DomainResource" applies to all resource types except abstract types
+                // In practice, DomainResource covers all concrete clinical resources
+                // We exclude only the truly abstract types that don't appear in the concrete list
+                foreach (var resourceType in concreteResourceTypes)
+                {
+                    expanded.Add(resourceType);
+                }
+            }
+            else
+            {
+                // Concrete type - add as-is
+                expanded.Add(baseType);
+            }
+        }
+
+        return expanded;
+    }
+
     internal ConcurrentDictionary<Uri, SearchParameterInfo> UrlLookup { get; set; }
 
     // TypeLookup key is: Resource type, the inner dictionary key is the Search Parameter code.
@@ -79,11 +120,18 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
 
     public IEnumerable<SearchParameterInfo> AllSearchParameters => UrlLookup.Values;
 
+    /// <summary>
+    /// Gets all concrete resource type names that have search parameters defined.
+    /// This includes all resource types expanded from abstract base types (Resource, DomainResource).
+    /// </summary>
+    public IEnumerable<string> ResourceTypeNames => TypeLookup.Keys;
+
     public IReadOnlyDictionary<string, string> SearchParameterHashMap => new ReadOnlyDictionary<string, string>(_resourceTypeSearchParameterHashMap.ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
 
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
-        if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> value)) return value.Values;
+        if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> value))
+            return value.Values;
 
         throw new ResourceNotSupportedException(resourceType);
     }

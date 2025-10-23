@@ -500,7 +500,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
 
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         CancellationToken ct = default)
     {
         if (operations == null || operations.Count == 0)
@@ -564,7 +564,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
                     VersionId = newVersion.ToString(),
                     LastModified = timestamp,
                     IsDeleted = false,
-                    Request = new ResourceRequest("PUT", $"{operation.resourceType}/{operation.resourceId}"),
+                    Request = new ResourceRequest(operation.httpMethod, $"{operation.resourceType}/{operation.resourceId}"),
                     SearchIndexes = operation.searchIndexes?.Cast<SearchIndexEntry>().ToList(),
                 };
 
@@ -660,7 +660,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string path,
         TransactionId transactionId,
         DateTimeOffset timestamp,
-        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         bool append,
         CancellationToken ct)
     {
@@ -717,7 +717,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         string path,
         TransactionId transactionId,
         DateTimeOffset timestamp,
-        List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
+        List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         bool append,
         CancellationToken ct)
     {

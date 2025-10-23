@@ -85,9 +85,40 @@ public class SqlEntityFrameworkSearchService : ISearchService
             throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
         }
 
-        _logger.LogDebug("Streaming search for {ResourceType}", options.ResourceType);
+        _logger.LogDebug("Streaming search for {ResourceType}", options.ResourceType ?? "<null - relying on expression>");
 
-        // Get ResourceTypeId
+        // For wildcard/multi-type searches (ResourceType is null or empty), skip type lookup
+        // and rely on the expression tree to filter results (e.g., Union with _type filters)
+        if (string.IsNullOrEmpty(options.ResourceType))
+        {
+            _logger.LogDebug("Null/empty ResourceType detected - building query without resource type constraint");
+
+            // Build query without resource type ID constraint (expression must handle filtering)
+            var multiTypeQuery = await BuildQueryAsync(options, resourceTypeId: null, ct);
+
+            _logger.LogInformation("Executing streaming query for multi-type search\n{SQL}", multiTypeQuery.ToQueryString());
+
+            // Stream results from all matching resources
+            await foreach (var entity in multiTypeQuery.AsAsyncEnumerable().WithCancellation(ct))
+            {
+                // For multi-type results, we need to determine the actual resource type from the entity
+                // entity.ResourceType is a ResourceTypeEntity, get the Name property
+                if (entity.ResourceType == null)
+                {
+                    _logger.LogWarning("ResourceType is null for entity with ResourceId {ResourceId}", entity.ResourceId);
+                    continue;
+                }
+
+                var searchResult = await _repository.GetAsync(new ResourceKey(entity.ResourceType.Name, entity.ResourceId, entity.Version.ToString()), ct);
+                if (searchResult != null)
+                {
+                    yield return searchResult;
+                }
+            }
+            yield break;
+        }
+
+        // Get ResourceTypeId for single-type searches
         var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, ct);
         if (!resourceTypeId.HasValue)
         {
@@ -238,22 +269,39 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
     private async Task<IQueryable<ResourceEntity>> BuildQueryAsync(
         SearchOptions options,
-        short resourceTypeId,
+        short? resourceTypeId,
         CancellationToken ct)
     {
         // Start with base query for current (non-history, non-deleted) resources
-        var baseQuery = _context.Resources
-            .Where(r => r.ResourceTypeId == resourceTypeId
-                && !r.IsHistory
-                && !r.IsDeleted);
+        IQueryable<ResourceEntity> baseQuery;
+
+        if (resourceTypeId.HasValue)
+        {
+            // Single-type search: filter by specific resource type
+            baseQuery = _context.Resources
+                .Where(r => r.ResourceTypeId == resourceTypeId.Value
+                    && !r.IsHistory
+                    && !r.IsDeleted);
+        }
+        else
+        {
+            // Multi-type search: no resource type filter
+            // Resource type filtering will be handled by the expression tree
+            baseQuery = _context.Resources
+                .Where(r => !r.IsHistory
+                    && !r.IsDeleted);
+        }
 
         // Apply search expression filters
         IQueryable<ResourceEntity> filteredQuery;
         if (options.Expression != null)
         {
+            // For multi-type searches, we pass a dummy resourceTypeId (not used by expressions like CompartmentSearchExpression)
+            var typeIdForExpression = resourceTypeId ?? 1; // Use 1 as dummy value for multi-type
+
             filteredQuery = await _queryBuilder.ApplySearchExpressionAsync(
                 baseQuery,
-                resourceTypeId,
+                typeIdForExpression,
                 options.Expression,
                 ct);
         }

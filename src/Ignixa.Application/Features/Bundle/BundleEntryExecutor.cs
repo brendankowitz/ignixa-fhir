@@ -15,6 +15,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -146,7 +147,16 @@ public class BundleEntryExecutor
                 if (deferredWriteCoordinator != null)
                 {
                     httpContext.Items["DeferredWriteCoordinator"] = deferredWriteCoordinator;
-                    httpContext.Items["BundleEntryIndex"] = entry.Index;
+
+                    // Use AsyncLocal instead of HttpContext.Items to avoid race conditions
+                    // when processing bundle entries concurrently
+                    httpContext.SetBundleEntryIndex(entry.Index);
+
+                    _logger.LogWarning(
+                        "EXECUTOR: Set entry index {EntryIndex} in AsyncLocal for {Verb} {Url}",
+                        entry.Index,
+                        entry.HttpVerb,
+                        entry.RequestUrl);
                 }
 
                 // Pass assigned resource ID for POST operations with urn:uuid fullUrls
@@ -202,7 +212,7 @@ public class BundleEntryExecutor
         }
         catch (Exception ex)
         {
-            // Non-FHIR exceptions: Internal server errors
+            // Non-FHIR exceptions: Create OperationOutcome with detailed error information
             _logger.LogError(
                 ex,
                 "Unexpected error executing bundle entry {Index}: {Verb} {Url}",
@@ -210,13 +220,33 @@ public class BundleEntryExecutor
                 entry.HttpVerb,
                 entry.RequestUrl);
 
+            // Determine if this is a conflict (optimistic concurrency) or internal error
+            var isConflict = ex.Message.Contains("recently updated", StringComparison.OrdinalIgnoreCase) ||
+                             ex.Message.Contains("conflict", StringComparison.OrdinalIgnoreCase) ||
+                             ex.Message.Contains("constraint violation", StringComparison.OrdinalIgnoreCase);
+
+            var statusCode = isConflict ? 409 : 500;
+            var severity = isConflict ? OperationOutcomeJsonNode.IssueSeverity.Error : OperationOutcomeJsonNode.IssueSeverity.Fatal;
+            var code = isConflict ? OperationOutcomeJsonNode.IssueType.Conflict : OperationOutcomeJsonNode.IssueType.Exception;
+
+            // Create OperationOutcome with detailed diagnostics
+            var operationOutcome = new OperationOutcomeJsonNode();
+            operationOutcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = severity,
+                Code = code,
+                Diagnostics = ex.Message
+            });
+
+            var resourceJson = operationOutcome.SerializeToString();
+
             return new BundleEntryResponse
             {
-                StatusCode = 500,
-                Status = "500 Internal Server Error",
+                StatusCode = statusCode,
+                Status = $"{statusCode} {GetReasonPhrase(statusCode)}",
                 Location = null,
                 ETag = null,
-                ResourceJson = null,
+                ResourceJson = resourceJson,
                 LastModified = null
             };
         }

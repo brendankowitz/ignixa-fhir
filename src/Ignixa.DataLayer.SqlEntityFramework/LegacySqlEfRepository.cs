@@ -25,6 +25,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     private readonly FhirDbContext _context;
     private readonly GzipResourceCompressor _compressor;
     private readonly SearchIndexWriter _searchIndexWriter;
+    private readonly SqlMergeRepository _sqlMergeRepository;
     private readonly ILogger<SqlEntityFrameworkRepository> _logger;
 
     /// <summary>
@@ -33,16 +34,19 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="compressor">The Gzip compressor for RawResource storage.</param>
     /// <param name="searchIndexWriter">The search index writer for indexing resources.</param>
+    /// <param name="sqlMergeRepository">The SQL merge repository for high-performance batch operations.</param>
     /// <param name="logger">Logger instance.</param>
     public SqlEntityFrameworkRepository(
         FhirDbContext context,
         GzipResourceCompressor compressor,
         SearchIndexWriter searchIndexWriter,
+        SqlMergeRepository sqlMergeRepository,
         ILogger<SqlEntityFrameworkRepository> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _searchIndexWriter = searchIndexWriter ?? throw new ArgumentNullException(nameof(searchIndexWriter));
+        _sqlMergeRepository = sqlMergeRepository ?? throw new ArgumentNullException(nameof(sqlMergeRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -130,7 +134,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             resource.Resource,
             resource.SearchIndices ?? Array.Empty<object>(),
             resource.Request.Method,
-            transactionId: null,
+            transactionId: (await GetNextTransactionIdAsync(ct)).Value,
             ct);
 
         // Save changes immediately (standalone operation)
@@ -250,60 +254,255 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// <inheritdoc/>
     public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken ct = default)
     {
-        // Allocate surrogate ID range for this transaction
-        var firstId = await GetNextSurrogateIdAsync(ct);
-        var lastId = firstId + 999; // Reserve 1000 IDs
+        // Use SqlMergeRepository to properly initialize transaction via stored procedure
+        // This calls MergeResourcesBeginTransaction which creates the transaction record
+        // and allocates the surrogate ID range correctly
+        var (transactionId, sequenceStart) = await _sqlMergeRepository.BeginTransactionAsync(
+            resourceCount: 1000, // Reserve 1000 IDs (default batch size)
+            cancellationToken: ct);
 
-        var transaction = new TransactionEntity
-        {
-            SurrogateIdRangeFirstValue = firstId,
-            SurrogateIdRangeLastValue = lastId,
-            IsCompleted = false,
-            IsSuccess = false,
-            IsVisible = false,
-            IsHistoryMoved = false,
-            CreateDate = DateTime.UtcNow,
-            HeartbeatDate = DateTime.UtcNow,
-            IsControlledByClient = true,
-        };
+        _logger.LogDebug(
+            "Allocated transaction ID {TransactionId} with sequence start {SequenceStart}",
+            transactionId,
+            sequenceStart);
 
-        _context.Transactions.Add(transaction);
-        await _context.SaveChangesAsync(ct);
-
-        _logger.LogDebug("Allocated transaction ID range: {FirstId}-{LastId}", firstId, lastId);
-
-        return new TransactionId(firstId);
+        return new TransactionId(transactionId);
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
-        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes)> operations,
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         CancellationToken ct = default)
     {
         // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense
         ArgumentNullException.ThrowIfNull(operations);
 
-        _logger.LogDebug("Batch writing {Count} resources for transaction {TransactionId}", operations.Count, transactionId.Value);
+        _logger.LogDebug(
+            "Batch writing {Count} resources for transaction {TransactionId} using SqlMergeRepository",
+            operations.Count,
+            transactionId.Value);
 
-        var results = new List<ResourceKey>();
+        // Phase 3.5: Optimized batch query - single database call instead of N queries
+        // Step 1: Collect unique resource types and look up their IDs (batch)
+        var uniqueResourceTypes = operations
+            .Select(op => op.resourceType)
+            .Distinct()
+            .ToList();
 
-        foreach (var (resourceType, resourceId, resource, searchIndexes) in operations)
+        var resourceTypeMap = new Dictionary<string, short>();
+        foreach (var resourceType in uniqueResourceTypes)
         {
-            // Use shared helper to create resource entity
-            var (entity, newVersion) = await CreateResourceEntityAsync(
-                resourceType,
-                resourceId,
-                resource,
-                searchIndexes,
-                requestMethod: "POST",
-                transactionId: transactionId.Value,
-                ct);
-
-            results.Add(new ResourceKey(resourceType, resourceId, newVersion.ToString(), null));
+            var typeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
+            resourceTypeMap[resourceType] = typeId;
         }
 
-        // Note: SaveChangesAsync is NOT called here - deferred until CommitTransactionAsync
+        // Step 2: Create lookup keys for batch query
+        var resourceLookupKeys = operations
+            .Select(op => new { TypeId = resourceTypeMap[op.resourceType], op.resourceId })
+            .Distinct()
+            .ToList();
+
+        // Step 3: Hybrid batch query (server-side + client-side)
+        // Server-side: Filter by type and ID lists (translatable to SQL IN clauses)
+        var typeIds = resourceLookupKeys.Select(k => k.TypeId).Distinct().ToList();
+        var resourceIds = resourceLookupKeys.Select(k => k.resourceId).Distinct().ToList();
+
+        var existingResources = await _context.Resources
+            .Where(r => !r.IsHistory &&
+                        typeIds.Contains(r.ResourceTypeId) &&
+                        resourceIds.Contains(r.ResourceId))
+            .Select(r => new
+            {
+                r.ResourceTypeId,
+                r.ResourceId,
+                r.Version,
+                r.ResourceSurrogateId
+            })
+            .ToListAsync(ct);
+
+        // Client-side: Group and get max versions AND surrogate IDs for exact (typeId, resourceId) matches
+        var currentVersions = existingResources
+            .GroupBy(r => new { r.ResourceTypeId, r.ResourceId })
+            .Where(g => resourceLookupKeys.Any(k => k.TypeId == g.Key.ResourceTypeId && k.resourceId == g.Key.ResourceId))
+            .ToDictionary(
+                g => (g.Key.ResourceTypeId, g.Key.ResourceId),
+                g => new
+                {
+                    MaxVersion = g.Max(r => r.Version),
+                    MaxSurrogateId = g.Max(r => r.ResourceSurrogateId)
+                });
+
+        _logger.LogDebug(
+            "Batch query found {ExistingCount} existing resources, {NewCount} are new",
+            currentVersions.Count,
+            operations.Count - currentVersions.Count);
+
+        // Step 4: Convert operations to ResourceWrapper objects with calculated versions
+        var resourceWrappers = new List<ResourceWrapper>();
+
+        foreach (var (resourceType, resourceId, resource, searchIndexes, httpMethod, entryIndex) in operations)
+        {
+            var resourceTypeId = resourceTypeMap[resourceType];
+            var key = (resourceTypeId, resourceId);
+
+            // Calculate new version based on database state
+            // Note: Bundles should NOT contain duplicate resources (same type+ID)
+            // If duplicates exist, that's a validation error caught elsewhere
+            var hasCurrentVersion = currentVersions.TryGetValue(key, out var existing);
+            var newVersion = (hasCurrentVersion ? existing!.MaxVersion : 0) + 1;
+
+            // Update the JsonNode meta to reflect the calculated version
+            // This ensures the stored JSON has the correct meta.versionId and meta.lastUpdated
+            var lastModified = DateTimeOffset.UtcNow;
+            resource.Meta.VersionId = newVersion.ToString();
+            resource.Meta.LastUpdated = transactionId.Value.ToDate();
+
+            var wrapper = new ResourceWrapper(
+                ResourceType: resourceType,
+                ResourceId: resourceId,
+                VersionId: newVersion.ToString(),
+                LastModified: lastModified,
+                Resource: resource,
+                Request: new ResourceRequest(httpMethod, $"{resourceType}/{resourceId}"),
+                IsDeleted: false)
+            {
+                SearchIndices = searchIndexes,
+                TenantId = null
+            };
+
+            resourceWrappers.Add(wrapper);
+        }
+
+        // Step 5: Validate surrogate IDs and versions BEFORE sending to database
+        // This replicates the stored procedure's validation check to catch issues early with better error messages
+        _logger.LogDebug(
+            "Validating surrogate IDs and versions for {Count} resources (TransactionId={TxId})",
+            resourceWrappers.Count,
+            transactionId.Value);
+
+        for (int i = 0; i < resourceWrappers.Count; i++)
+        {
+            var wrapper = resourceWrappers[i];
+            var resourceTypeId = resourceTypeMap[wrapper.ResourceType];
+            var key = (resourceTypeId, wrapper.ResourceId);
+
+            // Calculate the surrogate ID that will be assigned to this resource
+            // Use the bundle entry index to ensure unique IDs across the entire bundle
+            var entryIndex = operations[i].entryIndex;
+            var newSurrogateId = transactionId.Value + entryIndex;
+            var newVersion = int.Parse(wrapper.VersionId);
+
+            _logger.LogWarning(
+                "PRE-VALIDATION: {ResourceType}/{Id} (batch index {BatchIndex}, entry index {EntryIndex}) - " +
+                "TransactionId={TxId}, SurrogateId={SurId} ({TxId} + {EntryIndex})",
+                wrapper.ResourceType, wrapper.ResourceId, i, entryIndex,
+                transactionId.Value, newSurrogateId, transactionId.Value, entryIndex);
+
+            if (currentVersions.TryGetValue(key, out var existing))
+            {
+                // Check version constraint (stored procedure line 100)
+                if (newVersion <= existing.MaxVersion)
+                {
+                    _logger.LogError(
+                        "VERSION CONSTRAINT VIOLATION: {ResourceType}/{Id} - " +
+                        "NewVersion={NewVersion} <= PreviousVersion={PrevVersion}",
+                        wrapper.ResourceType, wrapper.ResourceId,
+                        newVersion, existing.MaxVersion);
+
+                    throw new InvalidOperationException(
+                        $"Version constraint violation for {wrapper.ResourceType}/{wrapper.ResourceId}: " +
+                        $"NewVersion={newVersion} <= PreviousVersion={existing.MaxVersion}");
+                }
+
+                // Check surrogate ID constraint (stored procedure line 100)
+                if (newSurrogateId <= existing.MaxSurrogateId)
+                {
+                    var diff = newSurrogateId - existing.MaxSurrogateId;
+
+                    _logger.LogError(
+                        "SURROGATE ID CONSTRAINT VIOLATION: {ResourceType}/{Id} - " +
+                        "NewSurrogateId={NewId} <= PreviousSurrogateId={PrevId}, " +
+                        "Diff={Diff}, TransactionId={TxId}, Index={Index}",
+                        wrapper.ResourceType, wrapper.ResourceId,
+                        newSurrogateId, existing.MaxSurrogateId,
+                        diff, transactionId.Value, i);
+
+                    throw new InvalidOperationException(
+                        $"Surrogate ID constraint violation for {wrapper.ResourceType}/{wrapper.ResourceId}: " +
+                        $"NewSurrogateId={newSurrogateId} <= PreviousSurrogateId={existing.MaxSurrogateId}, " +
+                        $"Diff={diff}, TransactionId={transactionId.Value}, Index={i}");
+                }
+
+                _logger.LogTrace(
+                    "Validation passed: {ResourceType}/{Id} - " +
+                    "Version {OldVer}→{NewVer}, SurrogateId {OldId}→{NewId} (+{Diff})",
+                    wrapper.ResourceType, wrapper.ResourceId,
+                    existing.MaxVersion, newVersion,
+                    existing.MaxSurrogateId, newSurrogateId,
+                    newSurrogateId - existing.MaxSurrogateId);
+            }
+            else
+            {
+                _logger.LogTrace(
+                    "New resource: {ResourceType}/{Id} - Version={Ver}, SurrogateId={Id}",
+                    wrapper.ResourceType, wrapper.ResourceId,
+                    newVersion, newSurrogateId);
+            }
+        }
+
+        _logger.LogInformation(
+            "Surrogate ID validation passed for all {Count} resources",
+            resourceWrappers.Count);
+
+        // Extract entry indices from operations to pass to SqlMergeRepository
+        // This ensures surrogate IDs are calculated as transactionId + entryIndex
+        var entryIndices = operations.Select(op => op.entryIndex).ToList();
+
+        // Log what we're sending to the stored procedure
+        for (int i = 0; i < resourceWrappers.Count; i++)
+        {
+            var wrapper = resourceWrappers[i];
+            var entryIndex = entryIndices[i];
+            var resourceTypeId = resourceTypeMap[wrapper.ResourceType];
+            var surrogateId = transactionId.Value + entryIndex;
+            var version = int.Parse(wrapper.VersionId);
+            var isPost = string.Equals(wrapper.Request.Method, "POST", StringComparison.OrdinalIgnoreCase);
+            var hasVersionToCompare = !isPost && version > 1;
+
+            _logger.LogWarning(
+                "Sending to stored procedure: {ResourceType}/{Id} (entry {EntryIndex}) - " +
+                "Version={Ver}, SurrogateId={SurId}, RequestMethod={Method}, " +
+                "HasVersionToCompare={HasVer}, IsPost={IsPost}",
+                wrapper.ResourceType, wrapper.ResourceId, entryIndex,
+                version, surrogateId, wrapper.Request.Method,
+                hasVersionToCompare, isPost);
+        }
+
+        // Use SqlMergeRepository for high-performance bulk merge
+        // Pass entry indices so surrogate IDs are calculated correctly (transactionId + entryIndex)
+        await _sqlMergeRepository.MergeResourcesAsync(
+            transactionId.Value,
+            singleTransaction: true,
+            resourceWrappers,
+            entryIndices,
+            ct);
+
+        // Build result list with new versions
+        var results = new List<ResourceKey>();
+        for (int i = 0; i < operations.Count; i++)
+        {
+            var (resourceType, resourceId, _, _, _, _) = operations[i];
+            var wrapper = resourceWrappers[i];
+            results.Add(new ResourceKey(resourceType, resourceId, wrapper.VersionId, null));
+        }
+
+        _logger.LogInformation(
+            "Batch wrote {Count} resources for transaction {TransactionId} using SqlMergeRepository (optimized batch query)",
+            operations.Count,
+            transactionId.Value);
+
+        // Note: SaveChangesAsync is NOT called here - will be called in CommitTransactionAsync
         return results;
     }
 
@@ -313,23 +512,13 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense
         _logger.LogDebug("Committing transaction {TransactionId}", transactionId.Value);
 
-        // Find transaction entity
-        var transaction = await _context.Transactions
-            .FirstOrDefaultAsync(t => t.SurrogateIdRangeFirstValue == transactionId.Value, ct);
-
-        if (transaction == null)
-        {
-            throw new InvalidOperationException($"Transaction {transactionId.Value} not found");
-        }
-
-        // Mark as completed and visible
-        transaction.IsCompleted = true;
-        transaction.IsSuccess = true;
-        transaction.IsVisible = true;
-        transaction.EndDate = DateTime.UtcNow;
-        transaction.VisibleDate = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync(ct);
+        // Use SqlMergeRepository to properly commit transaction via stored procedure
+        // This calls MergeResourcesCommitTransaction which marks resources as visible
+        // and updates transaction metadata correctly
+        await _sqlMergeRepository.CommitTransactionAsync(
+            transactionId: transactionId.Value,
+            failureReason: null, // null = success
+            cancellationToken: ct);
 
         _logger.LogInformation("Committed transaction {TransactionId}", transactionId.Value);
     }

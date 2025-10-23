@@ -44,6 +44,15 @@ public class FhirExceptionMiddleware
 
     private static Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        // If response has already started, we can't modify headers
+        // This typically happens when streaming responses encounter errors mid-stream
+        if (context.Response.HasStarted)
+        {
+            // Response already started - just return to avoid "Headers are read-only" errors
+            // The streaming operation will fail appropriately on the client side
+            return Task.CompletedTask;
+        }
+
         // Handle all FhirException types generically
         if (exception is Domain.Exceptions.FhirException fhirException)
         {

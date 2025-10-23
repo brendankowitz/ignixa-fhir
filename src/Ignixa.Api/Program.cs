@@ -371,6 +371,12 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         return () => manager;
     }).SingleInstance();
 
+    // Register version-aware wrapper that caches CompartmentDefinitionManager per FHIR version
+    containerBuilder.RegisterType<VersionAwareCompartmentDefinitionManager>()
+        .As<ICompartmentDefinitionManager>()
+        .AsSelf() // Also register as self for version-aware access
+        .SingleInstance();
+
     // NOTE: ReferenceSearchValueParser, SearchParameterExpressionParser, ExpressionParser, and SearchOptionsBuilder
     // are now created by SearchOptionsBuilderFactory with version-specific dependencies
     // No longer registered in DI container - factory creates them per (tenant, version) pair
@@ -616,6 +622,39 @@ app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",
     }
 
     logger.LogInformation("===================================================");
+}
+
+// CRITICAL: Initialize all tenant databases (applies migrations, creates TVP types)
+// This ensures dbo.ResourceListTableType and all 16+ TVP types exist before SqlMergeRepository is used
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    var configStore = app.Services.GetRequiredService<ITenantConfigurationStore>();
+    var repositoryFactory = app.Services.GetRequiredService<IFhirRepositoryFactory>();
+
+    logger.LogInformation("===== Database Initialization =====");
+
+    var tenants = await configStore.GetAllTenantsAsync();
+    foreach (var tenant in tenants)
+    {
+        try
+        {
+            logger.LogInformation("Initializing database for tenant {TenantId} ({DisplayName})...", tenant.TenantId, tenant.DisplayName);
+
+            // This will trigger SqlEntityFrameworkRepositoryFactory to create the repository
+            // which internally calls DatabaseInitializer.InitializeAsync() to apply migrations
+            var repository = await repositoryFactory.GetRepositoryAsync(tenant.TenantId);
+
+            logger.LogInformation("✅ Database initialized for tenant {TenantId}", tenant.TenantId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "❌ Failed to initialize database for tenant {TenantId} ({DisplayName}). Error: {Message}",
+                tenant.TenantId, tenant.DisplayName, ex.Message);
+            throw;
+        }
+    }
+
+    logger.LogInformation("===== All Databases Initialized =====");
 }
 
 await app.RunAsync();

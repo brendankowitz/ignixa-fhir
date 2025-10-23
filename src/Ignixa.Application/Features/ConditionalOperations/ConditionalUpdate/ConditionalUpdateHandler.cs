@@ -190,6 +190,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             ResourceType: resourceType,
             Id: newId,
             JsonNode: jsonNode,
+            HttpMethod: System.Net.Http.HttpMethod.Put,
             Coordinator: null); // No bundle context for conditional update
 
         var resourceKey = await _mediator.SendAsync(createCommand, cancellationToken);
@@ -253,6 +254,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             ResourceType: resourceType,
             Id: existingId, // Use existing ID, ignore body ID
             JsonNode: jsonNode,
+            HttpMethod: System.Net.Http.HttpMethod.Put,
             Coordinator: null, // No bundle context for conditional update
             IfMatch: existingVersionId); // Pass version ID for optimistic concurrency control
 

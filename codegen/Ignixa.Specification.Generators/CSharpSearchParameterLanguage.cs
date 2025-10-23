@@ -159,7 +159,23 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
             count++;
         }
 
-        Console.WriteLine($"Generated {count} search parameters for {fhirVersion}");
+        // Add hardcoded system parameter: _type
+        // This parameter is used to search by resource type and is available for all resources
+        // Not included in the standard FHIR search-parameters.json, but required by the spec
+        sb.AppendLine(",");
+        sb.AppendLine("            new SearchParameterInfo(");
+        sb.AppendLine("                name: \"_type\",");
+        sb.AppendLine("                code: \"_type\",");
+        sb.AppendLine("                searchParamType: SearchParamType.Token,");
+        sb.AppendLine("                url: new Uri(\"http://hl7.org/fhir/SearchParameter/Resource-type\"),");
+        sb.AppendLine("                components: null,");
+        sb.AppendLine("                expression: null,");
+        sb.AppendLine("                targetResourceTypes: null,");
+        sb.AppendLine("                baseResourceTypes: new[] { \"Resource\" },");
+        sb.AppendLine("                description: \"Search for resources by resource type\")");
+        count++;
+
+        Console.WriteLine($"Generated {count} search parameters for {fhirVersion} (includes hardcoded _type)");
     }
 
     private string GetSearchParametersJsonPath(string fhirVersion)

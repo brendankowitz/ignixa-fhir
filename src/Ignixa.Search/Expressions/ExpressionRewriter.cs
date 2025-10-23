@@ -77,6 +77,17 @@ public abstract class ExpressionRewriter<TContext> : IExpressionVisitor<TContext
         return expression;
     }
 
+    public virtual Expression VisitIn<T>(InExpression<T> expression, TContext context)
+    {
+        return expression;
+    }
+
+    public virtual Expression VisitUnion(UnionExpression expression, TContext context)
+    {
+        IReadOnlyList<Expression> rewrittenExpressions = VisitArray(expression.Expressions, context);
+        return ReferenceEquals(rewrittenExpressions, expression.Expressions) ? expression : new UnionExpression(expression.Operator, rewrittenExpressions);
+    }
+
     protected IReadOnlyList<TExpression> VisitArray<TExpression>(IReadOnlyList<TExpression> inputArray, TContext context)
         where TExpression : Expression
     {

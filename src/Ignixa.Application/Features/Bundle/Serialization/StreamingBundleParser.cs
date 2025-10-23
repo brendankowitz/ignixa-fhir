@@ -111,8 +111,6 @@ public class StreamingBundleParser
                 if (parserState.IsInEntryArray)
                 {
                     foundEntryArray = true;
-                    _logger.LogDebug("Found entry array at depth {Depth}, BytesConsumed: {BytesConsumed}",
-                        parserState.Depth, reader.BytesConsumed);
                     break;
                 }
             }
@@ -120,8 +118,6 @@ public class StreamingBundleParser
             // Save state and mark consumed bytes
             state = reader.CurrentState;
             int bytesConsumed = (int)reader.BytesConsumed;
-            _logger.LogTrace("Header parsing iteration - BytesConsumed: {BytesConsumed}, BytesInBuffer: {BytesInBuffer}, FoundEntry: {FoundEntry}",
-                bytesConsumed, buffer.GetReadableSpan().Length, foundEntryArray);
 
             buffer.MarkBytesConsumed(bytesConsumed);
             buffer.SaveReaderState(state);
@@ -143,31 +139,26 @@ public class StreamingBundleParser
         {
             case JsonTokenType.PropertyName:
                 state.CurrentProperty = reader.GetString();
-                _logger.LogTrace("Header Property: {Property} (depth: {Depth})", state.CurrentProperty, state.Depth);
                 break;
 
             case JsonTokenType.StartObject:
                 state.IncrementDepth();
-                _logger.LogTrace("Header StartObject (depth: {Depth})", state.Depth);
 
                 // Check if starting a link object within link array
                 // Link array is at depth 2, so link objects are at depth 3
                 if (state.InLinkArray && state.Depth == 3)
                 {
                     state.EnterLinkObject();
-                    _logger.LogTrace("Entering link object");
                 }
                 break;
 
             case JsonTokenType.EndObject:
-                _logger.LogTrace("Header EndObject (depth: {Depth})", state.Depth);
 
                 // Check if ending a link object
                 // Link objects are at depth 3 (inside link array at depth 2)
                 if (state.InLinkObject && state.Depth == 3)
                 {
                     state.ExitLinkObject();
-                    _logger.LogTrace("Exiting link object");
                 }
 
                 state.DecrementDepth();
@@ -175,27 +166,22 @@ public class StreamingBundleParser
 
             case JsonTokenType.StartArray:
                 state.IncrementDepth();
-                _logger.LogTrace("Header StartArray: {Property} (depth: {Depth})", state.CurrentProperty, state.Depth);
 
                 if (state.CurrentProperty == "entry" && state.Depth == 2)
                 {
                     state.EnterEntryArray();
-                    _logger.LogDebug("Reached entry array, stopping header parse");
                 }
                 else if (state.CurrentProperty == "link" && state.Depth == 2)
                 {
                     state.EnterLinkArray();
-                    _logger.LogTrace("Entering link array");
                 }
                 break;
 
             case JsonTokenType.EndArray:
-                _logger.LogTrace("Header EndArray (depth: {Depth})", state.Depth);
 
                 if (state.InLinkArray && state.Depth == 2)
                 {
                     state.ExitLinkArray();
-                    _logger.LogTrace("Exiting link array");
                 }
 
                 state.DecrementDepth();
@@ -235,9 +221,6 @@ public class StreamingBundleParser
         int noProgressIterations = 0;
         const int MaxNoProgressIterations = 3; // Allow 3 iterations without progress before throwing
 
-        _logger.LogDebug("Starting entry parsing - HasUnconsumedBytes: {HasBytes}, IsComplete: {IsComplete}, IsInEntryArray: {InArray}",
-            buffer.HasUnconsumedBytes, buffer.IsComplete, parserState.IsInEntryArray);
-
         while (!buffer.IsComplete || buffer.HasUnconsumedBytes)
         {
             // Read next chunk if needed (when we have no data OR we need more data to complete a token)
@@ -254,9 +237,6 @@ public class StreamingBundleParser
                 break;
             }
 
-            _logger.LogTrace("Creating Utf8JsonReader with {ByteCount} bytes, isFinalBlock: {IsFinal}",
-                buffer.GetReadableSpan().Length, buffer.IsComplete);
-
             var reader = new Utf8JsonReader(
                 buffer.GetReadableSpan(),
                 isFinalBlock: buffer.IsComplete,
@@ -264,9 +244,6 @@ public class StreamingBundleParser
 
             // Process tokens and collect completed entries
             var completedEntries = ProcessTokens(ref reader, parserState);
-
-            _logger.LogTrace("Processed tokens - BytesConsumed: {BytesConsumed}, CompletedEntries: {Count}",
-                reader.BytesConsumed, completedEntries.Count);
 
             // Track progress: made progress if we consumed bytes OR yielded entries
             bool madeProgress = reader.BytesConsumed > 0 || completedEntries.Count > 0;
@@ -334,7 +311,6 @@ public class StreamingBundleParser
             // If we've closed the entry array, we're done parsing entries
             if (parserState.EntryArrayClosed)
             {
-                _logger.LogDebug("Entry array closed, stopping entry enumeration");
                 break;
             }
         }
@@ -375,13 +351,11 @@ public class StreamingBundleParser
         {
             case JsonTokenType.PropertyName:
                 state.CurrentProperty = reader.GetString();
-                _logger.LogTrace("Property: {Property} (depth: {Depth})", state.CurrentProperty, state.Depth);
 
                 // Check for special properties
                 if (state.IsInEntry && state.Depth == 3 && state.CurrentProperty == "request")
                 {
                     state.EnterRequest();
-                    _logger.LogTrace("Entering request object");
                 }
 
                 // If inside resource, add property name to JSON immediately
@@ -401,19 +375,16 @@ public class StreamingBundleParser
                 {
                     state.IncrementDepth(); // Now at depth 3 (inside entry object)
                     state.StartNewEntry();
-                    _logger.LogDebug("Starting new entry at depth {Depth}", state.Depth);
                 }
                 else
                 {
                     state.IncrementDepth();
-                    _logger.LogTrace("StartObject (depth: {Depth})", state.Depth);
                 }
 
                 // Check if starting the "resource" object
                 if (state.IsInEntry && state.CurrentProperty == "resource" && !state.InResource)
                 {
                     state.EnterResource();
-                    _logger.LogTrace("Entering resource object");
                 }
                 else if (state.InResource)
                 {
@@ -431,7 +402,6 @@ public class StreamingBundleParser
                 break;
 
             case JsonTokenType.EndObject:
-                _logger.LogTrace("EndObject (depth: {Depth})", state.Depth);
 
                 // Handle end of resource
                 if (state.InResource)
@@ -440,7 +410,6 @@ public class StreamingBundleParser
                     if (state.DecrementResourceDepth())
                     {
                         state.ExitResource();
-                        _logger.LogTrace("Exiting resource object");
                     }
                     else
                     {
@@ -455,7 +424,6 @@ public class StreamingBundleParser
                 if (state.InRequest && state.Depth == 4)
                 {
                     state.ExitRequest();
-                    _logger.LogTrace("Exiting request object");
                 }
 
                 state.DecrementDepth();
@@ -465,19 +433,16 @@ public class StreamingBundleParser
                 if (state.IsInEntryArray && state.Depth == 2)
                 {
                     state.CompleteEntry();
-                    _logger.LogDebug("Completing entry at depth {Depth}", state.Depth);
                 }
 
                 break;
 
             case JsonTokenType.StartArray:
                 state.IncrementDepth();
-                _logger.LogTrace("StartArray: {Property} (depth: {Depth})", state.CurrentProperty, state.Depth);
 
                 if (state.CurrentProperty == "entry" && state.Depth == 2)
                 {
                     state.EnterEntryArray();
-                    _logger.LogDebug("Entering entry array");
                 }
                 else if (state.InResource)
                 {
@@ -489,7 +454,6 @@ public class StreamingBundleParser
                 break;
 
             case JsonTokenType.EndArray:
-                _logger.LogTrace("EndArray (depth: {Depth})", state.Depth);
 
                 if (state.InResource)
                 {
@@ -500,7 +464,6 @@ public class StreamingBundleParser
                 // Check if we're closing the entry array (we're at depth 2, which is the entry array level)
                 else if (state.IsInEntryArray && state.Depth == 2)
                 {
-                    _logger.LogDebug("Closing entry array, entry parsing complete");
                     state.CloseEntryArray();
                 }
 

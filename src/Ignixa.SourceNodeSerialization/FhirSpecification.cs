@@ -61,4 +61,21 @@ public static class FhirSpecificationExtensions
             _ => FhirSpecification.R4 // Default to R4
         };
     }
+
+    /// <summary>
+    /// Gets the appropriate schema provider type name for the given FhirSpecification.
+    /// </summary>
+    /// <param name="spec">The FHIR specification enum value.</param>
+    /// <returns>The fully qualified type name of the schema provider.</returns>
+    public static string GetSchemaProviderTypeName(this FhirSpecification spec)
+    {
+        return spec switch
+        {
+            FhirSpecification.R4 => "Ignixa.Specification.Generated.R4StructureDefinitionSummaryProvider",
+            FhirSpecification.R4B => "Ignixa.Specification.Generated.R4BStructureDefinitionSummaryProvider",
+            FhirSpecification.R5 => "Ignixa.Specification.Generated.R5StructureDefinitionSummaryProvider",
+            FhirSpecification.Stu3 => "Ignixa.Specification.Generated.Stu3StructureDefinitionSummaryProvider",
+            _ => "Ignixa.Specification.Generated.R4StructureDefinitionSummaryProvider"
+        };
+    }
 }

@@ -87,4 +87,25 @@ internal abstract class DefaultExpressionVisitor<TContext, TOutput> : IExpressio
     {
         return default;
     }
+
+    public virtual TOutput VisitIn<T>(InExpression<T> expression, TContext context)
+    {
+        return default;
+    }
+
+    public virtual TOutput VisitUnion(UnionExpression expression, TContext context)
+    {
+        TOutput result = default;
+        for (int i = 0; i < expression.Expressions.Count; i++)
+        {
+            Expression operand = expression.Expressions[i];
+            TOutput currentResult = operand.AcceptVisitor(this, context);
+            if (i == 0)
+                result = currentResult;
+            else
+                result = _outputAggregator(result, currentResult);
+        }
+
+        return result;
+    }
 }

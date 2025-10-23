@@ -68,7 +68,7 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
 
     /// <summary>
     /// Builds a Union expression for wildcard compartment searches.
-    /// Expands to all resource types in the compartment and combines them with OR.
+    /// Groups resource types by shared compartment parameters, then uses InExpressions for efficiency.
     /// </summary>
     private Expression BuildWildcardExpression(
         CompartmentSearchExpression expression,
@@ -91,38 +91,96 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
             throw new InvalidSearchOperationException($"No matching resource types found for compartment search");
         }
 
-        // Build expression for each resource type
-        var resourceTypeExpressions = new List<Expression>();
+        // Group by search parameter (to create efficient IN clauses instead of ORs)
+        var compartmentSearchExpressionsByParameter = new Dictionary<string, (List<Expression> Expressions, HashSet<string> ResourceTypes)>();
 
         foreach (var resourceType in resourceTypesToSearch)
         {
-            var resourceTypeExpression = BuildSingleResourceTypeExpression(
-                expression,
-                compartmentType,
-                resourceType,
-                context);
+            // Get search parameters that define compartment membership for this resource type
+            if (!context.CompartmentManager.TryGetSearchParams(resourceType, compartmentType, out var compartmentSearchParams))
+            {
+                continue;
+            }
 
-            // Add resource type filter to ensure results are from this specific resource type
-            // This is critical for Union queries across multiple resource types
-            var resourceTypeFilter = Expression.SearchParameter(
-                context.SearchParameterManager.GetSearchParameter(resourceType, "_type"),
-                Expression.StringEquals(FieldName.TokenCode, componentIndex: null, value: resourceType, ignoreCase: false));
+            foreach (string searchParamCode in compartmentSearchParams)
+            {
+                SearchParameterInfo searchParam;
+                try
+                {
+                    searchParam = context.SearchParameterManager.GetSearchParameter(resourceType, searchParamCode);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
 
-            // Combine compartment expression with resource type filter
-            var combinedExpression = Expression.And(resourceTypeFilter, resourceTypeExpression);
+                // Only process reference-type parameters
+                if (searchParam.Type != SearchParamType.Reference)
+                {
+                    continue;
+                }
 
-            resourceTypeExpressions.Add(combinedExpression);
+                // Use parameter URL as key for grouping (parameters with same URL are equivalent across resource types)
+                string parameterKey = searchParam.Url.ToString();
+
+                if (!compartmentSearchExpressionsByParameter.TryGetValue(parameterKey, out var existingGroup))
+                {
+                    // First resource type with this parameter - create the SearchParameterExpression
+                    var referenceExpression = Expression.SearchParameter(
+                        searchParam,
+                        Expression.StringEquals(FieldName.ReferenceResourceId, componentIndex: null, value: expression.CompartmentId, ignoreCase: false));
+
+                    existingGroup = (new List<Expression> { referenceExpression }, new HashSet<string> { resourceType });
+                    compartmentSearchExpressionsByParameter[parameterKey] = existingGroup;
+                }
+                else
+                {
+                    // Subsequent resource types with same parameter - just add the resource type
+                    existingGroup.ResourceTypes.Add(resourceType);
+                }
+            }
         }
 
-        if (resourceTypeExpressions.Count == 1)
+        if (compartmentSearchExpressionsByParameter.Count == 0)
         {
-            // Single resource type - return it directly
-            return resourceTypeExpressions[0];
+            throw new InvalidSearchOperationException("No compartment search parameters found");
         }
 
-        // Multiple resource types - OR them together to create Union
-        // This allows the data layer to execute as a single query with proper pagination
-        return Expression.Or(resourceTypeExpressions);
+        // Build grouped expressions with InExpression for resource types
+        var groupedExpressions = new List<Expression>();
+
+        foreach (var parameterGroup in compartmentSearchExpressionsByParameter.Values)
+        {
+            // Each parameter group has exactly one SearchParameterExpression (shared across resource types with that parameter)
+            Expression referenceExpression = parameterGroup.Expressions[0];
+
+            // If we're searching multiple resource types, filter by type to avoid cross-resource-type matches
+            if (resourceTypesToSearch.Count > 1)
+            {
+                // Create _type IN (...) expression for resource types that use this parameter
+                var resourceTypeSearchParam = context.SearchParameterManager.GetSearchParameter("Resource", "_type");
+                var resourceTypeInExpression = Expression.SearchParameter(
+                    resourceTypeSearchParam,
+                    Expression.In(FieldName.TokenCode, componentIndex: null, parameterGroup.ResourceTypes.ToList()));
+
+                // Combine: _type IN (...) AND parameter_expression
+                var combinedExpression = Expression.And(resourceTypeInExpression, referenceExpression);
+                groupedExpressions.Add(combinedExpression);
+            }
+            else
+            {
+                // Single resource type - no type filter needed
+                groupedExpressions.Add(referenceExpression);
+            }
+        }
+
+        if (groupedExpressions.Count == 1)
+        {
+            return groupedExpressions[0];
+        }
+
+        // Multiple parameter groups - UNION them with UnionExpression for proper SQL generation
+        return Expression.Union(UnionOperator.All, groupedExpressions);
     }
 
     /// <summary>
@@ -168,14 +226,12 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
             }
 
             // Create reference equality expression: param = "Patient/123"
-            // Use AND logic to match BOTH resourceType AND resourceId (more precise than full reference match)
-            var binaryExpression = Expression.And(
-                Expression.StringEquals(FieldName.ReferenceResourceType, componentIndex: null, value: expression.CompartmentType, ignoreCase: false),
-                Expression.StringEquals(FieldName.ReferenceResourceId, componentIndex: null, value: expression.CompartmentId, ignoreCase: false));
+            // Match by resourceId only - the compartment definition already constrains the resource type
+            var resourceIdExpression = Expression.StringEquals(FieldName.ReferenceResourceId, componentIndex: null, value: expression.CompartmentId, ignoreCase: false);
 
             // Wrap in SearchParameterExpression
             parameterExpressions.Add(
-                Expression.SearchParameter(searchParam, binaryExpression));
+                Expression.SearchParameter(searchParam, resourceIdExpression));
         }
 
         if (parameterExpressions.Count == 0)

@@ -19,6 +19,7 @@ public class SearchExpressionQueryBuilder
     private readonly FhirDbContext _context;
     private readonly SearchParameterQueryGenerator _parameterQueryGenerator;
     private readonly ChainedExpressionProcessor _chainedExpressionProcessor;
+    private readonly CompartmentSearchQueryGenerator _compartmentQueryGenerator;
     private readonly ILogger<SearchExpressionQueryBuilder> _logger;
 
     /// <summary>
@@ -27,16 +28,19 @@ public class SearchExpressionQueryBuilder
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="parameterQueryGenerator">The parameter query generator.</param>
     /// <param name="chainedExpressionProcessor">The chained expression processor.</param>
+    /// <param name="compartmentQueryGenerator">The compartment query generator.</param>
     /// <param name="logger">Logger instance.</param>
     public SearchExpressionQueryBuilder(
         FhirDbContext context,
         SearchParameterQueryGenerator parameterQueryGenerator,
         ChainedExpressionProcessor chainedExpressionProcessor,
+        CompartmentSearchQueryGenerator compartmentQueryGenerator,
         ILogger<SearchExpressionQueryBuilder> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _parameterQueryGenerator = parameterQueryGenerator ?? throw new ArgumentNullException(nameof(parameterQueryGenerator));
         _chainedExpressionProcessor = chainedExpressionProcessor ?? throw new ArgumentNullException(nameof(chainedExpressionProcessor));
+        _compartmentQueryGenerator = compartmentQueryGenerator ?? throw new ArgumentNullException(nameof(compartmentQueryGenerator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -61,6 +65,8 @@ public class SearchExpressionQueryBuilder
             MultiaryExpression multiaryExpr => await ApplyMultiaryExpressionAsync(baseQuery, resourceTypeId, multiaryExpr, ct),
             SearchParameterExpression searchParamExpr => await ApplySearchParameterExpressionAsync(baseQuery, resourceTypeId, searchParamExpr, ct),
             ChainedExpression chainedExpr => await ApplyChainedExpressionAsync(baseQuery, resourceTypeId, chainedExpr, ct),
+            CompartmentSearchExpression compartmentExpr => await ApplyCompartmentSearchExpressionAsync(baseQuery, resourceTypeId, compartmentExpr, ct),
+            UnionExpression unionExpr => await ApplyUnionExpressionAsync(baseQuery, resourceTypeId, unionExpr, ct),
             _ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported")
         };
     }
@@ -126,6 +132,62 @@ public class SearchExpressionQueryBuilder
 
         // Filter base query by matching resource IDs
         return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+    }
+
+    private async Task<IQueryable<ResourceEntity>> ApplyCompartmentSearchExpressionAsync(
+        IQueryable<ResourceEntity> baseQuery,
+        short resourceTypeId,
+        CompartmentSearchExpression expression,
+        CancellationToken ct)
+    {
+        _logger.LogDebug(
+            "Processing compartment search: {CompartmentType}/{CompartmentId} with resource types: [{ResourceTypes}]",
+            expression.CompartmentType,
+            expression.CompartmentId,
+            expression.FilteredResourceTypes.Count > 0 ? string.Join(",", expression.FilteredResourceTypes) : "all");
+
+        // Use optimized compartment query generator to get matching resource IDs
+        // Pass filtered resource types if specified (e.g., /Patient/example/Observation or /Patient/example/*?_type=Observation)
+        // Pass null if wildcard search to get all types in the compartment
+        IReadOnlyCollection<string>? resourceTypesToSearch = expression.FilteredResourceTypes.Count > 0
+            ? (IReadOnlyCollection<string>)expression.FilteredResourceTypes
+            : null;
+
+        var matchingResourceIds = await _compartmentQueryGenerator.GenerateCompartmentQueryAsync(
+            expression.CompartmentType,
+            expression.CompartmentId,
+            resourceTypesToSearch,
+            ct);
+
+        // Filter base query by matching resource IDs
+        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+    }
+
+    private async Task<IQueryable<ResourceEntity>> ApplyUnionExpressionAsync(
+        IQueryable<ResourceEntity> baseQuery,
+        short resourceTypeId,
+        UnionExpression expression,
+        CancellationToken ct)
+    {
+        // Build a UNION query from all sub-expressions without materializing
+        IQueryable<ResourceEntity>? unionedQuery = null;
+
+        foreach (var subExpr in expression.Expressions)
+        {
+            var filteredQuery = await ApplySearchExpressionAsync(baseQuery, resourceTypeId, subExpr, ct);
+
+            if (unionedQuery == null)
+            {
+                unionedQuery = filteredQuery;
+            }
+            else
+            {
+                // UNION with previous queries
+                unionedQuery = unionedQuery.Union(filteredQuery);
+            }
+        }
+
+        return unionedQuery ?? baseQuery.Where(r => false); // Return empty if no expressions
     }
 
     private static IQueryable<long> CombineWithAnd(List<IQueryable<long>> queries)

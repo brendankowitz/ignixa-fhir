@@ -94,6 +94,12 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // Get entry index from HttpContext.Items if available
             int entryIndex = _httpContextAccessor.HttpContext.GetBundleEntryIndex();
 
+            _logger.LogWarning(
+                "HANDLER: Retrieved entry index {EntryIndex} from HttpContext for {ResourceType}/{ResourceId}",
+                entryIndex,
+                command.ResourceType,
+                command.Id);
+
             // Queue wrapper for deferred batch write
             key = await coordinator.QueueWriteAsync(
                 wrapper,
@@ -170,7 +176,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         FhirSpecification fhirVersionEnum,
         IFhirSchemaProvider schemaProvider)
     {
-        var request = new ResourceRequest("PUT", $"{command.ResourceType}/{command.Id}");
+        var request = new ResourceRequest(command.HttpMethod.Method, $"{command.ResourceType}/{command.Id}");
 
         // Get version-specific search indexer from context
         // Factory initializes synchronously using pre-generated search parameters
@@ -201,11 +207,22 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 fhirVersionEnum);
         }
 
+        // Set initial meta values
+        // For POST: Always version 1 (new resource)
+        // For PUT: Start with version 1, repository will calculate actual version for updates
+        command.JsonNode.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        command.JsonNode.Meta.VersionId = "1"; // Repository will update this for existing resources
+
+        if (command.HttpMethod == HttpMethod.Post)
+        {
+            command.JsonNode.Id = command.Id;
+        }
+
         return new ResourceWrapper(
             command.ResourceType,
             command.Id,
-            "1", // Version will be determined by repository
-            DateTimeOffset.UtcNow,
+            command.JsonNode.Meta.VersionId, // Version will be determined by repository
+            command.JsonNode.Meta.LastUpdated.Value,
             command.JsonNode, // Pass ResourceJsonNode directly (data layer serializes as needed)
             request,
             false) // isDeleted

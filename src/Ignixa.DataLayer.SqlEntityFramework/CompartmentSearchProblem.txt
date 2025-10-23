@@ -1,0 +1,3289 @@
+﻿Old server produces the ffollowing query that doesn't timeout:
+
+DECLARE @p1 int = 11
+
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+DECLARE @FilteredData AS TABLE (T1 smallint, Sid1 bigint, IsMatch bit, IsPartial bit, Row int)
+DECLARE @FilteredDataSmartV2Union AS TABLE (T1 smallint, Sid1 bigint)
+;WITH
+cte0 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 7
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (1)  
+),
+cte1 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 41
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (3)  
+),
+cte2 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 206
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (4,14,15,28,29,34,44,48,54,55,56,61,62,76,77,95,110,138,146)  
+),
+cte3 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 50
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (4)  
+),
+cte4 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 43
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (4)  
+),
+cte5 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 54
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (5)  
+),
+cte6 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 71
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (6)  
+),
+cte7 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 90
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (7)  
+),
+cte8 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 100
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (8)  
+),
+cte9 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 96
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (8)  
+),
+cte10 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 105
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (11)  
+),
+cte11 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 133
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (14)  
+),
+cte12 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 139
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (15)  
+),
+cte13 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 158
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (17)  
+),
+cte14 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 183
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (19)  
+),
+cte15 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 184
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (19)  
+),
+cte16 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 196
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (20)  
+),
+cte17 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 217
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (21)  
+),
+cte18 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 238
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (23)  
+),
+cte19 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 235
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (23)  
+),
+cte20 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 234
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (23)  
+),
+cte21 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 254
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (24)  
+),
+cte22 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 252
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (24)  
+),
+cte23 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 249
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (24)  
+),
+cte24 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 251
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (24)  
+),
+cte25 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 268
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (26)  
+),
+cte26 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 258
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (26)  
+),
+cte27 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 257
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (26)  
+),
+cte28 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 284
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (28)  
+),
+cte29 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 343
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (31)  
+),
+cte30 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 345
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (31)  
+),
+cte31 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 336
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (31)  
+),
+cte32 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 342
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (31)  
+),
+cte33 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 351
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (32)  
+),
+cte34 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 359
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (33)  
+),
+cte35 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 400
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (38)  
+),
+cte36 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 396
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (38)  
+),
+cte37 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 403
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (39)  
+),
+cte38 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 414
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (40)  
+),
+cte39 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 424
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (41)  
+),
+cte40 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 415
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (41)  
+),
+cte41 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 419
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (41)  
+),
+cte42 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 445
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (42)  
+),
+cte43 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 426
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (42)  
+),
+cte44 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 491
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (46)  
+),
+cte45 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 590
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (53)  
+),
+cte46 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 591
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (53)  
+),
+cte47 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 618
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (58)  
+),
+cte48 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 669
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (63)  
+),
+cte49 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 675
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (64)  
+),
+cte50 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 721
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (67)  
+),
+cte51 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 718
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (67)  
+),
+cte52 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 719
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (67)  
+),
+cte53 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 757
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (70)  
+),
+cte54 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 755
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (70)  
+),
+cte55 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 800
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (73)  
+),
+cte56 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 815
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (74)  
+),
+cte57 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 829
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (76)  
+),
+cte58 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 833
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (76)  
+),
+cte59 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 839
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (77)  
+),
+cte60 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 837
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (77)  
+),
+cte61 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 864
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (79)  
+),
+cte62 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 875
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (80)  
+),
+cte63 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 915
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (93)  
+),
+cte64 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 969
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (96)  
+),
+cte65 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 966
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (96)  
+),
+cte66 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1015
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (103)  
+),
+cte67 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1037
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (106)  
+),
+cte68 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1084
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (110)  
+),
+cte69 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1094
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (111)  
+),
+cte70 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1128
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (113)  
+),
+cte71 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1118
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (113)  
+),
+cte72 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1132
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (114)  
+),
+cte73 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1147
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (115)  
+),
+cte74 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1143
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (115)  
+),
+cte75 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1207
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (119)  
+),
+cte76 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1224
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (120)  
+),
+cte77 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1242
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (122)  
+),
+cte78 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1270
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (124)  
+),
+cte79 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1262
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (124)  
+),
+cte80 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1289
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (126)  
+),
+cte81 AS
+(
+SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1
+FROM dbo.ReferenceSearchParam
+WHERE SearchParamId = 1326
+    AND ReferenceResourceTypeId = 103
+    AND ReferenceResourceId = @p0 
+    AND ResourceTypeId IN (139)  
+),
+cte82 AS
+(
+SELECT * FROM cte0 UNION ALL
+SELECT * FROM cte1 UNION ALL
+SELECT * FROM cte2 UNION ALL
+SELECT * FROM cte3 UNION ALL
+SELECT * FROM cte4 UNION ALL
+SELECT * FROM cte5 UNION ALL
+SELECT * FROM cte6 UNION ALL
+SELECT * FROM cte7 UNION ALL
+SELECT * FROM cte8 UNION ALL
+SELECT * FROM cte9 UNION ALL
+SELECT * FROM cte10 UNION ALL
+SELECT * FROM cte11 UNION ALL
+SELECT * FROM cte12 UNION ALL
+SELECT * FROM cte13 UNION ALL
+SELECT * FROM cte14 UNION ALL
+SELECT * FROM cte15 UNION ALL
+SELECT * FROM cte16 UNION ALL
+SELECT * FROM cte17 UNION ALL
+SELECT * FROM cte18 UNION ALL
+SELECT * FROM cte19 UNION ALL
+SELECT * FROM cte20 UNION ALL
+SELECT * FROM cte21 UNION ALL
+SELECT * FROM cte22 UNION ALL
+SELECT * FROM cte23 UNION ALL
+SELECT * FROM cte24 UNION ALL
+SELECT * FROM cte25 UNION ALL
+SELECT * FROM cte26 UNION ALL
+SELECT * FROM cte27 UNION ALL
+SELECT * FROM cte28 UNION ALL
+SELECT * FROM cte29 UNION ALL
+SELECT * FROM cte30 UNION ALL
+SELECT * FROM cte31 UNION ALL
+SELECT * FROM cte32 UNION ALL
+SELECT * FROM cte33 UNION ALL
+SELECT * FROM cte34 UNION ALL
+SELECT * FROM cte35 UNION ALL
+SELECT * FROM cte36 UNION ALL
+SELECT * FROM cte37 UNION ALL
+SELECT * FROM cte38 UNION ALL
+SELECT * FROM cte39 UNION ALL
+SELECT * FROM cte40 UNION ALL
+SELECT * FROM cte41 UNION ALL
+SELECT * FROM cte42 UNION ALL
+SELECT * FROM cte43 UNION ALL
+SELECT * FROM cte44 UNION ALL
+SELECT * FROM cte45 UNION ALL
+SELECT * FROM cte46 UNION ALL
+SELECT * FROM cte47 UNION ALL
+SELECT * FROM cte48 UNION ALL
+SELECT * FROM cte49 UNION ALL
+SELECT * FROM cte50 UNION ALL
+SELECT * FROM cte51 UNION ALL
+SELECT * FROM cte52 UNION ALL
+SELECT * FROM cte53 UNION ALL
+SELECT * FROM cte54 UNION ALL
+SELECT * FROM cte55 UNION ALL
+SELECT * FROM cte56 UNION ALL
+SELECT * FROM cte57 UNION ALL
+SELECT * FROM cte58 UNION ALL
+SELECT * FROM cte59 UNION ALL
+SELECT * FROM cte60 UNION ALL
+SELECT * FROM cte61 UNION ALL
+SELECT * FROM cte62 UNION ALL
+SELECT * FROM cte63 UNION ALL
+SELECT * FROM cte64 UNION ALL
+SELECT * FROM cte65 UNION ALL
+SELECT * FROM cte66 UNION ALL
+SELECT * FROM cte67 UNION ALL
+SELECT * FROM cte68 UNION ALL
+SELECT * FROM cte69 UNION ALL
+SELECT * FROM cte70 UNION ALL
+SELECT * FROM cte71 UNION ALL
+SELECT * FROM cte72 UNION ALL
+SELECT * FROM cte73 UNION ALL
+SELECT * FROM cte74 UNION ALL
+SELECT * FROM cte75 UNION ALL
+SELECT * FROM cte76 UNION ALL
+SELECT * FROM cte77 UNION ALL
+SELECT * FROM cte78 UNION ALL
+SELECT * FROM cte79 UNION ALL
+SELECT * FROM cte80 UNION ALL
+SELECT * FROM cte81), 
+cte83 AS
+(
+    SELECT T1, Sid1, ResourceTypeId AS T2, ResourceSurrogateId AS Sid2
+    FROM dbo.Resource predecessorTable
+         JOIN cte82 ON ResourceTypeId = T1 AND ResourceSurrogateId = Sid1
+    WHERE predecessorTable.IsHistory = 0 
+        AND predecessorTable.ResourceTypeId IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146)  
+)
+,cte84 AS
+(
+    SELECT DISTINCT TOP (@p1) T1, Sid1, 1 AS IsMatch, 0 AS IsPartial 
+    FROM cte83
+    ORDER BY T1 ASC, Sid1 ASC
+)
+/* HASH LZDrhy6nd9yShjFabAXdEq4o+LXDgDsQAAsbbZEr2/0= params=@p0 */
+SELECT DISTINCT r.ResourceTypeId, r.ResourceId, r.Version, r.IsDeleted, r.ResourceSurrogateId, r.RequestMethod, CAST(IsMatch AS bit) AS IsMatch, CAST(IsPartial AS bit) AS IsPartial, r.IsRawResourceMetaSet, r.SearchParamHash, r.RawResource
+FROM dbo.Resource r
+     JOIN cte84 ON r.ResourceTypeId = cte84.T1 AND r.ResourceSurrogateId = cte84.Sid1
+WHERE IsHistory = 0 
+    AND IsDeleted = 0 
+ORDER BY r.ResourceTypeId ASC, r.ResourceSurrogateId ASC
+
+OPTION (RECOMPILE)
+-- execution timeout = 180 sec.
+
+
+dbug: Ignixa.Application.Features.Compartment.SearchCompartmentHandler[0]
+      Compartment expression rewritten: (Compartment Patient 'example') -> (Or (And (Param _type (StringEquals TokenCode 'Account')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'AdverseEvent')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'AllergyIntolerance')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param recorder (StringEquals ReferenceResourceId 'example')) (Param asserter (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Appointment')) (Param actor (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'AppointmentResponse')) (Param actor (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'AuditEvent')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Basic')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param author (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'BodyStructure')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'CarePlan')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param performer (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'CareTeam')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param participant (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'ChargeItem')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Claim')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param payee (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'ClaimResponse')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'ClinicalImpression')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Communication')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param sender (StringEquals ReferenceResourceId 'example')) (Param recipient (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'CommunicationRequest')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param sender (StringEquals ReferenceResourceId 'example')) (Param recipient (StringEquals ReferenceResourceId 'example')) (Param requester (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Composition')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param author (StringEquals ReferenceResourceId 'example')) (Param attester (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Condition')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param asserter (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Consent')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Coverage')) (Or (Param policy-holder (StringEquals ReferenceResourceId 'example')) (Param subscriber (StringEquals ReferenceResourceId 'example')) (Param beneficiary (StringEquals ReferenceResourceId 'example')) (Param payor (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'CoverageEligibilityRequest')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'CoverageEligibilityResponse')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'DetectedIssue')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'DeviceRequest')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param performer (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'DeviceUseStatement')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'DiagnosticReport')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'DocumentManifest')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param author (StringEquals ReferenceResourceId 'example')) (Param recipient (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'DocumentReference')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param author (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Encounter')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'EnrollmentRequest')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'EpisodeOfCare')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'ExplanationOfBenefit')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param payee (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'FamilyMemberHistory')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Flag')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Goal')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Group')) (Param member (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'ImagingStudy')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Immunization')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'ImmunizationEvaluation')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'ImmunizationRecommendation')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Invoice')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param patient (StringEquals ReferenceResourceId 'example')) (Param recipient (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'List')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param source (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'MeasureReport')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Media')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'MedicationAdministration')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param performer (StringEquals ReferenceResourceId 'example')) (Param subject (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'MedicationDispense')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param patient (StringEquals ReferenceResourceId 'example')) (Param receiver (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'MedicationRequest')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'MedicationStatement')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'MolecularSequence')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'NutritionOrder')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Observation')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param performer (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Patient')) (Param link (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Person')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Procedure')) (Or (Param patient (StringEquals ReferenceResourceId 'example')) (Param performer (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Provenance')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'QuestionnaireResponse')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param author (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'RelatedPerson')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'RequestGroup')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param participant (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'ResearchSubject')) (Param individual (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'RiskAssessment')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'Schedule')) (Param actor (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'ServiceRequest')) (Or (Param subject (StringEquals ReferenceResourceId 'example')) (Param performer (StringEquals ReferenceResourceId 'example')))) (And (Param _type (StringEquals TokenCode 'Specimen')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'SupplyDelivery')) (Param patient (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'SupplyRequest')) (Param subject (StringEquals ReferenceResourceId 'example'))) (And (Param _type (StringEquals TokenCode 'VisionPrescription')) (Param patient (StringEquals ReferenceResourceId 'example'))))
+dbug: Ignixa.Application.Infrastructure.IsolatedModePartitionStrategy[0]
+      Determined read partition for tenant 2, resourceType Resource
+dbug: Ignixa.Application.Features.Compartment.SearchCompartmentHandler[0]
+      Partition(s) determined: [2] (Mode: Isolated)
+dbug: Ignixa.Application.Features.Compartment.SearchCompartmentHandler[0]
+      Wildcard compartment search detected - cleared ResourceType from SearchOptions to rely on expression tree
+dbug: Ignixa.Application.Infrastructure.PassthroughExecutionStrategy[0]
+      Executing passthrough search for tenant 2 (Mode: Isolated)
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SqlEntityFrameworkSearchService[0]
+      Streaming search for <null - relying on expression>
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SqlEntityFrameworkSearchService[0]
+      Null/empty ResourceType detected - building query without resource type constraint
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: recorder
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: asserter
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: actor
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: actor
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: author
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: performer
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: participant
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: payee
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: sender
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: recipient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: sender
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: recipient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: requester
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: author
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: attester
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: asserter
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: policy-holder
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subscriber
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: beneficiary
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: payor
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: performer
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: author
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: recipient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: author
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: payee
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: member
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: recipient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: source
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: performer
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: receiver
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: performer
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: link
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: performer
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: author
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: participant
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: individual
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: actor
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: performer
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: subject
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: _type
+dbug: Ignixa.DataLayer.SqlEntityFramework.Search.SearchParameterQueryGenerator[0]
+      Generating query for search parameter: patient
+info: Ignixa.DataLayer.SqlEntityFramework.Search.SqlEntityFrameworkSearchService[0]
+      Executing streaming query for multi-type search
+DECLARE @__resourceTypeId_0 smallint = CAST(1 AS smallint);
+      DECLARE @__code_1 nvarchar(256) = N'Account';
+      DECLARE @__resourceTypeId_2 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_3 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_4 smallint = CAST(1 AS smallint);
+      DECLARE @__code_5 nvarchar(256) = N'AdverseEvent';
+      DECLARE @__resourceTypeId_6 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_7 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_8 smallint = CAST(1 AS smallint);
+      DECLARE @__code_9 nvarchar(256) = N'AllergyIntolerance';
+      DECLARE @__resourceTypeId_10 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_11 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_12 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_13 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_14 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_15 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_16 smallint = CAST(1 AS smallint);
+      DECLARE @__code_17 nvarchar(256) = N'Appointment';
+      DECLARE @__resourceTypeId_18 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_19 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_20 smallint = CAST(1 AS smallint);
+      DECLARE @__code_21 nvarchar(256) = N'AppointmentResponse';
+      DECLARE @__resourceTypeId_22 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_23 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_24 smallint = CAST(1 AS smallint);
+      DECLARE @__code_25 nvarchar(256) = N'AuditEvent';
+      DECLARE @__resourceTypeId_26 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_27 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_28 smallint = CAST(1 AS smallint);
+      DECLARE @__code_29 nvarchar(256) = N'Basic';
+      DECLARE @__resourceTypeId_30 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_31 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_32 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_33 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_34 smallint = CAST(1 AS smallint);
+      DECLARE @__code_35 nvarchar(256) = N'BodyStructure';
+      DECLARE @__resourceTypeId_36 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_37 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_38 smallint = CAST(1 AS smallint);
+      DECLARE @__code_39 nvarchar(256) = N'CarePlan';
+      DECLARE @__resourceTypeId_40 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_41 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_42 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_43 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_44 smallint = CAST(1 AS smallint);
+      DECLARE @__code_45 nvarchar(256) = N'CareTeam';
+      DECLARE @__resourceTypeId_46 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_47 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_48 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_49 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_50 smallint = CAST(1 AS smallint);
+      DECLARE @__code_51 nvarchar(256) = N'ChargeItem';
+      DECLARE @__resourceTypeId_52 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_53 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_54 smallint = CAST(1 AS smallint);
+      DECLARE @__code_55 nvarchar(256) = N'Claim';
+      DECLARE @__resourceTypeId_56 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_57 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_58 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_59 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_60 smallint = CAST(1 AS smallint);
+      DECLARE @__code_61 nvarchar(256) = N'ClaimResponse';
+      DECLARE @__resourceTypeId_62 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_63 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_64 smallint = CAST(1 AS smallint);
+      DECLARE @__code_65 nvarchar(256) = N'ClinicalImpression';
+      DECLARE @__resourceTypeId_66 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_67 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_68 smallint = CAST(1 AS smallint);
+      DECLARE @__code_69 nvarchar(256) = N'Communication';
+      DECLARE @__resourceTypeId_70 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_71 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_72 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_73 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_74 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_75 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_76 smallint = CAST(1 AS smallint);
+      DECLARE @__code_77 nvarchar(256) = N'CommunicationRequest';
+      DECLARE @__resourceTypeId_78 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_79 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_80 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_81 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_82 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_83 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_84 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_85 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_86 smallint = CAST(1 AS smallint);
+      DECLARE @__code_87 nvarchar(256) = N'Composition';
+      DECLARE @__resourceTypeId_88 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_89 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_90 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_91 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_92 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_93 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_94 smallint = CAST(1 AS smallint);
+      DECLARE @__code_95 nvarchar(256) = N'Condition';
+      DECLARE @__resourceTypeId_96 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_97 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_98 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_99 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_100 smallint = CAST(1 AS smallint);
+      DECLARE @__code_101 nvarchar(256) = N'Consent';
+      DECLARE @__resourceTypeId_102 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_103 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_104 smallint = CAST(1 AS smallint);
+      DECLARE @__code_105 nvarchar(256) = N'Coverage';
+      DECLARE @__resourceTypeId_106 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_107 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_108 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_109 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_110 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_111 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_112 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_113 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_114 smallint = CAST(1 AS smallint);
+      DECLARE @__code_115 nvarchar(256) = N'CoverageEligibilityRequest';
+      DECLARE @__resourceTypeId_116 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_117 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_118 smallint = CAST(1 AS smallint);
+      DECLARE @__code_119 nvarchar(256) = N'CoverageEligibilityResponse';
+      DECLARE @__resourceTypeId_120 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_121 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_122 smallint = CAST(1 AS smallint);
+      DECLARE @__code_123 nvarchar(256) = N'DetectedIssue';
+      DECLARE @__resourceTypeId_124 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_125 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_126 smallint = CAST(1 AS smallint);
+      DECLARE @__code_127 nvarchar(256) = N'DeviceRequest';
+      DECLARE @__resourceTypeId_128 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_129 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_130 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_131 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_132 smallint = CAST(1 AS smallint);
+      DECLARE @__code_133 nvarchar(256) = N'DeviceUseStatement';
+      DECLARE @__resourceTypeId_134 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_135 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_136 smallint = CAST(1 AS smallint);
+      DECLARE @__code_137 nvarchar(256) = N'DiagnosticReport';
+      DECLARE @__resourceTypeId_138 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_139 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_140 smallint = CAST(1 AS smallint);
+      DECLARE @__code_141 nvarchar(256) = N'DocumentManifest';
+      DECLARE @__resourceTypeId_142 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_143 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_144 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_145 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_146 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_147 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_148 smallint = CAST(1 AS smallint);
+      DECLARE @__code_149 nvarchar(256) = N'DocumentReference';
+      DECLARE @__resourceTypeId_150 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_151 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_152 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_153 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_154 smallint = CAST(1 AS smallint);
+      DECLARE @__code_155 nvarchar(256) = N'Encounter';
+      DECLARE @__resourceTypeId_156 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_157 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_158 smallint = CAST(1 AS smallint);
+      DECLARE @__code_159 nvarchar(256) = N'EnrollmentRequest';
+      DECLARE @__resourceTypeId_160 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_161 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_162 smallint = CAST(1 AS smallint);
+      DECLARE @__code_163 nvarchar(256) = N'EpisodeOfCare';
+      DECLARE @__resourceTypeId_164 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_165 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_166 smallint = CAST(1 AS smallint);
+      DECLARE @__code_167 nvarchar(256) = N'ExplanationOfBenefit';
+      DECLARE @__resourceTypeId_168 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_169 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_170 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_171 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_172 smallint = CAST(1 AS smallint);
+      DECLARE @__code_173 nvarchar(256) = N'FamilyMemberHistory';
+      DECLARE @__resourceTypeId_174 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_175 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_176 smallint = CAST(1 AS smallint);
+      DECLARE @__code_177 nvarchar(256) = N'Flag';
+      DECLARE @__resourceTypeId_178 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_179 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_180 smallint = CAST(1 AS smallint);
+      DECLARE @__code_181 nvarchar(256) = N'Goal';
+      DECLARE @__resourceTypeId_182 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_183 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_184 smallint = CAST(1 AS smallint);
+      DECLARE @__code_185 nvarchar(256) = N'Group';
+      DECLARE @__resourceTypeId_186 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_187 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_188 smallint = CAST(1 AS smallint);
+      DECLARE @__code_189 nvarchar(256) = N'ImagingStudy';
+      DECLARE @__resourceTypeId_190 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_191 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_192 smallint = CAST(1 AS smallint);
+      DECLARE @__code_193 nvarchar(256) = N'Immunization';
+      DECLARE @__resourceTypeId_194 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_195 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_196 smallint = CAST(1 AS smallint);
+      DECLARE @__code_197 nvarchar(256) = N'ImmunizationEvaluation';
+      DECLARE @__resourceTypeId_198 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_199 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_200 smallint = CAST(1 AS smallint);
+      DECLARE @__code_201 nvarchar(256) = N'ImmunizationRecommendation';
+      DECLARE @__resourceTypeId_202 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_203 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_204 smallint = CAST(1 AS smallint);
+      DECLARE @__code_205 nvarchar(256) = N'Invoice';
+      DECLARE @__resourceTypeId_206 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_207 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_208 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_209 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_210 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_211 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_212 smallint = CAST(1 AS smallint);
+      DECLARE @__code_213 nvarchar(256) = N'List';
+      DECLARE @__resourceTypeId_214 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_215 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_216 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_217 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_218 smallint = CAST(1 AS smallint);
+      DECLARE @__code_219 nvarchar(256) = N'MeasureReport';
+      DECLARE @__resourceTypeId_220 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_221 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_222 smallint = CAST(1 AS smallint);
+      DECLARE @__code_223 nvarchar(256) = N'Media';
+      DECLARE @__resourceTypeId_224 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_225 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_226 smallint = CAST(1 AS smallint);
+      DECLARE @__code_227 nvarchar(256) = N'MedicationAdministration';
+      DECLARE @__resourceTypeId_228 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_229 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_230 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_231 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_232 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_233 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_234 smallint = CAST(1 AS smallint);
+      DECLARE @__code_235 nvarchar(256) = N'MedicationDispense';
+      DECLARE @__resourceTypeId_236 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_237 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_238 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_239 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_240 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_241 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_242 smallint = CAST(1 AS smallint);
+      DECLARE @__code_243 nvarchar(256) = N'MedicationRequest';
+      DECLARE @__resourceTypeId_244 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_245 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_246 smallint = CAST(1 AS smallint);
+      DECLARE @__code_247 nvarchar(256) = N'MedicationStatement';
+      DECLARE @__resourceTypeId_248 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_249 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_250 smallint = CAST(1 AS smallint);
+      DECLARE @__code_251 nvarchar(256) = N'MolecularSequence';
+      DECLARE @__resourceTypeId_252 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_253 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_254 smallint = CAST(1 AS smallint);
+      DECLARE @__code_255 nvarchar(256) = N'NutritionOrder';
+      DECLARE @__resourceTypeId_256 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_257 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_258 smallint = CAST(1 AS smallint);
+      DECLARE @__code_259 nvarchar(256) = N'Observation';
+      DECLARE @__resourceTypeId_260 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_261 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_262 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_263 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_264 smallint = CAST(1 AS smallint);
+      DECLARE @__code_265 nvarchar(256) = N'Patient';
+      DECLARE @__resourceTypeId_266 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_267 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_268 smallint = CAST(1 AS smallint);
+      DECLARE @__code_269 nvarchar(256) = N'Person';
+      DECLARE @__resourceTypeId_270 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_271 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_272 smallint = CAST(1 AS smallint);
+      DECLARE @__code_273 nvarchar(256) = N'Procedure';
+      DECLARE @__resourceTypeId_274 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_275 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_276 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_277 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_278 smallint = CAST(1 AS smallint);
+      DECLARE @__code_279 nvarchar(256) = N'Provenance';
+      DECLARE @__resourceTypeId_280 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_281 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_282 smallint = CAST(1 AS smallint);
+      DECLARE @__code_283 nvarchar(256) = N'QuestionnaireResponse';
+      DECLARE @__resourceTypeId_284 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_285 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_286 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_287 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_288 smallint = CAST(1 AS smallint);
+      DECLARE @__code_289 nvarchar(256) = N'RelatedPerson';
+      DECLARE @__resourceTypeId_290 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_291 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_292 smallint = CAST(1 AS smallint);
+      DECLARE @__code_293 nvarchar(256) = N'RequestGroup';
+      DECLARE @__resourceTypeId_294 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_295 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_296 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_297 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_298 smallint = CAST(1 AS smallint);
+      DECLARE @__code_299 nvarchar(256) = N'ResearchSubject';
+      DECLARE @__resourceTypeId_300 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_301 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_302 smallint = CAST(1 AS smallint);
+      DECLARE @__code_303 nvarchar(256) = N'RiskAssessment';
+      DECLARE @__resourceTypeId_304 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_305 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_306 smallint = CAST(1 AS smallint);
+      DECLARE @__code_307 nvarchar(256) = N'Schedule';
+      DECLARE @__resourceTypeId_308 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_309 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_310 smallint = CAST(1 AS smallint);
+      DECLARE @__code_311 nvarchar(256) = N'ServiceRequest';
+      DECLARE @__resourceTypeId_312 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_313 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_314 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_315 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_316 smallint = CAST(1 AS smallint);
+      DECLARE @__code_317 nvarchar(256) = N'Specimen';
+      DECLARE @__resourceTypeId_318 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_319 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_320 smallint = CAST(1 AS smallint);
+      DECLARE @__code_321 nvarchar(256) = N'SupplyDelivery';
+      DECLARE @__resourceTypeId_322 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_323 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_324 smallint = CAST(1 AS smallint);
+      DECLARE @__code_325 nvarchar(256) = N'SupplyRequest';
+      DECLARE @__resourceTypeId_326 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_327 nvarchar(64) = N'example';
+      DECLARE @__resourceTypeId_328 smallint = CAST(1 AS smallint);
+      DECLARE @__code_329 nvarchar(256) = N'VisionPrescription';
+      DECLARE @__resourceTypeId_330 smallint = CAST(1 AS smallint);
+      DECLARE @__referenceResourceId_331 nvarchar(64) = N'example';
+      
+      SELECT [r].[ResourceTypeId], [r].[ResourceSurrogateId], [r].[HistoryTransactionId], [r].[IsDeleted], [r].[IsHistory], [r].[IsRawResourceMetaSet], [r].[RawResource], [r].[RequestMethod], [r].[ResourceId], [r].[SearchParamHash], [r].[TransactionId], [r].[Version]
+      FROM [dbo].[Resource] AS [r]
+      WHERE [r].[IsHistory] = CAST(0 AS bit) AND [r].[IsDeleted] = CAST(0 AS bit) AND [r].[ResourceSurrogateId] IN (
+          SELECT [r0].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r0]
+          WHERE [r0].[IsHistory] = CAST(0 AS bit) AND [r0].[IsDeleted] = CAST(0 AS bit) AND [r0].[ResourceSurrogateId] IN (
+              SELECT [r1].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r1]
+              WHERE [r1].[IsHistory] = CAST(0 AS bit) AND [r1].[IsDeleted] = CAST(0 AS bit) AND [r1].[ResourceSurrogateId] IN (
+                  SELECT [t].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t]
+                  WHERE [t].[ResourceTypeId] = @__resourceTypeId_0 AND [t].[Code] = @__code_1
+              )
+              INTERSECT
+              SELECT [r2].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r2]
+              WHERE [r2].[IsHistory] = CAST(0 AS bit) AND [r2].[IsDeleted] = CAST(0 AS bit) AND [r2].[ResourceSurrogateId] IN (
+                  SELECT [r3].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r3]
+                  WHERE [r3].[ResourceTypeId] = @__resourceTypeId_2 AND [r3].[ReferenceResourceId] = @__referenceResourceId_3
+              )
+          )
+          UNION
+          SELECT [r4].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r4]
+          WHERE [r4].[IsHistory] = CAST(0 AS bit) AND [r4].[IsDeleted] = CAST(0 AS bit) AND [r4].[ResourceSurrogateId] IN (
+              SELECT [r5].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r5]
+              WHERE [r5].[IsHistory] = CAST(0 AS bit) AND [r5].[IsDeleted] = CAST(0 AS bit) AND [r5].[ResourceSurrogateId] IN (
+                  SELECT [t0].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t0]
+                  WHERE [t0].[ResourceTypeId] = @__resourceTypeId_4 AND [t0].[Code] = @__code_5
+              )
+              INTERSECT
+              SELECT [r6].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r6]
+              WHERE [r6].[IsHistory] = CAST(0 AS bit) AND [r6].[IsDeleted] = CAST(0 AS bit) AND [r6].[ResourceSurrogateId] IN (
+                  SELECT [r7].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r7]
+                  WHERE [r7].[ResourceTypeId] = @__resourceTypeId_6 AND [r7].[ReferenceResourceId] = @__referenceResourceId_7
+              )
+          )
+          UNION
+          SELECT [r8].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r8]
+          WHERE [r8].[IsHistory] = CAST(0 AS bit) AND [r8].[IsDeleted] = CAST(0 AS bit) AND [r8].[ResourceSurrogateId] IN (
+              SELECT [r9].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r9]
+              WHERE [r9].[IsHistory] = CAST(0 AS bit) AND [r9].[IsDeleted] = CAST(0 AS bit) AND [r9].[ResourceSurrogateId] IN (
+                  SELECT [t1].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t1]
+                  WHERE [t1].[ResourceTypeId] = @__resourceTypeId_8 AND [t1].[Code] = @__code_9
+              )
+              INTERSECT
+              SELECT [r10].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r10]
+              WHERE [r10].[IsHistory] = CAST(0 AS bit) AND [r10].[IsDeleted] = CAST(0 AS bit) AND [r10].[ResourceSurrogateId] IN (
+                  SELECT [r11].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r11]
+                  WHERE [r11].[IsHistory] = CAST(0 AS bit) AND [r11].[IsDeleted] = CAST(0 AS bit) AND [r11].[ResourceSurrogateId] IN (
+                      SELECT [r12].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r12]
+                      WHERE [r12].[ResourceTypeId] = @__resourceTypeId_10 AND [r12].[ReferenceResourceId] = @__referenceResourceId_11
+                  )
+                  UNION
+                  SELECT [r13].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r13]
+                  WHERE [r13].[IsHistory] = CAST(0 AS bit) AND [r13].[IsDeleted] = CAST(0 AS bit) AND [r13].[ResourceSurrogateId] IN (
+                      SELECT [r14].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r14]
+                      WHERE [r14].[ResourceTypeId] = @__resourceTypeId_12 AND [r14].[ReferenceResourceId] = @__referenceResourceId_13
+                  )
+                  UNION
+                  SELECT [r15].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r15]
+                  WHERE [r15].[IsHistory] = CAST(0 AS bit) AND [r15].[IsDeleted] = CAST(0 AS bit) AND [r15].[ResourceSurrogateId] IN (
+                      SELECT [r16].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r16]
+                      WHERE [r16].[ResourceTypeId] = @__resourceTypeId_14 AND [r16].[ReferenceResourceId] = @__referenceResourceId_15
+                  )
+              )
+          )
+          UNION
+          SELECT [r17].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r17]
+          WHERE [r17].[IsHistory] = CAST(0 AS bit) AND [r17].[IsDeleted] = CAST(0 AS bit) AND [r17].[ResourceSurrogateId] IN (
+              SELECT [r18].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r18]
+              WHERE [r18].[IsHistory] = CAST(0 AS bit) AND [r18].[IsDeleted] = CAST(0 AS bit) AND [r18].[ResourceSurrogateId] IN (
+                  SELECT [t2].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t2]
+                  WHERE [t2].[ResourceTypeId] = @__resourceTypeId_16 AND [t2].[Code] = @__code_17
+              )
+              INTERSECT
+              SELECT [r19].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r19]
+              WHERE [r19].[IsHistory] = CAST(0 AS bit) AND [r19].[IsDeleted] = CAST(0 AS bit) AND [r19].[ResourceSurrogateId] IN (
+                  SELECT [r20].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r20]
+                  WHERE [r20].[ResourceTypeId] = @__resourceTypeId_18 AND [r20].[ReferenceResourceId] = @__referenceResourceId_19
+              )
+          )
+          UNION
+          SELECT [r21].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r21]
+          WHERE [r21].[IsHistory] = CAST(0 AS bit) AND [r21].[IsDeleted] = CAST(0 AS bit) AND [r21].[ResourceSurrogateId] IN (
+              SELECT [r22].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r22]
+              WHERE [r22].[IsHistory] = CAST(0 AS bit) AND [r22].[IsDeleted] = CAST(0 AS bit) AND [r22].[ResourceSurrogateId] IN (
+                  SELECT [t3].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t3]
+                  WHERE [t3].[ResourceTypeId] = @__resourceTypeId_20 AND [t3].[Code] = @__code_21
+              )
+              INTERSECT
+              SELECT [r23].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r23]
+              WHERE [r23].[IsHistory] = CAST(0 AS bit) AND [r23].[IsDeleted] = CAST(0 AS bit) AND [r23].[ResourceSurrogateId] IN (
+                  SELECT [r24].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r24]
+                  WHERE [r24].[ResourceTypeId] = @__resourceTypeId_22 AND [r24].[ReferenceResourceId] = @__referenceResourceId_23
+              )
+          )
+          UNION
+          SELECT [r25].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r25]
+          WHERE [r25].[IsHistory] = CAST(0 AS bit) AND [r25].[IsDeleted] = CAST(0 AS bit) AND [r25].[ResourceSurrogateId] IN (
+              SELECT [r26].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r26]
+              WHERE [r26].[IsHistory] = CAST(0 AS bit) AND [r26].[IsDeleted] = CAST(0 AS bit) AND [r26].[ResourceSurrogateId] IN (
+                  SELECT [t4].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t4]
+                  WHERE [t4].[ResourceTypeId] = @__resourceTypeId_24 AND [t4].[Code] = @__code_25
+              )
+              INTERSECT
+              SELECT [r27].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r27]
+              WHERE [r27].[IsHistory] = CAST(0 AS bit) AND [r27].[IsDeleted] = CAST(0 AS bit) AND [r27].[ResourceSurrogateId] IN (
+                  SELECT [r28].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r28]
+                  WHERE [r28].[ResourceTypeId] = @__resourceTypeId_26 AND [r28].[ReferenceResourceId] = @__referenceResourceId_27
+              )
+          )
+          UNION
+          SELECT [r29].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r29]
+          WHERE [r29].[IsHistory] = CAST(0 AS bit) AND [r29].[IsDeleted] = CAST(0 AS bit) AND [r29].[ResourceSurrogateId] IN (
+              SELECT [r30].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r30]
+              WHERE [r30].[IsHistory] = CAST(0 AS bit) AND [r30].[IsDeleted] = CAST(0 AS bit) AND [r30].[ResourceSurrogateId] IN (
+                  SELECT [t5].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t5]
+                  WHERE [t5].[ResourceTypeId] = @__resourceTypeId_28 AND [t5].[Code] = @__code_29
+              )
+              INTERSECT
+              SELECT [r31].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r31]
+              WHERE [r31].[IsHistory] = CAST(0 AS bit) AND [r31].[IsDeleted] = CAST(0 AS bit) AND [r31].[ResourceSurrogateId] IN (
+                  SELECT [r32].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r32]
+                  WHERE [r32].[IsHistory] = CAST(0 AS bit) AND [r32].[IsDeleted] = CAST(0 AS bit) AND [r32].[ResourceSurrogateId] IN (
+                      SELECT [r33].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r33]
+                      WHERE [r33].[ResourceTypeId] = @__resourceTypeId_30 AND [r33].[ReferenceResourceId] = @__referenceResourceId_31
+                  )
+                  UNION
+                  SELECT [r34].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r34]
+                  WHERE [r34].[IsHistory] = CAST(0 AS bit) AND [r34].[IsDeleted] = CAST(0 AS bit) AND [r34].[ResourceSurrogateId] IN (
+                      SELECT [r35].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r35]
+                      WHERE [r35].[ResourceTypeId] = @__resourceTypeId_32 AND [r35].[ReferenceResourceId] = @__referenceResourceId_33
+                  )
+              )
+          )
+          UNION
+          SELECT [r36].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r36]
+          WHERE [r36].[IsHistory] = CAST(0 AS bit) AND [r36].[IsDeleted] = CAST(0 AS bit) AND [r36].[ResourceSurrogateId] IN (
+              SELECT [r37].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r37]
+              WHERE [r37].[IsHistory] = CAST(0 AS bit) AND [r37].[IsDeleted] = CAST(0 AS bit) AND [r37].[ResourceSurrogateId] IN (
+                  SELECT [t6].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t6]
+                  WHERE [t6].[ResourceTypeId] = @__resourceTypeId_34 AND [t6].[Code] = @__code_35
+              )
+              INTERSECT
+              SELECT [r38].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r38]
+              WHERE [r38].[IsHistory] = CAST(0 AS bit) AND [r38].[IsDeleted] = CAST(0 AS bit) AND [r38].[ResourceSurrogateId] IN (
+                  SELECT [r39].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r39]
+                  WHERE [r39].[ResourceTypeId] = @__resourceTypeId_36 AND [r39].[ReferenceResourceId] = @__referenceResourceId_37
+              )
+          )
+          UNION
+          SELECT [r40].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r40]
+          WHERE [r40].[IsHistory] = CAST(0 AS bit) AND [r40].[IsDeleted] = CAST(0 AS bit) AND [r40].[ResourceSurrogateId] IN (
+              SELECT [r41].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r41]
+              WHERE [r41].[IsHistory] = CAST(0 AS bit) AND [r41].[IsDeleted] = CAST(0 AS bit) AND [r41].[ResourceSurrogateId] IN (
+                  SELECT [t7].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t7]
+                  WHERE [t7].[ResourceTypeId] = @__resourceTypeId_38 AND [t7].[Code] = @__code_39
+              )
+              INTERSECT
+              SELECT [r42].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r42]
+              WHERE [r42].[IsHistory] = CAST(0 AS bit) AND [r42].[IsDeleted] = CAST(0 AS bit) AND [r42].[ResourceSurrogateId] IN (
+                  SELECT [r43].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r43]
+                  WHERE [r43].[IsHistory] = CAST(0 AS bit) AND [r43].[IsDeleted] = CAST(0 AS bit) AND [r43].[ResourceSurrogateId] IN (
+                      SELECT [r44].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r44]
+                      WHERE [r44].[ResourceTypeId] = @__resourceTypeId_40 AND [r44].[ReferenceResourceId] = @__referenceResourceId_41
+                  )
+                  UNION
+                  SELECT [r45].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r45]
+                  WHERE [r45].[IsHistory] = CAST(0 AS bit) AND [r45].[IsDeleted] = CAST(0 AS bit) AND [r45].[ResourceSurrogateId] IN (
+                      SELECT [r46].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r46]
+                      WHERE [r46].[ResourceTypeId] = @__resourceTypeId_42 AND [r46].[ReferenceResourceId] = @__referenceResourceId_43
+                  )
+              )
+          )
+          UNION
+          SELECT [r47].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r47]
+          WHERE [r47].[IsHistory] = CAST(0 AS bit) AND [r47].[IsDeleted] = CAST(0 AS bit) AND [r47].[ResourceSurrogateId] IN (
+              SELECT [r48].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r48]
+              WHERE [r48].[IsHistory] = CAST(0 AS bit) AND [r48].[IsDeleted] = CAST(0 AS bit) AND [r48].[ResourceSurrogateId] IN (
+                  SELECT [t8].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t8]
+                  WHERE [t8].[ResourceTypeId] = @__resourceTypeId_44 AND [t8].[Code] = @__code_45
+              )
+              INTERSECT
+              SELECT [r49].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r49]
+              WHERE [r49].[IsHistory] = CAST(0 AS bit) AND [r49].[IsDeleted] = CAST(0 AS bit) AND [r49].[ResourceSurrogateId] IN (
+                  SELECT [r50].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r50]
+                  WHERE [r50].[IsHistory] = CAST(0 AS bit) AND [r50].[IsDeleted] = CAST(0 AS bit) AND [r50].[ResourceSurrogateId] IN (
+                      SELECT [r51].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r51]
+                      WHERE [r51].[ResourceTypeId] = @__resourceTypeId_46 AND [r51].[ReferenceResourceId] = @__referenceResourceId_47
+                  )
+                  UNION
+                  SELECT [r52].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r52]
+                  WHERE [r52].[IsHistory] = CAST(0 AS bit) AND [r52].[IsDeleted] = CAST(0 AS bit) AND [r52].[ResourceSurrogateId] IN (
+                      SELECT [r53].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r53]
+                      WHERE [r53].[ResourceTypeId] = @__resourceTypeId_48 AND [r53].[ReferenceResourceId] = @__referenceResourceId_49
+                  )
+              )
+          )
+          UNION
+          SELECT [r54].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r54]
+          WHERE [r54].[IsHistory] = CAST(0 AS bit) AND [r54].[IsDeleted] = CAST(0 AS bit) AND [r54].[ResourceSurrogateId] IN (
+              SELECT [r55].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r55]
+              WHERE [r55].[IsHistory] = CAST(0 AS bit) AND [r55].[IsDeleted] = CAST(0 AS bit) AND [r55].[ResourceSurrogateId] IN (
+                  SELECT [t9].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t9]
+                  WHERE [t9].[ResourceTypeId] = @__resourceTypeId_50 AND [t9].[Code] = @__code_51
+              )
+              INTERSECT
+              SELECT [r56].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r56]
+              WHERE [r56].[IsHistory] = CAST(0 AS bit) AND [r56].[IsDeleted] = CAST(0 AS bit) AND [r56].[ResourceSurrogateId] IN (
+                  SELECT [r57].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r57]
+                  WHERE [r57].[ResourceTypeId] = @__resourceTypeId_52 AND [r57].[ReferenceResourceId] = @__referenceResourceId_53
+              )
+          )
+          UNION
+          SELECT [r58].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r58]
+          WHERE [r58].[IsHistory] = CAST(0 AS bit) AND [r58].[IsDeleted] = CAST(0 AS bit) AND [r58].[ResourceSurrogateId] IN (
+              SELECT [r59].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r59]
+              WHERE [r59].[IsHistory] = CAST(0 AS bit) AND [r59].[IsDeleted] = CAST(0 AS bit) AND [r59].[ResourceSurrogateId] IN (
+                  SELECT [t10].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t10]
+                  WHERE [t10].[ResourceTypeId] = @__resourceTypeId_54 AND [t10].[Code] = @__code_55
+              )
+              INTERSECT
+              SELECT [r60].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r60]
+              WHERE [r60].[IsHistory] = CAST(0 AS bit) AND [r60].[IsDeleted] = CAST(0 AS bit) AND [r60].[ResourceSurrogateId] IN (
+                  SELECT [r61].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r61]
+                  WHERE [r61].[IsHistory] = CAST(0 AS bit) AND [r61].[IsDeleted] = CAST(0 AS bit) AND [r61].[ResourceSurrogateId] IN (
+                      SELECT [r62].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r62]
+                      WHERE [r62].[ResourceTypeId] = @__resourceTypeId_56 AND [r62].[ReferenceResourceId] = @__referenceResourceId_57
+                  )
+                  UNION
+                  SELECT [r63].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r63]
+                  WHERE [r63].[IsHistory] = CAST(0 AS bit) AND [r63].[IsDeleted] = CAST(0 AS bit) AND [r63].[ResourceSurrogateId] IN (
+                      SELECT [r64].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r64]
+                      WHERE [r64].[ResourceTypeId] = @__resourceTypeId_58 AND [r64].[ReferenceResourceId] = @__referenceResourceId_59
+                  )
+              )
+          )
+          UNION
+          SELECT [r65].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r65]
+          WHERE [r65].[IsHistory] = CAST(0 AS bit) AND [r65].[IsDeleted] = CAST(0 AS bit) AND [r65].[ResourceSurrogateId] IN (
+              SELECT [r66].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r66]
+              WHERE [r66].[IsHistory] = CAST(0 AS bit) AND [r66].[IsDeleted] = CAST(0 AS bit) AND [r66].[ResourceSurrogateId] IN (
+                  SELECT [t11].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t11]
+                  WHERE [t11].[ResourceTypeId] = @__resourceTypeId_60 AND [t11].[Code] = @__code_61
+              )
+              INTERSECT
+              SELECT [r67].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r67]
+              WHERE [r67].[IsHistory] = CAST(0 AS bit) AND [r67].[IsDeleted] = CAST(0 AS bit) AND [r67].[ResourceSurrogateId] IN (
+                  SELECT [r68].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r68]
+                  WHERE [r68].[ResourceTypeId] = @__resourceTypeId_62 AND [r68].[ReferenceResourceId] = @__referenceResourceId_63
+              )
+          )
+          UNION
+          SELECT [r69].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r69]
+          WHERE [r69].[IsHistory] = CAST(0 AS bit) AND [r69].[IsDeleted] = CAST(0 AS bit) AND [r69].[ResourceSurrogateId] IN (
+              SELECT [r70].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r70]
+              WHERE [r70].[IsHistory] = CAST(0 AS bit) AND [r70].[IsDeleted] = CAST(0 AS bit) AND [r70].[ResourceSurrogateId] IN (
+                  SELECT [t12].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t12]
+                  WHERE [t12].[ResourceTypeId] = @__resourceTypeId_64 AND [t12].[Code] = @__code_65
+              )
+              INTERSECT
+              SELECT [r71].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r71]
+              WHERE [r71].[IsHistory] = CAST(0 AS bit) AND [r71].[IsDeleted] = CAST(0 AS bit) AND [r71].[ResourceSurrogateId] IN (
+                  SELECT [r72].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r72]
+                  WHERE [r72].[ResourceTypeId] = @__resourceTypeId_66 AND [r72].[ReferenceResourceId] = @__referenceResourceId_67
+              )
+          )
+          UNION
+          SELECT [r73].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r73]
+          WHERE [r73].[IsHistory] = CAST(0 AS bit) AND [r73].[IsDeleted] = CAST(0 AS bit) AND [r73].[ResourceSurrogateId] IN (
+              SELECT [r74].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r74]
+              WHERE [r74].[IsHistory] = CAST(0 AS bit) AND [r74].[IsDeleted] = CAST(0 AS bit) AND [r74].[ResourceSurrogateId] IN (
+                  SELECT [t13].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t13]
+                  WHERE [t13].[ResourceTypeId] = @__resourceTypeId_68 AND [t13].[Code] = @__code_69
+              )
+              INTERSECT
+              SELECT [r75].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r75]
+              WHERE [r75].[IsHistory] = CAST(0 AS bit) AND [r75].[IsDeleted] = CAST(0 AS bit) AND [r75].[ResourceSurrogateId] IN (
+                  SELECT [r76].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r76]
+                  WHERE [r76].[IsHistory] = CAST(0 AS bit) AND [r76].[IsDeleted] = CAST(0 AS bit) AND [r76].[ResourceSurrogateId] IN (
+                      SELECT [r77].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r77]
+                      WHERE [r77].[ResourceTypeId] = @__resourceTypeId_70 AND [r77].[ReferenceResourceId] = @__referenceResourceId_71
+                  )
+                  UNION
+                  SELECT [r78].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r78]
+                  WHERE [r78].[IsHistory] = CAST(0 AS bit) AND [r78].[IsDeleted] = CAST(0 AS bit) AND [r78].[ResourceSurrogateId] IN (
+                      SELECT [r79].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r79]
+                      WHERE [r79].[ResourceTypeId] = @__resourceTypeId_72 AND [r79].[ReferenceResourceId] = @__referenceResourceId_73
+                  )
+                  UNION
+                  SELECT [r80].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r80]
+                  WHERE [r80].[IsHistory] = CAST(0 AS bit) AND [r80].[IsDeleted] = CAST(0 AS bit) AND [r80].[ResourceSurrogateId] IN (
+                      SELECT [r81].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r81]
+                      WHERE [r81].[ResourceTypeId] = @__resourceTypeId_74 AND [r81].[ReferenceResourceId] = @__referenceResourceId_75
+                  )
+              )
+          )
+          UNION
+          SELECT [r82].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r82]
+          WHERE [r82].[IsHistory] = CAST(0 AS bit) AND [r82].[IsDeleted] = CAST(0 AS bit) AND [r82].[ResourceSurrogateId] IN (
+              SELECT [r83].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r83]
+              WHERE [r83].[IsHistory] = CAST(0 AS bit) AND [r83].[IsDeleted] = CAST(0 AS bit) AND [r83].[ResourceSurrogateId] IN (
+                  SELECT [t14].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t14]
+                  WHERE [t14].[ResourceTypeId] = @__resourceTypeId_76 AND [t14].[Code] = @__code_77
+              )
+              INTERSECT
+              SELECT [r84].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r84]
+              WHERE [r84].[IsHistory] = CAST(0 AS bit) AND [r84].[IsDeleted] = CAST(0 AS bit) AND [r84].[ResourceSurrogateId] IN (
+                  SELECT [r85].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r85]
+                  WHERE [r85].[IsHistory] = CAST(0 AS bit) AND [r85].[IsDeleted] = CAST(0 AS bit) AND [r85].[ResourceSurrogateId] IN (
+                      SELECT [r86].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r86]
+                      WHERE [r86].[ResourceTypeId] = @__resourceTypeId_78 AND [r86].[ReferenceResourceId] = @__referenceResourceId_79
+                  )
+                  UNION
+                  SELECT [r87].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r87]
+                  WHERE [r87].[IsHistory] = CAST(0 AS bit) AND [r87].[IsDeleted] = CAST(0 AS bit) AND [r87].[ResourceSurrogateId] IN (
+                      SELECT [r88].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r88]
+                      WHERE [r88].[ResourceTypeId] = @__resourceTypeId_80 AND [r88].[ReferenceResourceId] = @__referenceResourceId_81
+                  )
+                  UNION
+                  SELECT [r89].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r89]
+                  WHERE [r89].[IsHistory] = CAST(0 AS bit) AND [r89].[IsDeleted] = CAST(0 AS bit) AND [r89].[ResourceSurrogateId] IN (
+                      SELECT [r90].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r90]
+                      WHERE [r90].[ResourceTypeId] = @__resourceTypeId_82 AND [r90].[ReferenceResourceId] = @__referenceResourceId_83
+                  )
+                  UNION
+                  SELECT [r91].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r91]
+                  WHERE [r91].[IsHistory] = CAST(0 AS bit) AND [r91].[IsDeleted] = CAST(0 AS bit) AND [r91].[ResourceSurrogateId] IN (
+                      SELECT [r92].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r92]
+                      WHERE [r92].[ResourceTypeId] = @__resourceTypeId_84 AND [r92].[ReferenceResourceId] = @__referenceResourceId_85
+                  )
+              )
+          )
+          UNION
+          SELECT [r93].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r93]
+          WHERE [r93].[IsHistory] = CAST(0 AS bit) AND [r93].[IsDeleted] = CAST(0 AS bit) AND [r93].[ResourceSurrogateId] IN (
+              SELECT [r94].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r94]
+              WHERE [r94].[IsHistory] = CAST(0 AS bit) AND [r94].[IsDeleted] = CAST(0 AS bit) AND [r94].[ResourceSurrogateId] IN (
+                  SELECT [t15].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t15]
+                  WHERE [t15].[ResourceTypeId] = @__resourceTypeId_86 AND [t15].[Code] = @__code_87
+              )
+              INTERSECT
+              SELECT [r95].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r95]
+              WHERE [r95].[IsHistory] = CAST(0 AS bit) AND [r95].[IsDeleted] = CAST(0 AS bit) AND [r95].[ResourceSurrogateId] IN (
+                  SELECT [r96].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r96]
+                  WHERE [r96].[IsHistory] = CAST(0 AS bit) AND [r96].[IsDeleted] = CAST(0 AS bit) AND [r96].[ResourceSurrogateId] IN (
+                      SELECT [r97].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r97]
+                      WHERE [r97].[ResourceTypeId] = @__resourceTypeId_88 AND [r97].[ReferenceResourceId] = @__referenceResourceId_89
+                  )
+                  UNION
+                  SELECT [r98].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r98]
+                  WHERE [r98].[IsHistory] = CAST(0 AS bit) AND [r98].[IsDeleted] = CAST(0 AS bit) AND [r98].[ResourceSurrogateId] IN (
+                      SELECT [r99].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r99]
+                      WHERE [r99].[ResourceTypeId] = @__resourceTypeId_90 AND [r99].[ReferenceResourceId] = @__referenceResourceId_91
+                  )
+                  UNION
+                  SELECT [r100].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r100]
+                  WHERE [r100].[IsHistory] = CAST(0 AS bit) AND [r100].[IsDeleted] = CAST(0 AS bit) AND [r100].[ResourceSurrogateId] IN (
+                      SELECT [r101].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r101]
+                      WHERE [r101].[ResourceTypeId] = @__resourceTypeId_92 AND [r101].[ReferenceResourceId] = @__referenceResourceId_93
+                  )
+              )
+          )
+          UNION
+          SELECT [r102].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r102]
+          WHERE [r102].[IsHistory] = CAST(0 AS bit) AND [r102].[IsDeleted] = CAST(0 AS bit) AND [r102].[ResourceSurrogateId] IN (
+              SELECT [r103].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r103]
+              WHERE [r103].[IsHistory] = CAST(0 AS bit) AND [r103].[IsDeleted] = CAST(0 AS bit) AND [r103].[ResourceSurrogateId] IN (
+                  SELECT [t16].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t16]
+                  WHERE [t16].[ResourceTypeId] = @__resourceTypeId_94 AND [t16].[Code] = @__code_95
+              )
+              INTERSECT
+              SELECT [r104].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r104]
+              WHERE [r104].[IsHistory] = CAST(0 AS bit) AND [r104].[IsDeleted] = CAST(0 AS bit) AND [r104].[ResourceSurrogateId] IN (
+                  SELECT [r105].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r105]
+                  WHERE [r105].[IsHistory] = CAST(0 AS bit) AND [r105].[IsDeleted] = CAST(0 AS bit) AND [r105].[ResourceSurrogateId] IN (
+                      SELECT [r106].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r106]
+                      WHERE [r106].[ResourceTypeId] = @__resourceTypeId_96 AND [r106].[ReferenceResourceId] = @__referenceResourceId_97
+                  )
+                  UNION
+                  SELECT [r107].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r107]
+                  WHERE [r107].[IsHistory] = CAST(0 AS bit) AND [r107].[IsDeleted] = CAST(0 AS bit) AND [r107].[ResourceSurrogateId] IN (
+                      SELECT [r108].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r108]
+                      WHERE [r108].[ResourceTypeId] = @__resourceTypeId_98 AND [r108].[ReferenceResourceId] = @__referenceResourceId_99
+                  )
+              )
+          )
+          UNION
+          SELECT [r109].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r109]
+          WHERE [r109].[IsHistory] = CAST(0 AS bit) AND [r109].[IsDeleted] = CAST(0 AS bit) AND [r109].[ResourceSurrogateId] IN (
+              SELECT [r110].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r110]
+              WHERE [r110].[IsHistory] = CAST(0 AS bit) AND [r110].[IsDeleted] = CAST(0 AS bit) AND [r110].[ResourceSurrogateId] IN (
+                  SELECT [t17].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t17]
+                  WHERE [t17].[ResourceTypeId] = @__resourceTypeId_100 AND [t17].[Code] = @__code_101
+              )
+              INTERSECT
+              SELECT [r111].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r111]
+              WHERE [r111].[IsHistory] = CAST(0 AS bit) AND [r111].[IsDeleted] = CAST(0 AS bit) AND [r111].[ResourceSurrogateId] IN (
+                  SELECT [r112].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r112]
+                  WHERE [r112].[ResourceTypeId] = @__resourceTypeId_102 AND [r112].[ReferenceResourceId] = @__referenceResourceId_103
+              )
+          )
+          UNION
+          SELECT [r113].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r113]
+          WHERE [r113].[IsHistory] = CAST(0 AS bit) AND [r113].[IsDeleted] = CAST(0 AS bit) AND [r113].[ResourceSurrogateId] IN (
+              SELECT [r114].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r114]
+              WHERE [r114].[IsHistory] = CAST(0 AS bit) AND [r114].[IsDeleted] = CAST(0 AS bit) AND [r114].[ResourceSurrogateId] IN (
+                  SELECT [t18].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t18]
+                  WHERE [t18].[ResourceTypeId] = @__resourceTypeId_104 AND [t18].[Code] = @__code_105
+              )
+              INTERSECT
+              SELECT [r115].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r115]
+              WHERE [r115].[IsHistory] = CAST(0 AS bit) AND [r115].[IsDeleted] = CAST(0 AS bit) AND [r115].[ResourceSurrogateId] IN (
+                  SELECT [r116].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r116]
+                  WHERE [r116].[IsHistory] = CAST(0 AS bit) AND [r116].[IsDeleted] = CAST(0 AS bit) AND [r116].[ResourceSurrogateId] IN (
+                      SELECT [r117].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r117]
+                      WHERE [r117].[ResourceTypeId] = @__resourceTypeId_106 AND [r117].[ReferenceResourceId] = @__referenceResourceId_107
+                  )
+                  UNION
+                  SELECT [r118].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r118]
+                  WHERE [r118].[IsHistory] = CAST(0 AS bit) AND [r118].[IsDeleted] = CAST(0 AS bit) AND [r118].[ResourceSurrogateId] IN (
+                      SELECT [r119].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r119]
+                      WHERE [r119].[ResourceTypeId] = @__resourceTypeId_108 AND [r119].[ReferenceResourceId] = @__referenceResourceId_109
+                  )
+                  UNION
+                  SELECT [r120].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r120]
+                  WHERE [r120].[IsHistory] = CAST(0 AS bit) AND [r120].[IsDeleted] = CAST(0 AS bit) AND [r120].[ResourceSurrogateId] IN (
+                      SELECT [r121].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r121]
+                      WHERE [r121].[ResourceTypeId] = @__resourceTypeId_110 AND [r121].[ReferenceResourceId] = @__referenceResourceId_111
+                  )
+                  UNION
+                  SELECT [r122].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r122]
+                  WHERE [r122].[IsHistory] = CAST(0 AS bit) AND [r122].[IsDeleted] = CAST(0 AS bit) AND [r122].[ResourceSurrogateId] IN (
+                      SELECT [r123].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r123]
+                      WHERE [r123].[ResourceTypeId] = @__resourceTypeId_112 AND [r123].[ReferenceResourceId] = @__referenceResourceId_113
+                  )
+              )
+          )
+          UNION
+          SELECT [r124].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r124]
+          WHERE [r124].[IsHistory] = CAST(0 AS bit) AND [r124].[IsDeleted] = CAST(0 AS bit) AND [r124].[ResourceSurrogateId] IN (
+              SELECT [r125].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r125]
+              WHERE [r125].[IsHistory] = CAST(0 AS bit) AND [r125].[IsDeleted] = CAST(0 AS bit) AND [r125].[ResourceSurrogateId] IN (
+                  SELECT [t19].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t19]
+                  WHERE [t19].[ResourceTypeId] = @__resourceTypeId_114 AND [t19].[Code] = @__code_115
+              )
+              INTERSECT
+              SELECT [r126].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r126]
+              WHERE [r126].[IsHistory] = CAST(0 AS bit) AND [r126].[IsDeleted] = CAST(0 AS bit) AND [r126].[ResourceSurrogateId] IN (
+                  SELECT [r127].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r127]
+                  WHERE [r127].[ResourceTypeId] = @__resourceTypeId_116 AND [r127].[ReferenceResourceId] = @__referenceResourceId_117
+              )
+          )
+          UNION
+          SELECT [r128].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r128]
+          WHERE [r128].[IsHistory] = CAST(0 AS bit) AND [r128].[IsDeleted] = CAST(0 AS bit) AND [r128].[ResourceSurrogateId] IN (
+              SELECT [r129].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r129]
+              WHERE [r129].[IsHistory] = CAST(0 AS bit) AND [r129].[IsDeleted] = CAST(0 AS bit) AND [r129].[ResourceSurrogateId] IN (
+                  SELECT [t20].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t20]
+                  WHERE [t20].[ResourceTypeId] = @__resourceTypeId_118 AND [t20].[Code] = @__code_119
+              )
+              INTERSECT
+              SELECT [r130].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r130]
+              WHERE [r130].[IsHistory] = CAST(0 AS bit) AND [r130].[IsDeleted] = CAST(0 AS bit) AND [r130].[ResourceSurrogateId] IN (
+                  SELECT [r131].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r131]
+                  WHERE [r131].[ResourceTypeId] = @__resourceTypeId_120 AND [r131].[ReferenceResourceId] = @__referenceResourceId_121
+              )
+          )
+          UNION
+          SELECT [r132].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r132]
+          WHERE [r132].[IsHistory] = CAST(0 AS bit) AND [r132].[IsDeleted] = CAST(0 AS bit) AND [r132].[ResourceSurrogateId] IN (
+              SELECT [r133].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r133]
+              WHERE [r133].[IsHistory] = CAST(0 AS bit) AND [r133].[IsDeleted] = CAST(0 AS bit) AND [r133].[ResourceSurrogateId] IN (
+                  SELECT [t21].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t21]
+                  WHERE [t21].[ResourceTypeId] = @__resourceTypeId_122 AND [t21].[Code] = @__code_123
+              )
+              INTERSECT
+              SELECT [r134].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r134]
+              WHERE [r134].[IsHistory] = CAST(0 AS bit) AND [r134].[IsDeleted] = CAST(0 AS bit) AND [r134].[ResourceSurrogateId] IN (
+                  SELECT [r135].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r135]
+                  WHERE [r135].[ResourceTypeId] = @__resourceTypeId_124 AND [r135].[ReferenceResourceId] = @__referenceResourceId_125
+              )
+          )
+          UNION
+          SELECT [r136].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r136]
+          WHERE [r136].[IsHistory] = CAST(0 AS bit) AND [r136].[IsDeleted] = CAST(0 AS bit) AND [r136].[ResourceSurrogateId] IN (
+              SELECT [r137].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r137]
+              WHERE [r137].[IsHistory] = CAST(0 AS bit) AND [r137].[IsDeleted] = CAST(0 AS bit) AND [r137].[ResourceSurrogateId] IN (
+                  SELECT [t22].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t22]
+                  WHERE [t22].[ResourceTypeId] = @__resourceTypeId_126 AND [t22].[Code] = @__code_127
+              )
+              INTERSECT
+              SELECT [r138].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r138]
+              WHERE [r138].[IsHistory] = CAST(0 AS bit) AND [r138].[IsDeleted] = CAST(0 AS bit) AND [r138].[ResourceSurrogateId] IN (
+                  SELECT [r139].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r139]
+                  WHERE [r139].[IsHistory] = CAST(0 AS bit) AND [r139].[IsDeleted] = CAST(0 AS bit) AND [r139].[ResourceSurrogateId] IN (
+                      SELECT [r140].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r140]
+                      WHERE [r140].[ResourceTypeId] = @__resourceTypeId_128 AND [r140].[ReferenceResourceId] = @__referenceResourceId_129
+                  )
+                  UNION
+                  SELECT [r141].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r141]
+                  WHERE [r141].[IsHistory] = CAST(0 AS bit) AND [r141].[IsDeleted] = CAST(0 AS bit) AND [r141].[ResourceSurrogateId] IN (
+                      SELECT [r142].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r142]
+                      WHERE [r142].[ResourceTypeId] = @__resourceTypeId_130 AND [r142].[ReferenceResourceId] = @__referenceResourceId_131
+                  )
+              )
+          )
+          UNION
+          SELECT [r143].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r143]
+          WHERE [r143].[IsHistory] = CAST(0 AS bit) AND [r143].[IsDeleted] = CAST(0 AS bit) AND [r143].[ResourceSurrogateId] IN (
+              SELECT [r144].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r144]
+              WHERE [r144].[IsHistory] = CAST(0 AS bit) AND [r144].[IsDeleted] = CAST(0 AS bit) AND [r144].[ResourceSurrogateId] IN (
+                  SELECT [t23].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t23]
+                  WHERE [t23].[ResourceTypeId] = @__resourceTypeId_132 AND [t23].[Code] = @__code_133
+              )
+              INTERSECT
+              SELECT [r145].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r145]
+              WHERE [r145].[IsHistory] = CAST(0 AS bit) AND [r145].[IsDeleted] = CAST(0 AS bit) AND [r145].[ResourceSurrogateId] IN (
+                  SELECT [r146].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r146]
+                  WHERE [r146].[ResourceTypeId] = @__resourceTypeId_134 AND [r146].[ReferenceResourceId] = @__referenceResourceId_135
+              )
+          )
+          UNION
+          SELECT [r147].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r147]
+          WHERE [r147].[IsHistory] = CAST(0 AS bit) AND [r147].[IsDeleted] = CAST(0 AS bit) AND [r147].[ResourceSurrogateId] IN (
+              SELECT [r148].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r148]
+              WHERE [r148].[IsHistory] = CAST(0 AS bit) AND [r148].[IsDeleted] = CAST(0 AS bit) AND [r148].[ResourceSurrogateId] IN (
+                  SELECT [t24].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t24]
+                  WHERE [t24].[ResourceTypeId] = @__resourceTypeId_136 AND [t24].[Code] = @__code_137
+              )
+              INTERSECT
+              SELECT [r149].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r149]
+              WHERE [r149].[IsHistory] = CAST(0 AS bit) AND [r149].[IsDeleted] = CAST(0 AS bit) AND [r149].[ResourceSurrogateId] IN (
+                  SELECT [r150].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r150]
+                  WHERE [r150].[ResourceTypeId] = @__resourceTypeId_138 AND [r150].[ReferenceResourceId] = @__referenceResourceId_139
+              )
+          )
+          UNION
+          SELECT [r151].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r151]
+          WHERE [r151].[IsHistory] = CAST(0 AS bit) AND [r151].[IsDeleted] = CAST(0 AS bit) AND [r151].[ResourceSurrogateId] IN (
+              SELECT [r152].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r152]
+              WHERE [r152].[IsHistory] = CAST(0 AS bit) AND [r152].[IsDeleted] = CAST(0 AS bit) AND [r152].[ResourceSurrogateId] IN (
+                  SELECT [t25].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t25]
+                  WHERE [t25].[ResourceTypeId] = @__resourceTypeId_140 AND [t25].[Code] = @__code_141
+              )
+              INTERSECT
+              SELECT [r153].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r153]
+              WHERE [r153].[IsHistory] = CAST(0 AS bit) AND [r153].[IsDeleted] = CAST(0 AS bit) AND [r153].[ResourceSurrogateId] IN (
+                  SELECT [r154].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r154]
+                  WHERE [r154].[IsHistory] = CAST(0 AS bit) AND [r154].[IsDeleted] = CAST(0 AS bit) AND [r154].[ResourceSurrogateId] IN (
+                      SELECT [r155].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r155]
+                      WHERE [r155].[ResourceTypeId] = @__resourceTypeId_142 AND [r155].[ReferenceResourceId] = @__referenceResourceId_143
+                  )
+                  UNION
+                  SELECT [r156].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r156]
+                  WHERE [r156].[IsHistory] = CAST(0 AS bit) AND [r156].[IsDeleted] = CAST(0 AS bit) AND [r156].[ResourceSurrogateId] IN (
+                      SELECT [r157].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r157]
+                      WHERE [r157].[ResourceTypeId] = @__resourceTypeId_144 AND [r157].[ReferenceResourceId] = @__referenceResourceId_145
+                  )
+                  UNION
+                  SELECT [r158].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r158]
+                  WHERE [r158].[IsHistory] = CAST(0 AS bit) AND [r158].[IsDeleted] = CAST(0 AS bit) AND [r158].[ResourceSurrogateId] IN (
+                      SELECT [r159].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r159]
+                      WHERE [r159].[ResourceTypeId] = @__resourceTypeId_146 AND [r159].[ReferenceResourceId] = @__referenceResourceId_147
+                  )
+              )
+          )
+          UNION
+          SELECT [r160].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r160]
+          WHERE [r160].[IsHistory] = CAST(0 AS bit) AND [r160].[IsDeleted] = CAST(0 AS bit) AND [r160].[ResourceSurrogateId] IN (
+              SELECT [r161].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r161]
+              WHERE [r161].[IsHistory] = CAST(0 AS bit) AND [r161].[IsDeleted] = CAST(0 AS bit) AND [r161].[ResourceSurrogateId] IN (
+                  SELECT [t26].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t26]
+                  WHERE [t26].[ResourceTypeId] = @__resourceTypeId_148 AND [t26].[Code] = @__code_149
+              )
+              INTERSECT
+              SELECT [r162].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r162]
+              WHERE [r162].[IsHistory] = CAST(0 AS bit) AND [r162].[IsDeleted] = CAST(0 AS bit) AND [r162].[ResourceSurrogateId] IN (
+                  SELECT [r163].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r163]
+                  WHERE [r163].[IsHistory] = CAST(0 AS bit) AND [r163].[IsDeleted] = CAST(0 AS bit) AND [r163].[ResourceSurrogateId] IN (
+                      SELECT [r164].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r164]
+                      WHERE [r164].[ResourceTypeId] = @__resourceTypeId_150 AND [r164].[ReferenceResourceId] = @__referenceResourceId_151
+                  )
+                  UNION
+                  SELECT [r165].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r165]
+                  WHERE [r165].[IsHistory] = CAST(0 AS bit) AND [r165].[IsDeleted] = CAST(0 AS bit) AND [r165].[ResourceSurrogateId] IN (
+                      SELECT [r166].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r166]
+                      WHERE [r166].[ResourceTypeId] = @__resourceTypeId_152 AND [r166].[ReferenceResourceId] = @__referenceResourceId_153
+                  )
+              )
+          )
+          UNION
+          SELECT [r167].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r167]
+          WHERE [r167].[IsHistory] = CAST(0 AS bit) AND [r167].[IsDeleted] = CAST(0 AS bit) AND [r167].[ResourceSurrogateId] IN (
+              SELECT [r168].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r168]
+              WHERE [r168].[IsHistory] = CAST(0 AS bit) AND [r168].[IsDeleted] = CAST(0 AS bit) AND [r168].[ResourceSurrogateId] IN (
+                  SELECT [t27].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t27]
+                  WHERE [t27].[ResourceTypeId] = @__resourceTypeId_154 AND [t27].[Code] = @__code_155
+              )
+              INTERSECT
+              SELECT [r169].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r169]
+              WHERE [r169].[IsHistory] = CAST(0 AS bit) AND [r169].[IsDeleted] = CAST(0 AS bit) AND [r169].[ResourceSurrogateId] IN (
+                  SELECT [r170].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r170]
+                  WHERE [r170].[ResourceTypeId] = @__resourceTypeId_156 AND [r170].[ReferenceResourceId] = @__referenceResourceId_157
+              )
+          )
+          UNION
+          SELECT [r171].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r171]
+          WHERE [r171].[IsHistory] = CAST(0 AS bit) AND [r171].[IsDeleted] = CAST(0 AS bit) AND [r171].[ResourceSurrogateId] IN (
+              SELECT [r172].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r172]
+              WHERE [r172].[IsHistory] = CAST(0 AS bit) AND [r172].[IsDeleted] = CAST(0 AS bit) AND [r172].[ResourceSurrogateId] IN (
+                  SELECT [t28].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t28]
+                  WHERE [t28].[ResourceTypeId] = @__resourceTypeId_158 AND [t28].[Code] = @__code_159
+              )
+              INTERSECT
+              SELECT [r173].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r173]
+              WHERE [r173].[IsHistory] = CAST(0 AS bit) AND [r173].[IsDeleted] = CAST(0 AS bit) AND [r173].[ResourceSurrogateId] IN (
+                  SELECT [r174].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r174]
+                  WHERE [r174].[ResourceTypeId] = @__resourceTypeId_160 AND [r174].[ReferenceResourceId] = @__referenceResourceId_161
+              )
+          )
+          UNION
+          SELECT [r175].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r175]
+          WHERE [r175].[IsHistory] = CAST(0 AS bit) AND [r175].[IsDeleted] = CAST(0 AS bit) AND [r175].[ResourceSurrogateId] IN (
+              SELECT [r176].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r176]
+              WHERE [r176].[IsHistory] = CAST(0 AS bit) AND [r176].[IsDeleted] = CAST(0 AS bit) AND [r176].[ResourceSurrogateId] IN (
+                  SELECT [t29].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t29]
+                  WHERE [t29].[ResourceTypeId] = @__resourceTypeId_162 AND [t29].[Code] = @__code_163
+              )
+              INTERSECT
+              SELECT [r177].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r177]
+              WHERE [r177].[IsHistory] = CAST(0 AS bit) AND [r177].[IsDeleted] = CAST(0 AS bit) AND [r177].[ResourceSurrogateId] IN (
+                  SELECT [r178].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r178]
+                  WHERE [r178].[ResourceTypeId] = @__resourceTypeId_164 AND [r178].[ReferenceResourceId] = @__referenceResourceId_165
+              )
+          )
+          UNION
+          SELECT [r179].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r179]
+          WHERE [r179].[IsHistory] = CAST(0 AS bit) AND [r179].[IsDeleted] = CAST(0 AS bit) AND [r179].[ResourceSurrogateId] IN (
+              SELECT [r180].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r180]
+              WHERE [r180].[IsHistory] = CAST(0 AS bit) AND [r180].[IsDeleted] = CAST(0 AS bit) AND [r180].[ResourceSurrogateId] IN (
+                  SELECT [t30].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t30]
+                  WHERE [t30].[ResourceTypeId] = @__resourceTypeId_166 AND [t30].[Code] = @__code_167
+              )
+              INTERSECT
+              SELECT [r181].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r181]
+              WHERE [r181].[IsHistory] = CAST(0 AS bit) AND [r181].[IsDeleted] = CAST(0 AS bit) AND [r181].[ResourceSurrogateId] IN (
+                  SELECT [r182].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r182]
+                  WHERE [r182].[IsHistory] = CAST(0 AS bit) AND [r182].[IsDeleted] = CAST(0 AS bit) AND [r182].[ResourceSurrogateId] IN (
+                      SELECT [r183].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r183]
+                      WHERE [r183].[ResourceTypeId] = @__resourceTypeId_168 AND [r183].[ReferenceResourceId] = @__referenceResourceId_169
+                  )
+                  UNION
+                  SELECT [r184].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r184]
+                  WHERE [r184].[IsHistory] = CAST(0 AS bit) AND [r184].[IsDeleted] = CAST(0 AS bit) AND [r184].[ResourceSurrogateId] IN (
+                      SELECT [r185].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r185]
+                      WHERE [r185].[ResourceTypeId] = @__resourceTypeId_170 AND [r185].[ReferenceResourceId] = @__referenceResourceId_171
+                  )
+              )
+          )
+          UNION
+          SELECT [r186].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r186]
+          WHERE [r186].[IsHistory] = CAST(0 AS bit) AND [r186].[IsDeleted] = CAST(0 AS bit) AND [r186].[ResourceSurrogateId] IN (
+              SELECT [r187].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r187]
+              WHERE [r187].[IsHistory] = CAST(0 AS bit) AND [r187].[IsDeleted] = CAST(0 AS bit) AND [r187].[ResourceSurrogateId] IN (
+                  SELECT [t31].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t31]
+                  WHERE [t31].[ResourceTypeId] = @__resourceTypeId_172 AND [t31].[Code] = @__code_173
+              )
+              INTERSECT
+              SELECT [r188].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r188]
+              WHERE [r188].[IsHistory] = CAST(0 AS bit) AND [r188].[IsDeleted] = CAST(0 AS bit) AND [r188].[ResourceSurrogateId] IN (
+                  SELECT [r189].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r189]
+                  WHERE [r189].[ResourceTypeId] = @__resourceTypeId_174 AND [r189].[ReferenceResourceId] = @__referenceResourceId_175
+              )
+          )
+          UNION
+          SELECT [r190].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r190]
+          WHERE [r190].[IsHistory] = CAST(0 AS bit) AND [r190].[IsDeleted] = CAST(0 AS bit) AND [r190].[ResourceSurrogateId] IN (
+              SELECT [r191].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r191]
+              WHERE [r191].[IsHistory] = CAST(0 AS bit) AND [r191].[IsDeleted] = CAST(0 AS bit) AND [r191].[ResourceSurrogateId] IN (
+                  SELECT [t32].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t32]
+                  WHERE [t32].[ResourceTypeId] = @__resourceTypeId_176 AND [t32].[Code] = @__code_177
+              )
+              INTERSECT
+              SELECT [r192].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r192]
+              WHERE [r192].[IsHistory] = CAST(0 AS bit) AND [r192].[IsDeleted] = CAST(0 AS bit) AND [r192].[ResourceSurrogateId] IN (
+                  SELECT [r193].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r193]
+                  WHERE [r193].[ResourceTypeId] = @__resourceTypeId_178 AND [r193].[ReferenceResourceId] = @__referenceResourceId_179
+              )
+          )
+          UNION
+          SELECT [r194].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r194]
+          WHERE [r194].[IsHistory] = CAST(0 AS bit) AND [r194].[IsDeleted] = CAST(0 AS bit) AND [r194].[ResourceSurrogateId] IN (
+              SELECT [r195].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r195]
+              WHERE [r195].[IsHistory] = CAST(0 AS bit) AND [r195].[IsDeleted] = CAST(0 AS bit) AND [r195].[ResourceSurrogateId] IN (
+                  SELECT [t33].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t33]
+                  WHERE [t33].[ResourceTypeId] = @__resourceTypeId_180 AND [t33].[Code] = @__code_181
+              )
+              INTERSECT
+              SELECT [r196].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r196]
+              WHERE [r196].[IsHistory] = CAST(0 AS bit) AND [r196].[IsDeleted] = CAST(0 AS bit) AND [r196].[ResourceSurrogateId] IN (
+                  SELECT [r197].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r197]
+                  WHERE [r197].[ResourceTypeId] = @__resourceTypeId_182 AND [r197].[ReferenceResourceId] = @__referenceResourceId_183
+              )
+          )
+          UNION
+          SELECT [r198].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r198]
+          WHERE [r198].[IsHistory] = CAST(0 AS bit) AND [r198].[IsDeleted] = CAST(0 AS bit) AND [r198].[ResourceSurrogateId] IN (
+              SELECT [r199].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r199]
+              WHERE [r199].[IsHistory] = CAST(0 AS bit) AND [r199].[IsDeleted] = CAST(0 AS bit) AND [r199].[ResourceSurrogateId] IN (
+                  SELECT [t34].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t34]
+                  WHERE [t34].[ResourceTypeId] = @__resourceTypeId_184 AND [t34].[Code] = @__code_185
+              )
+              INTERSECT
+              SELECT [r200].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r200]
+              WHERE [r200].[IsHistory] = CAST(0 AS bit) AND [r200].[IsDeleted] = CAST(0 AS bit) AND [r200].[ResourceSurrogateId] IN (
+                  SELECT [r201].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r201]
+                  WHERE [r201].[ResourceTypeId] = @__resourceTypeId_186 AND [r201].[ReferenceResourceId] = @__referenceResourceId_187
+              )
+          )
+          UNION
+          SELECT [r202].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r202]
+          WHERE [r202].[IsHistory] = CAST(0 AS bit) AND [r202].[IsDeleted] = CAST(0 AS bit) AND [r202].[ResourceSurrogateId] IN (
+              SELECT [r203].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r203]
+              WHERE [r203].[IsHistory] = CAST(0 AS bit) AND [r203].[IsDeleted] = CAST(0 AS bit) AND [r203].[ResourceSurrogateId] IN (
+                  SELECT [t35].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t35]
+                  WHERE [t35].[ResourceTypeId] = @__resourceTypeId_188 AND [t35].[Code] = @__code_189
+              )
+              INTERSECT
+              SELECT [r204].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r204]
+              WHERE [r204].[IsHistory] = CAST(0 AS bit) AND [r204].[IsDeleted] = CAST(0 AS bit) AND [r204].[ResourceSurrogateId] IN (
+                  SELECT [r205].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r205]
+                  WHERE [r205].[ResourceTypeId] = @__resourceTypeId_190 AND [r205].[ReferenceResourceId] = @__referenceResourceId_191
+              )
+          )
+          UNION
+          SELECT [r206].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r206]
+          WHERE [r206].[IsHistory] = CAST(0 AS bit) AND [r206].[IsDeleted] = CAST(0 AS bit) AND [r206].[ResourceSurrogateId] IN (
+              SELECT [r207].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r207]
+              WHERE [r207].[IsHistory] = CAST(0 AS bit) AND [r207].[IsDeleted] = CAST(0 AS bit) AND [r207].[ResourceSurrogateId] IN (
+                  SELECT [t36].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t36]
+                  WHERE [t36].[ResourceTypeId] = @__resourceTypeId_192 AND [t36].[Code] = @__code_193
+              )
+              INTERSECT
+              SELECT [r208].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r208]
+              WHERE [r208].[IsHistory] = CAST(0 AS bit) AND [r208].[IsDeleted] = CAST(0 AS bit) AND [r208].[ResourceSurrogateId] IN (
+                  SELECT [r209].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r209]
+                  WHERE [r209].[ResourceTypeId] = @__resourceTypeId_194 AND [r209].[ReferenceResourceId] = @__referenceResourceId_195
+              )
+          )
+          UNION
+          SELECT [r210].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r210]
+          WHERE [r210].[IsHistory] = CAST(0 AS bit) AND [r210].[IsDeleted] = CAST(0 AS bit) AND [r210].[ResourceSurrogateId] IN (
+              SELECT [r211].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r211]
+              WHERE [r211].[IsHistory] = CAST(0 AS bit) AND [r211].[IsDeleted] = CAST(0 AS bit) AND [r211].[ResourceSurrogateId] IN (
+                  SELECT [t37].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t37]
+                  WHERE [t37].[ResourceTypeId] = @__resourceTypeId_196 AND [t37].[Code] = @__code_197
+              )
+              INTERSECT
+              SELECT [r212].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r212]
+              WHERE [r212].[IsHistory] = CAST(0 AS bit) AND [r212].[IsDeleted] = CAST(0 AS bit) AND [r212].[ResourceSurrogateId] IN (
+                  SELECT [r213].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r213]
+                  WHERE [r213].[ResourceTypeId] = @__resourceTypeId_198 AND [r213].[ReferenceResourceId] = @__referenceResourceId_199
+              )
+          )
+          UNION
+          SELECT [r214].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r214]
+          WHERE [r214].[IsHistory] = CAST(0 AS bit) AND [r214].[IsDeleted] = CAST(0 AS bit) AND [r214].[ResourceSurrogateId] IN (
+              SELECT [r215].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r215]
+              WHERE [r215].[IsHistory] = CAST(0 AS bit) AND [r215].[IsDeleted] = CAST(0 AS bit) AND [r215].[ResourceSurrogateId] IN (
+                  SELECT [t38].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t38]
+                  WHERE [t38].[ResourceTypeId] = @__resourceTypeId_200 AND [t38].[Code] = @__code_201
+              )
+              INTERSECT
+              SELECT [r216].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r216]
+              WHERE [r216].[IsHistory] = CAST(0 AS bit) AND [r216].[IsDeleted] = CAST(0 AS bit) AND [r216].[ResourceSurrogateId] IN (
+                  SELECT [r217].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r217]
+                  WHERE [r217].[ResourceTypeId] = @__resourceTypeId_202 AND [r217].[ReferenceResourceId] = @__referenceResourceId_203
+              )
+          )
+          UNION
+          SELECT [r218].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r218]
+          WHERE [r218].[IsHistory] = CAST(0 AS bit) AND [r218].[IsDeleted] = CAST(0 AS bit) AND [r218].[ResourceSurrogateId] IN (
+              SELECT [r219].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r219]
+              WHERE [r219].[IsHistory] = CAST(0 AS bit) AND [r219].[IsDeleted] = CAST(0 AS bit) AND [r219].[ResourceSurrogateId] IN (
+                  SELECT [t39].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t39]
+                  WHERE [t39].[ResourceTypeId] = @__resourceTypeId_204 AND [t39].[Code] = @__code_205
+              )
+              INTERSECT
+              SELECT [r220].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r220]
+              WHERE [r220].[IsHistory] = CAST(0 AS bit) AND [r220].[IsDeleted] = CAST(0 AS bit) AND [r220].[ResourceSurrogateId] IN (
+                  SELECT [r221].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r221]
+                  WHERE [r221].[IsHistory] = CAST(0 AS bit) AND [r221].[IsDeleted] = CAST(0 AS bit) AND [r221].[ResourceSurrogateId] IN (
+                      SELECT [r222].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r222]
+                      WHERE [r222].[ResourceTypeId] = @__resourceTypeId_206 AND [r222].[ReferenceResourceId] = @__referenceResourceId_207
+                  )
+                  UNION
+                  SELECT [r223].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r223]
+                  WHERE [r223].[IsHistory] = CAST(0 AS bit) AND [r223].[IsDeleted] = CAST(0 AS bit) AND [r223].[ResourceSurrogateId] IN (
+                      SELECT [r224].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r224]
+                      WHERE [r224].[ResourceTypeId] = @__resourceTypeId_208 AND [r224].[ReferenceResourceId] = @__referenceResourceId_209
+                  )
+                  UNION
+                  SELECT [r225].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r225]
+                  WHERE [r225].[IsHistory] = CAST(0 AS bit) AND [r225].[IsDeleted] = CAST(0 AS bit) AND [r225].[ResourceSurrogateId] IN (
+                      SELECT [r226].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r226]
+                      WHERE [r226].[ResourceTypeId] = @__resourceTypeId_210 AND [r226].[ReferenceResourceId] = @__referenceResourceId_211
+                  )
+              )
+          )
+          UNION
+          SELECT [r227].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r227]
+          WHERE [r227].[IsHistory] = CAST(0 AS bit) AND [r227].[IsDeleted] = CAST(0 AS bit) AND [r227].[ResourceSurrogateId] IN (
+              SELECT [r228].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r228]
+              WHERE [r228].[IsHistory] = CAST(0 AS bit) AND [r228].[IsDeleted] = CAST(0 AS bit) AND [r228].[ResourceSurrogateId] IN (
+                  SELECT [t40].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t40]
+                  WHERE [t40].[ResourceTypeId] = @__resourceTypeId_212 AND [t40].[Code] = @__code_213
+              )
+              INTERSECT
+              SELECT [r229].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r229]
+              WHERE [r229].[IsHistory] = CAST(0 AS bit) AND [r229].[IsDeleted] = CAST(0 AS bit) AND [r229].[ResourceSurrogateId] IN (
+                  SELECT [r230].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r230]
+                  WHERE [r230].[IsHistory] = CAST(0 AS bit) AND [r230].[IsDeleted] = CAST(0 AS bit) AND [r230].[ResourceSurrogateId] IN (
+                      SELECT [r231].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r231]
+                      WHERE [r231].[ResourceTypeId] = @__resourceTypeId_214 AND [r231].[ReferenceResourceId] = @__referenceResourceId_215
+                  )
+                  UNION
+                  SELECT [r232].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r232]
+                  WHERE [r232].[IsHistory] = CAST(0 AS bit) AND [r232].[IsDeleted] = CAST(0 AS bit) AND [r232].[ResourceSurrogateId] IN (
+                      SELECT [r233].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r233]
+                      WHERE [r233].[ResourceTypeId] = @__resourceTypeId_216 AND [r233].[ReferenceResourceId] = @__referenceResourceId_217
+                  )
+              )
+          )
+          UNION
+          SELECT [r234].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r234]
+          WHERE [r234].[IsHistory] = CAST(0 AS bit) AND [r234].[IsDeleted] = CAST(0 AS bit) AND [r234].[ResourceSurrogateId] IN (
+              SELECT [r235].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r235]
+              WHERE [r235].[IsHistory] = CAST(0 AS bit) AND [r235].[IsDeleted] = CAST(0 AS bit) AND [r235].[ResourceSurrogateId] IN (
+                  SELECT [t41].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t41]
+                  WHERE [t41].[ResourceTypeId] = @__resourceTypeId_218 AND [t41].[Code] = @__code_219
+              )
+              INTERSECT
+              SELECT [r236].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r236]
+              WHERE [r236].[IsHistory] = CAST(0 AS bit) AND [r236].[IsDeleted] = CAST(0 AS bit) AND [r236].[ResourceSurrogateId] IN (
+                  SELECT [r237].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r237]
+                  WHERE [r237].[ResourceTypeId] = @__resourceTypeId_220 AND [r237].[ReferenceResourceId] = @__referenceResourceId_221
+              )
+          )
+          UNION
+          SELECT [r238].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r238]
+          WHERE [r238].[IsHistory] = CAST(0 AS bit) AND [r238].[IsDeleted] = CAST(0 AS bit) AND [r238].[ResourceSurrogateId] IN (
+              SELECT [r239].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r239]
+              WHERE [r239].[IsHistory] = CAST(0 AS bit) AND [r239].[IsDeleted] = CAST(0 AS bit) AND [r239].[ResourceSurrogateId] IN (
+                  SELECT [t42].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t42]
+                  WHERE [t42].[ResourceTypeId] = @__resourceTypeId_222 AND [t42].[Code] = @__code_223
+              )
+              INTERSECT
+              SELECT [r240].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r240]
+              WHERE [r240].[IsHistory] = CAST(0 AS bit) AND [r240].[IsDeleted] = CAST(0 AS bit) AND [r240].[ResourceSurrogateId] IN (
+                  SELECT [r241].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r241]
+                  WHERE [r241].[ResourceTypeId] = @__resourceTypeId_224 AND [r241].[ReferenceResourceId] = @__referenceResourceId_225
+              )
+          )
+          UNION
+          SELECT [r242].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r242]
+          WHERE [r242].[IsHistory] = CAST(0 AS bit) AND [r242].[IsDeleted] = CAST(0 AS bit) AND [r242].[ResourceSurrogateId] IN (
+              SELECT [r243].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r243]
+              WHERE [r243].[IsHistory] = CAST(0 AS bit) AND [r243].[IsDeleted] = CAST(0 AS bit) AND [r243].[ResourceSurrogateId] IN (
+                  SELECT [t43].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t43]
+                  WHERE [t43].[ResourceTypeId] = @__resourceTypeId_226 AND [t43].[Code] = @__code_227
+              )
+              INTERSECT
+              SELECT [r244].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r244]
+              WHERE [r244].[IsHistory] = CAST(0 AS bit) AND [r244].[IsDeleted] = CAST(0 AS bit) AND [r244].[ResourceSurrogateId] IN (
+                  SELECT [r245].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r245]
+                  WHERE [r245].[IsHistory] = CAST(0 AS bit) AND [r245].[IsDeleted] = CAST(0 AS bit) AND [r245].[ResourceSurrogateId] IN (
+                      SELECT [r246].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r246]
+                      WHERE [r246].[ResourceTypeId] = @__resourceTypeId_228 AND [r246].[ReferenceResourceId] = @__referenceResourceId_229
+                  )
+                  UNION
+                  SELECT [r247].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r247]
+                  WHERE [r247].[IsHistory] = CAST(0 AS bit) AND [r247].[IsDeleted] = CAST(0 AS bit) AND [r247].[ResourceSurrogateId] IN (
+                      SELECT [r248].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r248]
+                      WHERE [r248].[ResourceTypeId] = @__resourceTypeId_230 AND [r248].[ReferenceResourceId] = @__referenceResourceId_231
+                  )
+                  UNION
+                  SELECT [r249].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r249]
+                  WHERE [r249].[IsHistory] = CAST(0 AS bit) AND [r249].[IsDeleted] = CAST(0 AS bit) AND [r249].[ResourceSurrogateId] IN (
+                      SELECT [r250].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r250]
+                      WHERE [r250].[ResourceTypeId] = @__resourceTypeId_232 AND [r250].[ReferenceResourceId] = @__referenceResourceId_233
+                  )
+              )
+          )
+          UNION
+          SELECT [r251].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r251]
+          WHERE [r251].[IsHistory] = CAST(0 AS bit) AND [r251].[IsDeleted] = CAST(0 AS bit) AND [r251].[ResourceSurrogateId] IN (
+              SELECT [r252].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r252]
+              WHERE [r252].[IsHistory] = CAST(0 AS bit) AND [r252].[IsDeleted] = CAST(0 AS bit) AND [r252].[ResourceSurrogateId] IN (
+                  SELECT [t44].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t44]
+                  WHERE [t44].[ResourceTypeId] = @__resourceTypeId_234 AND [t44].[Code] = @__code_235
+              )
+              INTERSECT
+              SELECT [r253].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r253]
+              WHERE [r253].[IsHistory] = CAST(0 AS bit) AND [r253].[IsDeleted] = CAST(0 AS bit) AND [r253].[ResourceSurrogateId] IN (
+                  SELECT [r254].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r254]
+                  WHERE [r254].[IsHistory] = CAST(0 AS bit) AND [r254].[IsDeleted] = CAST(0 AS bit) AND [r254].[ResourceSurrogateId] IN (
+                      SELECT [r255].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r255]
+                      WHERE [r255].[ResourceTypeId] = @__resourceTypeId_236 AND [r255].[ReferenceResourceId] = @__referenceResourceId_237
+                  )
+                  UNION
+                  SELECT [r256].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r256]
+                  WHERE [r256].[IsHistory] = CAST(0 AS bit) AND [r256].[IsDeleted] = CAST(0 AS bit) AND [r256].[ResourceSurrogateId] IN (
+                      SELECT [r257].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r257]
+                      WHERE [r257].[ResourceTypeId] = @__resourceTypeId_238 AND [r257].[ReferenceResourceId] = @__referenceResourceId_239
+                  )
+                  UNION
+                  SELECT [r258].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r258]
+                  WHERE [r258].[IsHistory] = CAST(0 AS bit) AND [r258].[IsDeleted] = CAST(0 AS bit) AND [r258].[ResourceSurrogateId] IN (
+                      SELECT [r259].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r259]
+                      WHERE [r259].[ResourceTypeId] = @__resourceTypeId_240 AND [r259].[ReferenceResourceId] = @__referenceResourceId_241
+                  )
+              )
+          )
+          UNION
+          SELECT [r260].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r260]
+          WHERE [r260].[IsHistory] = CAST(0 AS bit) AND [r260].[IsDeleted] = CAST(0 AS bit) AND [r260].[ResourceSurrogateId] IN (
+              SELECT [r261].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r261]
+              WHERE [r261].[IsHistory] = CAST(0 AS bit) AND [r261].[IsDeleted] = CAST(0 AS bit) AND [r261].[ResourceSurrogateId] IN (
+                  SELECT [t45].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t45]
+                  WHERE [t45].[ResourceTypeId] = @__resourceTypeId_242 AND [t45].[Code] = @__code_243
+              )
+              INTERSECT
+              SELECT [r262].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r262]
+              WHERE [r262].[IsHistory] = CAST(0 AS bit) AND [r262].[IsDeleted] = CAST(0 AS bit) AND [r262].[ResourceSurrogateId] IN (
+                  SELECT [r263].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r263]
+                  WHERE [r263].[ResourceTypeId] = @__resourceTypeId_244 AND [r263].[ReferenceResourceId] = @__referenceResourceId_245
+              )
+          )
+          UNION
+          SELECT [r264].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r264]
+          WHERE [r264].[IsHistory] = CAST(0 AS bit) AND [r264].[IsDeleted] = CAST(0 AS bit) AND [r264].[ResourceSurrogateId] IN (
+              SELECT [r265].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r265]
+              WHERE [r265].[IsHistory] = CAST(0 AS bit) AND [r265].[IsDeleted] = CAST(0 AS bit) AND [r265].[ResourceSurrogateId] IN (
+                  SELECT [t46].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t46]
+                  WHERE [t46].[ResourceTypeId] = @__resourceTypeId_246 AND [t46].[Code] = @__code_247
+              )
+              INTERSECT
+              SELECT [r266].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r266]
+              WHERE [r266].[IsHistory] = CAST(0 AS bit) AND [r266].[IsDeleted] = CAST(0 AS bit) AND [r266].[ResourceSurrogateId] IN (
+                  SELECT [r267].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r267]
+                  WHERE [r267].[ResourceTypeId] = @__resourceTypeId_248 AND [r267].[ReferenceResourceId] = @__referenceResourceId_249
+              )
+          )
+          UNION
+          SELECT [r268].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r268]
+          WHERE [r268].[IsHistory] = CAST(0 AS bit) AND [r268].[IsDeleted] = CAST(0 AS bit) AND [r268].[ResourceSurrogateId] IN (
+              SELECT [r269].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r269]
+              WHERE [r269].[IsHistory] = CAST(0 AS bit) AND [r269].[IsDeleted] = CAST(0 AS bit) AND [r269].[ResourceSurrogateId] IN (
+                  SELECT [t47].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t47]
+                  WHERE [t47].[ResourceTypeId] = @__resourceTypeId_250 AND [t47].[Code] = @__code_251
+              )
+              INTERSECT
+              SELECT [r270].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r270]
+              WHERE [r270].[IsHistory] = CAST(0 AS bit) AND [r270].[IsDeleted] = CAST(0 AS bit) AND [r270].[ResourceSurrogateId] IN (
+                  SELECT [r271].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r271]
+                  WHERE [r271].[ResourceTypeId] = @__resourceTypeId_252 AND [r271].[ReferenceResourceId] = @__referenceResourceId_253
+              )
+          )
+          UNION
+          SELECT [r272].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r272]
+          WHERE [r272].[IsHistory] = CAST(0 AS bit) AND [r272].[IsDeleted] = CAST(0 AS bit) AND [r272].[ResourceSurrogateId] IN (
+              SELECT [r273].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r273]
+              WHERE [r273].[IsHistory] = CAST(0 AS bit) AND [r273].[IsDeleted] = CAST(0 AS bit) AND [r273].[ResourceSurrogateId] IN (
+                  SELECT [t48].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t48]
+                  WHERE [t48].[ResourceTypeId] = @__resourceTypeId_254 AND [t48].[Code] = @__code_255
+              )
+              INTERSECT
+              SELECT [r274].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r274]
+              WHERE [r274].[IsHistory] = CAST(0 AS bit) AND [r274].[IsDeleted] = CAST(0 AS bit) AND [r274].[ResourceSurrogateId] IN (
+                  SELECT [r275].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r275]
+                  WHERE [r275].[ResourceTypeId] = @__resourceTypeId_256 AND [r275].[ReferenceResourceId] = @__referenceResourceId_257
+              )
+          )
+          UNION
+          SELECT [r276].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r276]
+          WHERE [r276].[IsHistory] = CAST(0 AS bit) AND [r276].[IsDeleted] = CAST(0 AS bit) AND [r276].[ResourceSurrogateId] IN (
+              SELECT [r277].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r277]
+              WHERE [r277].[IsHistory] = CAST(0 AS bit) AND [r277].[IsDeleted] = CAST(0 AS bit) AND [r277].[ResourceSurrogateId] IN (
+                  SELECT [t49].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t49]
+                  WHERE [t49].[ResourceTypeId] = @__resourceTypeId_258 AND [t49].[Code] = @__code_259
+              )
+              INTERSECT
+              SELECT [r278].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r278]
+              WHERE [r278].[IsHistory] = CAST(0 AS bit) AND [r278].[IsDeleted] = CAST(0 AS bit) AND [r278].[ResourceSurrogateId] IN (
+                  SELECT [r279].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r279]
+                  WHERE [r279].[IsHistory] = CAST(0 AS bit) AND [r279].[IsDeleted] = CAST(0 AS bit) AND [r279].[ResourceSurrogateId] IN (
+                      SELECT [r280].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r280]
+                      WHERE [r280].[ResourceTypeId] = @__resourceTypeId_260 AND [r280].[ReferenceResourceId] = @__referenceResourceId_261
+                  )
+                  UNION
+                  SELECT [r281].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r281]
+                  WHERE [r281].[IsHistory] = CAST(0 AS bit) AND [r281].[IsDeleted] = CAST(0 AS bit) AND [r281].[ResourceSurrogateId] IN (
+                      SELECT [r282].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r282]
+                      WHERE [r282].[ResourceTypeId] = @__resourceTypeId_262 AND [r282].[ReferenceResourceId] = @__referenceResourceId_263
+                  )
+              )
+          )
+          UNION
+          SELECT [r283].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r283]
+          WHERE [r283].[IsHistory] = CAST(0 AS bit) AND [r283].[IsDeleted] = CAST(0 AS bit) AND [r283].[ResourceSurrogateId] IN (
+              SELECT [r284].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r284]
+              WHERE [r284].[IsHistory] = CAST(0 AS bit) AND [r284].[IsDeleted] = CAST(0 AS bit) AND [r284].[ResourceSurrogateId] IN (
+                  SELECT [t50].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t50]
+                  WHERE [t50].[ResourceTypeId] = @__resourceTypeId_264 AND [t50].[Code] = @__code_265
+              )
+              INTERSECT
+              SELECT [r285].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r285]
+              WHERE [r285].[IsHistory] = CAST(0 AS bit) AND [r285].[IsDeleted] = CAST(0 AS bit) AND [r285].[ResourceSurrogateId] IN (
+                  SELECT [r286].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r286]
+                  WHERE [r286].[ResourceTypeId] = @__resourceTypeId_266 AND [r286].[ReferenceResourceId] = @__referenceResourceId_267
+              )
+          )
+          UNION
+          SELECT [r287].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r287]
+          WHERE [r287].[IsHistory] = CAST(0 AS bit) AND [r287].[IsDeleted] = CAST(0 AS bit) AND [r287].[ResourceSurrogateId] IN (
+              SELECT [r288].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r288]
+              WHERE [r288].[IsHistory] = CAST(0 AS bit) AND [r288].[IsDeleted] = CAST(0 AS bit) AND [r288].[ResourceSurrogateId] IN (
+                  SELECT [t51].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t51]
+                  WHERE [t51].[ResourceTypeId] = @__resourceTypeId_268 AND [t51].[Code] = @__code_269
+              )
+              INTERSECT
+              SELECT [r289].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r289]
+              WHERE [r289].[IsHistory] = CAST(0 AS bit) AND [r289].[IsDeleted] = CAST(0 AS bit) AND [r289].[ResourceSurrogateId] IN (
+                  SELECT [r290].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r290]
+                  WHERE [r290].[ResourceTypeId] = @__resourceTypeId_270 AND [r290].[ReferenceResourceId] = @__referenceResourceId_271
+              )
+          )
+          UNION
+          SELECT [r291].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r291]
+          WHERE [r291].[IsHistory] = CAST(0 AS bit) AND [r291].[IsDeleted] = CAST(0 AS bit) AND [r291].[ResourceSurrogateId] IN (
+              SELECT [r292].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r292]
+              WHERE [r292].[IsHistory] = CAST(0 AS bit) AND [r292].[IsDeleted] = CAST(0 AS bit) AND [r292].[ResourceSurrogateId] IN (
+                  SELECT [t52].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t52]
+                  WHERE [t52].[ResourceTypeId] = @__resourceTypeId_272 AND [t52].[Code] = @__code_273
+              )
+              INTERSECT
+              SELECT [r293].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r293]
+              WHERE [r293].[IsHistory] = CAST(0 AS bit) AND [r293].[IsDeleted] = CAST(0 AS bit) AND [r293].[ResourceSurrogateId] IN (
+                  SELECT [r294].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r294]
+                  WHERE [r294].[IsHistory] = CAST(0 AS bit) AND [r294].[IsDeleted] = CAST(0 AS bit) AND [r294].[ResourceSurrogateId] IN (
+                      SELECT [r295].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r295]
+                      WHERE [r295].[ResourceTypeId] = @__resourceTypeId_274 AND [r295].[ReferenceResourceId] = @__referenceResourceId_275
+                  )
+                  UNION
+                  SELECT [r296].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r296]
+                  WHERE [r296].[IsHistory] = CAST(0 AS bit) AND [r296].[IsDeleted] = CAST(0 AS bit) AND [r296].[ResourceSurrogateId] IN (
+                      SELECT [r297].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r297]
+                      WHERE [r297].[ResourceTypeId] = @__resourceTypeId_276 AND [r297].[ReferenceResourceId] = @__referenceResourceId_277
+                  )
+              )
+          )
+          UNION
+          SELECT [r298].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r298]
+          WHERE [r298].[IsHistory] = CAST(0 AS bit) AND [r298].[IsDeleted] = CAST(0 AS bit) AND [r298].[ResourceSurrogateId] IN (
+              SELECT [r299].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r299]
+              WHERE [r299].[IsHistory] = CAST(0 AS bit) AND [r299].[IsDeleted] = CAST(0 AS bit) AND [r299].[ResourceSurrogateId] IN (
+                  SELECT [t53].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t53]
+                  WHERE [t53].[ResourceTypeId] = @__resourceTypeId_278 AND [t53].[Code] = @__code_279
+              )
+              INTERSECT
+              SELECT [r300].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r300]
+              WHERE [r300].[IsHistory] = CAST(0 AS bit) AND [r300].[IsDeleted] = CAST(0 AS bit) AND [r300].[ResourceSurrogateId] IN (
+                  SELECT [r301].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r301]
+                  WHERE [r301].[ResourceTypeId] = @__resourceTypeId_280 AND [r301].[ReferenceResourceId] = @__referenceResourceId_281
+              )
+          )
+          UNION
+          SELECT [r302].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r302]
+          WHERE [r302].[IsHistory] = CAST(0 AS bit) AND [r302].[IsDeleted] = CAST(0 AS bit) AND [r302].[ResourceSurrogateId] IN (
+              SELECT [r303].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r303]
+              WHERE [r303].[IsHistory] = CAST(0 AS bit) AND [r303].[IsDeleted] = CAST(0 AS bit) AND [r303].[ResourceSurrogateId] IN (
+                  SELECT [t54].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t54]
+                  WHERE [t54].[ResourceTypeId] = @__resourceTypeId_282 AND [t54].[Code] = @__code_283
+              )
+              INTERSECT
+              SELECT [r304].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r304]
+              WHERE [r304].[IsHistory] = CAST(0 AS bit) AND [r304].[IsDeleted] = CAST(0 AS bit) AND [r304].[ResourceSurrogateId] IN (
+                  SELECT [r305].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r305]
+                  WHERE [r305].[IsHistory] = CAST(0 AS bit) AND [r305].[IsDeleted] = CAST(0 AS bit) AND [r305].[ResourceSurrogateId] IN (
+                      SELECT [r306].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r306]
+                      WHERE [r306].[ResourceTypeId] = @__resourceTypeId_284 AND [r306].[ReferenceResourceId] = @__referenceResourceId_285
+                  )
+                  UNION
+                  SELECT [r307].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r307]
+                  WHERE [r307].[IsHistory] = CAST(0 AS bit) AND [r307].[IsDeleted] = CAST(0 AS bit) AND [r307].[ResourceSurrogateId] IN (
+                      SELECT [r308].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r308]
+                      WHERE [r308].[ResourceTypeId] = @__resourceTypeId_286 AND [r308].[ReferenceResourceId] = @__referenceResourceId_287
+                  )
+              )
+          )
+          UNION
+          SELECT [r309].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r309]
+          WHERE [r309].[IsHistory] = CAST(0 AS bit) AND [r309].[IsDeleted] = CAST(0 AS bit) AND [r309].[ResourceSurrogateId] IN (
+              SELECT [r310].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r310]
+              WHERE [r310].[IsHistory] = CAST(0 AS bit) AND [r310].[IsDeleted] = CAST(0 AS bit) AND [r310].[ResourceSurrogateId] IN (
+                  SELECT [t55].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t55]
+                  WHERE [t55].[ResourceTypeId] = @__resourceTypeId_288 AND [t55].[Code] = @__code_289
+              )
+              INTERSECT
+              SELECT [r311].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r311]
+              WHERE [r311].[IsHistory] = CAST(0 AS bit) AND [r311].[IsDeleted] = CAST(0 AS bit) AND [r311].[ResourceSurrogateId] IN (
+                  SELECT [r312].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r312]
+                  WHERE [r312].[ResourceTypeId] = @__resourceTypeId_290 AND [r312].[ReferenceResourceId] = @__referenceResourceId_291
+              )
+          )
+          UNION
+          SELECT [r313].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r313]
+          WHERE [r313].[IsHistory] = CAST(0 AS bit) AND [r313].[IsDeleted] = CAST(0 AS bit) AND [r313].[ResourceSurrogateId] IN (
+              SELECT [r314].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r314]
+              WHERE [r314].[IsHistory] = CAST(0 AS bit) AND [r314].[IsDeleted] = CAST(0 AS bit) AND [r314].[ResourceSurrogateId] IN (
+                  SELECT [t56].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t56]
+                  WHERE [t56].[ResourceTypeId] = @__resourceTypeId_292 AND [t56].[Code] = @__code_293
+              )
+              INTERSECT
+              SELECT [r315].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r315]
+              WHERE [r315].[IsHistory] = CAST(0 AS bit) AND [r315].[IsDeleted] = CAST(0 AS bit) AND [r315].[ResourceSurrogateId] IN (
+                  SELECT [r316].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r316]
+                  WHERE [r316].[IsHistory] = CAST(0 AS bit) AND [r316].[IsDeleted] = CAST(0 AS bit) AND [r316].[ResourceSurrogateId] IN (
+                      SELECT [r317].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r317]
+                      WHERE [r317].[ResourceTypeId] = @__resourceTypeId_294 AND [r317].[ReferenceResourceId] = @__referenceResourceId_295
+                  )
+                  UNION
+                  SELECT [r318].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r318]
+                  WHERE [r318].[IsHistory] = CAST(0 AS bit) AND [r318].[IsDeleted] = CAST(0 AS bit) AND [r318].[ResourceSurrogateId] IN (
+                      SELECT [r319].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r319]
+                      WHERE [r319].[ResourceTypeId] = @__resourceTypeId_296 AND [r319].[ReferenceResourceId] = @__referenceResourceId_297
+                  )
+              )
+          )
+          UNION
+          SELECT [r320].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r320]
+          WHERE [r320].[IsHistory] = CAST(0 AS bit) AND [r320].[IsDeleted] = CAST(0 AS bit) AND [r320].[ResourceSurrogateId] IN (
+              SELECT [r321].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r321]
+              WHERE [r321].[IsHistory] = CAST(0 AS bit) AND [r321].[IsDeleted] = CAST(0 AS bit) AND [r321].[ResourceSurrogateId] IN (
+                  SELECT [t57].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t57]
+                  WHERE [t57].[ResourceTypeId] = @__resourceTypeId_298 AND [t57].[Code] = @__code_299
+              )
+              INTERSECT
+              SELECT [r322].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r322]
+              WHERE [r322].[IsHistory] = CAST(0 AS bit) AND [r322].[IsDeleted] = CAST(0 AS bit) AND [r322].[ResourceSurrogateId] IN (
+                  SELECT [r323].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r323]
+                  WHERE [r323].[ResourceTypeId] = @__resourceTypeId_300 AND [r323].[ReferenceResourceId] = @__referenceResourceId_301
+              )
+          )
+          UNION
+          SELECT [r324].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r324]
+          WHERE [r324].[IsHistory] = CAST(0 AS bit) AND [r324].[IsDeleted] = CAST(0 AS bit) AND [r324].[ResourceSurrogateId] IN (
+              SELECT [r325].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r325]
+              WHERE [r325].[IsHistory] = CAST(0 AS bit) AND [r325].[IsDeleted] = CAST(0 AS bit) AND [r325].[ResourceSurrogateId] IN (
+                  SELECT [t58].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t58]
+                  WHERE [t58].[ResourceTypeId] = @__resourceTypeId_302 AND [t58].[Code] = @__code_303
+              )
+              INTERSECT
+              SELECT [r326].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r326]
+              WHERE [r326].[IsHistory] = CAST(0 AS bit) AND [r326].[IsDeleted] = CAST(0 AS bit) AND [r326].[ResourceSurrogateId] IN (
+                  SELECT [r327].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r327]
+                  WHERE [r327].[ResourceTypeId] = @__resourceTypeId_304 AND [r327].[ReferenceResourceId] = @__referenceResourceId_305
+              )
+          )
+          UNION
+          SELECT [r328].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r328]
+          WHERE [r328].[IsHistory] = CAST(0 AS bit) AND [r328].[IsDeleted] = CAST(0 AS bit) AND [r328].[ResourceSurrogateId] IN (
+              SELECT [r329].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r329]
+              WHERE [r329].[IsHistory] = CAST(0 AS bit) AND [r329].[IsDeleted] = CAST(0 AS bit) AND [r329].[ResourceSurrogateId] IN (
+                  SELECT [t59].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t59]
+                  WHERE [t59].[ResourceTypeId] = @__resourceTypeId_306 AND [t59].[Code] = @__code_307
+              )
+              INTERSECT
+              SELECT [r330].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r330]
+              WHERE [r330].[IsHistory] = CAST(0 AS bit) AND [r330].[IsDeleted] = CAST(0 AS bit) AND [r330].[ResourceSurrogateId] IN (
+                  SELECT [r331].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r331]
+                  WHERE [r331].[ResourceTypeId] = @__resourceTypeId_308 AND [r331].[ReferenceResourceId] = @__referenceResourceId_309
+              )
+          )
+          UNION
+          SELECT [r332].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r332]
+          WHERE [r332].[IsHistory] = CAST(0 AS bit) AND [r332].[IsDeleted] = CAST(0 AS bit) AND [r332].[ResourceSurrogateId] IN (
+              SELECT [r333].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r333]
+              WHERE [r333].[IsHistory] = CAST(0 AS bit) AND [r333].[IsDeleted] = CAST(0 AS bit) AND [r333].[ResourceSurrogateId] IN (
+                  SELECT [t60].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t60]
+                  WHERE [t60].[ResourceTypeId] = @__resourceTypeId_310 AND [t60].[Code] = @__code_311
+              )
+              INTERSECT
+              SELECT [r334].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r334]
+              WHERE [r334].[IsHistory] = CAST(0 AS bit) AND [r334].[IsDeleted] = CAST(0 AS bit) AND [r334].[ResourceSurrogateId] IN (
+                  SELECT [r335].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r335]
+                  WHERE [r335].[IsHistory] = CAST(0 AS bit) AND [r335].[IsDeleted] = CAST(0 AS bit) AND [r335].[ResourceSurrogateId] IN (
+                      SELECT [r336].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r336]
+                      WHERE [r336].[ResourceTypeId] = @__resourceTypeId_312 AND [r336].[ReferenceResourceId] = @__referenceResourceId_313
+                  )
+                  UNION
+                  SELECT [r337].[ResourceSurrogateId]
+                  FROM [dbo].[Resource] AS [r337]
+                  WHERE [r337].[IsHistory] = CAST(0 AS bit) AND [r337].[IsDeleted] = CAST(0 AS bit) AND [r337].[ResourceSurrogateId] IN (
+                      SELECT [r338].[ResourceSurrogateId]
+                      FROM [dbo].[ReferenceSearchParam] AS [r338]
+                      WHERE [r338].[ResourceTypeId] = @__resourceTypeId_314 AND [r338].[ReferenceResourceId] = @__referenceResourceId_315
+                  )
+              )
+          )
+          UNION
+          SELECT [r339].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r339]
+          WHERE [r339].[IsHistory] = CAST(0 AS bit) AND [r339].[IsDeleted] = CAST(0 AS bit) AND [r339].[ResourceSurrogateId] IN (
+              SELECT [r340].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r340]
+              WHERE [r340].[IsHistory] = CAST(0 AS bit) AND [r340].[IsDeleted] = CAST(0 AS bit) AND [r340].[ResourceSurrogateId] IN (
+                  SELECT [t61].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t61]
+                  WHERE [t61].[ResourceTypeId] = @__resourceTypeId_316 AND [t61].[Code] = @__code_317
+              )
+              INTERSECT
+              SELECT [r341].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r341]
+              WHERE [r341].[IsHistory] = CAST(0 AS bit) AND [r341].[IsDeleted] = CAST(0 AS bit) AND [r341].[ResourceSurrogateId] IN (
+                  SELECT [r342].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r342]
+                  WHERE [r342].[ResourceTypeId] = @__resourceTypeId_318 AND [r342].[ReferenceResourceId] = @__referenceResourceId_319
+              )
+          )
+          UNION
+          SELECT [r343].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r343]
+          WHERE [r343].[IsHistory] = CAST(0 AS bit) AND [r343].[IsDeleted] = CAST(0 AS bit) AND [r343].[ResourceSurrogateId] IN (
+              SELECT [r344].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r344]
+              WHERE [r344].[IsHistory] = CAST(0 AS bit) AND [r344].[IsDeleted] = CAST(0 AS bit) AND [r344].[ResourceSurrogateId] IN (
+                  SELECT [t62].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t62]
+                  WHERE [t62].[ResourceTypeId] = @__resourceTypeId_320 AND [t62].[Code] = @__code_321
+              )
+              INTERSECT
+              SELECT [r345].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r345]
+              WHERE [r345].[IsHistory] = CAST(0 AS bit) AND [r345].[IsDeleted] = CAST(0 AS bit) AND [r345].[ResourceSurrogateId] IN (
+                  SELECT [r346].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r346]
+                  WHERE [r346].[ResourceTypeId] = @__resourceTypeId_322 AND [r346].[ReferenceResourceId] = @__referenceResourceId_323
+              )
+          )
+          UNION
+          SELECT [r347].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r347]
+          WHERE [r347].[IsHistory] = CAST(0 AS bit) AND [r347].[IsDeleted] = CAST(0 AS bit) AND [r347].[ResourceSurrogateId] IN (
+              SELECT [r348].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r348]
+              WHERE [r348].[IsHistory] = CAST(0 AS bit) AND [r348].[IsDeleted] = CAST(0 AS bit) AND [r348].[ResourceSurrogateId] IN (
+                  SELECT [t63].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t63]
+                  WHERE [t63].[ResourceTypeId] = @__resourceTypeId_324 AND [t63].[Code] = @__code_325
+              )
+              INTERSECT
+              SELECT [r349].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r349]
+              WHERE [r349].[IsHistory] = CAST(0 AS bit) AND [r349].[IsDeleted] = CAST(0 AS bit) AND [r349].[ResourceSurrogateId] IN (
+                  SELECT [r350].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r350]
+                  WHERE [r350].[ResourceTypeId] = @__resourceTypeId_326 AND [r350].[ReferenceResourceId] = @__referenceResourceId_327
+              )
+          )
+          UNION
+          SELECT [r351].[ResourceSurrogateId]
+          FROM [dbo].[Resource] AS [r351]
+          WHERE [r351].[IsHistory] = CAST(0 AS bit) AND [r351].[IsDeleted] = CAST(0 AS bit) AND [r351].[ResourceSurrogateId] IN (
+              SELECT [r352].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r352]
+              WHERE [r352].[IsHistory] = CAST(0 AS bit) AND [r352].[IsDeleted] = CAST(0 AS bit) AND [r352].[ResourceSurrogateId] IN (
+                  SELECT [t64].[ResourceSurrogateId]
+                  FROM [dbo].[TokenSearchParam] AS [t64]
+                  WHERE [t64].[ResourceTypeId] = @__resourceTypeId_328 AND [t64].[Code] = @__code_329
+              )
+              INTERSECT
+              SELECT [r353].[ResourceSurrogateId]
+              FROM [dbo].[Resource] AS [r353]
+              WHERE [r353].[IsHistory] = CAST(0 AS bit) AND [r353].[IsDeleted] = CAST(0 AS bit) AND [r353].[ResourceSurrogateId] IN (
+                  SELECT [r354].[ResourceSurrogateId]
+                  FROM [dbo].[ReferenceSearchParam] AS [r354]
+                  WHERE [r354].[ResourceTypeId] = @__resourceTypeId_330 AND [r354].[ReferenceResourceId] = @__referenceResourceId_331
+              )
+          )
+      )
+      ORDER BY [r].[ResourceSurrogateId] DESC
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /{compartmentType}/{compartmentId}/* => HandleSearchCompartmentWildcardAsync'
+fail: Ignixa.Api.Middleware.FhirExceptionMiddleware[0]
+      Unhandled exception occurred
+      Microsoft.Data.SqlClient.SqlException (0x80131904): The query processor ran out of internal resources and could not produce a query plan. This is a rare event and only expected for extremely complex queries or queries that reference a very large number of tables or partitions. Please simplify the query. If you believe you have received this message in error, contact Customer Support Services for more information.
+         at Microsoft.Data.SqlClient.SqlCommand.<>c.<ExecuteDbDataReaderAsync>b__211_0(Task`1 result)
+         at System.Threading.Tasks.ContinuationResultTaskFromResultTask`2.InnerInvoke()
+         at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+      --- End of stack trace from previous location ---
+         at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+         at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+      --- End of stack trace from previous location ---
+         at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.InitializeReaderAsync(AsyncEnumerator enumerator, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.<>c__DisplayClass30_0`2.<<ExecuteAsync>b__0>d.MoveNext()
+      --- End of stack trace from previous location ---
+         at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteImplementationAsync[TState,TResult](Func`4 operation, Func`4 verifySucceeded, TState state, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteImplementationAsync[TState,TResult](Func`4 operation, Func`4 verifySucceeded, TState state, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+         at Ignixa.DataLayer.SqlEntityFramework.Search.SqlEntityFrameworkSearchService.SearchStreamAsync[TSearchOptions](TSearchOptions searchOptions, CancellationToken ct)+MoveNext() in E:\data\src\fhir-server-contrib\src\Ignixa.DataLayer.SqlEntityFramework\Search\LegacySqlEfSearchService.cs:line 102
+         at Ignixa.DataLayer.SqlEntityFramework.Search.SqlEntityFrameworkSearchService.SearchStreamAsync[TSearchOptions](TSearchOptions searchOptions, CancellationToken ct)+MoveNext() in E:\data\src\fhir-server-contrib\src\Ignixa.DataLayer.SqlEntityFramework\Search\LegacySqlEfSearchService.cs:line 102
+         at Ignixa.DataLayer.SqlEntityFramework.Search.SqlEntityFrameworkSearchService.SearchStreamAsync[TSearchOptions](TSearchOptions searchOptions, CancellationToken ct)+System.Threading.Tasks.Sources.IValueTaskSource<System.Boolean>.GetResult()
+         at Ignixa.Application.Infrastructure.PassthroughExecutionStrategy.SearchStreamAsync[TSearchOptions](RequestPartition partition, TSearchOptions searchOptions, CancellationToken ct)+MoveNext() in E:\data\src\fhir-server-contrib\src\Ignixa.Application\Infrastructure\PassthroughExecutionStrategy.cs:line 67
+         at Ignixa.Application.Infrastructure.PassthroughExecutionStrategy.SearchStreamAsync[TSearchOptions](RequestPartition partition, TSearchOptions searchOptions, CancellationToken ct)+MoveNext() in E:\data\src\fhir-server-contrib\src\Ignixa.Application\Infrastructure\PassthroughExecutionStrategy.cs:line 67
+         at Ignixa.Application.Infrastructure.PassthroughExecutionStrategy.SearchStreamAsync[TSearchOptions](RequestPartition partition, TSearchOptions searchOptions, CancellationToken ct)+System.Threading.Tasks.Sources.IValueTaskSource<System.Boolean>.GetResult()
+         at Ignixa.Application.Features.Bundle.Serialization.StreamingBundleSerializer.SerializeAsync(Stream outputStream, String bundleType, Nullable`1 total, IAsyncEnumerable`1 entries, String selfLink, String nextLink, Boolean pretty, CancellationToken cancellationToken) in E:\data\src\fhir-server-contrib\src\Ignixa.Application\Features\Bundle\Serialization\StreamingBundleSerializer.cs:line 58
+         at Ignixa.Application.Features.Bundle.Serialization.StreamingBundleSerializer.SerializeAsync(Stream outputStream, String bundleType, Nullable`1 total, IAsyncEnumerable`1 entries, String selfLink, String nextLink, Boolean pretty, CancellationToken cancellationToken) in E:\data\src\fhir-server-contrib\src\Ignixa.Application\Features\Bundle\Serialization\StreamingBundleSerializer.cs:line 58
+         at Ignixa.Application.Features.Bundle.Serialization.StreamingBundleSerializer.SerializeAsync(Stream outputStream, String bundleType, Nullable`1 total, IAsyncEnumerable`1 entries, String selfLink, String nextLink, Boolean pretty, CancellationToken cancellationToken) in E:\data\src\fhir-server-contrib\src\Ignixa.Application\Features\Bundle\Serialization\StreamingBundleSerializer.cs:line 80
+         at Ignixa.Api.Features.Compartment.CompartmentEndpoints.ExecuteSearchCompartmentAsync(HttpContext context, Int32 tenantId, String compartmentType, String compartmentId, String resourceType, IMediator mediator, IQueryParameterParser queryParser, ISearchOptionsBuilderFactory searchOptionsBuilderFactory, ILogger`1 logger, CancellationToken cancellationToken) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Features\Compartment\CompartmentEndpoints.cs:line 240
+         at Ignixa.Api.Features.Compartment.CompartmentEndpoints.HandleSearchCompartmentWildcardAsync(HttpContext context, String compartmentType, String compartmentId, IMediator mediator, IQueryParameterParser queryParser, ISearchOptionsBuilderFactory searchOptionsBuilderFactory, ILogger`1 logger, CancellationToken cancellationToken) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Features\Compartment\CompartmentEndpoints.cs:line 291
+         at Microsoft.AspNetCore.Http.RequestDelegateFactory.ExecuteTaskResult[T](Task`1 task, HttpContext httpContext)
+         at Microsoft.AspNetCore.Routing.EndpointMiddleware.<Invoke>g__AwaitRequestTask|7_0(Endpoint endpoint, Task requestTask, ILogger logger)
+         at Ignixa.Api.Middleware.TenantResolutionMiddleware.InvokeAsync(HttpContext context) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Middleware\TenantResolutionMiddleware.cs:line 183
+         at Ignixa.Api.Middleware.FhirExceptionMiddleware.InvokeAsync(HttpContext context) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Middleware\FhirExceptionMiddleware.cs:line 31
+      ClientConnectionId:cf557352-3831-4dcc-88f6-7d7cea82cfe9
+      Error Number:8623,State:1,Class:16
+fail: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[1]
+      An unhandled exception has occurred while executing the request.
+      System.InvalidOperationException: Headers are read-only, response has already started.
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpHeaders.ThrowHeadersReadOnlyException()
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpResponseHeaders.Microsoft.AspNetCore.Http.IHeaderDictionary.set_ContentType(StringValues value)
+         at Microsoft.AspNetCore.Http.DefaultHttpResponse.set_ContentType(String value)
+         at Ignixa.Api.Middleware.FhirExceptionMiddleware.HandleExceptionAsync(HttpContext context, Exception exception) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Middleware\FhirExceptionMiddleware.cs:line 88
+         at Ignixa.Api.Middleware.FhirExceptionMiddleware.InvokeAsync(HttpContext context) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Middleware\FhirExceptionMiddleware.cs:line 41
+         at Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddlewareImpl.Invoke(HttpContext context)
+warn: Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware[2]
+      The response has already started, the error page middleware will not be executed.
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HNGIC94E3KET", Request id "0HNGIC94E3KET:00000001": An unhandled exception was thrown by the application.
+      System.InvalidOperationException: Headers are read-only, response has already started.
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpHeaders.ThrowHeadersReadOnlyException()
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpResponseHeaders.Microsoft.AspNetCore.Http.IHeaderDictionary.set_ContentType(StringValues value)
+         at Microsoft.AspNetCore.Http.DefaultHttpResponse.set_ContentType(String value)
+         at Ignixa.Api.Middleware.FhirExceptionMiddleware.HandleExceptionAsync(HttpContext context, Exception exception) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Middleware\FhirExceptionMiddleware.cs:line 88
+         at Ignixa.Api.Middleware.FhirExceptionMiddleware.InvokeAsync(HttpContext context) in E:\data\src\fhir-server-contrib\src\Ignixa.Api\Middleware\FhirExceptionMiddleware.cs:line 41
+         at Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddlewareImpl.Invoke(HttpContext context)
+         at Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddlewareImpl.Invoke(HttpContext context)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://localhost:5026/Patient/example/* - 200 - application/fhir+json;+charset=utf-8 7801.8557ms

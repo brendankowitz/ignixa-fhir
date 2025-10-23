@@ -7,6 +7,7 @@ using System.Threading.Channels;
 using EnsureThat;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
@@ -21,11 +22,12 @@ namespace Ignixa.Application.Features.Bundle;
 /// 3. Handlers' awaits complete when batch processor finishes writing
 /// 4. All batches use the same transaction ID for atomicity
 ///
-/// Multi-Tenancy (ADR-2523 Phase 20):
-/// - Transaction IDs allocated from Partition 0 (system partition) for global uniqueness
-/// - Uses IPartitionStrategy to group resources by partition during batch writes
-/// - Supports writing to multiple partitions within same transaction
-/// - Commits transaction across all touched partitions
+/// Multi-Tenancy (ADR-2523 Phase 20 - Isolated Mode):
+/// - Transaction IDs allocated from TENANT'S repository (not Partition 0)
+/// - Each tenant manages its own transactions in its own datastore
+/// - Transaction IDs only need to be unique per-tenant (not globally)
+/// - Bundles restricted to single tenant (cross-tenant bundles not supported in Isolated mode)
+/// - Uses IPartitionStrategy to validate all resources belong to same partition
 /// </summary>
 public class DeferredWriteCoordinator
 {
@@ -90,19 +92,20 @@ public class DeferredWriteCoordinator
         ILogger<DeferredWriteCoordinator> logger,
         CancellationToken cancellationToken = default)
     {
-        // CRITICAL: Get transaction ID from Partition 0 (system partition)
-        // This ensures globally unique transaction IDs across the entire system
-        var systemRepository = await repositoryFactory.GetRepositoryAsync(
-            SystemConstants.SystemPartitionId,
-            cancellationToken);
+        // Extract tenant ID from HTTP context (set by TenantResolutionMiddleware)
+        // In Isolated mode, tenant ID equals partition ID
+        var tenantId = httpContextAccessor.GetTenantId();
 
-        // Allocate transaction ID from system partition
-        var transactionId = await systemRepository.GetNextTransactionIdAsync(cancellationToken);
+        // Allocate transaction from the TENANT'S repository (not Partition 0)
+        // This ensures the transaction exists in the correct datastore
+        // (e.g., SQL's Transactions table for SQL tenants, FileSystem for FileSystem tenants)
+        var tenantRepository = await repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
+        var transactionId = await tenantRepository.GetNextTransactionIdAsync(cancellationToken);
 
         logger.LogDebug(
-            "Allocated system transaction ID {TransactionId} from Partition {PartitionId}",
+            "Allocated transaction ID {TransactionId} from tenant repository (Partition {PartitionId})",
             transactionId,
-            SystemConstants.SystemPartitionId);
+            tenantId);
 
         return new DeferredWriteCoordinator(
             channelCapacity,
@@ -140,8 +143,8 @@ public class DeferredWriteCoordinator
             EntryIndex = entryIndex
         };
 
-        _logger.LogDebug(
-            "Queuing write for entry {EntryIndex}: {ResourceType}/{ResourceId}",
+        _logger.LogWarning(
+            "QUEUE: Entry {EntryIndex} - {ResourceType}/{ResourceId}",
             entryIndex,
             wrapper.ResourceType,
             wrapper.ResourceId);
@@ -196,14 +199,10 @@ public class DeferredWriteCoordinator
         try
         {
             // Extract tenant context from HttpContext (set by TenantResolutionMiddleware)
-            var httpContext = _httpContextAccessor.HttpContext
-                ?? throw new InvalidOperationException("HttpContext is null - bundle processing requires tenant context");
+            var tenantId = _httpContextAccessor.GetTenantId();
 
-            if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-            {
-                throw new InvalidOperationException("TenantId not found in HttpContext.Items");
-            }
-
+            // Get tenant configuration
+            var httpContext = _httpContextAccessor.HttpContext!; // Non-null assertion safe because GetTenantId() already validated
             var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
 
             var partitionContext = new PartitionResolutionContext
@@ -274,13 +273,15 @@ public class DeferredWriteCoordinator
                 // Get partition-specific repository
                 var repository = await _repositoryFactory.GetRepositoryAsync(partitionId, cancellationToken);
 
-                // Convert to batch write operations
+                // Convert to batch write operations, including entryIndex for surrogate ID calculation
                 var batchOperations = operations
                     .Select(tuple => (
                         tuple.Operation.Wrapper.ResourceType,
                         tuple.Operation.Wrapper.ResourceId,
                         tuple.Operation.Wrapper.Resource,
-                        tuple.Operation.Wrapper.SearchIndices ?? (IReadOnlyList<object>)Array.Empty<object>()
+                        tuple.Operation.Wrapper.SearchIndices ?? (IReadOnlyList<object>)Array.Empty<object>(),
+                        tuple.Operation.Wrapper.Request.Method,
+                        tuple.Operation.EntryIndex  // Pass entry index for surrogate ID calculation
                     ))
                     .ToList();
 
@@ -288,9 +289,10 @@ public class DeferredWriteCoordinator
                     "Writing batch of {Count} resources to Partition {PartitionId}: {Resources}",
                     batchOperations.Count,
                     partitionId,
-                    string.Join(", ", batchOperations.Select(op => $"{op.ResourceType}/{op.ResourceId}")));
+                    string.Join(", ", batchOperations.Select(op => $"{op.ResourceType}/{op.ResourceId} (entry {op.EntryIndex})")));
 
                 // Execute batch write using the coordinator's transaction ID
+                // Each operation's entryIndex is used directly for surrogate ID calculation
                 var results = await repository.BatchWriteAsync(_transactionId, batchOperations, cancellationToken);
 
                 // Track partition

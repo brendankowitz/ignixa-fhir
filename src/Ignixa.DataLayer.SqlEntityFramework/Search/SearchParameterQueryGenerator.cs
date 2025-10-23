@@ -62,13 +62,67 @@ public class SearchParameterQueryGenerator
         Expression expr,
         CancellationToken ct)
     {
-        return expr switch
+        if (expr is MultiaryExpression multiaryExpr)
         {
-            MultiaryExpression multiaryExpr => await ProcessMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct),
-            StringExpression stringExpr => await ProcessStringExpressionAsync(resourceTypeId, stringExpr, ct),
-            BinaryExpression binaryExpr => await ProcessBinaryExpressionAsync(resourceTypeId, binaryExpr, ct),
-            _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for query generation")
-        };
+            return await ProcessMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
+        }
+
+        if (expr is StringExpression stringExpr)
+        {
+            return await ProcessStringExpressionAsync(resourceTypeId, stringExpr, ct);
+        }
+
+        if (expr is BinaryExpression binaryExpr)
+        {
+            return await ProcessBinaryExpressionAsync(resourceTypeId, binaryExpr, ct);
+        }
+
+        // Handle InExpression<T> using reflection to get the generic type parameter
+        var exprType = expr.GetType();
+        if (exprType.IsGenericType && exprType.GetGenericTypeDefinition() == typeof(InExpression<>))
+        {
+            var genericArg = exprType.GetGenericArguments()[0];
+            var fieldNameProperty = exprType.GetProperty(nameof(IFieldExpression.FieldName));
+            var fieldName = (FieldName)fieldNameProperty!.GetValue(expr)!;
+
+            if (fieldName == FieldName.TokenCode && genericArg == typeof(string))
+            {
+                return await ProcessInTokenCodeExpressionAsync(resourceTypeId, expr as InExpression<string> ?? throw new InvalidCastException(), ct);
+            }
+        }
+
+        throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for query generation");
+    }
+
+    private async Task<IQueryable<long>> ProcessInTokenCodeExpressionAsync(
+        short resourceTypeId,
+        InExpression<string> expression,
+        CancellationToken ct)
+    {
+        // For _type parameter: convert resource type names to IDs and query Resource table
+        var resourceTypeIds = new List<short>();
+
+        foreach (var resourceTypeName in expression.Values)
+        {
+            // Try to get the resource type ID for this name
+            var typeEntity = await _context.ResourceTypes
+                .FirstOrDefaultAsync(rt => rt.Name == resourceTypeName, cancellationToken: ct);
+
+            if (typeEntity != null)
+            {
+                resourceTypeIds.Add(typeEntity.ResourceTypeId);
+            }
+        }
+
+        if (resourceTypeIds.Count == 0)
+        {
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Return query: WHERE ResourceTypeId IN (...)
+        return _context.Resources
+            .Where(r => resourceTypeIds.Contains(r.ResourceTypeId) && !r.IsHistory && !r.IsDeleted)
+            .Select(r => r.ResourceSurrogateId);
     }
 
     private async Task<IQueryable<long>> ProcessMultiaryExpressionAsync(

@@ -123,6 +123,17 @@ public static class STU3SearchParameterDefinitions
                 description: null)
 ,
             new SearchParameterInfo(
+                name: "_type",
+                code: "_type",
+                searchParamType: SearchParamType.Token,
+                url: new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"),
+                components: null,
+                expression: null,
+                targetResourceTypes: null,
+                baseResourceTypes: new[] { "Resource" },
+                description: "Search for resources by resource type")
+,
+            new SearchParameterInfo(
                 name: "balance",
                 code: "balance",
                 searchParamType: SearchParamType.Quantity,

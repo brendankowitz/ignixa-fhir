@@ -219,6 +219,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
             ResourceType: resourceType,
             Id: newId,
             JsonNode: jsonNode,
+            HttpMethod: System.Net.Http.HttpMethod.Post,
             Coordinator: null); // No bundle context for conditional create
 
         var resourceKey = await _mediator.SendAsync(createCommand, cancellationToken);

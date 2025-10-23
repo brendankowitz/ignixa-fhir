@@ -88,4 +88,18 @@ public interface IExpressionVisitor<in TContext, out TOutput>
     /// <param name="expression">The expression to visit.</param>
     /// <param name="context">The input</param>
     TOutput VisitSortParameter(SortExpression expression, TContext context);
+
+    /// <summary>
+    /// Visits the <see cref="InExpression{T}"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input</param>
+    TOutput VisitIn<T>(InExpression<T> expression, TContext context);
+
+    /// <summary>
+    /// Visits the <see cref="UnionExpression"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input</param>
+    TOutput VisitUnion(UnionExpression expression, TContext context);
 }

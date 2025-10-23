@@ -410,7 +410,7 @@ public static class FhirEndpoints
         }
 
         // Send generic command with optional coordinator and validation override
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, coordinator, null, validationOverride);
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, null, validationOverride);
         ResourceKey result = await mediator.SendAsync(command, ct);
 
         // Add ETag and Preference-Applied headers
@@ -605,8 +605,73 @@ public static class FhirEndpoints
             logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
         }
 
-        // Delegate to PUT handler logic
-        return await HandlePutResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct);
+        // Validate resource type
+        if (!IsValidResourceType(resourceType, context))
+        {
+            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
+            return Results.BadRequest(new { error = $"Resource type '{resourceType}' not supported" });
+        }
+
+        // Read request body
+        ResourceJsonNode jsonNode;
+        await using (RecyclableMemoryStream memoryStream = memoryStreamManager.GetStream("request-body"))
+        {
+            await context.Request.Body.CopyToAsync(memoryStream, ct);
+            memoryStream.Position = 0;
+            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        }
+
+        // Validate resource type matches
+        if (!string.Equals(jsonNode.ResourceType, resourceType, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Resource type mismatch: expected '{ExpectedType}', got '{ActualType}'",
+                resourceType,
+                jsonNode.ResourceType);
+            return Results.BadRequest(new { error = $"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'" });
+        }
+
+        // Extract deferred write coordinator from HttpContext if in bundle context
+        var coordinator = context.Items.TryGetValue("DeferredWriteCoordinator", out var coordinatorObj)
+            ? coordinatorObj as DeferredWriteCoordinator
+            : null;
+
+        // Extract validation tier preference from Prefer header, or from HttpContext.Items if in bundle
+        var validationOverride = PreferHeaderParser.TryParseValidationLevel(context.Request.Headers, logger);
+        if (!validationOverride.HasValue &&
+            context.Items.TryGetValue("ValidationTierOverride", out var contextOverride) &&
+            contextOverride is ValidationTier bundleValidationTier)
+        {
+            validationOverride = bundleValidationTier;
+            logger.LogDebug("Using bundle validation tier override: {ValidationTier}", validationOverride.Value);
+        }
+
+        // Send generic command with HTTP POST method
+        var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride);
+        ResourceKey createResult = await mediator.SendAsync(createCommand, ct);
+
+        // Add ETag and Preference-Applied headers
+        context.Response.Headers.Append("ETag", $"W/\"{createResult.VersionId}\"");
+        if (validationOverride.HasValue)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
+        }
+
+        // POST always creates (returns 201 Created)
+        string createLocation = $"/tenant/{tenantId}/{resourceType}/{createResult.Id}";
+        logger.LogInformation(
+            "Created {ResourceType}/{Id} (version {VersionId}) in tenant {TenantId}",
+            resourceType,
+            createResult.Id,
+            createResult.VersionId,
+            tenantId);
+
+        return Results.Created(createLocation, new
+        {
+            resourceType,
+            id = createResult.Id,
+            meta = new { versionId = createResult.VersionId }
+        });
     }
 
     /// <summary>

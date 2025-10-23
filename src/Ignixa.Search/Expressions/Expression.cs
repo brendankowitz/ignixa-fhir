@@ -263,6 +263,54 @@ public abstract class Expression
     }
 
     /// <summary>
+    /// Creates a <see cref="InExpression{T}"/> that represents an IN expression with multiple values.
+    /// </summary>
+    /// <typeparam name="T">Type of the values.</typeparam>
+    /// <param name="fieldName">The field name.</param>
+    /// <param name="componentIndex">The component index.</param>
+    /// <param name="values">The enumerable of values.</param>
+    /// <returns>A <see cref="InExpression{T}"/> that represents an IN operation over <paramref name="values"/>.</returns>
+    public static InExpression<T> In<T>(FieldName fieldName, int? componentIndex, IEnumerable<T> values)
+    {
+        return new InExpression<T>(fieldName, componentIndex, values);
+    }
+
+    /// <summary>
+    /// Creates a <see cref="InExpression{T}"/> that represents an IN expression with multiple values.
+    /// </summary>
+    /// <typeparam name="T">Type of the values.</typeparam>
+    /// <param name="fieldName">The field name.</param>
+    /// <param name="componentIndex">The component index.</param>
+    /// <param name="values">The read-only list of values.</param>
+    /// <returns>A <see cref="InExpression{T}"/> that represents an IN operation over <paramref name="values"/>.</returns>
+    public static InExpression<T> In<T>(FieldName fieldName, int? componentIndex, IReadOnlyList<T> values)
+    {
+        return new InExpression<T>(fieldName, componentIndex, values);
+    }
+
+    /// <summary>
+    /// Creates a <see cref="UnionExpression"/> that represents a union of multiple expressions.
+    /// </summary>
+    /// <param name="unionOperator">The union operator (All or Distinct).</param>
+    /// <param name="expressions">The expressions to union.</param>
+    /// <returns>A <see cref="UnionExpression"/> that represents a union of <paramref name="expressions"/>.</returns>
+    public static UnionExpression Union(UnionOperator unionOperator, IReadOnlyList<Expression> expressions)
+    {
+        return new UnionExpression(unionOperator, expressions);
+    }
+
+    /// <summary>
+    /// Creates a <see cref="UnionExpression"/> that represents a union of multiple expressions.
+    /// </summary>
+    /// <param name="unionOperator">The union operator (All or Distinct).</param>
+    /// <param name="expressions">The expressions to union.</param>
+    /// <returns>A <see cref="UnionExpression"/> that represents a union of <paramref name="expressions"/>.</returns>
+    public static UnionExpression Union(UnionOperator unionOperator, params Expression[] expressions)
+    {
+        return new UnionExpression(unionOperator, expressions);
+    }
+
+    /// <summary>
     /// Creates a <see cref="CompartmentSearchExpression"/> that represents a compartment search operation.
     /// </summary>
     /// <param name="compartmentType">The compartment type.</param>
