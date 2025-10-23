@@ -9,6 +9,7 @@ namespace Ignixa.Search.Expressions;
 
 /// <summary>
 /// Represents an expression for search performed for a compartment.
+/// Supports filtering to specific resource types (or wildcard for all types in compartment).
 /// </summary>
 public class CompartmentSearchExpression : Expression
 {
@@ -17,12 +18,14 @@ public class CompartmentSearchExpression : Expression
     /// </summary>
     /// <param name="compartmentType">The compartment type.</param>
     /// <param name="compartmentId">The compartment id.</param>
-    public CompartmentSearchExpression(string compartmentType, string compartmentId)
+    /// <param name="filteredResourceTypes">Optional set of resource types to limit search to. If empty or null, searches all types in compartment.</param>
+    public CompartmentSearchExpression(string compartmentType, string compartmentId, ISet<string> filteredResourceTypes = null)
     {
         EnsureArg.IsNotNullOrWhiteSpace(compartmentId, nameof(compartmentId));
 
         CompartmentType = compartmentType;
         CompartmentId = compartmentId;
+        FilteredResourceTypes = filteredResourceTypes ?? new HashSet<string>();
     }
 
     /// <summary>
@@ -34,6 +37,13 @@ public class CompartmentSearchExpression : Expression
     /// The compartment id.
     /// </summary>
     public string CompartmentId { get; }
+
+    /// <summary>
+    /// Optional set of resource types to limit search to.
+    /// If empty, all resource types in the compartment are included.
+    /// Used for compartment wildcard searches (Patient/123/*) to expand to all types in single rewriter pass.
+    /// </summary>
+    public ISet<string> FilteredResourceTypes { get; }
 
     public override TOutput AcceptVisitor<TContext, TOutput>(IExpressionVisitor<TContext, TOutput> visitor, TContext context)
     {

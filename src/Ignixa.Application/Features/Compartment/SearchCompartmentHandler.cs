@@ -70,14 +70,17 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             throw new InvalidOperationException("TenantId not found in HttpContext.Items");
         }
 
-        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
+        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration
+            ?? throw new InvalidOperationException("TenantConfiguration not found in HttpContext.Items");
 
         // 1. Create CompartmentSearchExpression
+        // For wildcard searches (ResourceType = "*"), the rewriter will expand to all resource types
         var compartmentExpression = new CompartmentSearchExpression(
             request.CompartmentType,
             request.CompartmentId);
 
         // 2. Use CompartmentSearchRewriter to expand into search parameter expressions
+        // The rewriter handles both single resource type and wildcard searches
         var rewriter = new CompartmentSearchRewriter();
         var rewriterContext = (
             ResourceType: request.ResourceType,
@@ -109,9 +112,12 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
 
         var queryParams = new Dictionary<string, string>(); // TODO: Extract from SearchOptions if needed
 
+        // For wildcard searches, use a generic resource type for partition determination
+        var resourceTypeForPartition = request.ResourceType == "*" ? "Resource" : request.ResourceType;
+
         var partition = _partitionStrategy.DetermineReadPartition(
             partitionContext,
-            request.ResourceType,
+            resourceTypeForPartition,
             queryParams);
 
         _logger.LogDebug(
@@ -120,6 +126,7 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             partition.Mode);
 
         // 5. Execute using IQueryExecutionStrategy (same as regular search)
+        // The Union expression built by the rewriter ensures proper single-query execution
         var resourceStream = _executionStrategy.SearchStreamAsync(
             partition,
             request.SearchOptions,

@@ -43,6 +43,14 @@ public static class CompartmentEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Tenant-explicit wildcard route: GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/*
+        // IMPORTANT: Must use literal "/*" constraint to match asterisk character
+        endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardExplicitAsync)
+            .WithName("SearchCompartmentWildcardExplicit")
+            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
         return endpoints;
     }
 
@@ -56,6 +64,13 @@ public static class CompartmentEndpoints
         // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}
         endpoints.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentAsync)
             .WithName("SearchCompartment")
+            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // Tenant-agnostic wildcard route: GET /{compartmentType}/{compartmentId}/*
+        endpoints.MapGet("/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardAsync)
+            .WithName("SearchCompartmentWildcard")
             .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
@@ -154,6 +169,7 @@ public static class CompartmentEndpoints
     /// <summary>
     /// Shared implementation for compartment search execution.
     /// Parses query parameters, creates SearchCompartmentQuery, and streams results.
+    /// Handles both specific resource types (e.g., "Observation") and wildcard ("*").
     /// </summary>
     private static async Task<IResult> ExecuteSearchCompartmentAsync(
         HttpContext context,
@@ -233,5 +249,89 @@ public static class CompartmentEndpoints
 
         // Response already written to the body, return empty result
         return Results.Empty;
+    }
+
+    /// <summary>
+    /// GET /{compartmentType}/{compartmentId}/*
+    /// Tenant-agnostic compartment wildcard search (searches all resource types in compartment).
+    /// </summary>
+    private static async Task<IResult> HandleSearchCompartmentWildcardAsync(
+        HttpContext context,
+        string compartmentType,
+        string compartmentId,
+        [FromServices] IMediator mediator,
+        [FromServices] IQueryParameterParser queryParser,
+        [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "GET /{CompartmentType}/{CompartmentId}/* (tenant-agnostic wildcard)",
+            compartmentType,
+            compartmentId);
+
+        // Tenant resolution handled by TenantResolutionMiddleware
+        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "required",
+                        diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/*"
+                    }
+                }
+            });
+        }
+
+        return await ExecuteSearchCompartmentAsync(
+            context,
+            tenantId,
+            compartmentType,
+            compartmentId,
+            "*", // Wildcard marker
+            mediator,
+            queryParser,
+            searchOptionsBuilderFactory,
+            logger,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/*
+    /// Tenant-explicit compartment wildcard search (searches all resource types in compartment).
+    /// </summary>
+    private static async Task<IResult> HandleSearchCompartmentWildcardExplicitAsync(
+        HttpContext context,
+        int tenantId,
+        string compartmentType,
+        string compartmentId,
+        [FromServices] IMediator mediator,
+        [FromServices] IQueryParameterParser queryParser,
+        [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "GET /tenant/{TenantId}/{CompartmentType}/{CompartmentId}/* (wildcard)",
+            tenantId,
+            compartmentType,
+            compartmentId);
+
+        return await ExecuteSearchCompartmentAsync(
+            context,
+            tenantId,
+            compartmentType,
+            compartmentId,
+            "*", // Wildcard marker
+            mediator,
+            queryParser,
+            searchOptionsBuilderFactory,
+            logger,
+            cancellationToken);
     }
 }

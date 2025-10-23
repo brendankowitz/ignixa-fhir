@@ -17,8 +17,17 @@ namespace Ignixa.Search.Expressions;
 /// Implements the FHIR compartment search pattern by expanding compartment membership
 /// rules into OR'd search parameter equality expressions.
 ///
-/// Example: CompartmentSearchExpression("Patient", "123") for Observation
+/// Supports wildcard searches (Patient/123/*) by expanding to all resource types
+/// in the compartment definition when FilteredResourceTypes is empty.
+///
+/// Example 1: Single resource type - CompartmentSearchExpression("Patient", "123", {}) for Observation
 /// Rewrites to: (subject = Patient/123) OR (performer = Patient/123)
+///
+/// Example 2: Wildcard - CompartmentSearchExpression("Patient", "123", empty) with context.ResourceType = "*"
+/// Returns: Union of expressions for ALL resource types in Patient compartment
+/// (Observation: (subject = Patient/123) OR (performer = Patient/123))
+/// OR (Condition: (subject = Patient/123) OR (verifier = Patient/123))
+/// OR ...
 /// </summary>
 public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType, ICompartmentDefinitionManager CompartmentManager, ISearchParameterDefinitionManager SearchParameterManager)>
 {
@@ -30,7 +39,7 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
         EnsureArg.IsNotNull(context.CompartmentManager, nameof(context.CompartmentManager));
         EnsureArg.IsNotNull(context.SearchParameterManager, nameof(context.SearchParameterManager));
 
-        // Validate compartment ID is not empty (matches old implementation line 56-59)
+        // Validate compartment ID is not empty
         if (string.IsNullOrWhiteSpace(expression.CompartmentId))
         {
             throw new InvalidSearchOperationException($"Compartment ID is invalid or empty");
@@ -42,18 +51,99 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
             throw new InvalidSearchOperationException($"Compartment type '{expression.CompartmentType}' is invalid. Must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter");
         }
 
+        // Check if this is a wildcard search (FilteredResourceTypes is empty or context.ResourceType is "*")
+        bool isWildcard = expression.FilteredResourceTypes.Count == 0 || context.ResourceType == "*";
+
+        if (isWildcard)
+        {
+            // Wildcard search: expand to all resource types in the compartment
+            return BuildWildcardExpression(expression, compartmentType, context);
+        }
+        else
+        {
+            // Single resource type search
+            return BuildSingleResourceTypeExpression(expression, compartmentType, context.ResourceType, context);
+        }
+    }
+
+    /// <summary>
+    /// Builds a Union expression for wildcard compartment searches.
+    /// Expands to all resource types in the compartment and combines them with OR.
+    /// </summary>
+    private Expression BuildWildcardExpression(
+        CompartmentSearchExpression expression,
+        CompartmentType compartmentType,
+        (string ResourceType, ICompartmentDefinitionManager CompartmentManager, ISearchParameterDefinitionManager SearchParameterManager) context)
+    {
+        // Get all resource types for this compartment
+        if (!context.CompartmentManager.TryGetResourceTypes(compartmentType, out var allResourceTypes))
+        {
+            throw new InvalidSearchOperationException($"No resource types found for compartment type: {expression.CompartmentType}");
+        }
+
+        // Determine which resource types to search
+        var resourceTypesToSearch = expression.FilteredResourceTypes.Count > 0
+            ? allResourceTypes.Where(rt => expression.FilteredResourceTypes.Contains(rt)).ToHashSet()
+            : allResourceTypes;
+
+        if (resourceTypesToSearch.Count == 0)
+        {
+            throw new InvalidSearchOperationException($"No matching resource types found for compartment search");
+        }
+
+        // Build expression for each resource type
+        var resourceTypeExpressions = new List<Expression>();
+
+        foreach (var resourceType in resourceTypesToSearch)
+        {
+            var resourceTypeExpression = BuildSingleResourceTypeExpression(
+                expression,
+                compartmentType,
+                resourceType,
+                context);
+
+            // Add resource type filter to ensure results are from this specific resource type
+            // This is critical for Union queries across multiple resource types
+            var resourceTypeFilter = Expression.SearchParameter(
+                context.SearchParameterManager.GetSearchParameter(resourceType, "_type"),
+                Expression.StringEquals(FieldName.TokenCode, componentIndex: null, value: resourceType, ignoreCase: false));
+
+            // Combine compartment expression with resource type filter
+            var combinedExpression = Expression.And(resourceTypeFilter, resourceTypeExpression);
+
+            resourceTypeExpressions.Add(combinedExpression);
+        }
+
+        if (resourceTypeExpressions.Count == 1)
+        {
+            // Single resource type - return it directly
+            return resourceTypeExpressions[0];
+        }
+
+        // Multiple resource types - OR them together to create Union
+        // This allows the data layer to execute as a single query with proper pagination
+        return Expression.Or(resourceTypeExpressions);
+    }
+
+    /// <summary>
+    /// Builds a compartment expression for a single resource type.
+    /// Creates OR'd search parameter expressions for all compartment membership parameters.
+    /// </summary>
+    private Expression BuildSingleResourceTypeExpression(
+        CompartmentSearchExpression expression,
+        CompartmentType compartmentType,
+        string resourceType,
+        (string ResourceType, ICompartmentDefinitionManager CompartmentManager, ISearchParameterDefinitionManager SearchParameterManager) context)
+    {
         // Get search parameters that define compartment membership for this resource type
-        if (!context.CompartmentManager.TryGetSearchParams(context.ResourceType, compartmentType, out var compartmentSearchParams))
+        if (!context.CompartmentManager.TryGetSearchParams(resourceType, compartmentType, out var compartmentSearchParams))
         {
             // Resource type is not in this compartment - return expression that matches nothing
             // Use a non-existent ID to ensure no results match
             return Expression.SearchParameter(
-                context.SearchParameterManager.GetSearchParameter(context.ResourceType, "_id"),
+                context.SearchParameterManager.GetSearchParameter(resourceType, "_id"),
                 Expression.Equals(FieldName.TokenCode, componentIndex: null, value: "compartment-no-match-impossible-id"));
         }
-
-        // Build reference value: "Patient/123"
-        string compartmentReference = $"{expression.CompartmentType}/{expression.CompartmentId}";
 
         // Create search parameter expressions for each compartment membership parameter
         var parameterExpressions = new List<Expression>();
@@ -63,7 +153,7 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
             SearchParameterInfo searchParam;
             try
             {
-                searchParam = context.SearchParameterManager.GetSearchParameter(context.ResourceType, searchParamCode);
+                searchParam = context.SearchParameterManager.GetSearchParameter(resourceType, searchParamCode);
             }
             catch (Exception)
             {
@@ -92,7 +182,7 @@ public class CompartmentSearchRewriter : ExpressionRewriter<(string ResourceType
         {
             // No valid search parameters found - return expression that matches nothing
             return Expression.SearchParameter(
-                context.SearchParameterManager.GetSearchParameter(context.ResourceType, "_id"),
+                context.SearchParameterManager.GetSearchParameter(resourceType, "_id"),
                 Expression.Equals(FieldName.TokenCode, componentIndex: null, value: "compartment-no-match-impossible-id"));
         }
 

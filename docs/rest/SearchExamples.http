@@ -1,4 +1,4 @@
-@hostname = localhost:5000
+@hostname = localhost:5026
 
 ### Setup test data
 # @name batch
@@ -10,6 +10,9 @@ Content-Type: application/json
 
 ### metadata
 GET {{hostname}}/metadata
+
+### Compartment Search All
+GET {{hostname}}/Patient/*
 
 ### Include
 GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
