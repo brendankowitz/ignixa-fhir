@@ -22,4 +22,11 @@
     <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Embedded SQL Resources for auto-initialization -->
+    <EmbeddedResource Include="Resources\SetupManagedIdentity.sql" />
+    <None Remove="Resources\97.sql" />
+    <EmbeddedResource Include="Resources\97.sql" />
+  </ItemGroup>
+
 </Project>

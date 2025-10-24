@@ -37,52 +37,41 @@ GET {{hostname}}/Patient?address:contains=Meadow
 
 ### Chained search 1
 GET {{hostname}}/DiagnosticReport?subject:Patient.name=Sarah
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Chained search 2
 GET {{hostname}}/Encounter?subject=Patient/searchpatient3
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Chained search 3
 GET {{hostname}}/Encounter?subject:Patient.birthdate=1987-02-20
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Chained search 4
 GET {{hostname}}/Patient?general-practitioner:Practitioner.name=Sarah&general-practitioner:Practitioner.address-state=WA
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Reverse chained search 1
 GET {{hostname}}/Patient?_has:Observation:patient:code=527
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Reverse chained search 2
 GET {{hostname}}/Patient?_has:Observation:patient:_has:AuditEvent:entity:agent:Practitioner.name=janedoe
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Composite search
 GET {{hostname}}/DiagnosticReport?result.code-value-quantity=2823-3$lt9.2
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Get continuation token
 # @name largeSearch
 GET {{hostname}}/Patient?_count=2
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Record continuation token
 @continuationToken = {{largeSearch.response.body.link[0].url}}
 
 ### Use continuation token
 GET {{continuationToken}}
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Post search 1
 POST {{hostname}}/Patient/_search?_id=searchpatient1
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Post search 2
 POST {{hostname}}/Patient/_search
 Content-Type: application/x-www-form-urlencoded
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 name=Jon
 
@@ -91,11 +80,9 @@ name=Jon
 
 ### RevInclude=*.*
 GET {{hostname}}/Patient?_id=searchpatient3&_revinclude=*:*
-Authorization: Bearer {{bearer.response.body.access_token}}
 
 ### Update Good Health Clinic
 PUT {{hostname}}/Organization/good
-Authorization: Bearer {{bearer.response.body.access_token}}
 Content-Type: application/json
 
 {
@@ -116,7 +103,6 @@ Content-Type: application/json
 
 ### Update patient 3
 PUT {{hostname}}/Patient/searchpatient3
-Authorization: Bearer {{bearer.response.body.access_token}}
 Content-Type: application/json
 
 {

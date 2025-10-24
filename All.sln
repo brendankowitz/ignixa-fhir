@@ -47,10 +47,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Tests", "te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.SqlEntityFramework", "src\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj", "{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{FCFC50C1-D38A-46A1-BFB6-950E201302FA}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DatabaseInitializer", "tools\DatabaseInitializer\DatabaseInitializer.csproj", "{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.BlobStorage", "src\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj", "{089356BA-B0B3-4363-B360-915EC45FAD72}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Application", "Application", "{D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}"
@@ -81,6 +77,22 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Agents", "Agents", "{C0A088
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.BackgroundOperations", "src\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj", "{F450B9BC-9675-4940-A8F0-C8C75241091F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Setup", "Setup", "{4E79045F-F848-4683-88EE-9AF17228E267}"
+	ProjectSection(SolutionItems) = preProject
+		deploy\azure\modules\app-service.bicep = deploy\azure\modules\app-service.bicep
+		deploy\azure\modules\key-vault.bicep = deploy\azure\modules\key-vault.bicep
+		deploy\azure\modules\monitoring.bicep = deploy\azure\modules\monitoring.bicep
+		deploy\azure\modules\role-assignments.bicep = deploy\azure\modules\role-assignments.bicep
+		deploy\azure\modules\sql-database.bicep = deploy\azure\modules\sql-database.bicep
+		deploy\azure\modules\storage.bicep = deploy\azure\modules\storage.bicep
+		deploy\azure\parameters\dev.bicepparam = deploy\azure\parameters\dev.bicepparam
+		deploy\azure\parameters\production.bicepparam = deploy\azure\parameters\production.bicepparam
+		deploy\azure\scripts\deploy.ps1 = deploy\azure\scripts\deploy.ps1
+		deploy\azure\scripts\setup-sql-mi.sql = deploy\azure\scripts\setup-sql-mi.sql
+		deploy\azure\main.bicep = deploy\azure\main.bicep
+		deploy\azure\README.md = deploy\azure\README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -284,18 +296,6 @@ Global
 		{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}.Release|x64.Build.0 = Release|Any CPU
 		{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}.Release|x86.ActiveCfg = Release|Any CPU
 		{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}.Release|x86.Build.0 = Release|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Debug|x64.Build.0 = Debug|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Debug|x86.Build.0 = Debug|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Release|x64.ActiveCfg = Release|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Release|x64.Build.0 = Release|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Release|x86.ActiveCfg = Release|Any CPU
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB}.Release|x86.Build.0 = Release|Any CPU
 		{089356BA-B0B3-4363-B360-915EC45FAD72}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{089356BA-B0B3-4363-B360-915EC45FAD72}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{089356BA-B0B3-4363-B360-915EC45FAD72}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -353,7 +353,6 @@ Global
 		{A42DB787-393B-4080-84F9-03C2DDE06C14} = {0955C698-034D-424C-A981-095EB50A5673}
 		{6D7B9490-CB5B-43E2-B149-C6CA54C18502} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96} = {3AB9C3B3-CB6C-414B-87A7-CAFB3AC9FAAA}
-		{91A4AFFF-FDA2-4E30-B86E-11C96050C8DB} = {FCFC50C1-D38A-46A1-BFB6-950E201302FA}
 		{089356BA-B0B3-4363-B360-915EC45FAD72} = {3AB9C3B3-CB6C-414B-87A7-CAFB3AC9FAAA}
 		{D52A6C36-F517-47E3-AD4E-C8F0CDAC3678} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{0955C698-034D-424C-A981-095EB50A5673} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
@@ -362,5 +361,6 @@ Global
 		{31E2CAAA-176E-41DC-AB32-2F0818E08122} = {760AB15A-8938-8D9B-BEDE-5CE1484B84C3}
 		{C0A088E4-9B1E-40F1-80FC-C22AE3BCAEA1} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
 		{F450B9BC-9675-4940-A8F0-C8C75241091F} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
+		{4E79045F-F848-4683-88EE-9AF17228E267} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
 	EndGlobalSection
 EndGlobal
