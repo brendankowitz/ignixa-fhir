@@ -1,9 +1,9 @@
-@hostname = localhost:5026
+@hostname = localhost:5000
 
 ### Setup test data
 # @name batch
 POST http://{{hostname}}
-Prefer: validation=minimum
+Prefer: validation=spec
 Content-Type: application/json
 
 < ./data/SearchDataBatch.json
