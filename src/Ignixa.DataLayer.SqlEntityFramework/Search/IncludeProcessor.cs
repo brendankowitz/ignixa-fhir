@@ -46,29 +46,29 @@ public class IncludeProcessor
     /// Processes _include expressions and returns included resources.
     /// Returns raw bytes for zero-copy serialization.
     /// </summary>
-    /// <param name="mainResults">The main search results to include from.</param>
+    /// <param name="sourceResourceIdentities">The resource identities (type + id) to find references from.</param>
     /// <param name="includeExpressions">The include expressions to process.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A list of included resources with raw bytes.</returns>
     public async Task<List<SearchEntryResult>> ProcessIncludesAsync(
-        IReadOnlyList<SearchEntryResult> mainResults,
+        IReadOnlyList<(string ResourceType, string ResourceId)> sourceResourceIdentities,
         IReadOnlyList<IncludeExpression> includeExpressions,
         CancellationToken ct)
     {
-        if (mainResults.Count == 0 || includeExpressions.Count == 0)
+        if (sourceResourceIdentities.Count == 0 || includeExpressions.Count == 0)
         {
             return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Processing {Count} _include expressions for {ResultCount} main results",
-            includeExpressions.Count, mainResults.Count);
+            includeExpressions.Count, sourceResourceIdentities.Count);
 
         var includedResources = new List<SearchEntryResult>();
         var processedResourceKeys = new HashSet<string>(); // Track to avoid duplicates
 
         foreach (var includeExpr in includeExpressions.Where(e => !e.Iterate && !e.Reversed))
         {
-            var includes = await ProcessSingleIncludeAsync(mainResults, includeExpr, ct);
+            var includes = await ProcessSingleIncludeAsync(sourceResourceIdentities, includeExpr, ct);
 
             foreach (var resource in includes)
             {
@@ -88,7 +88,7 @@ public class IncludeProcessor
     /// Processes a single _include expression.
     /// </summary>
     private async Task<List<SearchEntryResult>> ProcessSingleIncludeAsync(
-        IReadOnlyList<SearchEntryResult> mainResults,
+        IReadOnlyList<(string ResourceType, string ResourceId)> sourceResourceIdentities,
         IncludeExpression includeExpr,
         CancellationToken ct)
     {
@@ -105,7 +105,7 @@ public class IncludeProcessor
             return new List<SearchEntryResult>();
         }
 
-        var sourceResourceIds = mainResults
+        var sourceResourceIds = sourceResourceIdentities
             .Where(r => r.ResourceType == includeExpr.SourceResourceType)
             .Select(r => r.ResourceId)
             .ToList();

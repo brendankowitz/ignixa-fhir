@@ -14,19 +14,6 @@ namespace Ignixa.Domain.Abstractions;
 public interface ISearchService
 {
     /// <summary>
-    /// Searches for resources based on the provided search options.
-    /// Returns raw JSON bytes for zero-copy serialization to HTTP response.
-    /// </summary>
-    /// <typeparam name="TSearchOptions">The type of search options (e.g., SearchOptions from Sparky.Search).</typeparam>
-    /// <param name="searchOptions">The search criteria.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>A list of matching resources with raw bytes.</returns>
-    ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
-        TSearchOptions searchOptions,
-        CancellationToken ct = default)
-        where TSearchOptions : class;
-
-    /// <summary>
     /// Streams search results asynchronously for memory-efficient processing.
     /// Resources are yielded as they are retrieved, enabling progressive serialization.
     /// Returns raw JSON bytes for zero-copy serialization to HTTP response.

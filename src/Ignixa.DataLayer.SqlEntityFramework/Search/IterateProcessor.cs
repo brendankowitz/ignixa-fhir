@@ -83,8 +83,13 @@ public class IterateProcessor
             // Process forward includes on current batch
             if (forwardIterates.Count > 0)
             {
+                // Convert SearchEntryResult to resource identities for the include processor
+                var resourceIdentities = currentBatch
+                    .Select(r => (r.ResourceType, r.ResourceId))
+                    .ToList();
+
                 var forwardIncludes = await _includeProcessor.ProcessIncludesAsync(
-                    currentBatch,
+                    resourceIdentities,
                     forwardIterates,
                     ct);
 
@@ -104,8 +109,13 @@ public class IterateProcessor
             // Process reverse includes on current batch
             if (reverseIterates.Count > 0)
             {
+                // Convert SearchEntryResult to resource identities for the revinclude processor
+                var resourceIdentities = currentBatch
+                    .Select(r => (r.ResourceType, r.ResourceId))
+                    .ToList();
+
                 var reverseIncludes = await _revIncludeProcessor.ProcessRevIncludesAsync(
-                    currentBatch,
+                    resourceIdentities,
                     reverseIterates,
                     ct);
 

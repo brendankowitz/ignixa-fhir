@@ -203,10 +203,6 @@ public class CompartmentSearchQueryGenerator
 
         _logger.LogDebug("Compartment query generation complete, processed {ParameterCount} unique search parameters", searchParamMap.Count);
 
-        // Log generated SQL for optimization validation
-        var sql = unionedQuery.ToQueryString();
-        _logger.LogDebug("Generated compartment query SQL:\n{Sql}", sql);
-
         return unionedQuery;
     }
 }

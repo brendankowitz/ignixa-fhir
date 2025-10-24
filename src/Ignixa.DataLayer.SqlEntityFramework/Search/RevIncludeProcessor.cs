@@ -43,31 +43,31 @@ public class RevIncludeProcessor
     }
 
     /// <summary>
-    /// Processes _revinclude expressions and returns resources that reference the main results.
+    /// Processes _revinclude expressions and returns resources that reference the target resources.
     /// </summary>
-    /// <param name="mainResults">The main search results to find references to.</param>
+    /// <param name="targetResourceIdentities">The resource identities (type + id) to find reverse references to.</param>
     /// <param name="revIncludeExpressions">The revinclude expressions to process.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>A list of resources that reference the main results.</returns>
+    /// <returns>A list of resources that reference the target resources.</returns>
     public async Task<List<SearchEntryResult>> ProcessRevIncludesAsync(
-        IReadOnlyList<SearchEntryResult> mainResults,
+        IReadOnlyList<(string ResourceType, string ResourceId)> targetResourceIdentities,
         IReadOnlyList<IncludeExpression> revIncludeExpressions,
         CancellationToken ct)
     {
-        if (mainResults.Count == 0 || revIncludeExpressions.Count == 0)
+        if (targetResourceIdentities.Count == 0 || revIncludeExpressions.Count == 0)
         {
             return new List<SearchEntryResult>();
         }
 
         _logger.LogDebug("Processing {Count} _revinclude expressions for {ResultCount} main results",
-            revIncludeExpressions.Count, mainResults.Count);
+            revIncludeExpressions.Count, targetResourceIdentities.Count);
 
         var revIncludedResources = new List<SearchEntryResult>();
         var processedResourceKeys = new HashSet<string>(); // Track to avoid duplicates
 
         foreach (var revIncludeExpr in revIncludeExpressions.Where(e => !e.Iterate && e.Reversed))
         {
-            var revIncludes = await ProcessSingleRevIncludeAsync(mainResults, revIncludeExpr, ct);
+            var revIncludes = await ProcessSingleRevIncludeAsync(targetResourceIdentities, revIncludeExpr, ct);
 
             foreach (var resource in revIncludes)
             {
@@ -87,15 +87,15 @@ public class RevIncludeProcessor
     /// Processes a single _revinclude expression.
     /// </summary>
     /// <remarks>
-    /// For _revinclude, we need to find resources that reference the main results.
+    /// For _revinclude, we need to find resources that reference the target resources.
     /// Example: Patient?_revinclude=Observation:patient
-    ///   - Main results: Patients
+    ///   - Target results: Patients
     ///   - SourceResourceType: Observation (the type that references)
-    ///   - TargetResourceType: Patient (the main search type)
+    ///   - TargetResourceType: Patient (the target search type)
     ///   - Find Observations that reference these Patients
     /// </remarks>
     private async Task<List<SearchEntryResult>> ProcessSingleRevIncludeAsync(
-        IReadOnlyList<SearchEntryResult> mainResults,
+        IReadOnlyList<(string ResourceType, string ResourceId)> targetResourceIdentities,
         IncludeExpression revIncludeExpr,
         CancellationToken ct)
     {
@@ -112,8 +112,8 @@ public class RevIncludeProcessor
             return new List<SearchEntryResult>();
         }
 
-        // Step 2: Get main result resource IDs that we want to find references to
-        var targetResourceIds = mainResults
+        // Step 2: Get target resource IDs that we want to find references to
+        var targetResourceIds = targetResourceIdentities
             .Where(r => r.ResourceType == revIncludeExpr.TargetResourceType)
             .Select(r => r.ResourceId)
             .ToList();

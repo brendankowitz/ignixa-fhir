@@ -260,6 +260,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             includeProcessor,
             revIncludeProcessor,
             iterateProcessor,
+            compressor,
             _loggerFactory.CreateLogger<Search.SqlEntityFrameworkSearchService>());
 
         logger.LogInformation("Successfully created services for tenant {TenantId}", tenantId);

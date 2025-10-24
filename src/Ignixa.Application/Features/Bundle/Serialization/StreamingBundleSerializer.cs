@@ -66,9 +66,12 @@ public static class StreamingBundleSerializer
             // Write resource using helper
             WriteResourceBytes(writer, resource);
 
-            // Write search metadata
+            // Write search metadata - use resource's SearchMode (match, include, or outcome)
+            // CA1308 suppressed: JSON requires lowercase values for FHIR compliance
+#pragma warning disable CA1308
             writer.WriteObject("search", w => w
-                .WriteString("mode", "match"));
+                .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+#pragma warning restore CA1308
 
             writer.WriteEndObject(); // end entry
 

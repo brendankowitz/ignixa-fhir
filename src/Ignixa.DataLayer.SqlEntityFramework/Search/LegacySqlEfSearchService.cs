@@ -5,6 +5,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -25,6 +26,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     private readonly IncludeProcessor _includeProcessor;
     private readonly RevIncludeProcessor _revIncludeProcessor;
     private readonly IterateProcessor _iterateProcessor;
+    private readonly GzipResourceCompressor _compressor;
     private readonly ILogger<SqlEntityFrameworkSearchService> _logger;
 
     /// <summary>
@@ -36,6 +38,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     /// <param name="includeProcessor">The include processor for _include.</param>
     /// <param name="revIncludeProcessor">The revinclude processor for _revinclude.</param>
     /// <param name="iterateProcessor">The iterate processor for :iterate modifier.</param>
+    /// <param name="compressor">The resource compressor for decompressing RawResource bytes.</param>
     /// <param name="logger">Logger instance.</param>
     public SqlEntityFrameworkSearchService(
         FhirDbContext context,
@@ -44,6 +47,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
         IncludeProcessor includeProcessor,
         RevIncludeProcessor revIncludeProcessor,
         IterateProcessor iterateProcessor,
+        GzipResourceCompressor compressor,
         ILogger<SqlEntityFrameworkSearchService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -52,25 +56,8 @@ public class SqlEntityFrameworkSearchService : ISearchService
         _includeProcessor = includeProcessor ?? throw new ArgumentNullException(nameof(includeProcessor));
         _revIncludeProcessor = revIncludeProcessor ?? throw new ArgumentNullException(nameof(revIncludeProcessor));
         _iterateProcessor = iterateProcessor ?? throw new ArgumentNullException(nameof(iterateProcessor));
+        _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
-        TSearchOptions searchOptions,
-        CancellationToken ct = default)
-        where TSearchOptions : class
-    {
-        // Cast to SearchOptions (we only support this type for now)
-        if (searchOptions is not SearchOptions options)
-        {
-            throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
-        }
-
-        _logger.LogDebug("Searching for {ResourceType}", options.ResourceType);
-
-        var results = await SearchInternalAsync(options, ct);
-        return results.AsReadOnly();
     }
 
     /// <inheritdoc/>
@@ -98,8 +85,11 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
             _logger.LogInformation("Executing streaming query for multi-type search\n{SQL}", multiTypeQuery.ToQueryString());
 
-            // Stream results from all matching resources
-            await foreach (var entity in multiTypeQuery.AsAsyncEnumerable().WithCancellation(ct))
+            // Stream results from all matching resources - buffer for include processing
+            var multiTypeMainResults = new List<SearchEntryResult>();
+            await foreach (var entity in multiTypeQuery
+                .Include(x => x.Transaction)
+                .AsAsyncEnumerable().WithCancellation(ct))
             {
                 // For multi-type results, we need to determine the actual resource type from the entity
                 // entity.ResourceType is a ResourceTypeEntity, get the Name property
@@ -109,10 +99,19 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     continue;
                 }
 
-                var searchResult = await _repository.GetAsync(new ResourceKey(entity.ResourceType.Name, entity.ResourceId, entity.Version.ToString()), ct);
-                if (searchResult != null)
+                var searchResult = MapResourceEntityToSearchResult(entity, entity.ResourceType.Name);
+                multiTypeMainResults.Add(searchResult);
+                yield return searchResult;  // Stream immediately
+            }
+
+            // Process includes/revincludes if requested
+            if (options.Include.Count > 0 || options.RevInclude.Count > 0)
+            {
+                var includedResources = await ProcessIncludesAndRevIncludesAsync(multiTypeMainResults, options, ct);
+                foreach (var included in includedResources)
                 {
-                    yield return searchResult;
+                    // Mark included resources with Include mode instead of Match
+                    yield return included with { SearchMode = SearchEntryMode.Include };
                 }
             }
             yield break;
@@ -131,14 +130,25 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         _logger.LogInformation("Executing streaming query for {ResourceType}\n{SQL}", options.ResourceType, query.ToQueryString());
 
-        // Stream results - return SearchEntryResult directly (raw bytes for zero-copy serialization)
-        await foreach (var entity in query.AsAsyncEnumerable().WithCancellation(ct))
+        // Stream results - buffer for include processing
+        var mainResults = new List<SearchEntryResult>();
+        await foreach (var entity in query
+            .Include(x => x.Transaction)
+            .AsAsyncEnumerable().WithCancellation(ct))
         {
-            var key = new ResourceKey(options.ResourceType, entity.ResourceId, entity.Version.ToString());
-            var searchResult = await _repository.GetAsync(key, ct);
-            if (searchResult != null)
+            var searchResult = MapResourceEntityToSearchResult(entity, options.ResourceType);
+            mainResults.Add(searchResult);
+            yield return searchResult;  // Stream immediately
+        }
+
+        // Process includes/revincludes if requested
+        if (options.Include.Count > 0 || options.RevInclude.Count > 0)
+        {
+            var includedResources = await ProcessIncludesAndRevIncludesAsync(mainResults, options, ct);
+            foreach (var included in includedResources)
             {
-                yield return searchResult;
+                // Mark included resources with Include mode instead of Match
+                yield return included with { SearchMode = SearchEntryMode.Include };
             }
         }
     }
@@ -184,66 +194,67 @@ public class SqlEntityFrameworkSearchService : ISearchService
         return await baseQuery.CountAsync(ct);
     }
 
-    private async Task<List<SearchEntryResult>> SearchInternalAsync(SearchOptions options, CancellationToken ct)
+    /// <summary>
+    /// Maps a ResourceEntity to a SearchEntryResult by decompressing the raw bytes.
+    /// Eliminates N+1 query problem by using ResourceEntity data directly instead of repository fetch.
+    /// Main search results are marked as Match in SearchMode.
+    /// </summary>
+    private SearchEntryResult MapResourceEntityToSearchResult(
+        ResourceEntity entity,
+        string resourceType)
     {
-        // Get ResourceTypeId
-        var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, ct);
-        if (!resourceTypeId.HasValue)
+        return new SearchEntryResult(
+            ResourceType: resourceType,
+            ResourceId: entity.ResourceId,
+            VersionId: entity.Version.ToString(),
+            LastModified: entity.Transaction?.CreateDate ?? DateTimeOffset.UtcNow,
+            ResourceBytes: _compressor.DecompressBytes(entity.RawResource))
         {
-            _logger.LogWarning("ResourceType not found: {ResourceType}", options.ResourceType);
-            return new List<SearchEntryResult>();
-        }
+            IsDeleted = entity.IsDeleted,
+            SearchMode = SearchEntryMode.Match,  // Main search results are matches
+        };
+    }
 
-        // Build query with pagination
-        var query = await BuildQueryAsync(options, resourceTypeId.Value, ct);
+    /// <summary>
+    /// Processes _include, _revinclude, and :iterate expressions and returns all discovered resources.
+    /// Called after main search results are streamed to avoid blocking.
+    /// </summary>
+    private async Task<List<SearchEntryResult>> ProcessIncludesAndRevIncludesAsync(
+        List<SearchEntryResult> mainResults,
+        SearchOptions options,
+        CancellationToken ct)
+    {
+        var allIncluded = new List<SearchEntryResult>();
 
-        // Apply pagination
-        var pageSize = options.MaxItemCount > 0 ? options.MaxItemCount : 10;
-        var paginatedQuery = query.Take(pageSize);
-
-        // Execute query
-        var resourceEntities = await paginatedQuery
-            .Select(r => new { r.ResourceId, r.Version })
-            .ToListAsync(ct);
-
-        _logger.LogDebug("Found {Count} resources", resourceEntities.Count);
-
-        // Fetch full resources from repository - return raw bytes for zero-copy serialization
-        var resources = new List<SearchEntryResult>();
-        foreach (var entity in resourceEntities)
-        {
-            var key = new ResourceKey(options.ResourceType, entity.ResourceId, entity.Version.ToString());
-            var searchResult = await _repository.GetAsync(key, ct);
-            if (searchResult != null)
-            {
-                resources.Add(searchResult);
-            }
-        }
+        // Convert results to resource identities (ResourceType + ResourceId) for lightweight passing to processors
+        var resourceIdentities = mainResults
+            .Select(r => (r.ResourceType, r.ResourceId))
+            .ToList();
 
         // Process _include expressions
         if (options.Include.Count > 0)
         {
             _logger.LogDebug("Processing {IncludeCount} _include expressions", options.Include.Count);
-            var includedResources = await _includeProcessor.ProcessIncludesAsync(
-                resources,
+            var included = await _includeProcessor.ProcessIncludesAsync(
+                resourceIdentities,
                 options.Include,
                 ct);
 
-            resources.AddRange(includedResources);
-            _logger.LogDebug("Added {IncludedCount} included resources", includedResources.Count);
+            allIncluded.AddRange(included);
+            _logger.LogDebug("Added {IncludedCount} included resources", included.Count);
         }
 
         // Process _revinclude expressions
         if (options.RevInclude.Count > 0)
         {
             _logger.LogDebug("Processing {RevIncludeCount} _revinclude expressions", options.RevInclude.Count);
-            var revIncludedResources = await _revIncludeProcessor.ProcessRevIncludesAsync(
-                resources,
+            var revIncluded = await _revIncludeProcessor.ProcessRevIncludesAsync(
+                resourceIdentities,
                 options.RevInclude,
                 ct);
 
-            resources.AddRange(revIncludedResources);
-            _logger.LogDebug("Added {RevIncludedCount} reverse included resources", revIncludedResources.Count);
+            allIncluded.AddRange(revIncluded);
+            _logger.LogDebug("Added {RevIncludedCount} reverse included resources", revIncluded.Count);
         }
 
         // Process :iterate modifiers (recursive includes/revincludes)
@@ -256,15 +267,15 @@ public class SqlEntityFrameworkSearchService : ISearchService
         {
             _logger.LogDebug("Processing {IterateCount} :iterate expressions", allIterateExpressions.Count);
             var iteratedResources = await _iterateProcessor.ProcessIteratesAsync(
-                resources,
+                allIncluded.Count > 0 ? allIncluded : mainResults,
                 allIterateExpressions,
                 ct);
 
-            resources.AddRange(iteratedResources);
+            allIncluded.AddRange(iteratedResources);
             _logger.LogDebug("Added {IteratedCount} iterated resources", iteratedResources.Count);
         }
 
-        return resources;
+        return allIncluded;
     }
 
     private async Task<IQueryable<ResourceEntity>> BuildQueryAsync(

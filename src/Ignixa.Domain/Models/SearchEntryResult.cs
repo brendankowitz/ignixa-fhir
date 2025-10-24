@@ -31,4 +31,11 @@ public record SearchEntryResult(
     /// Optional HTTP request metadata.
     /// </summary>
     public ResourceRequest? Request { get; init; }
+
+    /// <summary>
+    /// Indicates how this entry relates to a search (match vs include vs outcome).
+    /// Used for setting FHIR Bundle.entry.search.mode in search responses.
+    /// Defaults to Match for backward compatibility.
+    /// </summary>
+    public SearchEntryMode SearchMode { get; init; } = SearchEntryMode.Match;
 }
