@@ -8,11 +8,12 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 
 /// <summary>
-/// Generates StringSearchParamListTableType DataTable rows from string search values.
+/// Generates StringSearchParamList TVP SqlDataRecord rows from string search values.
 /// String search parameters store text values with optional overflow for very long strings.
 /// Supports min/max flags for sorting optimization.
 /// </summary>
@@ -20,17 +21,10 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
     private const int StringColumnMaxLength = 128;
 
+    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
     public DataTable CreateDataTable()
     {
-        var table = new DataTable();
-        table.Columns.Add("ResourceTypeId", typeof(short));
-        table.Columns.Add("ResourceSurrogateId", typeof(long));
-        table.Columns.Add("SearchParamId", typeof(short));
-        table.Columns.Add("Text", typeof(string));
-        table.Columns.Add("TextOverflow", typeof(string));
-        table.Columns.Add("IsMin", typeof(bool));
-        table.Columns.Add("IsMax", typeof(bool));
-        return table;
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
     }
 
     public DataTable GenerateRows(
@@ -39,7 +33,26 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
-        var table = CreateDataTable();
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
+    }
+    #pragma warning restore CS0618
+
+    public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        var metadata = new[]
+        {
+            new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
+            new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
+            new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
+            new SqlMetaData("Text", SqlDbType.NVarChar, 256),
+            new SqlMetaData("TextOverflow", SqlDbType.NVarChar, -1),
+            new SqlMetaData("IsMin", SqlDbType.Bit),
+            new SqlMetaData("IsMax", SqlDbType.Bit),
+        };
 
         foreach (var resource in resources)
         {
@@ -49,11 +62,9 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
                 continue;
 
-            // Look up surrogate ID from map
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
-                continue; // Skip if not found in map
+                continue;
 
-            // Extract all string search indices
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not StringSearchValue stringValue)
@@ -62,40 +73,39 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
                     continue;
 
-                var row = table.NewRow();
-                row["ResourceTypeId"] = resourceTypeId;
-                row["ResourceSurrogateId"] = surrogateId;
-                row["SearchParamId"] = searchParamId;
+                var record = new SqlDataRecord(metadata);
+                record.SetInt16(0, resourceTypeId);
+                record.SetInt64(1, surrogateId);
+                record.SetInt16(2, searchParamId);
 
-                // Handle text overflow for strings longer than column limit
                 var textValue = stringValue.String;
                 if (textValue != null && textValue.Length > StringColumnMaxLength)
                 {
-                    row["Text"] = textValue.Substring(0, StringColumnMaxLength);
-                    row["TextOverflow"] = textValue.Substring(StringColumnMaxLength);
+                    record.SetString(3, textValue.Substring(0, StringColumnMaxLength));
+                    record.SetString(4, textValue.Substring(StringColumnMaxLength));
                 }
                 else
                 {
-                    row["Text"] = textValue ?? (object)DBNull.Value;
-                    row["TextOverflow"] = DBNull.Value;
+                    if (textValue != null)
+                        record.SetString(3, textValue);
+                    else
+                        record.SetDBNull(3);
+                    record.SetDBNull(4);
                 }
 
-                // Check if this value supports sorting (ISupportSortSearchValue)
                 if (searchIndex.Value is ISupportSortSearchValue sortValue)
                 {
-                    row["IsMin"] = sortValue.IsMin;
-                    row["IsMax"] = sortValue.IsMax;
+                    record.SetBoolean(5, sortValue.IsMin);
+                    record.SetBoolean(6, sortValue.IsMax);
                 }
                 else
                 {
-                    row["IsMin"] = false;
-                    row["IsMax"] = false;
+                    record.SetBoolean(5, false);
+                    record.SetBoolean(6, false);
                 }
 
-                table.Rows.Add(row);
+                yield return record;
             }
         }
-
-        return table;
     }
 }

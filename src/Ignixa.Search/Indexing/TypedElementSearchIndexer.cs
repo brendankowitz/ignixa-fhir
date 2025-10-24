@@ -165,6 +165,13 @@ public class TypedElementSearchIndexer : ISearchIndexer
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         Debug.Assert(searchParameter.Type != SearchParamType.Composite, "The search parameter must be non-composite.");
 
+        // Skip indexing for search parameters with empty or whitespace expressions
+        if (string.IsNullOrWhiteSpace(searchParameter.Expression))
+        {
+            _logger.LogDebug("Skipping search parameter {Code} with empty expression", searchParameter.Code);
+            yield break;
+        }
+
         SearchParameterInfo searchParameterInfo = searchParameter;
 
         foreach (ISearchValue searchValue in ExtractSearchValues(

@@ -6,31 +6,45 @@
 using System.Data;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
+using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 
 /// <summary>
-/// Interface for generating TVP DataTable rows from search indices.
-/// Implementations extract specific search parameter types from ResourceWrapper and populate
-/// TVP DataTables for bulk merge operations.
+/// Interface for generating TVP SqlDataRecord rows from search indices.
+/// Implementations extract specific search parameter types from ResourceWrapper and stream
+/// SqlDataRecord directly for bulk merge operations.
 /// </summary>
 public interface ISearchParameterRowGenerator
 {
     /// <summary>
-    /// Creates an empty DataTable with the correct column structure for this TVP type.
-    /// This ensures column definitions are centralized and consistent between row generators and merge repository.
-    /// </summary>
-    /// <returns>A blank DataTable with all columns defined (no rows).</returns>
-    DataTable CreateDataTable();
-
-    /// <summary>
-    /// Generates TVP DataTable rows from search indices.
+    /// Generates SqlDataRecord collection directly from search indices for efficient TVP streaming.
     /// </summary>
     /// <param name="resources">The resources to extract search parameters from.</param>
     /// <param name="resourceTypeIdMap">Mapping of resource type strings to their IDs.</param>
     /// <param name="searchParameterIdMap">Mapping of search parameter codes to their IDs.</param>
     /// <param name="resourceSurrogateIdMap">Mapping of resources to their allocated surrogate IDs (transactionId + index).</param>
-    /// <returns>A populated DataTable ready for TVP parameter binding.</returns>
+    /// <returns>An enumerable of SqlDataRecord ready for TVP parameter binding.</returns>
+    IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap);
+
+    /// <summary>
+    /// Creates a DataTable schema for the search parameter type.
+    /// DEPRECATED: Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step.
+    /// Only composite generators still use this; simple generators have been refactored to stream SqlDataRecord directly.
+    /// </summary>
+    [Obsolete("Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step")]
+    DataTable CreateDataTable();
+
+    /// <summary>
+    /// Generates DataTable rows from search indices.
+    /// DEPRECATED: Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step.
+    /// Only composite generators still use this; simple generators have been refactored to stream SqlDataRecord directly.
+    /// </summary>
+    [Obsolete("Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step")]
     DataTable GenerateRows(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,

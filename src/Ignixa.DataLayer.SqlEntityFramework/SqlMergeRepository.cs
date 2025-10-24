@@ -4,10 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Data;
+using System.Collections;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient.Server;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -160,25 +162,28 @@ public class SqlMergeRepository
         // Build TVP parameters (Phase 2: Using row generators)
         var resourceTable = BuildResourceTable(transactionId, resources, resourceTypeIdMap, entryIndices);
         var resourceWriteClaimsTable = BuildResourceWriteClaimsTable(); // Stub for Phase 1
-        var referenceSearchParamsTable = BuildReferenceSearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenSearchParamsTable = BuildTokenSearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenTextsTable = BuildTokenTextsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var stringSearchParamsTable = BuildStringSearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var uriSearchParamsTable = BuildUriSearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var numberSearchParamsTable = BuildNumberSearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var quantitySearchParamsTable = BuildQuantitySearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var dateTimeSearchParamsTable = BuildDateTimeSearchParamsTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
 
-        // Build composite search param TVPs (Phase 2: Using row generators)
-        var refTokenCompositeTable = BuildRefTokenCompositeTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenTokenCompositeTable = BuildTokenTokenCompositeTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenDateTimeCompositeTable = BuildTokenDateTimeCompositeTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenQuantityCompositeTable = BuildTokenQuantityCompositeTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenStringCompositeTable = BuildTokenStringCompositeTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-        var tokenNumberNumberCompositeTable = BuildTokenNumberNumberCompositeTable(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        // Generate SqlDataRecord streams directly (eliminates DataTable intermediate step)
+        var referenceSearchParams = _referenceRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenSearchParams = _tokenRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenTexts = _tokenTextRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var stringSearchParams = _stringRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var uriSearchParams = _uriRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var numberSearchParams = _numberRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var quantitySearchParams = _quantityRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var dateTimeSearchParams = _dateTimeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+
+        // Generate composite search param SqlDataRecord streams (Phase 2: Using row generators with direct streaming)
+        var refTokenCompositeParams = _refTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenTokenCompositeParams = _tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenDateTimeCompositeParams = _tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenQuantityCompositeParams = _tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenStringCompositeParams = _tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
+        var tokenNumberNumberCompositeParams = _tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
 
         // Create stored procedure parameters
-        // NOTE: Using old-style Microsoft FHIR Server TVP type names (no TableType suffix)
+        // NOTE: Using SqlDataRecord streaming (proper TVP pattern) instead of DataTable
+        // SqlDataRecord provides better performance and guaranteed column ordering
         // IMPORTANT: Parameter order must match stored procedure signature exactly
         var parameters = new[]
         {
@@ -200,72 +205,72 @@ public class SqlMergeRepository
             new SqlParameter("@ReferenceSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.ReferenceSearchParamList",
-                Value = referenceSearchParamsTable
+                Value = referenceSearchParams
             },
             new SqlParameter("@TokenSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenSearchParamList",
-                Value = tokenSearchParamsTable
+                Value = tokenSearchParams
             },
             new SqlParameter("@TokenTexts", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenTextList",
-                Value = tokenTextsTable
+                Value = tokenTexts
             },
             new SqlParameter("@StringSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.StringSearchParamList",
-                Value = stringSearchParamsTable
+                Value = stringSearchParams
             },
             new SqlParameter("@UriSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.UriSearchParamList",
-                Value = uriSearchParamsTable
+                Value = uriSearchParams
             },
             new SqlParameter("@NumberSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.NumberSearchParamList",
-                Value = numberSearchParamsTable
+                Value = numberSearchParams
             },
             new SqlParameter("@QuantitySearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.QuantitySearchParamList",
-                Value = quantitySearchParamsTable
+                Value = quantitySearchParams
             },
             new SqlParameter("@DateTimeSearchParms", SqlDbType.Structured)
             {
                 TypeName = "dbo.DateTimeSearchParamList",
-                Value = dateTimeSearchParamsTable
+                Value = dateTimeSearchParams
             },
             new SqlParameter("@ReferenceTokenCompositeSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.ReferenceTokenCompositeSearchParamList",
-                Value = refTokenCompositeTable
+                Value = refTokenCompositeParams
             },
             new SqlParameter("@TokenTokenCompositeSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenTokenCompositeSearchParamList",
-                Value = tokenTokenCompositeTable
+                Value = tokenTokenCompositeParams
             },
             new SqlParameter("@TokenDateTimeCompositeSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenDateTimeCompositeSearchParamList",
-                Value = tokenDateTimeCompositeTable
+                Value = tokenDateTimeCompositeParams
             },
             new SqlParameter("@TokenQuantityCompositeSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenQuantityCompositeSearchParamList",
-                Value = tokenQuantityCompositeTable
+                Value = tokenQuantityCompositeParams
             },
             new SqlParameter("@TokenStringCompositeSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenStringCompositeSearchParamList",
-                Value = tokenStringCompositeTable
+                Value = tokenStringCompositeParams
             },
             new SqlParameter("@TokenNumberNumberCompositeSearchParams", SqlDbType.Structured)
             {
                 TypeName = "dbo.TokenNumberNumberCompositeSearchParamList",
-                Value = tokenNumberNumberCompositeTable
+                Value = tokenNumberNumberCompositeParams
             }
         };
 
@@ -553,246 +558,8 @@ public class SqlMergeRepository
         return table; // Empty for Phase 1
     }
 
-    /// <summary>
-    /// Builds ReferenceSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables for resource type and search parameter mapping.
-    /// </summary>
-    private DataTable BuildReferenceSearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            // Return empty table structure using generator
-            return _referenceRowGenerator.CreateDataTable();
-        }
-
-        // Use row generator with populated maps
-        return _referenceRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenSearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenRowGenerator.CreateDataTable();
-        }
-        return _tokenRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenTextListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenTextsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenTextRowGenerator.CreateDataTable();
-        }
-        return _tokenTextRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds StringSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildStringSearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _stringRowGenerator.CreateDataTable();
-        }
-        return _stringRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds UriSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildUriSearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _uriRowGenerator.CreateDataTable();
-        }
-        return _uriRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds NumberSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildNumberSearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _numberRowGenerator.CreateDataTable();
-        }
-        return _numberRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds QuantitySearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildQuantitySearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _quantityRowGenerator.CreateDataTable();
-        }
-        return _quantityRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds DateTimeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildDateTimeSearchParamsTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _dateTimeRowGenerator.CreateDataTable();
-        }
-        return _dateTimeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds ReferenceTokenCompositeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildRefTokenCompositeTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _refTokenCompositeRowGenerator.CreateDataTable();
-        }
-        return _refTokenCompositeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenTokenCompositeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenTokenCompositeTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenTokenCompositeRowGenerator.CreateDataTable();
-        }
-        return _tokenTokenCompositeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenDateTimeCompositeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenDateTimeCompositeTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenDateTimeCompositeRowGenerator.CreateDataTable();
-        }
-        return _tokenDateTimeCompositeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenQuantityCompositeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenQuantityCompositeTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenQuantityCompositeRowGenerator.CreateDataTable();
-        }
-        return _tokenQuantityCompositeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenStringCompositeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenStringCompositeTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenStringCompositeRowGenerator.CreateDataTable();
-        }
-        return _tokenStringCompositeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
-
-    /// <summary>
-    /// Builds TokenNumberNumberCompositeSearchParamListTableType using the row generator.
-    /// Phase 3: Uses provided lookup tables.
-    /// </summary>
-    private DataTable BuildTokenNumberNumberCompositeTable(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        if (resources == null || resources.Count == 0)
-        {
-            return _tokenNumberNumberCompositeRowGenerator.CreateDataTable();
-        }
-        return _tokenNumberNumberCompositeRowGenerator.GenerateRows(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap);
-    }
+    // NOTE: All Build*CompositeTable helper methods removed - row generators now stream SqlDataRecord directly
+    // All 14 row generators (8 simple + 6 composite) use GenerateSqlDataRecords() for efficient TVP streaming
 
     #endregion
 }

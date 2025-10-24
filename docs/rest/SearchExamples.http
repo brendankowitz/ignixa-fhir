@@ -8,6 +8,54 @@ Content-Type: application/json
 
 < ./data/SearchDataBatch.json
 
+### Batch2
+POST http://{{hostname}}
+Prefer: validation=minimum
+Content-Type: application/json
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        {
+            "resource": {
+                "resourceType": "Encounter",
+                "status": "planned",
+                "class": {
+                    "system": "system",
+                    "code": "code"
+                },
+                "subject": {
+                    "reference": "Patient/searchpatient2"
+                }
+            },
+            "request": {
+                "method": "POST",
+                "url": "Encounter"
+            }
+        },
+        {
+            "resource": {
+                "resourceType": "Encounter",
+                "id": "exampleencounter1",
+                "status": "planned",
+                "class": {
+                    "system": "system",
+                    "code": "code"
+                },
+                "subject": {
+                    "reference": "Patient/searchpatientAA"
+                }
+            },
+            "request": {
+                "method": "PUT",
+                "url": "Encounter/exampleencounter1"
+            }
+        }
+    ]
+}
+
+
 ### metadata
 GET {{hostname}}/metadata
 
@@ -22,6 +70,23 @@ GET {{hostname}}/Patient?_sort=birthDate
 
 ### Include
 GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
+
+###
+POST {{hostname}}/Encounter
+Prefer: validation=minimum
+Content-Type: application/json
+
+{
+    "resourceType": "Encounter",
+    "status": "planned",
+    "class": {
+        "system": "system",
+        "code": "code"
+    },
+    "subject": {
+        "reference": "Patient/searchpatient2"
+    }
+}
 
 ### Revinclude
 GET {{hostname}}/Patient?_revinclude=Encounter:subject

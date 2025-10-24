@@ -7,28 +7,21 @@ using System.Data;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 
 /// <summary>
-/// Generates QuantitySearchParamListTableType DataTable rows from quantity search values.
+/// Generates QuantitySearchParamList TVP SqlDataRecord rows from quantity search values.
 /// Quantity search parameters store numeric values with system and code (unit) information.
 /// Includes optional range bounds (low/high).
 /// </summary>
 public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
     public DataTable CreateDataTable()
     {
-        var table = new DataTable();
-        table.Columns.Add("ResourceTypeId", typeof(short));
-        table.Columns.Add("ResourceSurrogateId", typeof(long));
-        table.Columns.Add("SearchParamId", typeof(short));
-        table.Columns.Add("SystemId", typeof(int));
-        table.Columns.Add("QuantityCodeId", typeof(int));
-        table.Columns.Add("SingleValue", typeof(decimal));
-        table.Columns.Add("LowValue", typeof(decimal));
-        table.Columns.Add("HighValue", typeof(decimal));
-        return table;
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
     }
 
     public DataTable GenerateRows(
@@ -37,7 +30,27 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
-        var table = CreateDataTable();
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
+    }
+    #pragma warning restore CS0618
+
+    public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        var metadata = new[]
+        {
+            new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
+            new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
+            new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
+            new SqlMetaData("SystemId", SqlDbType.Int),
+            new SqlMetaData("QuantityCodeId", SqlDbType.Int),
+            new SqlMetaData("SingleValue", SqlDbType.Decimal),
+            new SqlMetaData("LowValue", SqlDbType.Decimal),
+            new SqlMetaData("HighValue", SqlDbType.Decimal),
+        };
 
         foreach (var resource in resources)
         {
@@ -47,11 +60,9 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
                 continue;
 
-            // Look up surrogate ID from map
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
-                continue; // Skip if not found in map
+                continue;
 
-            // Extract all quantity search indices
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not QuantitySearchValue quantityValue)
@@ -60,37 +71,34 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
                     continue;
 
-                var row = table.NewRow();
-                row["ResourceTypeId"] = resourceTypeId;
-                row["ResourceSurrogateId"] = surrogateId;
-                row["SearchParamId"] = searchParamId;
+                var record = new SqlDataRecord(metadata);
+                record.SetInt16(0, resourceTypeId);
+                record.SetInt64(1, surrogateId);
+                record.SetInt16(2, searchParamId);
+                record.SetInt32(3, string.IsNullOrEmpty(quantityValue.System) ? 0 : quantityValue.System.GetHashCode(StringComparison.Ordinal));
+                record.SetInt32(4, string.IsNullOrEmpty(quantityValue.Code) ? 0 : quantityValue.Code.GetHashCode(StringComparison.Ordinal));
 
-                // SystemId lookup would be implemented in Phase 3
-                // For now, use hash of system string as placeholder
-                row["SystemId"] = string.IsNullOrEmpty(quantityValue.System) ? 0 : quantityValue.System.GetHashCode(StringComparison.Ordinal);
-
-                // QuantityCodeId lookup would be implemented in Phase 3
-                // For now, use hash of code string as placeholder
-                row["QuantityCodeId"] = string.IsNullOrEmpty(quantityValue.Code) ? 0 : quantityValue.Code.GetHashCode(StringComparison.Ordinal);
-
-                // If low == high, store in SingleValue; otherwise use range
                 if (quantityValue.Low.HasValue && quantityValue.High.HasValue && quantityValue.Low == quantityValue.High)
                 {
-                    row["SingleValue"] = quantityValue.Low.Value;
-                    row["LowValue"] = DBNull.Value;
-                    row["HighValue"] = DBNull.Value;
+                    record.SetDecimal(5, quantityValue.Low.Value);
+                    record.SetDBNull(6);
+                    record.SetDBNull(7);
                 }
                 else
                 {
-                    row["SingleValue"] = DBNull.Value;
-                    row["LowValue"] = quantityValue.Low ?? (object)DBNull.Value;
-                    row["HighValue"] = quantityValue.High ?? (object)DBNull.Value;
+                    record.SetDBNull(5);
+                    if (quantityValue.Low.HasValue)
+                        record.SetDecimal(6, quantityValue.Low.Value);
+                    else
+                        record.SetDBNull(6);
+                    if (quantityValue.High.HasValue)
+                        record.SetDecimal(7, quantityValue.High.Value);
+                    else
+                        record.SetDBNull(7);
                 }
 
-                table.Rows.Add(row);
+                yield return record;
             }
         }
-
-        return table;
     }
 }

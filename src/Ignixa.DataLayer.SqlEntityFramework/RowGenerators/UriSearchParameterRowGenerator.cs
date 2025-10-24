@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -7,24 +7,21 @@ using System.Data;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 
 /// <summary>
-/// Generates UriSearchParamListTableType DataTable rows from URI search values.
+/// Generates UriSearchParamList TVP SqlDataRecord rows from URI search values.
 /// URI search parameters store canonical URIs (case-sensitive comparison).
 /// May include version and fragment information parsed from canonical URIs.
 /// </summary>
 public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
     public DataTable CreateDataTable()
     {
-        var table = new DataTable();
-        table.Columns.Add("ResourceTypeId", typeof(short));
-        table.Columns.Add("ResourceSurrogateId", typeof(long));
-        table.Columns.Add("SearchParamId", typeof(short));
-        table.Columns.Add("Uri", typeof(string));
-        return table;
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
     }
 
     public DataTable GenerateRows(
@@ -33,7 +30,23 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
-        var table = CreateDataTable();
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
+    }
+    #pragma warning restore CS0618
+
+    public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        var metadata = new[]
+        {
+            new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
+            new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
+            new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
+            new SqlMetaData("Uri", SqlDbType.VarChar, 256),
+        };
 
         foreach (var resource in resources)
         {
@@ -43,11 +56,9 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
                 continue;
 
-            // Look up surrogate ID from map
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
-                continue; // Skip if not found in map
+                continue;
 
-            // Extract all URI search indices
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not UriSearchValue uriValue)
@@ -56,18 +67,14 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
                     continue;
 
-                var row = table.NewRow();
-                row["ResourceTypeId"] = resourceTypeId;
-                row["ResourceSurrogateId"] = surrogateId;
-                row["SearchParamId"] = searchParamId;
+                var record = new SqlDataRecord(metadata);
+                record.SetInt16(0, resourceTypeId);
+                record.SetInt64(1, surrogateId);
+                record.SetInt16(2, searchParamId);
+                record.SetString(3, uriValue.Uri);
 
-                // Store the complete URI (includes version and fragment if present)
-                row["Uri"] = uriValue.ToString() ?? (object)DBNull.Value;
-
-                table.Rows.Add(row);
+                yield return record;
             }
         }
-
-        return table;
     }
 }

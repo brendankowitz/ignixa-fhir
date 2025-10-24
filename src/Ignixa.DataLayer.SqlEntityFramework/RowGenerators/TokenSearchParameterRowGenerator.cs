@@ -8,25 +8,20 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 
 /// <summary>
-/// Generates TokenSearchParamListTableType DataTable rows from token search values.
+/// Generates TokenSearchParamList TVP SqlDataRecord rows from token search values.
 /// Token search parameters use a System|Code format (e.g., "http://system|code").
 /// </summary>
 public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
     public DataTable CreateDataTable()
     {
-        var table = new DataTable();
-        table.Columns.Add("ResourceTypeId", typeof(short));
-        table.Columns.Add("ResourceSurrogateId", typeof(long));
-        table.Columns.Add("SearchParamId", typeof(short));
-        table.Columns.Add("SystemId", typeof(int));
-        table.Columns.Add("Code", typeof(string));
-        table.Columns.Add("CodeOverflow", typeof(string));
-        return table;
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
     }
 
     public DataTable GenerateRows(
@@ -35,7 +30,25 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
-        var table = CreateDataTable();
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
+    }
+    #pragma warning restore CS0618
+
+    public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        var metadata = new[]
+        {
+            new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
+            new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
+            new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
+            new SqlMetaData("SystemId", SqlDbType.Int),
+            new SqlMetaData("Code", SqlDbType.VarChar, 256),
+            new SqlMetaData("CodeOverflow", SqlDbType.VarChar, -1),
+        };
 
         foreach (var resource in resources)
         {
@@ -45,11 +58,9 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
                 continue;
 
-            // Look up the allocated surrogate ID for this resource
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
-                continue; // Skip if not found (shouldn't happen)
+                continue;
 
-            // Extract all token search indices
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not TokenSearchValue tokenValue)
@@ -58,31 +69,31 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
                     continue;
 
-                var row = table.NewRow();
-                row["ResourceTypeId"] = resourceTypeId;
-                row["ResourceSurrogateId"] = surrogateId;
-                row["SearchParamId"] = searchParamId;
+                var record = new SqlDataRecord(metadata);
+                record.SetInt16(0, resourceTypeId);
+                record.SetInt64(1, surrogateId);
+                record.SetInt16(2, searchParamId);
 
-                // SystemId lookup would be implemented in Phase 3
-                // For now, use hash of system string as placeholder
-                row["SystemId"] = string.IsNullOrEmpty(tokenValue.System) ? 0 : tokenValue.System.GetHashCode(StringComparison.Ordinal);
+                // SystemId lookup (placeholder using hash)
+                record.SetInt32(3, string.IsNullOrEmpty(tokenValue.System) ? 0 : tokenValue.System.GetHashCode(StringComparison.Ordinal));
 
                 // Handle code overflow for very long codes
                 if (tokenValue.Code != null && tokenValue.Code.Length > 128)
                 {
-                    row["Code"] = tokenValue.Code.Substring(0, 128);
-                    row["CodeOverflow"] = tokenValue.Code.Substring(128);
+                    record.SetString(4, tokenValue.Code.Substring(0, 128));
+                    record.SetString(5, tokenValue.Code.Substring(128));
                 }
                 else
                 {
-                    row["Code"] = tokenValue.Code ?? (object)DBNull.Value;
-                    row["CodeOverflow"] = DBNull.Value;
+                    if (tokenValue.Code != null)
+                        record.SetString(4, tokenValue.Code);
+                    else
+                        record.SetDBNull(4);
+                    record.SetDBNull(5);
                 }
 
-                table.Rows.Add(row);
+                yield return record;
             }
         }
-
-        return table;
     }
 }

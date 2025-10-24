@@ -7,25 +7,20 @@ using System.Data;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 
 /// <summary>
-/// Generates NumberSearchParamListTableType DataTable rows from number search values.
+/// Generates NumberSearchParamList TVP SqlDataRecord rows from number search values.
 /// Number search parameters store numeric values with optional range bounds (low/high).
 /// </summary>
 public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
     public DataTable CreateDataTable()
     {
-        var table = new DataTable();
-        table.Columns.Add("ResourceTypeId", typeof(short));
-        table.Columns.Add("ResourceSurrogateId", typeof(long));
-        table.Columns.Add("SearchParamId", typeof(short));
-        table.Columns.Add("SingleValue", typeof(decimal));
-        table.Columns.Add("LowValue", typeof(decimal));
-        table.Columns.Add("HighValue", typeof(decimal));
-        return table;
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
     }
 
     public DataTable GenerateRows(
@@ -34,7 +29,25 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
     {
-        var table = CreateDataTable();
+        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
+    }
+    #pragma warning restore CS0618
+
+    public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<string, short> searchParameterIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        var metadata = new[]
+        {
+            new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
+            new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
+            new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
+            new SqlMetaData("SingleValue", SqlDbType.Decimal),
+            new SqlMetaData("LowValue", SqlDbType.Decimal),
+            new SqlMetaData("HighValue", SqlDbType.Decimal),
+        };
 
         foreach (var resource in resources)
         {
@@ -44,11 +57,9 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
                 continue;
 
-            // Look up surrogate ID from map
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
-                continue; // Skip if not found in map
+                continue;
 
-            // Extract all number search indices
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not NumberSearchValue numberValue)
@@ -57,29 +68,32 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
                     continue;
 
-                var row = table.NewRow();
-                row["ResourceTypeId"] = resourceTypeId;
-                row["ResourceSurrogateId"] = surrogateId;
-                row["SearchParamId"] = searchParamId;
+                var record = new SqlDataRecord(metadata);
+                record.SetInt16(0, resourceTypeId);
+                record.SetInt64(1, surrogateId);
+                record.SetInt16(2, searchParamId);
 
-                // If low == high, store in SingleValue; otherwise use range
                 if (numberValue.Low.HasValue && numberValue.High.HasValue && numberValue.Low == numberValue.High)
                 {
-                    row["SingleValue"] = numberValue.Low.Value;
-                    row["LowValue"] = DBNull.Value;
-                    row["HighValue"] = DBNull.Value;
+                    record.SetDecimal(3, numberValue.Low.Value);
+                    record.SetDBNull(4);
+                    record.SetDBNull(5);
                 }
                 else
                 {
-                    row["SingleValue"] = DBNull.Value;
-                    row["LowValue"] = numberValue.Low ?? (object)DBNull.Value;
-                    row["HighValue"] = numberValue.High ?? (object)DBNull.Value;
+                    record.SetDBNull(3);
+                    if (numberValue.Low.HasValue)
+                        record.SetDecimal(4, numberValue.Low.Value);
+                    else
+                        record.SetDBNull(4);
+                    if (numberValue.High.HasValue)
+                        record.SetDecimal(5, numberValue.High.Value);
+                    else
+                        record.SetDBNull(5);
                 }
 
-                table.Rows.Add(row);
+                yield return record;
             }
         }
-
-        return table;
     }
 }
