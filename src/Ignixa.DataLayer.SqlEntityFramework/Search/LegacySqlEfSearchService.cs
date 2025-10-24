@@ -794,6 +794,15 @@ public class SqlEntityFrameworkSearchService : ISearchService
         IncludeExpression revIncludeExpr,
         short resourceTypeId)
     {
+        // Get source resource type ID (e.g., Encounter for _revinclude=Encounter:subject)
+        short? sourceResourceTypeId = GetResourceTypeIdAsync(revIncludeExpr.SourceResourceType, CancellationToken.None)
+            .AsTask().GetAwaiter().GetResult();
+        if (!sourceResourceTypeId.HasValue)
+        {
+            _logger.LogWarning("Source resource type not found for revinclude: {SourceType}", revIncludeExpr.SourceResourceType);
+            return _context.Resources.Where(r => false);  // Return empty
+        }
+
         // Get SearchParamId from the reference search parameter URL
         short searchParamId = GetSearchParamIdFromUrl(revIncludeExpr.ReferenceSearchParameter.Url);
         if (searchParamId == 0)
@@ -807,9 +816,11 @@ public class SqlEntityFrameworkSearchService : ISearchService
             .GetAwaiter().GetResult();
 
         // Find resources that reference these main results using a subquery
+        // Filter by source resource type (e.g., Encounter), search parameter, and reference target
         // This keeps everything in the database query (no client-side materialization)
         var referencingRsps = _context.ReferenceSearchParams
-            .Where(rsp => rsp.SearchParamId == searchParamId &&
+            .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
+                          rsp.SearchParamId == searchParamId &&
                           baseQuery.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
             .Select(rsp => rsp.ResourceSurrogateId)
             .Distinct();
