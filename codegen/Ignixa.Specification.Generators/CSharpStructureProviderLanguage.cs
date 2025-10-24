@@ -49,6 +49,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
             FhirReleases.FhirSequenceCodes.R4 => "R4",
             FhirReleases.FhirSequenceCodes.R4B => "R4B",
             FhirReleases.FhirSequenceCodes.R5 => "R5",
+            FhirReleases.FhirSequenceCodes.R6 => "R6",
             FhirReleases.FhirSequenceCodes.STU3 => "Stu3",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
@@ -100,11 +101,15 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// Pre-generated IStructureDefinitionSummaryProvider for FHIR {fhirVersion}.");
         sb.AppendLine("/// </summary>");
-        sb.AppendLine($"public sealed class {fhirVersion}StructureDefinitionSummaryProvider : IStructureDefinitionSummaryProvider, IFhirSchemaProvider");
+        sb.AppendLine($"public sealed partial class {fhirVersion}StructureDefinitionSummaryProvider : IStructureDefinitionSummaryProvider, IFhirSchemaProvider");
         sb.AppendLine("{");
 
         // Version property
         sb.AppendLine($"    public FhirSpecification Version => FhirSpecification.{fhirVersion};");
+        sb.AppendLine();
+
+        // FullVersion property (uses actual package version from metadata)
+        sb.AppendLine($"    public string FullVersion => \"{definitions.MainPackageVersion}\";");
         sb.AppendLine();
 
         // Resource type names

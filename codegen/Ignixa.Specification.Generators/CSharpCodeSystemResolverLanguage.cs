@@ -48,6 +48,7 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
             FhirReleases.FhirSequenceCodes.R4 => "R4",
             FhirReleases.FhirSequenceCodes.R4B => "R4B",
             FhirReleases.FhirSequenceCodes.R5 => "R5",
+            FhirReleases.FhirSequenceCodes.R6 => "R6",
             FhirReleases.FhirSequenceCodes.STU3 => "STU3",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
@@ -104,8 +105,8 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
         sb.AppendLine("        var mappings = new Dictionary<string, string>");
         sb.AppendLine("        {");
 
-        // Generate mappings from embedded resourcepath-codesystem-mappings.json
-        GenerateCodeSystemMappings(sb, fhirVersion);
+        // Generate mappings from FHIR package metadata
+        GenerateCodeSystemMappings(sb, definitions, fhirVersion);
 
         sb.AppendLine("        };");
         sb.AppendLine();
@@ -117,42 +118,63 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
         return sb.ToString();
     }
 
-    private void GenerateCodeSystemMappings(StringBuilder sb, string fhirVersion)
+    private void GenerateCodeSystemMappings(StringBuilder sb, DefinitionCollection definitions, string fhirVersion)
     {
-        // Parse the embedded resourcepath-codesystem-mappings.json file from the Sparky.Search project
-        string mappingsPath = GetCodeSystemMappingsJsonPath(fhirVersion);
-
-        if (!File.Exists(mappingsPath))
-        {
-            sb.AppendLine($"            // ERROR: Code system mappings file not found: {mappingsPath}");
-            return;
-        }
-
-        // Parse JSON (note: this file is UTF-16 encoded in some versions)
-        string json;
-        try
-        {
-            // Try UTF-8 first
-            json = File.ReadAllText(mappingsPath, Encoding.UTF8);
-            // Validate it's valid JSON
-            JsonDocument.Parse(json).Dispose();
-        }
-        catch
-        {
-            // Fall back to UTF-16
-            json = File.ReadAllText(mappingsPath, Encoding.Unicode);
-        }
-
-        using JsonDocument doc = JsonDocument.Parse(json);
-
+        // Extract resource path → code system mappings from FHIR package metadata
+        // by analyzing element definitions and their value set bindings
         var mappings = new SortedDictionary<string, string>();
-        foreach (JsonProperty property in doc.RootElement.EnumerateObject())
+
+        // First, try to load from static JSON file if it exists
+        string mappingsPath = GetCodeSystemMappingsJsonPath(fhirVersion);
+        if (File.Exists(mappingsPath))
         {
-            string path = property.Name;
-            string? codeSystem = property.Value.GetString();
-            if (!string.IsNullOrEmpty(codeSystem))
+            try
             {
-                mappings[path] = codeSystem;
+                string json = File.ReadAllText(mappingsPath, Encoding.UTF8);
+                JsonDocument.Parse(json).Dispose();
+
+                using JsonDocument doc = JsonDocument.Parse(json);
+                foreach (JsonProperty property in doc.RootElement.EnumerateObject())
+                {
+                    string path = property.Name;
+                    string? codeSystem = property.Value.GetString();
+                    if (!string.IsNullOrEmpty(codeSystem))
+                    {
+                        mappings[path] = codeSystem;
+                    }
+                }
+            }
+            catch
+            {
+                // Fall back to UTF-16
+                try
+                {
+                    string json = File.ReadAllText(mappingsPath, Encoding.Unicode);
+                    using JsonDocument doc = JsonDocument.Parse(json);
+                    foreach (JsonProperty property in doc.RootElement.EnumerateObject())
+                    {
+                        string path = property.Name;
+                        string? codeSystem = property.Value.GetString();
+                        if (!string.IsNullOrEmpty(codeSystem))
+                        {
+                            mappings[path] = codeSystem;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Continue if JSON parsing fails
+                }
+            }
+        }
+
+        // Additionally, extract mappings from FHIR package metadata
+        // by analyzing resources and their element bindings
+        if (definitions.ResourcesByName != null)
+        {
+            foreach (var (resourceName, resource) in definitions.ResourcesByName)
+            {
+                ExtractCodeSystemMappingsFromResource(mappings, resource, resourceName);
             }
         }
 
@@ -172,16 +194,94 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
         Console.WriteLine($"Generated {count} code system mappings for {fhirVersion}");
     }
 
+    private void ExtractCodeSystemMappingsFromResource(SortedDictionary<string, string> mappings, Hl7.Fhir.Model.StructureDefinition resource, string resourceName)
+    {
+        // Extract code system bindings from element definitions
+        if (resource.Snapshot?.Element == null)
+            return;
+
+        foreach (var element in resource.Snapshot.Element)
+        {
+            if (element.Binding?.ValueSet == null)
+                continue;
+
+            string path = element.Path ?? string.Empty;
+            if (string.IsNullOrEmpty(path))
+                continue;
+
+            // Remove [x] suffix from choice type elements
+            path = path.Replace("[x]", string.Empty);
+
+            string? valueSetUrl = element.Binding.ValueSet;
+            if (string.IsNullOrEmpty(valueSetUrl))
+                continue;
+
+            // Try to extract the underlying code system from the value set
+            string? codeSystemUrl = ExtractCodeSystemFromValueSet(valueSetUrl, mappings.Values);
+            if (string.IsNullOrEmpty(codeSystemUrl))
+            {
+                codeSystemUrl = valueSetUrl; // Fall back to value set if code system not found
+            }
+
+            // Remove canonical version suffix (|version)
+            if (codeSystemUrl.Contains("|"))
+            {
+                codeSystemUrl = codeSystemUrl.Substring(0, codeSystemUrl.IndexOf("|"));
+            }
+
+            // Add mapping from path to code system URL
+            if (!mappings.ContainsKey(path))
+            {
+                mappings[path] = codeSystemUrl;
+            }
+        }
+    }
+
+    private string? ExtractCodeSystemFromValueSet(string valueSetUrl, ICollection<string> existingMappings)
+    {
+        // Try to extract the primary code system from a value set URL
+        // For common FHIR value sets, use known code system mappings
+
+        // Map common FHIR value sets to their primary code systems
+        var knownMappings = new Dictionary<string, string>
+        {
+            { "http://hl7.org/fhir/ValueSet/languages", "urn:ietf:bcp:47" },
+            { "http://hl7.org/fhir/ValueSet/mimetypes", "urn:ietf:bcp:13" },
+            { "http://hl7.org/fhir/ValueSet/currencies", "urn:iso:std:iso:4217" },
+            { "http://hl7.org/fhir/ValueSet/country", "urn:iso:std:iso:3166" },
+            { "http://hl7.org/fhir/ValueSet/language", "urn:ietf:bcp:47" },
+        };
+
+        if (knownMappings.TryGetValue(valueSetUrl, out var codeSystem))
+        {
+            return codeSystem;
+        }
+
+        // For HL7 value sets, try to extract the code system from the URL pattern
+        if (valueSetUrl.StartsWith("http://hl7.org/fhir/ValueSet/"))
+        {
+            string valuSetName = valueSetUrl.Substring("http://hl7.org/fhir/ValueSet/".Length);
+            // Many HL7 value sets map to code systems with similar names
+            // For example: ValueSet/administrative-gender → CodeSystem/administrative-gender
+            string possibleCodeSystemUrl = $"http://hl7.org/fhir/CodeSystem/{valuSetName}";
+            // We could validate this exists, but for now assume the pattern holds
+            return possibleCodeSystemUrl;
+        }
+
+        return null;
+    }
+
     private string GetCodeSystemMappingsJsonPath(string fhirVersion)
     {
-        // Resolve path to embedded resourcepath-codesystem-mappings.json in Sparky.Search project
-        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "src", "Sparky.Search", "Data"));
+        // Resolve path to embedded resourcepath-codesystem-mappings.json in Ignixa.Search project
+        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../src", "Ignixa.Search", "Data"));
 
         string versionDir = fhirVersion switch
         {
             "R4" => "R4",
             "R4B" => "R4B",
             "R5" => "R5",
+            "R6" => "R6",
             "STU3" => "Stu3",
             _ => throw new ArgumentException($"Unknown FHIR version: {fhirVersion}")
         };

@@ -27,6 +27,7 @@ public static class FhirSpecificationSchemaProviderExtensions
             FhirSpecification.R4 => new R4StructureDefinitionSummaryProvider(),
             FhirSpecification.R4B => new R4BStructureDefinitionSummaryProvider(),
             FhirSpecification.R5 => new R5StructureDefinitionSummaryProvider(),
+            FhirSpecification.R6 => new R6StructureDefinitionSummaryProvider(),
             FhirSpecification.Stu3 => new Stu3StructureDefinitionSummaryProvider(),
             _ => throw new NotSupportedException($"FHIR specification {spec} is not supported")
         };

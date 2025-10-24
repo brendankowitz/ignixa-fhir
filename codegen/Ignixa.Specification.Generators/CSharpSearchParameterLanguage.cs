@@ -49,6 +49,7 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
             FhirReleases.FhirSequenceCodes.R4 => "R4",
             FhirReleases.FhirSequenceCodes.R4B => "R4B",
             FhirReleases.FhirSequenceCodes.R5 => "R5",
+            FhirReleases.FhirSequenceCodes.R6 => "R6",
             FhirReleases.FhirSequenceCodes.STU3 => "STU3",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
@@ -123,45 +124,27 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
 
     private void GenerateSearchParameterEntries(StringBuilder sb, DefinitionCollection definitions, string fhirVersion)
     {
-        // Parse the embedded search-parameters.json file from the Sparky.Search project
-        // This is the same JSON file that SearchParameterDefinitionBuilder.ReadEmbeddedSearchParameters() loads at runtime
-        string searchParamsPath = GetSearchParametersJsonPath(fhirVersion);
+        // Extract search parameters directly from the loaded FHIR package metadata
+        // No need for external JSON files - use the DefinitionCollection that was already loaded
+        var searchParameters = definitions.SearchParametersByUrl;
 
-        if (!File.Exists(searchParamsPath))
+        if (searchParameters == null || searchParameters.Count == 0)
         {
-            sb.AppendLine($"            // ERROR: Search parameters file not found: {searchParamsPath}");
-            sb.AppendLine($"            // Generate from FHIR package or ensure embedded JSON exists");
+            sb.AppendLine("            // WARNING: No search parameters found in FHIR package");
             return;
         }
 
-        // Parse JSON bundle
-        string json = File.ReadAllText(searchParamsPath);
-        using JsonDocument doc = JsonDocument.Parse(json);
-
-        if (!doc.RootElement.TryGetProperty("entry", out JsonElement entries))
-        {
-            sb.AppendLine($"            // ERROR: 'entry' array not found in search parameters bundle");
-            return;
-        }
-
-        // Generate SearchParameterInfo for each entry
+        // Generate SearchParameterInfo from Firely SDK SearchParameter objects
         int count = 0;
-        foreach (JsonElement entry in entries.EnumerateArray())
+        foreach (var searchParam in searchParameters.Values)
         {
-            if (!entry.TryGetProperty("resource", out JsonElement resource))
-                continue;
-
-            if (!resource.TryGetProperty("resourceType", out JsonElement resourceType) ||
-                resourceType.GetString() != "SearchParameter")
-                continue;
-
-            GenerateSearchParameterInfoFromJson(sb, resource, count == 0);
+            GenerateSearchParameterInfoFromObject(sb, searchParam, count == 0);
             count++;
         }
 
         // Add hardcoded system parameter: _type
         // This parameter is used to search by resource type and is available for all resources
-        // Not included in the standard FHIR search-parameters.json, but required by the spec
+        // Not included in the standard FHIR search-parameters, but required by the spec
         sb.AppendLine(",");
         sb.AppendLine("            new SearchParameterInfo(");
         sb.AppendLine("                name: \"_type\",");
@@ -175,25 +158,74 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
         sb.AppendLine("                description: \"Search for resources by resource type\")");
         count++;
 
-        Console.WriteLine($"Generated {count} search parameters for {fhirVersion} (includes hardcoded _type)");
+        Console.WriteLine($"Generated {count} search parameters for {fhirVersion} from FHIR package (includes hardcoded _type)");
     }
 
     private string GetSearchParametersJsonPath(string fhirVersion)
     {
-        // Resolve path to embedded search-parameters.json in Sparky.Search project
-        // Assumes we're running from codegen/ directory
-        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "src", "Sparky.Search", "Data"));
+        // Resolve path to embedded search-parameters.json in Ignixa.Search project
+        // Assumes we're running from codegen/Ignixa.Specification.Generators directory
+        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../src", "Ignixa.Search", "Data"));
 
         string versionDir = fhirVersion switch
         {
             "R4" => "R4",
             "R4B" => "R4B",
             "R5" => "R5",
+            "R6" => "R6",
             "STU3" => "Stu3",
             _ => throw new ArgumentException($"Unknown FHIR version: {fhirVersion}")
         };
 
         return Path.Combine(baseDir, versionDir, "search-parameters.json");
+    }
+
+    private void GenerateSearchParameterInfoFromObject(StringBuilder sb, Hl7.Fhir.Model.SearchParameter searchParam, bool isFirst)
+    {
+        if (!isFirst)
+        {
+            sb.AppendLine(",");
+        }
+
+        // Extract properties from SearchParameter object
+        string? url = searchParam.Url;
+        string? name = searchParam.Name;
+        string? code = searchParam.Code;
+        string? type = searchParam.Type?.ToString();
+        string? expression = searchParam.Expression;
+        string? description = searchParam.Description;
+
+        // Extract base (list of resource types)
+        var baseTypes = searchParam.Base?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+
+        // Extract target (list of target resource types for Reference parameters)
+        var targetTypes = searchParam.Target?.Select(r => r.ToString()).Where(r => r != null && !string.IsNullOrEmpty(r)).Select(r => r!).ToList() ?? new List<string>();
+
+        // Extract component (for composite search parameters)
+        var components = new List<(string definition, string expression)>();
+        if (searchParam.Component != null && searchParam.Component.Count > 0)
+        {
+            foreach (var comp in searchParam.Component)
+            {
+                string? def = comp.Definition;
+                string? expr = comp.Expression;
+                if (!string.IsNullOrEmpty(def))
+                    components.Add((def, expr ?? ""));
+            }
+        }
+
+        // Generate SearchParameterInfo constructor call
+        sb.Append("            new SearchParameterInfo(");
+        sb.AppendLine();
+        sb.AppendLine($"                name: {FormatStringLiteral(name)},");
+        sb.AppendLine($"                code: {FormatStringLiteral(code)},");
+        sb.AppendLine($"                searchParamType: SearchParamType.{CapitalizeFirstLetter(type ?? "String")},");
+        sb.AppendLine($"                url: {FormatUriOrNull(url)},");
+        sb.AppendLine($"                components: {FormatComponentArrayOrNull(components)},");
+        sb.AppendLine($"                expression: {FormatStringLiteral(expression)},");
+        sb.AppendLine($"                targetResourceTypes: {FormatStringArrayOrNull(targetTypes)},");
+        sb.AppendLine($"                baseResourceTypes: {FormatStringArrayOrNull(baseTypes)},");
+        sb.AppendLine($"                description: {FormatStringLiteral(description)})");
     }
 
     private void GenerateSearchParameterInfoFromJson(StringBuilder sb, JsonElement resource, bool isFirst)
@@ -209,6 +241,7 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
         string? code = resource.TryGetProperty("code", out var codeProp) ? codeProp.GetString() : null;
         string? type = resource.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
         string? expression = resource.TryGetProperty("expression", out var exprProp) ? exprProp.GetString() : null;
+        string? description = resource.TryGetProperty("description", out var descProp) ? descProp.GetString() : null;
 
         // Extract base (array of resource types)
         var baseTypes = new List<string>();
@@ -274,7 +307,8 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
         sb.AppendLine($"                expression: {FormatStringLiteral(expression)},");
         sb.AppendLine($"                targetResourceTypes: {FormatStringArrayOrNull(targetTypes)},");
         sb.AppendLine($"                baseResourceTypes: {FormatStringArrayOrNull(baseTypes)},");
-        sb.AppendLine($"                description: null)");
+        sb.AppendLine($"                description: {FormatStringLiteral(description)})");
+
     }
 
     private string FormatStringLiteral(string? value)

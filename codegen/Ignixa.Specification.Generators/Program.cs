@@ -24,10 +24,10 @@ string fhirVersion = (mode != "structure" && args.Length > 1) ? args[1] : (args.
 
 string defaultOutputDir = mode switch
 {
-    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Sparky.Search", "Generated"),
+    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "ValueSets", "Normative"),
     "invariant" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated"),
-    _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa, not Sparky
+    _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
 };
 
 string outputDir = args.Length > 2 ? args[2] :
@@ -36,12 +36,12 @@ string outputDir = args.Length > 2 ? args[2] :
 
 string title = mode switch
 {
-    "search" => "Sparky FHIR Search Parameter Generator",
-    "compartment" => "Sparky FHIR Compartment Definition Generator",
-    "codesystem" => "Sparky FHIR Code System Mappings Generator",
-    "valueset" => "Sparky FHIR ValueSet Enum Generator",
+    "search" => "Ignixa FHIR Search Parameter Generator",
+    "compartment" => "Ignixa FHIR Compartment Definition Generator",
+    "codesystem" => "Ignixa FHIR Code System Mappings Generator",
+    "valueset" => "Ignixa FHIR ValueSet Enum Generator",
     "invariant" => "Ignixa FHIR Invariant Provider Generator",
-    _ => "Ignixa FHIR Structure Definition Provider Generator"  // structure mode: use Ignixa
+    _ => "Ignixa FHIR Structure Definition Provider Generator"
 };
 
 Console.WriteLine(title);
@@ -53,6 +53,7 @@ string packageId = fhirVersion.ToUpperInvariant() switch
     "R4" => "hl7.fhir.r4.core#4.0.1",
     "R4B" => "hl7.fhir.r4b.core#4.3.0",
     "R5" => "hl7.fhir.r5.core#5.0.0",
+    "R6" => "hl7.fhir.r6.core#6.0.0-ballot2",
     "STU3" => "hl7.fhir.r3.core#3.0.2",
     _ => throw new ArgumentException($"Unsupported FHIR version: {fhirVersion}")
 };
@@ -94,7 +95,7 @@ switch (mode)
         var searchConfig = new CSharpSearchParameterConfig
         {
             OutputDirectory = Path.GetFullPath(outputDir),
-            Namespace = "Sparky.Search.Generated"
+            Namespace = "Ignixa.Search.Generated"
         };
         searchLanguage.Export(searchConfig, definitions);
         break;
@@ -105,7 +106,7 @@ switch (mode)
         var compartmentConfig = new CSharpCompartmentConfig
         {
             OutputDirectory = Path.GetFullPath(outputDir),
-            Namespace = "Sparky.Search.Generated"
+            Namespace = "Ignixa.Search.Generated"
         };
         compartmentLanguage.Export(compartmentConfig, definitions);
         break;
@@ -116,7 +117,7 @@ switch (mode)
         var codeSystemConfig = new CSharpCodeSystemResolverConfig
         {
             OutputDirectory = Path.GetFullPath(outputDir),
-            Namespace = "Sparky.Search.Generated"
+            Namespace = "Ignixa.Search.Generated"
         };
         codeSystemLanguage.Export(codeSystemConfig, definitions);
         break;

@@ -41,6 +41,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 FhirSpecification.R4 => new R4StructureDefinitionSummaryProvider(),
                 FhirSpecification.R4B => new R4BStructureDefinitionSummaryProvider(),
                 FhirSpecification.R5 => new R5StructureDefinitionSummaryProvider(),
+                FhirSpecification.R6 => new R6StructureDefinitionSummaryProvider(),
                 _ => throw new ArgumentException($"Unsupported FHIR version: {version}")
             };
         });

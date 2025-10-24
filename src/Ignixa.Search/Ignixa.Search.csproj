@@ -17,7 +17,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Data" />
     <Folder Include="Models" />
   </ItemGroup>
 
@@ -28,21 +27,13 @@
 
   <ItemGroup>
     <None Remove="Data\R4\BaseCapabilities.json" />
-    <EmbeddedResource Include="Data\R4\BaseCapabilities.json" />
     <None Remove="Data\R4\unsupported-search-parameters.json" />
-    <EmbeddedResource Include="Data\R4\unsupported-search-parameters.json" />
     <None Remove="Data\R5\BaseCapabilities.json" />
-    <EmbeddedResource Include="Data\R5\BaseCapabilities.json" />
     <None Remove="Data\R5\unsupported-search-parameters.json" />
-    <EmbeddedResource Include="Data\R5\unsupported-search-parameters.json" />
     <None Remove="Data\Stu3\BaseCapabilities.json" />
-    <EmbeddedResource Include="Data\Stu3\BaseCapabilities.json" />
     <None Remove="Data\Stu3\unsupported-search-parameters.json" />
-    <EmbeddedResource Include="Data\Stu3\unsupported-search-parameters.json" />
     <None Remove="Data\R4B\BaseCapabilities.json" />
-    <EmbeddedResource Include="Data\R4B\BaseCapabilities.json" />
     <None Remove="Data\R4B\unsupported-search-parameters.json" />
-    <EmbeddedResource Include="Data\R4B\unsupported-search-parameters.json" />
   </ItemGroup>
 
   <ItemGroup>

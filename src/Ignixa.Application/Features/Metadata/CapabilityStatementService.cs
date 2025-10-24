@@ -6,6 +6,7 @@
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;
@@ -23,17 +24,20 @@ public class CapabilityStatementService
     private readonly IEnumerable<ICapabilitySegment> _segments;
     private readonly ICapabilityCache _cache;
     private readonly ITenantConfigurationStore _tenantConfigStore;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<CapabilityStatementService> _logger;
 
     public CapabilityStatementService(
         IEnumerable<ICapabilitySegment> segments,
         ICapabilityCache cache,
         ITenantConfigurationStore tenantConfigStore,
+        IFhirVersionContext versionContext,
         ILogger<CapabilityStatementService> logger)
     {
         _segments = segments ?? throw new ArgumentNullException(nameof(segments));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _tenantConfigStore = tenantConfigStore ?? throw new ArgumentNullException(nameof(tenantConfigStore));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -132,7 +136,10 @@ public class CapabilityStatementService
         statement.Url = "http://Ignixa.example.com/fhir/CapabilityStatement";
         statement.Version = "0.1.0";
         statement.Date = DateTimeOffset.UtcNow.ToString("O");
-        statement.FhirVersionString = FhirSpecificationExtensions.ToVersionString(context.FhirVersion);
+
+        // Use FullVersion from schema provider to include ballot/patch versions (e.g., "6.0.0-ballot2" for R6)
+        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
+        statement.FhirVersionString = schemaProvider.FullVersion;
 
         // Set name based on tenant
         statement.Name = tenantConfig != null

@@ -19,9 +19,11 @@ namespace Ignixa.Specification.Generated;
 /// <summary>
 /// Pre-generated IStructureDefinitionSummaryProvider for FHIR Stu3.
 /// </summary>
-public sealed class Stu3StructureDefinitionSummaryProvider : IStructureDefinitionSummaryProvider, IFhirSchemaProvider
+public sealed partial class Stu3StructureDefinitionSummaryProvider : IStructureDefinitionSummaryProvider, IFhirSchemaProvider
 {
     public FhirSpecification Version => FhirSpecification.Stu3;
+
+    public string FullVersion => "3.0.2";
 
     public IReadOnlySet<string> ResourceTypeNames { get; } = new HashSet<string>
     {

@@ -5,9 +5,7 @@
 
 using System.Text.RegularExpressions;
 using EnsureThat;
-using Ignixa.Domain;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.Search.Data;
 using Ignixa.Search.Generated;
 
 namespace Ignixa.Search.Indexing;
@@ -26,6 +24,7 @@ public sealed class CodeSystemResolver : ICodeSystemResolver
             FhirSpecification.R4 => R4CodeSystemMappings.GetMappings(),
             FhirSpecification.R4B => R4BCodeSystemMappings.GetMappings(),
             FhirSpecification.R5 => R5CodeSystemMappings.GetMappings(),
+            FhirSpecification.R6 => R6CodeSystemMappings.GetMappings(),
             FhirSpecification.Stu3 => STU3CodeSystemMappings.GetMappings(),
             _ => throw new NotSupportedException($"FHIR version {fhirSpecification} is not supported")
         };

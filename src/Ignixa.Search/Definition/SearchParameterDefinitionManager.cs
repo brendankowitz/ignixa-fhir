@@ -45,13 +45,14 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
             FhirSpecification.R4 => R4SearchParameterDefinitions.GetBaseSearchParameters(),
             FhirSpecification.R4B => R4BSearchParameterDefinitions.GetBaseSearchParameters(),
             FhirSpecification.R5 => R5SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirSpecification.R6 => R6SearchParameterDefinitions.GetBaseSearchParameters(),
             FhirSpecification.Stu3 => STU3SearchParameterDefinitions.GetBaseSearchParameters(),
             _ => throw new NotSupportedException($"FHIR version {modelInfoProvider.Version} is not supported")
         };
 
         // Populate lookup dictionaries with proper type hierarchy expansion
         var resourceTypes = _modelInfoProvider.ResourceTypeNames;
-        foreach (var param in baseParameters)
+        foreach (SearchParameterInfo param in baseParameters)
         {
             // Add to URL lookup
             if (param.Url != null)
@@ -62,6 +63,11 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
             // Add to type lookup - expand base resource types to all applicable concrete types
             if (param.BaseResourceTypes != null)
             {
+                if (param.BaseResourceTypes.Any(x => SearchParameterDefinitionBuilder.ShouldExcludeEntry(x, param.Name, modelInfoProvider)))
+                {
+                    continue;
+                }
+                
                 var applicableTypes = ExpandBaseResourceTypes(param.BaseResourceTypes, resourceTypes);
                 foreach (var resourceType in applicableTypes)
                 {

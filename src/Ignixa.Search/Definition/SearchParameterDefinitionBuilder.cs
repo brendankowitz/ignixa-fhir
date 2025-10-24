@@ -5,15 +5,12 @@
 
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.Reflection;
 using EnsureThat;
 using Ignixa.Domain.Exceptions;
-using Ignixa.Domain;
 using Ignixa.Domain.Constants;
 using Ignixa.Specification;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.SourceNodeSerialization;
-using Ignixa.Search.Data;
 using Ignixa.Search.Definition.BundleNavigators;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
@@ -52,31 +49,20 @@ internal static class SearchParameterDefinitionBuilder
             BuildSearchParameterDefinition(searchParametersLookup, resourceType, resourceTypeDictionary, modelInfoProvider);
     }
 
-    private static bool ShouldExcludeEntry(string resourceType, string searchParameterName, IFhirSchemaProvider modelInfoProvider)
+    internal static bool ShouldExcludeEntry(string resourceType, string searchParameterName, IFhirSchemaProvider modelInfoProvider)
     {
         return resourceType == KnownResourceTypes.DomainResource && searchParameterName == "_text" ||
                resourceType == KnownResourceTypes.Resource && searchParameterName == "_content" ||
                resourceType == KnownResourceTypes.Resource && searchParameterName == "_query" ||
                resourceType == KnownResourceTypes.Resource && searchParameterName == "_list" ||
+               resourceType == KnownResourceTypes.Resource && searchParameterName == "_in" ||
                ShouldExcludeEntryStu3(resourceType, searchParameterName, modelInfoProvider);
     }
 
-    private static bool ShouldExcludeEntryStu3(string resourceType, string searchParameterName, IFhirSchemaProvider modelInfoProvider)
+    internal static bool ShouldExcludeEntryStu3(string resourceType, string searchParameterName, IFhirSchemaProvider modelInfoProvider)
     {
         return modelInfoProvider.Version == FhirSpecification.Stu3 &&
                resourceType == "DataElement" && (searchParameterName == "objectClass" || searchParameterName == "objectClassProperty");
-    }
-
-    internal static async Task<BundleNavigator> ReadEmbeddedSearchParameters(
-        string embeddedResourceName,
-        IFhirSchemaProvider modelInfoProvider,
-        string embeddedResourceNamespace = null,
-        Assembly assembly = null)
-    {
-        using Stream stream = DataLoader.OpenVersionedFileStream(modelInfoProvider.Version, embeddedResourceName, embeddedResourceNamespace, assembly);
-        var sourceNode = await JsonSourceNodeFactory.Parse(stream);
-
-        return new BundleNavigator(sourceNode.ToTypedElement(modelInfoProvider));
     }
 
     private static SearchParameterInfo GetOrCreateSearchParameterInfo(SearchParameterNavigator searchParameter, IDictionary<Uri, SearchParameterInfo> uriDictionary)

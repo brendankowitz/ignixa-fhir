@@ -19,9 +19,11 @@ namespace Ignixa.Specification.Generated;
 /// <summary>
 /// Pre-generated IStructureDefinitionSummaryProvider for FHIR R4B.
 /// </summary>
-public sealed class R4BStructureDefinitionSummaryProvider : IStructureDefinitionSummaryProvider, IFhirSchemaProvider
+public sealed partial class R4BStructureDefinitionSummaryProvider : IStructureDefinitionSummaryProvider, IFhirSchemaProvider
 {
     public FhirSpecification Version => FhirSpecification.R4B;
+
+    public string FullVersion => "4.3.0";
 
     public IReadOnlySet<string> ResourceTypeNames { get; } = new HashSet<string>
     {

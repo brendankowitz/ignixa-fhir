@@ -48,6 +48,7 @@ public sealed class CSharpCompartmentLanguage : ILanguage
             FhirReleases.FhirSequenceCodes.R4 => "R4",
             FhirReleases.FhirSequenceCodes.R4B => "R4B",
             FhirReleases.FhirSequenceCodes.R5 => "R5",
+            FhirReleases.FhirSequenceCodes.R6 => "R6",
             FhirReleases.FhirSequenceCodes.STU3 => "STU3",
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
@@ -87,69 +88,200 @@ public sealed class CSharpCompartmentLanguage : ILanguage
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// Pre-generated Compartment definitions for FHIR {fhirVersion}.");
         sb.AppendLine("/// Eliminates runtime JSON parsing overhead.");
+        sb.AppendLine("/// Thread-safe lazy initialization with caching.");
         sb.AppendLine("/// </summary>");
         sb.AppendLine($"public static class {fhirVersion}CompartmentDefinitions");
         sb.AppendLine("{");
+        sb.AppendLine("    private static Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)>? _cached;");
+        sb.AppendLine();
         sb.AppendLine("    /// <summary>");
         sb.AppendLine($"    /// Gets all compartment definitions for FHIR {fhirVersion}.");
+        sb.AppendLine("    /// Thread-safe lazy initialization with caching.");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine("    public static Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> GetCompartments()");
         sb.AppendLine("    {");
-        sb.AppendLine("        return new Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)>");
+        sb.AppendLine("        if (_cached != null)");
+        sb.AppendLine("            return _cached;");
+        sb.AppendLine();
+        sb.AppendLine("        var compartments = new Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)>");
         sb.AppendLine("        {");
 
-        // Generate compartment entries from embedded compartment.json
-        GenerateCompartmentEntries(sb, fhirVersion);
+        // Generate compartment entries from FHIR package metadata
+        GenerateCompartmentEntries(sb, definitions, fhirVersion);
 
         sb.AppendLine("        };");
+        sb.AppendLine();
+        sb.AppendLine("        _cached = compartments;");
+        sb.AppendLine("        return _cached;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
         return sb.ToString();
     }
 
-    private void GenerateCompartmentEntries(StringBuilder sb, string fhirVersion)
+    private void GenerateCompartmentEntries(StringBuilder sb, DefinitionCollection definitions, string fhirVersion)
     {
-        // Parse the embedded compartment.json file from the Sparky.Search project
-        string compartmentPath = GetCompartmentJsonPath(fhirVersion);
-
-        if (!File.Exists(compartmentPath))
-        {
-            sb.AppendLine($"            // ERROR: Compartment file not found: {compartmentPath}");
-            return;
-        }
-
-        // Parse JSON bundle
-        string json = File.ReadAllText(compartmentPath);
-        using JsonDocument doc = JsonDocument.Parse(json);
-
-        if (!doc.RootElement.TryGetProperty("entry", out JsonElement entries))
-        {
-            sb.AppendLine($"            // ERROR: 'entry' array not found in compartment bundle");
-            return;
-        }
-
-        // Generate compartment definitions
+        // Track which compartment codes have been generated to avoid duplicates
+        var generatedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         int count = 0;
         bool isFirst = true;
-        foreach (JsonElement entry in entries.EnumerateArray())
+
+        // Try to get compartments from the loaded definitions (primary source)
+        if (definitions.CompartmentsByUrl != null && definitions.CompartmentsByUrl.Count > 0)
         {
-            if (!entry.TryGetProperty("resource", out JsonElement resource))
-                continue;
+            foreach (var (url, compartment) in definitions.CompartmentsByUrl)
+            {
+                string? code = null;
+                try
+                {
+                    code = compartment.Code?.ToString();
+                }
+                catch
+                {
+                    continue;
+                }
 
-            if (!resource.TryGetProperty("resourceType", out JsonElement resourceType) ||
-                resourceType.GetString() != "CompartmentDefinition")
-                continue;
+                if (string.IsNullOrEmpty(code) || !generatedCodes.Add(code))
+                    continue; // Skip duplicates
 
-            if (!isFirst)
-                sb.AppendLine(",");
+                if (!isFirst)
+                    sb.AppendLine(",");
 
-            GenerateCompartmentDefinitionFromJson(sb, resource);
-            isFirst = false;
-            count++;
+                GenerateCompartmentDefinitionFromObject(sb, compartment);
+                isFirst = false;
+                count++;
+            }
+        }
+
+        // Additionally, try to load from static compartment.json if it exists (as fallback)
+        string compartmentPath = GetCompartmentJsonPath(fhirVersion);
+        if (File.Exists(compartmentPath))
+        {
+            try
+            {
+                string json = File.ReadAllText(compartmentPath);
+                using JsonDocument doc = JsonDocument.Parse(json);
+
+                if (doc.RootElement.TryGetProperty("entry", out JsonElement entries))
+                {
+                    foreach (JsonElement entry in entries.EnumerateArray())
+                    {
+                        if (!entry.TryGetProperty("resource", out JsonElement resource))
+                            continue;
+
+                        if (!resource.TryGetProperty("resourceType", out JsonElement resourceType) ||
+                            resourceType.GetString() != "CompartmentDefinition")
+                            continue;
+
+                        string? code = resource.TryGetProperty("code", out var codeProp) ? codeProp.GetString() : null;
+                        if (string.IsNullOrEmpty(code) || !generatedCodes.Add(code))
+                            continue; // Skip duplicates
+
+                        if (!isFirst)
+                            sb.AppendLine(",");
+
+                        GenerateCompartmentDefinitionFromJson(sb, resource);
+                        isFirst = false;
+                        count++;
+                    }
+                }
+            }
+            catch
+            {
+                // Silently continue if JSON parsing fails
+            }
         }
 
         Console.WriteLine($"Generated {count} compartment definitions for {fhirVersion}");
+    }
+
+    private void GenerateCompartmentDefinitionFromObject(StringBuilder sb, Hl7.Fhir.Model.CompartmentDefinition compartment)
+    {
+        // Extract properties from Firely SDK CompartmentDefinition object
+        string? code = null;
+        try
+        {
+            code = compartment.Code?.ToString();
+        }
+        catch
+        {
+            // Handle unknown resource types gracefully by skipping
+            return;
+        }
+
+        string? url = compartment.Url;
+
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(url))
+            return;
+
+        // Extract resources array
+        var resources = new List<(string resourceType, List<string> parameters)>();
+        if (compartment.Resource != null && compartment.Resource.Count > 0)
+        {
+            foreach (var res in compartment.Resource)
+            {
+                string? resCode = null;
+                try
+                {
+                    resCode = res.Code?.ToString();
+                }
+                catch
+                {
+                    // Handle unknown resource types gracefully by skipping
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(resCode))
+                    continue;
+
+                var parameters = new List<string>();
+                if (res.Param != null)
+                {
+                    foreach (var param in res.Param)
+                    {
+                        if (!string.IsNullOrEmpty(param))
+                            parameters.Add(param);
+                    }
+                }
+
+                resources.Add((resCode, parameters));
+            }
+        }
+
+        // Generate tuple entry
+        sb.AppendLine($"            {{");
+        sb.AppendLine($"                CompartmentType.{code},");
+        sb.AppendLine($"                (");
+        sb.AppendLine($"                    CompartmentType.{code},");
+        sb.AppendLine($"                    new Uri(\"{EscapeString(url)}\"),");
+        sb.AppendLine($"                    new List<(string Resource, IList<string> Params)>");
+        sb.AppendLine($"                    {{");
+
+        for (int i = 0; i < resources.Count; i++)
+        {
+            var (resourceType, parameters) = resources[i];
+            sb.Append($"                        (\"{EscapeString(resourceType)}\", ");
+
+            if (parameters.Count == 0)
+            {
+                sb.Append("new List<string>())");
+            }
+            else
+            {
+                sb.Append("new List<string> { ");
+                sb.Append(string.Join(", ", parameters.Select(p => $"\"{EscapeString(p)}\"")));
+                sb.Append(" })");
+            }
+
+            if (i < resources.Count - 1)
+                sb.AppendLine(",");
+            else
+                sb.AppendLine();
+        }
+
+        sb.AppendLine($"                    }}");
+        sb.AppendLine($"                )");
+        sb.Append($"            }}");
     }
 
     private void GenerateCompartmentDefinitionFromJson(StringBuilder sb, JsonElement resource)
@@ -224,14 +356,15 @@ public sealed class CSharpCompartmentLanguage : ILanguage
 
     private string GetCompartmentJsonPath(string fhirVersion)
     {
-        // Resolve path to embedded compartment.json in Sparky.Search project
-        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "src", "Sparky.Search", "Data"));
+        // Resolve path to embedded compartment.json in Ignixa.Search project
+        string baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../src", "Ignixa.Search", "Data"));
 
         string versionDir = fhirVersion switch
         {
             "R4" => "R4",
             "R4B" => "R4B",
             "R5" => "R5",
+            "R6" => "R6",
             "STU3" => "Stu3",
             _ => throw new ArgumentException($"Unknown FHIR version: {fhirVersion}")
         };

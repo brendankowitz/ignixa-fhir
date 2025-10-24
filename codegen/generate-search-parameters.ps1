@@ -4,7 +4,7 @@
 
 param(
     [Parameter()]
-    [ValidateSet('R4', 'R4B', 'R5', 'STU3', 'All')]
+    [ValidateSet('R4', 'R4B', 'R5', 'R6', 'STU3', 'All')]
     [string]$FhirVersion = 'All'
 )
 
@@ -46,6 +46,7 @@ function Generate-Version {
         'R4' = 'hl7.fhir.r4.core'
         'R4B' = 'hl7.fhir.r4b.core'
         'R5' = 'hl7.fhir.r5.core'
+        'R6' = 'hl7.fhir.r6.core#6.0.0-ballot2'
         'STU3' = 'hl7.fhir.r3.core'
     }
 
@@ -67,7 +68,7 @@ function Generate-Version {
 }
 
 # Generate requested versions
-$versions = if ($FhirVersion -eq 'All') { @('R4', 'R4B', 'R5', 'STU3') } else { @($FhirVersion) }
+$versions = if ($FhirVersion -eq 'All') { @('R4', 'R4B', 'R5', 'R6', 'STU3') } else { @($FhirVersion) }
 
 $success = $true
 foreach ($version in $versions) {

@@ -33,6 +33,7 @@ public class CompartmentDefinitionManager : ICompartmentDefinitionManager
                 FhirSpecification.R4 => R4CompartmentDefinitions.GetCompartments(),
                 FhirSpecification.R4B => R4BCompartmentDefinitions.GetCompartments(),
                 FhirSpecification.R5 => R5CompartmentDefinitions.GetCompartments(),
+                FhirSpecification.R6 => R6CompartmentDefinitions.GetCompartments(),
                 FhirSpecification.Stu3 => STU3CompartmentDefinitions.GetCompartments(),
                 _ => throw new NotSupportedException($"FHIR version {fhirSpecification} is not supported")
             };
