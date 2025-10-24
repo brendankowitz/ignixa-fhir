@@ -131,26 +131,68 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         _logger.LogInformation("Executing streaming query for {ResourceType}\n{SQL}", options.ResourceType, query.ToQueryString());
 
-        // Stream results - buffer for include processing
-        var mainResults = new List<SearchEntryResult>();
+        // Phase 1: Stream main results (NO buffering - zero memory for large result sets)
         await foreach (var entity in query
             .Include(x => x.Transaction)
             .AsAsyncEnumerable().WithCancellation(ct))
         {
             var searchResult = MapResourceEntityToSearchResult(entity, options.ResourceType);
-            mainResults.Add(searchResult);
-            yield return searchResult;  // Stream immediately
+            yield return searchResult;  // Stream immediately to client
         }
 
-        // Process includes/revincludes if requested
-        if (options.Include.Count > 0 || options.RevInclude.Count > 0)
+        // Phase 2: Stream included resources (if _include parameters exist)
+        if (options.Include.Count > 0)
         {
-            var includedResources = await ProcessIncludesAndRevIncludesAsync(mainResults, options, ct);
-            foreach (var included in includedResources)
+            _logger.LogDebug("Processing {IncludeCount} _include expressions", options.Include.Count);
+
+            foreach (var includeExpr in options.Include)
             {
-                // Mark included resources with Include mode instead of Match
-                yield return included with { SearchMode = SearchEntryMode.Include };
+                var includeQuery = BuildIncludeQuery(options, includeExpr, resourceTypeId.Value);
+
+                _logger.LogDebug("Executing include query for parameter {ParamCode}", includeExpr.ReferenceSearchParameter?.Code);
+
+                // Stream each included resource directly to client
+                await foreach (var entity in includeQuery
+                    .AsAsyncEnumerable().WithCancellation(ct))
+                {
+                    var searchResult = MapResourceEntityToSearchResult(entity, includeExpr.TargetResourceType);
+                    searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
+                    yield return searchResult;
+                }
             }
+
+            _logger.LogDebug("Include processing completed");
+        }
+
+        // Phase 3: Stream reverse-included resources (if _revinclude parameters exist)
+        if (options.RevInclude.Count > 0)
+        {
+            _logger.LogDebug("Processing {RevIncludeCount} _revinclude expressions", options.RevInclude.Count);
+
+            foreach (var revIncludeExpr in options.RevInclude)
+            {
+                var revIncludeQuery = BuildRevIncludeQuery(options, revIncludeExpr, resourceTypeId.Value);
+
+                _logger.LogDebug("Executing revinclude query for parameter {ParamCode} with {Sql}", revIncludeExpr.ReferenceSearchParameter?.Code, revIncludeQuery.ToQueryString());
+
+                // Stream each reverse-included resource directly to client
+                await foreach (var entity in revIncludeQuery
+                    .AsAsyncEnumerable().WithCancellation(ct))
+                {
+                    // Determine resource type from entity
+                    var resourceTypeName = revIncludeExpr.SourceResourceType ?? _context.ResourceTypes
+                        .AsNoTracking()
+                        .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
+                        .Select(rt => rt.Name)
+                        .First();
+
+                    var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
+                    searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
+                    yield return searchResult;
+                }
+            }
+
+            _logger.LogDebug("RevInclude processing completed");
         }
     }
 
@@ -702,6 +744,82 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     sortExpr.Parameter.Code);
                 return query;
         }
+    }
+
+    /// <summary>
+    /// Builds a CTE-based include query that replicates the main query filters without buffering IDs.
+    /// Uses SQL Common Table Expression (CTE) pattern to find resources referenced by main results.
+    /// Implements DISTINCT to deduplicate resources referenced by multiple main results.
+    /// </summary>
+    private IQueryable<ResourceEntity> BuildIncludeQuery(
+        SearchOptions options,
+        IncludeExpression includeExpr,
+        short resourceTypeId)
+    {
+        // Get SearchParamId from the reference search parameter URL
+        short searchParamId = GetSearchParamIdFromUrl(includeExpr.ReferenceSearchParameter.Url);
+        if (searchParamId == 0)
+        {
+            _logger.LogWarning("Search parameter not found for include: {Parameter}", includeExpr.ReferenceSearchParameter.Code);
+            return _context.Resources.Where(r => false);  // Return empty
+        }
+
+        // Step 1: Build main query as CTE (replicate filters, sort, and pagination)
+        // Get the base query with same filters as main search
+        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None).GetAwaiter().GetResult();
+
+        // Find resources referenced by these main results using a subquery
+        // This keeps everything in the database query (no client-side materialization)
+        var referencedTypeAndIds = _context.ReferenceSearchParams
+            .Where(rsp => baseQuery.Select(r => r.ResourceSurrogateId).Contains(rsp.ResourceSurrogateId) && rsp.SearchParamId == searchParamId)
+            .Select(rsp => new { rsp.ReferenceResourceTypeId, rsp.ReferenceResourceId })
+            .Distinct();
+
+        // Get actual resources for these references using subquery join
+        return _context.Resources
+            .Where(r => !r.IsHistory && !r.IsDeleted &&
+                        referencedTypeAndIds.Any(x => x.ReferenceResourceTypeId == r.ResourceTypeId && x.ReferenceResourceId == r.ResourceId))
+            .Include(r => r.Transaction)
+            .Distinct()
+            .OrderBy(r => r.ResourceSurrogateId);  // Stable order for deduplication
+    }
+
+    /// <summary>
+    /// Builds a CTE-based revinclude query that finds resources referencing the main results.
+    /// Uses SQL Common Table Expression (CTE) pattern.
+    /// Implements DISTINCT to deduplicate resources that reference multiple main results.
+    /// </summary>
+    private IQueryable<ResourceEntity> BuildRevIncludeQuery(
+        SearchOptions options,
+        IncludeExpression revIncludeExpr,
+        short resourceTypeId)
+    {
+        // Get SearchParamId from the reference search parameter URL
+        short searchParamId = GetSearchParamIdFromUrl(revIncludeExpr.ReferenceSearchParameter.Url);
+        if (searchParamId == 0)
+        {
+            _logger.LogWarning("Search parameter not found for revinclude: {Parameter}", revIncludeExpr.ReferenceSearchParameter.Code);
+            return _context.Resources.Where(r => false);  // Return empty
+        }
+
+        // Build main query using BuildQueryAsync (already includes filters, sorting, pagination)
+        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None)
+            .GetAwaiter().GetResult();
+
+        // Find resources that reference these main results using a subquery
+        // This keeps everything in the database query (no client-side materialization)
+        var referencingRsps = _context.ReferenceSearchParams
+            .Where(rsp => rsp.SearchParamId == searchParamId &&
+                          baseQuery.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+            .Select(rsp => rsp.ResourceSurrogateId)
+            .Distinct();
+
+        // Get the actual resources using subquery containment
+        return _context.Resources
+            .Where(r => referencingRsps.Contains(r.ResourceSurrogateId) && !r.IsHistory && !r.IsDeleted)
+            .Include(r => r.Transaction)
+            .Distinct()
+            .OrderBy(r => r.ResourceSurrogateId);  // Stable order for streaming
     }
 
     private async ValueTask<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken ct)
