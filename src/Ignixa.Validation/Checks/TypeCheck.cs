@@ -32,6 +32,12 @@ public class TypeCheck : IValidationCheck
         @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[\+\-]((0[0-9]|1[0-3]):[0-5][0-9]|14:00))$",
         RegexOptions.Compiled);
 
+    // URI pattern: basic validation that something looks like a URI
+    private static readonly Regex UriPattern = new(@"^[a-zA-Z][a-zA-Z0-9+\-.]*:", RegexOptions.Compiled);
+
+    // URL pattern: specific validation for http/https URLs
+    private static readonly Regex UrlPattern = new(@"^https?://", RegexOptions.Compiled);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="TypeCheck"/> class.
     /// </summary>
@@ -68,7 +74,73 @@ public class TypeCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
-        var isValid = _expectedType switch
+        // Element-name-based validation: Some FHIR types inherit from base types but have specialized rules.
+        // Check element name first to apply specialized validation for inherited types.
+        // Example: "id" inherits from string but requires ID format validation.
+        var elementNameValidation = GetValidationByElementName(text);
+        var isValid = elementNameValidation ?? GetValidationByType(text);
+
+        if (!isValid)
+        {
+            // Use element name in error message if validation was element-name-based, otherwise use type
+            var validationType = elementNameValidation != null ? _elementName : _expectedType;
+            return ValidationResult.Failure(
+                ValidationIssue.InvariantFailure(
+                    "type-1",
+                    $"Value '{text}' is not a valid '{validationType}'",
+                    location));
+        }
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// Gets validation result based on element name for specialized FHIR types.
+    /// Returns null if no element-name-specific validation applies (defer to type-based validation).
+    /// Only applies element-name validation if the type is a general string type, not a specific type.
+    /// </summary>
+    private bool? GetValidationByElementName(string text)
+    {
+        // Special handling for elements that inherit from base types but have specialized validation rules.
+        // These checks are based on element NAME, not type, because FHIR's type system uses inheritance
+        // where id/code/uri etc. extend string but have stricter rules.
+        // However, if the type is more specific (like "canonical"), defer to type-based validation.
+
+        // Only apply element-name validation if the type is string or matches the element name's implied type
+        if (_expectedType != "string" && _expectedType != _elementName)
+        {
+            // Type is more specific than element name suggests (e.g., "url" with type "canonical")
+            // Let type-based validation handle it
+            return null;
+        }
+
+        return _elementName switch
+        {
+            // Identifier-like types
+            "id" => IdPattern.IsMatch(text),
+
+            // URI-like types
+            "uri" => UriPattern.IsMatch(text),
+            "url" => UrlPattern.IsMatch(text),
+            "oid" => UriPattern.IsMatch(text),
+            "uuid" => IsValidUuid(text),
+            "canonical" => Uri.TryCreate(text, UriKind.Absolute, out _),
+
+            // Code-like types
+            "code" => true,
+            "markdown" => true,
+
+            // No element-name-specific validation (defers to type)
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Gets validation result based on the expected FHIR type.
+    /// </summary>
+    private bool GetValidationByType(string text)
+    {
+        return _expectedType switch
         {
             "string" => true, // All text is valid string
             "boolean" => text == "true" || text == "false",
@@ -78,21 +150,17 @@ public class TypeCheck : IValidationCheck
             "dateTime" => DateTimePattern.IsMatch(text),
             "instant" => InstantPattern.IsMatch(text), // Requires timezone (Z or +/-HH:MM)
             "time" => TimePattern.IsMatch(text),
-            "id" => IdPattern.IsMatch(text),
             "uri" or "url" or "oid" or "uuid" or "code" or "markdown" or "base64Binary" => true, // Permissive for general URIs
             "canonical" => Uri.TryCreate(text, UriKind.Absolute, out _), // Canonical MUST be absolute
             _ => true // Unknown types pass
         };
+    }
 
-        if (!isValid)
-        {
-            return ValidationResult.Failure(
-                ValidationIssue.InvariantFailure(
-                    "type-1",
-                    $"Value '{text}' is not a valid '{_expectedType}'",
-                    location));
-        }
-
-        return ValidationResult.Success();
+    /// <summary>
+    /// Validates if a string is a valid UUID in FHIR format (RFC 4122).
+    /// </summary>
+    private static bool IsValidUuid(string text)
+    {
+        return Guid.TryParse(text, out _);
     }
 }

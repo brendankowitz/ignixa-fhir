@@ -4,6 +4,7 @@
 // </copyright>
 
 using FluentAssertions;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;
@@ -166,6 +167,10 @@ public class StructureDefinitionSchemaBuilderTests
                    (type == "boolean" || type == "date");
         });
         hasPrimitiveTypeCheck.Should().BeTrue();
+
+        // Note: "id" element validation is handled by IdFormatCheck (universal check)
+        // not by TypeCheck, because the "id" element is inherited from Resource base type
+        // and may not be included in the schema's GetElements() collection
     }
 
     [Fact]
