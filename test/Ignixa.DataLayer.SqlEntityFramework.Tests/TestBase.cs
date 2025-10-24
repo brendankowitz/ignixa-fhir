@@ -70,6 +70,12 @@ public abstract class TestBase : IDisposable
     /// </summary>
     protected ResourceEntity CreateResource(short resourceTypeId, string resourceId, int version = 1, bool isHistory = false, bool isDeleted = false)
     {
+        // Create minimal RawResource JSON
+        var compressor = new Ignixa.DataLayer.SqlEntityFramework.Compression.GzipResourceCompressor();
+        var minimalJson = @"{""resourceType"":""Resource"",""id"":""" + resourceId + @"""}";
+        var jsonBytes = System.Text.Encoding.UTF8.GetBytes(minimalJson);
+        var compressedBytes = compressor.CompressBytes(jsonBytes);
+
         var resource = new ResourceEntity
         {
             ResourceTypeId = resourceTypeId,
@@ -77,7 +83,8 @@ public abstract class TestBase : IDisposable
             Version = version,
             IsHistory = isHistory,
             IsDeleted = isDeleted,
-            ResourceSurrogateId = GenerateSurrogateId()
+            ResourceSurrogateId = GenerateSurrogateId(),
+            RawResource = compressedBytes
         };
 
         Context.Resources.Add(resource);

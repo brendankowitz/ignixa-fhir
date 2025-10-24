@@ -303,13 +303,13 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         var includeProcessor = new Search.IncludeProcessor(
             dbContext,
             searchIndexCache,
-            repository,
+            compressor,
             _loggerFactory.CreateLogger<Search.IncludeProcessor>());
 
         var revIncludeProcessor = new Search.RevIncludeProcessor(
             dbContext,
             searchIndexCache,
-            repository,
+            compressor,
             _loggerFactory.CreateLogger<Search.RevIncludeProcessor>());
 
         var iterateProcessor = new Search.IterateProcessor(

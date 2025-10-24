@@ -5,6 +5,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -20,7 +21,7 @@ public class RevIncludeProcessor
 {
     private readonly FhirDbContext _context;
     private readonly SearchIndexReferenceDataCache _cache;
-    private readonly IFhirRepository _repository;
+    private readonly GzipResourceCompressor _compressor;
     private readonly ILogger<RevIncludeProcessor> _logger;
 
     /// <summary>
@@ -28,17 +29,17 @@ public class RevIncludeProcessor
     /// </summary>
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="cache">The reference data cache.</param>
-    /// <param name="repository">The repository for fetching full resources.</param>
+    /// <param name="compressor">The resource compressor for decompressing RawResource bytes.</param>
     /// <param name="logger">Logger instance.</param>
     public RevIncludeProcessor(
         FhirDbContext context,
         SearchIndexReferenceDataCache cache,
-        IFhirRepository repository,
+        GzipResourceCompressor compressor,
         ILogger<RevIncludeProcessor> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -105,16 +106,34 @@ public class RevIncludeProcessor
             revIncludeExpr.SourceResourceType);
 
         // Step 1: Get target resource type ID (the main search resource type)
-        var targetResourceTypeId = await _cache.GetResourceTypeIdAsync(revIncludeExpr.TargetResourceType);
+        // For _revinclude, TargetResourceType may be null. Use Requires to get the actual target type(s).
+        // Requires returns the resource types that the revinclude depends on (i.e., the main search results).
+        string targetResourceTypeName;
+        if (!string.IsNullOrEmpty(revIncludeExpr.TargetResourceType))
+        {
+            targetResourceTypeName = revIncludeExpr.TargetResourceType;
+        }
+        else if (revIncludeExpr.Requires?.Any() == true)
+        {
+            // For _revinclude without explicit target type, Requires contains the main search resource type(s)
+            targetResourceTypeName = revIncludeExpr.Requires.First();
+        }
+        else
+        {
+            _logger.LogWarning("Cannot determine target resource type for revinclude expression");
+            return new List<SearchEntryResult>();
+        }
+
+        var targetResourceTypeId = await _cache.GetResourceTypeIdAsync(targetResourceTypeName);
         if (!targetResourceTypeId.HasValue)
         {
-            _logger.LogWarning("Target resource type not found: {Type}", revIncludeExpr.TargetResourceType);
+            _logger.LogWarning("Target resource type not found: {Type}", targetResourceTypeName);
             return new List<SearchEntryResult>();
         }
 
         // Step 2: Get target resource IDs that we want to find references to
         var targetResourceIds = targetResourceIdentities
-            .Where(r => r.ResourceType == revIncludeExpr.TargetResourceType)
+            .Where(r => r.ResourceType == targetResourceTypeName)
             .Select(r => r.ResourceId)
             .ToList();
 
@@ -171,23 +190,30 @@ public class RevIncludeProcessor
 
         _logger.LogDebug("Found {Count} unique reverse references", referencingResourceIds.Count);
 
-        // Step 6: Fetch the referencing resources
+        // Step 6: Fetch the full referencing resource entities (not just IDs)
+        // Include the Transaction relation for CreatedDate
         var referencingEntities = await _context.Resources
             .Where(r => referencingResourceIds.Contains(r.ResourceSurrogateId)
                 && !r.IsHistory
                 && !r.IsDeleted)
-            .Select(r => new { r.ResourceId, r.Version })
+            .Include(r => r.Transaction)
             .ToListAsync(ct);
 
+        // Map entities directly to SearchEntryResult (single query, not N+1)
         var revIncludedResources = new List<SearchEntryResult>();
         foreach (var entity in referencingEntities)
         {
-            var key = new ResourceKey(revIncludeExpr.SourceResourceType, entity.ResourceId);
-            var resource = await _repository.GetAsync(key, ct);
-            if (resource != null)
+            var result = new SearchEntryResult(
+                ResourceType: revIncludeExpr.SourceResourceType,
+                ResourceId: entity.ResourceId,
+                VersionId: entity.Version.ToString(),
+                LastModified: entity.Transaction?.CreateDate ?? DateTimeOffset.UtcNow,
+                ResourceBytes: _compressor.DecompressBytes(entity.RawResource))
             {
-                revIncludedResources.Add(resource);
-            }
+                IsDeleted = entity.IsDeleted,
+                SearchMode = SearchEntryMode.Include,  // Mark as reverse-included resource
+            };
+            revIncludedResources.Add(result);
         }
 
         return revIncludedResources;

@@ -77,6 +77,11 @@ public class SearchParameterQueryGenerator
             return await ProcessBinaryExpressionAsync(resourceTypeId, binaryExpr, ct);
         }
 
+        if (expr is NotExpression notExpr)
+        {
+            return await ProcessNotExpressionAsync(resourceTypeId, notExpr, ct);
+        }
+
         // Handle InExpression<T> using reflection to get the generic type parameter
         var exprType = expr.GetType();
         if (exprType.IsGenericType && exprType.GetGenericTypeDefinition() == typeof(InExpression<>))
@@ -168,6 +173,7 @@ public class SearchParameterQueryGenerator
             FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, null, stringExpr.Value, ct),
             FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, stringExpr.Value, null, ct),
             FieldName.ReferenceResourceId => await GenerateReferenceQueryByIdAsync(resourceTypeId, stringExpr.Value, ct),
+            FieldName.ReferenceResourceType => await GenerateReferenceQueryByTypeAsync(resourceTypeId, stringExpr.Value, ct),
             _ => throw new NotSupportedException($"StringExpression with FieldName {stringExpr.FieldName} is not supported")
         };
     }
@@ -185,6 +191,25 @@ public class SearchParameterQueryGenerator
             FieldName.Quantity => await GenerateQuantityQueryAsync(resourceTypeId, binaryExpr, ct),
             _ => throw new NotSupportedException($"BinaryExpression with FieldName {binaryExpr.FieldName} is not supported")
         };
+    }
+
+    private async Task<IQueryable<long>> ProcessNotExpressionAsync(
+        short resourceTypeId,
+        NotExpression notExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing NOT expression");
+
+        // Process the inner expression to get matching resource IDs
+        var innerMatchingIds = await ProcessExpressionAsync(resourceTypeId, notExpr.Expression, ct);
+
+        // Get all resources of this type (non-history, non-deleted)
+        var allResourceIds = _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId && !r.IsHistory && !r.IsDeleted)
+            .Select(r => r.ResourceSurrogateId);
+
+        // Return resources NOT in the inner matching set
+        return allResourceIds.Where(id => !innerMatchingIds.Contains(id));
     }
 
     private async Task<IQueryable<long>> GenerateStringQueryAsync(
@@ -321,6 +346,29 @@ public class SearchParameterQueryGenerator
             .Select(sp => sp.ResourceSurrogateId);
 
         return await Task.FromResult(query);
+    }
+
+    private async Task<IQueryable<long>> GenerateReferenceQueryByTypeAsync(
+        short resourceTypeId,
+        string referenceResourceType,
+        CancellationToken ct)
+    {
+        // Convert resource type name to ID
+        var referenceResourceTypeEntity = await _context.ResourceTypes
+            .FirstOrDefaultAsync(rt => rt.Name == referenceResourceType, cancellationToken: ct);
+
+        if (referenceResourceTypeEntity == null)
+        {
+            // Resource type not found - return empty query
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        var query = _context.ReferenceSearchParams
+            .Where(sp => sp.ResourceTypeId == resourceTypeId
+                && sp.ReferenceResourceTypeId == referenceResourceTypeEntity.ResourceTypeId)
+            .Select(sp => sp.ResourceSurrogateId);
+
+        return query;
     }
 
     private IQueryable<long> GenerateUriQuery(short resourceTypeId, string uri)

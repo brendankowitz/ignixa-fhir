@@ -21,8 +21,8 @@ public record QueryParameter(string Name, string Value)
     {
         return name switch
         {
-            // Continuation token for paging
-            "ct" => ParameterCategory.ContinuationToken,
+            // Continuation token for paging (ct = legacy, after = new standard)
+            "ct" or "after" => ParameterCategory.ContinuationToken,
 
             // Control parameters (start with underscore)
             "_count" => ParameterCategory.Count,

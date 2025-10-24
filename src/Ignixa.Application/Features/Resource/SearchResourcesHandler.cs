@@ -41,7 +41,7 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<SearchResourcesResult> HandleAsync(
+    public async Task<SearchResourcesResult> HandleAsync(
         SearchResourcesQuery request,
         CancellationToken cancellationToken)
     {
@@ -79,33 +79,62 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             string.Join(",", partition.PartitionIds),
             partition.Mode);
 
-        // 2. Execute using IQueryExecutionStrategy
+        // 2. Request pageSize + 1 results to detect if there are more (count-as-render pattern)
+        //    The serializer will render only pageSize items and use the +1 to detect hasMore
+        var searchOptionsWithExtra = new SearchOptions
+        {
+            MaxItemCount = request.SearchOptions.MaxItemCount + 1,
+            ContinuationToken = request.SearchOptions.ContinuationToken,
+            Expression = request.SearchOptions.Expression,
+            Sort = request.SearchOptions.Sort,
+            Include = request.SearchOptions.Include,
+            RevInclude = request.SearchOptions.RevInclude,
+            Total = request.SearchOptions.Total,
+            Summary = request.SearchOptions.Summary,
+            UnsupportedParams = request.SearchOptions.UnsupportedParams,
+            ResourceType = request.SearchOptions.ResourceType
+        };
+
+        _logger.LogDebug(
+            "Requesting {RequestCount} results (pageSize={PageSize} + 1 for pagination detection)",
+            searchOptionsWithExtra.MaxItemCount,
+            request.SearchOptions.MaxItemCount);
+
+        // 3. Execute query using IQueryExecutionStrategy with the +1 count
         //    - PassthroughExecutionStrategy: validates single partition, direct query
         //    - FanoutExecutionStrategy (future): can handle multiple partitions
+        // This streams pageSize + 1 results (the serializer will count and detect hasMore)
         var resourceStream = _executionStrategy.SearchStreamAsync(
             partition,
-            request.SearchOptions,
+            searchOptionsWithExtra,
             cancellationToken);
 
-        // TODO: Calculate total count if requested (Phase 1.2a)
-        // Note: Calculating total with streaming requires either:
-        // 1. Separate count query (recommended)
-        // 2. Buffering all results (defeats streaming purpose)
-        // 3. Return null total (current approach)
+        // Calculate total count for Bundle.total field if explicitly requested
         int? total = null;
-        if (request.SearchOptions.Total != TotalType.None)
+        if (request.SearchOptions.Total == TotalType.Accurate)
         {
-            // For now, return null - will implement separate count query in Phase 1.2a
-            _logger.LogWarning("Total count requested but not yet supported with streaming for {ResourceType}",
-                request.ResourceType);
-            total = null;
+            // Only execute COUNT query if explicitly requested
+            int totalCount = await _executionStrategy.CountAsync(partition, request.SearchOptions, cancellationToken);
+            _logger.LogDebug("Accurate total requested, COUNT query returned {TotalCount}", totalCount);
+            total = totalCount;
         }
+        else if (request.SearchOptions.Total == TotalType.Estimate)
+        {
+            // For estimate mode, we could implement a cheaper estimation strategy in the future
+            // For now, execute count query
+            int totalCount = await _executionStrategy.CountAsync(partition, request.SearchOptions, cancellationToken);
+            _logger.LogDebug("Estimate total requested, using COUNT query result {TotalCount}", totalCount);
+            total = totalCount;
+        }
+        // TotalType.None: total remains null (default, no COUNT query executed)
 
         var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
-            ContinuationToken: null); // TODO: Implement paging in Phase 1.2a
+            ContinuationToken: null, // Serializer will generate this based on count-as-render
+            HasMore: false, // Serializer will determine this based on count-as-render
+            SearchOptions: request.SearchOptions); // Original pageSize, not +1
 
-        return Task.FromResult(result);
+        return result;
     }
 }

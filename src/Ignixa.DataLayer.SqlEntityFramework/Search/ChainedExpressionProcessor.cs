@@ -122,7 +122,7 @@ public class ChainedExpressionProcessor
         //   - Filter by matching target surrogate IDs
         var referenceQuery = _context.ReferenceSearchParams
             .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId
-                && targetResourceTypeIds.Contains(rsp.ReferenceResourceTypeId ?? 0))
+                && EF.Constant(targetResourceTypeIds).Contains(rsp.ReferenceResourceTypeId ?? 0))
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },
@@ -180,7 +180,7 @@ public class ChainedExpressionProcessor
         //   - ReferenceResourceTypeId = source type (e.g., Patient) - what they reference
         //   - Join with Resource table to get surrogate ID of the referenced source resource
         var reverseReferenceQuery = _context.ReferenceSearchParams
-            .Where(rsp => targetResourceTypeIds.Contains(rsp.ResourceTypeId)
+            .Where(rsp => EF.Constant(targetResourceTypeIds).Contains(rsp.ResourceTypeId)
                 && targetResourceIds.Contains(rsp.ResourceSurrogateId)
                 && rsp.ReferenceResourceTypeId == sourceResourceTypeId)
             .Join(_context.Resources,

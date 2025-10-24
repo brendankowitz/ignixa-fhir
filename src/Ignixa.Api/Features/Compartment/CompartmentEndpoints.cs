@@ -230,20 +230,21 @@ public static class CompartmentEndpoints
         // Execute query (returns streaming IAsyncEnumerable<SearchEntryResult>)
         var result = await mediator.SendAsync(query, cancellationToken);
 
-        // Build self link
-        string selfLink = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
+        // Build base URL for link generation
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
 
         // Set response headers
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
         // Stream Bundle response (95% memory reduction vs buffering)
-        await StreamingBundleSerializer.SerializeAsync(
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
             bundleType: "searchset",
             total: result.Total,
             entries: result.Resources,
-            selfLink: selfLink,
-            nextLink: null,
+            searchOptions: searchOptions,
+            baseUrl: baseUrl,
+            queryString: context.Request.QueryString.Value ?? string.Empty,
             pretty: false,
             cancellationToken: cancellationToken);
 

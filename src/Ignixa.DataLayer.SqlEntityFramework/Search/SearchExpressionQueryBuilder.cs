@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 
@@ -67,6 +69,8 @@ public class SearchExpressionQueryBuilder
             ChainedExpression chainedExpr => await ApplyChainedExpressionAsync(baseQuery, resourceTypeId, chainedExpr, ct),
             CompartmentSearchExpression compartmentExpr => await ApplyCompartmentSearchExpressionAsync(baseQuery, resourceTypeId, compartmentExpr, ct),
             UnionExpression unionExpr => await ApplyUnionExpressionAsync(baseQuery, resourceTypeId, unionExpr, ct),
+            NotExpression notExpr => await ApplyNotExpressionAsync(baseQuery, resourceTypeId, notExpr, ct),
+            MissingSearchParameterExpression missingExpr => await ApplyMissingSearchParameterExpressionAsync(baseQuery, resourceTypeId, missingExpr, ct),
             _ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported")
         };
     }
@@ -188,6 +192,114 @@ public class SearchExpressionQueryBuilder
         }
 
         return unionedQuery ?? baseQuery.Where(r => false); // Return empty if no expressions
+    }
+
+    private async Task<IQueryable<ResourceEntity>> ApplyNotExpressionAsync(
+        IQueryable<ResourceEntity> baseQuery,
+        short resourceTypeId,
+        NotExpression expression,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Applying NOT expression");
+
+        // Get resource IDs matching the inner expression
+        var innerQuery = await ApplySearchExpressionAsync(baseQuery, resourceTypeId, expression.Expression, ct);
+        var matchingResourceIds = innerQuery.Select(r => r.ResourceSurrogateId);
+
+        // Return base query excluding the matching IDs (NOT logic)
+        return baseQuery.Where(r => !matchingResourceIds.Contains(r.ResourceSurrogateId));
+    }
+
+    private Task<IQueryable<ResourceEntity>> ApplyMissingSearchParameterExpressionAsync(
+        IQueryable<ResourceEntity> baseQuery,
+        short resourceTypeId,
+        MissingSearchParameterExpression expression,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Applying MISSING expression for parameter: {Parameter}, IsMissing: {IsMissing}",
+            expression.Parameter?.Code,
+            expression.IsMissing);
+
+        // Get the search parameter info to determine which table to query
+        var searchParamInfo = expression.Parameter;
+        if (searchParamInfo == null)
+        {
+            _logger.LogWarning("Missing search parameter expression has no parameter info");
+            return Task.FromResult(baseQuery.Where(r => false)); // Return empty
+        }
+
+        // Query the appropriate search parameter table based on parameter type
+        IQueryable<long> resourcesWithParameter;
+
+        switch (searchParamInfo.Type)
+        {
+            case SearchParamType.String:
+                resourcesWithParameter = _context.StringSearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            case SearchParamType.Token:
+                resourcesWithParameter = _context.TokenSearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            case SearchParamType.Reference:
+                resourcesWithParameter = _context.ReferenceSearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            case SearchParamType.Number:
+                resourcesWithParameter = _context.NumberSearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            case SearchParamType.Date:
+                resourcesWithParameter = _context.DateTimeSearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            case SearchParamType.Quantity:
+                resourcesWithParameter = _context.QuantitySearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            case SearchParamType.Uri:
+                resourcesWithParameter = _context.UriSearchParams
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Select(sp => sp.ResourceSurrogateId)
+                    .Distinct();
+                break;
+
+            default:
+                _logger.LogWarning("Unsupported search parameter type for missing modifier: {Type}", searchParamInfo.Type);
+                return Task.FromResult(baseQuery.Where(r => false)); // Return empty
+        }
+
+        IQueryable<ResourceEntity> result;
+        if (expression.IsMissing)
+        {
+            // Return resources that do NOT have this parameter indexed
+            result = baseQuery.Where(r => !resourcesWithParameter.Contains(r.ResourceSurrogateId));
+        }
+        else
+        {
+            // Return resources that HAVE this parameter indexed
+            result = baseQuery.Where(r => resourcesWithParameter.Contains(r.ResourceSurrogateId));
+        }
+
+        return Task.FromResult(result);
     }
 
     private static IQueryable<long> CombineWithAnd(List<IQueryable<long>> queries)

@@ -76,7 +76,9 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         EnsureArg.IsNotNull(expression, nameof(expression));
         EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        throw new NotImplementedException();
+        // MissingFieldExpression is for low-level field checks
+        // For now, not commonly used in standard FHIR search - throw not supported
+        throw new SearchOperationNotSupportedException("MissingFieldExpression is not supported in in-memory search.");
     }
 
     public SearchPredicate VisitMissingSearchParameter(MissingSearchParameterExpression expression, Context context)
@@ -84,7 +86,23 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         EnsureArg.IsNotNull(expression, nameof(expression));
         EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        throw new NotImplementedException();
+        // Check if the search parameter exists (has index entries) or not
+        string parameterName = expression.Parameter.Name;
+        bool shouldBeMissing = expression.IsMissing;
+
+        return input =>
+        {
+            if (shouldBeMissing)
+            {
+                // Return resources that do NOT have any index entries for this parameter
+                return input.Where(x => !x.Index.Any(y => y.SearchParameter.Name == parameterName));
+            }
+            else
+            {
+                // Return resources that DO have index entries for this parameter
+                return input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName));
+            }
+        };
     }
 
     public SearchPredicate VisitMultiary(MultiaryExpression expression, Context context)
@@ -206,7 +224,15 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         EnsureArg.IsNotNull(expression, nameof(expression));
         EnsureArg.IsNotNull<Context>(context, nameof(context));
 
-        throw new NotImplementedException();
+        // Visit the inner expression to get its predicate
+        SearchPredicate innerPredicate = expression.Expression.AcceptVisitor(this, context);
+
+        // Return a predicate that negates the inner predicate's result
+        return input =>
+        {
+            var innerResults = innerPredicate(input);
+            return input.Except(innerResults);
+        };
     }
 
     public SearchPredicate VisitSortParameter(SortExpression expression, Context context)

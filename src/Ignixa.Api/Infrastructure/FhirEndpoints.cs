@@ -20,6 +20,7 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Models;
 using Ignixa.Validation;
+using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.Models;
@@ -114,13 +115,21 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
-
         // GET /tenant/{tenantId:int}/{resourceType} - Search resources
         endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
             .WithName("SearchResource")
+            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // POST /tenant/{tenantId:int}/{resourceType}/_search - Search with form-urlencoded
+        endpoints.MapPost("/tenant/{tenantId:int}/{resourceType}/_search", (HttpContext context, int tenantId, string resourceType,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePostSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
+            .WithName("PostSearchResource")
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -487,24 +496,95 @@ public static class FhirEndpoints
         var searchQuery = new SearchResourcesQuery(resourceType, searchOptions);
         SearchResourcesResult result = await mediator.SendAsync(searchQuery, ct);
 
-        // Build self link
-        string selfLink = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
+        // Build base URL for link generation
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
 
         // Set response headers
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
-        // Stream Bundle response
-        await StreamingBundleSerializer.SerializeAsync(
+        // Stream Bundle response with count-as-render pagination
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
             bundleType: "searchset",
             total: result.Total,
             entries: result.Resources,
-            selfLink: selfLink,
-            nextLink: null,
+            searchOptions: result.SearchOptions!,
+            baseUrl: baseUrl,
+            queryString: context.Request.QueryString.Value ?? string.Empty,
             pretty: false,
             cancellationToken: ct);
 
-        // Response already written to the body, return empty result
+        return Results.Empty;
+    }
+
+    /// <summary>
+    /// POST /tenant/{tenantId:int}/{resourceType}/_search - Search with form-urlencoded body
+    /// </summary>
+    private static async Task<IResult> HandlePostSearchResource(
+        HttpContext context,
+        [FromRoute] int tenantId,
+        [FromRoute] string resourceType,
+        [FromServices] IMediator mediator,
+        [FromServices] IQueryParameterParser queryParser,
+        [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}/_search", tenantId, resourceType);
+
+        // Read form data from request body
+        var form = await context.Request.ReadFormAsync(ct);
+
+        // Convert form data to query parameters
+        var queryParameters = form
+            .SelectMany(kvp => kvp.Value.Select(v => new QueryParameter(kvp.Key, v ?? string.Empty)))
+            .ToList();
+
+        logger.LogDebug("Converted {Count} form parameters to query parameters", queryParameters.Count);
+
+        // Delegate to the existing search handler logic
+        // Build SearchOptions same way as GET search
+        if (!IsValidResourceType(resourceType, context))
+        {
+            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
+            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
+        }
+
+        // Get tenant configuration
+        if (!context.Items.TryGetValue("TenantConfiguration", out var tenantConfigObj) ||
+            tenantConfigObj is not Domain.Models.TenantConfiguration tenantConfig)
+        {
+            logger.LogError("TenantConfiguration not found in HttpContext.Items");
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var fhirSpec = Ignixa.SourceNodeSerialization.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters);
+
+        // Send search query
+        var searchQuery = new SearchResourcesQuery(resourceType, searchOptions);
+        SearchResourcesResult result = await mediator.SendAsync(searchQuery, ct);
+
+        // Build base URL for link generation
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
+
+        // Set response headers
+        context.Response.ContentType = "application/fhir+json; charset=utf-8";
+
+        // Stream Bundle response with count-as-render pagination
+        // POST _search doesn't include original query params in links, use baseUrl only
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream: context.Response.Body,
+            bundleType: "searchset",
+            total: result.Total,
+            entries: result.Resources,
+            searchOptions: result.SearchOptions!,
+            baseUrl: baseUrl,
+            queryString: string.Empty, // POST _search: no query string in links
+            pretty: false,
+            cancellationToken: ct);
+
         return Results.Empty;
     }
 

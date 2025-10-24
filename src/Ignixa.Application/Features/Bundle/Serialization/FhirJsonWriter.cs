@@ -131,6 +131,26 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Writes a string value in an array (for use inside WriteStartArray/WriteEndArray).
+    /// </summary>
+    public FhirJsonWriter WriteStringValue(string value)
+    {
+        EnsureArg.IsNotNullOrEmpty(value, nameof(value));
+        _writer.WriteStringValue(value);
+        return this;
+    }
+
+    /// <summary>
+    /// Writes a boolean property.
+    /// </summary>
+    public FhirJsonWriter WriteBoolean(string name, bool value)
+    {
+        EnsureArg.IsNotNullOrEmpty(name, nameof(name));
+        _writer.WriteBoolean(name, value);
+        return this;
+    }
+
+    /// <summary>
     /// Writes a number property.
     /// </summary>
     public FhirJsonWriter WriteNumber(string name, int value)

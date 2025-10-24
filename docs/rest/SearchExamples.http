@@ -3,7 +3,7 @@
 ### Setup test data
 # @name batch
 POST http://{{hostname}}
-Prefer: validation=spec
+Prefer: validation=minimum
 Content-Type: application/json
 
 < ./data/SearchDataBatch.json
@@ -13,6 +13,12 @@ GET {{hostname}}/metadata
 
 ### Compartment Search All
 GET {{hostname}}/Patient/example/*
+
+### Sort Name
+GET {{hostname}}/Patient?_sort=name
+
+### Sort Birthdate
+GET {{hostname}}/Patient?_sort=birthDate
 
 ### Include
 GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
@@ -36,7 +42,7 @@ GET {{hostname}}/Patient?name:exact=Jon
 GET {{hostname}}/Patient?address:contains=Meadow
 
 ### Chained search 1
-GET {{hostname}}/DiagnosticReport?subject:Patient.name=Sarah
+GET {{hostname}}/DiagnosticReport?subject:Patient.name=Sarah&_count=1000&_total=accurate
 
 ### Chained search 2
 GET {{hostname}}/Encounter?subject=Patient/searchpatient3

@@ -6,11 +6,11 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
-using Ignixa.Domain.ElementModel;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
-using Ignixa.Search.Models;
+using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
@@ -24,11 +24,12 @@ public class RevIncludeProcessorTests : TestBase
 
     public RevIncludeProcessorTests()
     {
+        var compressor = new GzipResourceCompressor();
         _processor = new RevIncludeProcessor(
             Context,
             Cache,
-            MockRepository,
-            LoggerFactory.CreateLogger<RevIncludeProcessor>());
+            compressor,
+            NullLoggerFactory.Instance.CreateLogger<RevIncludeProcessor>());
     }
 
     [Fact]

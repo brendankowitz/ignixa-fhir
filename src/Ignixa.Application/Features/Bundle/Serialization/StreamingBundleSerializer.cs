@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using EnsureThat;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Models;
 using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
@@ -84,37 +85,125 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
-    /// Serializes a search result bundle synchronously (non-streaming).
+    /// Serializes a search result bundle with count-as-render pagination pattern.
+    /// Streams entries from result set, counting as rendering, and generates pagination links at the end.
     /// Uses zero-copy serialization with SearchEntryResult (raw bytes from repository).
     /// </summary>
     /// <param name="outputStream">The stream to write JSON to.</param>
     /// <param name="bundleType">The FHIR bundle type (e.g., "searchset").</param>
-    /// <param name="total">Total number of matching resources (optional).</param>
-    /// <param name="entries">Collection of search entry results (raw bytes) to include in the bundle.</param>
-    /// <param name="selfLink">The self link URL (optional).</param>
-    /// <param name="nextLink">The next page URL for pagination (optional).</param>
+    /// <param name="total">Total number of matching resources (optional, only when _total requested).</param>
+    /// <param name="entries">Async stream of search entry results (pageSize + 1 items).</param>
+    /// <param name="searchOptions">Search options containing page size and continuation token.</param>
+    /// <param name="baseUrl">Base URL for generating self and next links.</param>
+    /// <param name="queryString">Original query string for link generation.</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public static async Task SerializeAsync(
+    /// <returns>Pagination result with hasMore flag and continuation token.</returns>
+    public static async Task SerializeWithPaginationAsync(
         Stream outputStream,
         string bundleType,
         int? total,
-        IEnumerable<SearchEntryResult> entries,
-        string? selfLink = null,
-        string? nextLink = null,
+        IAsyncEnumerable<SearchEntryResult> entries,
+        SearchOptions searchOptions,
+        string baseUrl,
+        string queryString,
         bool pretty = false,
         CancellationToken cancellationToken = default)
     {
-        // Convert to async enumerable and use streaming method
-        await SerializeAsync(
-            outputStream,
-            bundleType,
-            total,
-            ToAsyncEnumerable(entries),
-            selfLink,
-            nextLink,
-            pretty,
-            cancellationToken);
+        EnsureArg.IsNotNull(outputStream, nameof(outputStream));
+        EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
+        EnsureArg.IsNotNull(entries, nameof(entries));
+        EnsureArg.IsNotNull(searchOptions, nameof(searchOptions));
+
+        await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+
+        int pageSize = searchOptions.MaxItemCount;
+        int entryCount = 0;
+        bool hasMore = false;
+        int currentOffset = 0;
+
+        // Parse current offset from existing continuation token
+        if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
+        {
+            if (ContinuationToken.TryDecode(searchOptions.ContinuationToken, out int tokenOffset, out _))
+            {
+                currentOffset = tokenOffset;
+            }
+        }
+
+        // Write bundle header
+        WriteBundleHeader(writer, bundleType, total);
+
+        // Filter unsupported parameters from query string for self link
+        string filteredQueryString = FilterUnsupportedParams(queryString, searchOptions.UnsupportedParams);
+
+        // Build self link (always available)
+        string selfLink = $"{baseUrl}{filteredQueryString}";
+
+        // Write entry array
+        writer.WriteStartArray("entry");
+
+        // Write buffered entries
+        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        {
+            if (resource.SearchMode == SearchEntryMode.Match)
+            {
+                entryCount++;
+            }
+
+            if (entryCount >= pageSize)
+            {
+                hasMore = true;
+                break;
+            }
+            
+            writer.WriteStartObject();
+
+            // Write fullUrl
+            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+            writer.WriteString("fullUrl", fullUrl);
+
+            // Write resource using helper
+            WriteResourceBytes(writer, resource);
+
+            // Write search metadata
+#pragma warning disable CA1308
+            writer.WriteObject("search", w => w
+                .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+#pragma warning restore CA1308
+
+            writer.WriteEndObject(); // end entry
+        }
+
+        // End entry array
+        writer.WriteEndArray();
+
+        // Write Bundle issues if present (e.g., unsupported search parameters)
+        WriteBundleIssues(writer, searchOptions.BundleIssues);
+
+        // Generate continuation token if there are more results
+        string? continuationToken = null;
+        if (hasMore)
+        {
+            int nextOffset = currentOffset + pageSize;
+            continuationToken = ContinuationToken.Encode(nextOffset, pageSize);
+        }
+
+        // Generate next link if there are more results
+        string? nextLink = null;
+        if (hasMore && !string.IsNullOrWhiteSpace(continuationToken))
+        {
+            var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
+            parsedQuery["after"] = continuationToken;
+            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value.ToString())}"))}";
+        }
+
+        // Write links (now that we know if there's a next link)
+        WriteBundleLinksFromStrings(writer, selfLink, nextLink);
+
+        // Write bundle footer
+        writer.WriteEndObject(); // end bundle
+        await writer.FlushAsync(cancellationToken);
     }
 
     /// <summary>
@@ -188,15 +277,6 @@ public static class StreamingBundleSerializer
 
         // Write bundle footer
         await WriteBundleFooterAsync(writer, cancellationToken);
-    }
-
-    private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(IEnumerable<T> items)
-    {
-        foreach (T item in items)
-        {
-            yield return item;
-            await Task.Yield(); // Allow cooperative multitasking
-        }
     }
 
     /// <summary>
@@ -383,6 +463,164 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
+    /// Writes Bundle.issues as a complete OperationOutcome resource.
+    /// Per FHIR spec, Bundle.issues is an OperationOutcome resource (not just an array).
+    /// https://build.fhir.org/bundle.html
+    /// </summary>
+    private static void WriteBundleIssues(
+        FhirJsonWriter writer,
+        IReadOnlyList<IssueComponent>? issues)
+    {
+        if (issues == null || issues.Count == 0)
+        {
+            return;
+        }
+
+        // Write "issues" property containing an OperationOutcome resource
+        writer.WriteStartObject("issues");
+        writer.WriteString("resourceType", "OperationOutcome");
+
+        // Write the issue array inside the OperationOutcome
+        writer.WriteStartArray("issue");
+
+        foreach (var issue in issues)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("severity", issue.Severity);
+            writer.WriteString("code", issue.Code);
+
+            // Write details CodeableConcept as complete JSON object
+            if (issue.Details != null)
+            {
+                WriteCodeableConcept(writer, "details", issue.Details);
+            }
+
+            if (!string.IsNullOrEmpty(issue.Diagnostics))
+            {
+                writer.WriteString("diagnostics", issue.Diagnostics);
+            }
+
+            if (issue.Location != null && issue.Location.Count > 0)
+            {
+                writer.WriteStartArray("location");
+                foreach (var location in issue.Location)
+                {
+                    writer.WriteStringValue(location);
+                }
+                writer.WriteEndArray();
+            }
+
+            if (issue.Expression != null && issue.Expression.Count > 0)
+            {
+                writer.WriteStartArray("expression");
+                foreach (var expr in issue.Expression)
+                {
+                    writer.WriteStringValue(expr);
+                }
+                writer.WriteEndArray();
+            }
+
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray(); // end issue array
+        writer.WriteEndObject(); // end OperationOutcome resource
+    }
+
+    /// <summary>
+    /// Writes a complete CodeableConcept JSON object with all FHIR properties.
+    /// </summary>
+    private static void WriteCodeableConcept(
+        FhirJsonWriter writer,
+        string propertyName,
+        Ignixa.SourceNodeSerialization.Models.CodeableConceptJsonNode concept)
+    {
+        writer.WriteStartObject(propertyName);
+
+        // Write coding array if present
+        if (concept.Coding != null && concept.Coding.Count > 0)
+        {
+            writer.WriteStartArray("coding");
+            foreach (var coding in concept.Coding)
+            {
+                writer.WriteStartObject();
+
+                if (!string.IsNullOrEmpty(coding.System))
+                {
+                    writer.WriteString("system", coding.System);
+                }
+
+                if (!string.IsNullOrEmpty(coding.Version))
+                {
+                    writer.WriteString("version", coding.Version);
+                }
+
+                if (!string.IsNullOrEmpty(coding.Code))
+                {
+                    writer.WriteString("code", coding.Code);
+                }
+
+                if (!string.IsNullOrEmpty(coding.Display))
+                {
+                    writer.WriteString("display", coding.Display);
+                }
+
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+        }
+
+        // Write text if present
+        if (!string.IsNullOrEmpty(concept.Text))
+        {
+            writer.WriteString("text", concept.Text);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// Filters unsupported parameters from the query string.
+    /// </summary>
+    /// <param name="queryString">Original query string (may start with '?').</param>
+    /// <param name="unsupportedParams">List of parameter names to filter out.</param>
+    /// <returns>Filtered query string (with leading '?' if original had it).</returns>
+    private static string FilterUnsupportedParams(string queryString, IReadOnlyList<string> unsupportedParams)
+    {
+        if (string.IsNullOrWhiteSpace(queryString) || unsupportedParams == null || unsupportedParams.Count == 0)
+        {
+            return queryString ?? string.Empty;
+        }
+
+        // Remove leading '?' if present, we'll add it back later
+        bool hasLeadingQuestionMark = queryString.StartsWith('?');
+        string queryWithoutPrefix = hasLeadingQuestionMark ? queryString[1..] : queryString;
+
+        if (string.IsNullOrWhiteSpace(queryWithoutPrefix))
+        {
+            return queryString;
+        }
+
+        // Parse query string
+        var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(queryWithoutPrefix);
+
+        // Filter out unsupported parameters
+        var filteredQuery = parsedQuery
+            .Where(kvp => !unsupportedParams.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase))
+            .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value.ToString())}");
+
+        string result = string.Join("&", filteredQuery);
+
+        // Add back leading '?' if original had it and result is not empty
+        if (hasLeadingQuestionMark && !string.IsNullOrEmpty(result))
+        {
+            result = "?" + result;
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Writes the bundle footer (end entry array, end bundle object, flush).
     /// </summary>
     private static async Task WriteBundleFooterAsync(FhirJsonWriter writer, CancellationToken cancellationToken)
@@ -393,3 +631,11 @@ public static class StreamingBundleSerializer
         await writer.FlushAsync(cancellationToken);
     }
 }
+
+/// <summary>
+/// Result of pagination operation containing hasMore flag and continuation token.
+/// </summary>
+/// <param name="HasMore">Indicates if there are more results beyond the current page.</param>
+/// <param name="ContinuationToken">Token for fetching the next page of results.</param>
+/// <param name="RenderedCount">Number of entries actually rendered (should be pageSize or less).</param>
+public record PaginationResult(bool HasMore, string? ContinuationToken, int RenderedCount);

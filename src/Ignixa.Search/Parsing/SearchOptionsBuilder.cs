@@ -145,8 +145,21 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             options.RevInclude = ParseIncludeParameters(resourceTypes, revIncludeParameters, isReversed: true);
         }
 
-        // STEP 6: Record unsupported parameters
+        // STEP 6: Record unsupported parameters and create Bundle issues
         options.UnsupportedParams = unsupportedParameters;
+
+        // Create IssueComponent entries for unsupported parameters with proper OperationOutcome.issue structure
+        var bundleIssues = new List<IssueComponent>();
+        foreach (var param in unsupportedParameters)
+        {
+            var diagnostics = $"Search parameter '{param}' is not supported";
+
+            bundleIssues.Add(new IssueComponent(
+                Severity: "warning",
+                Code: "not-supported",
+                Diagnostics: diagnostics));
+        }
+        options.BundleIssues = bundleIssues;
 
         return options;
     }
@@ -193,9 +206,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                     continue;
                 }
 
-                // Note: Descending sort indicator ('-' prefix) is preserved for Phase 1.2a Sort implementation
-                // For now, we just create the SortExpression without direction handling
-                string fieldName = trimmedField.StartsWith('-') ? trimmedField.Substring(1) : trimmedField;
+                // Parse direction: '-' prefix means descending
+                bool isDescending = trimmedField.StartsWith('-');
+                string fieldName = isDescending ? trimmedField.Substring(1) : trimmedField;
+                var sortOrder = isDescending ? Expressions.SortOrder.Descending : Expressions.SortOrder.Ascending;
 
                 try
                 {
@@ -204,7 +218,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
                     if (fieldExpression is SearchParameterExpression searchParamExpr)
                     {
-                        sortExpressions.Add(new SortExpression(searchParamExpr.Parameter));
+                        sortExpressions.Add(new SortExpression(searchParamExpr.Parameter, sortOrder));
                     }
                 }
                 catch

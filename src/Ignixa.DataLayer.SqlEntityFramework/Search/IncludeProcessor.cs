@@ -5,6 +5,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -20,7 +21,7 @@ public class IncludeProcessor
 {
     private readonly FhirDbContext _context;
     private readonly SearchIndexReferenceDataCache _cache;
-    private readonly IFhirRepository _repository;
+    private readonly GzipResourceCompressor _compressor;
     private readonly ILogger<IncludeProcessor> _logger;
 
     /// <summary>
@@ -28,17 +29,17 @@ public class IncludeProcessor
     /// </summary>
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="cache">The reference data cache.</param>
-    /// <param name="repository">The repository for fetching full resources.</param>
+    /// <param name="compressor">The resource compressor for decompressing RawResource bytes.</param>
     /// <param name="logger">Logger instance.</param>
     public IncludeProcessor(
         FhirDbContext context,
         SearchIndexReferenceDataCache cache,
-        IFhirRepository repository,
+        GzipResourceCompressor compressor,
         ILogger<IncludeProcessor> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -198,15 +199,29 @@ public class IncludeProcessor
                 continue;
             }
 
-            // Fetch resources from repository - return raw bytes for zero-copy serialization
-            foreach (var resourceId in resourceIds)
+            // Fetch all resources for this type in a single query (not N queries)
+            var resourceEntities = await _context.Resources
+                .Where(r => r.ResourceTypeId == resourceTypeId
+                    && resourceIds.Contains(r.ResourceId)
+                    && !r.IsHistory
+                    && !r.IsDeleted)
+                .Include(r => r.Transaction)
+                .ToListAsync(ct);
+
+            // Map entities directly to SearchEntryResult
+            foreach (var entity in resourceEntities)
             {
-                var key = new ResourceKey(resourceTypeName, resourceId);
-                var searchResult = await _repository.GetAsync(key, ct);
-                if (searchResult != null)
+                var result = new SearchEntryResult(
+                    ResourceType: resourceTypeName,
+                    ResourceId: entity.ResourceId,
+                    VersionId: entity.Version.ToString(),
+                    LastModified: entity.Transaction?.CreateDate ?? DateTimeOffset.UtcNow,
+                    ResourceBytes: _compressor.DecompressBytes(entity.RawResource))
                 {
-                    includedResources.Add(searchResult);
-                }
+                    IsDeleted = entity.IsDeleted,
+                    SearchMode = SearchEntryMode.Include,
+                };
+                includedResources.Add(result);
             }
         }
 

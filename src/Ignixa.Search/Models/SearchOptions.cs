@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Search.Expressions;
+using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Search.Models;
 
@@ -56,6 +57,13 @@ public class SearchOptions
     /// Gets or sets any unsupported search parameters encountered.
     /// </summary>
     public IReadOnlyList<string> UnsupportedParams { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets issues related to the search (e.g., unsupported parameters).
+    /// These will be rendered as Bundle.issue entries in the search response.
+    /// Each issue is an OperationOutcome.issue structure (severity, code, diagnostics, etc.).
+    /// </summary>
+    public IReadOnlyList<IssueComponent> BundleIssues { get; set; } = Array.Empty<IssueComponent>();
 
     /// <summary>
     /// Gets or sets the resource type being searched.
@@ -114,3 +122,21 @@ public enum SummaryType
     /// </summary>
     Data,
 }
+
+/// <summary>
+/// Represents an issue in a Bundle response, aligned with OperationOutcome.issue structure.
+/// https://www.hl7.org/fhir/operationoutcome.html
+/// </summary>
+/// <param name="Severity">Indicates whether the issue is fatal, error, warning, or information. (Required)</param>
+/// <param name="Code">Describes the type of the issue. (Required)</param>
+/// <param name="Details">A CodeableConcept with structured details about the issue type. (Optional)</param>
+/// <param name="Diagnostics">Additional diagnostic information about the issue. (Optional)</param>
+/// <param name="Location">The location of the issue in the request (FHIRPath expression). (Optional)</param>
+/// <param name="Expression">The FHIRPath expression corresponding to the error. (Optional)</param>
+public record IssueComponent(
+    string Severity,
+    string Code,
+    CodeableConceptJsonNode Details = null,
+    string Diagnostics = null,
+    IReadOnlyList<string> Location = null,
+    IReadOnlyList<string> Expression = null);
