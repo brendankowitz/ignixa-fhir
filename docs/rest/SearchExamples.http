@@ -20,23 +20,6 @@ Content-Type: application/json
         {
             "resource": {
                 "resourceType": "Encounter",
-                "status": "planned",
-                "class": {
-                    "system": "system",
-                    "code": "code"
-                },
-                "subject": {
-                    "reference": "Patient/searchpatient2"
-                }
-            },
-            "request": {
-                "method": "POST",
-                "url": "Encounter"
-            }
-        },
-        {
-            "resource": {
-                "resourceType": "Encounter",
                 "id": "exampleencounter1",
                 "status": "planned",
                 "class": {

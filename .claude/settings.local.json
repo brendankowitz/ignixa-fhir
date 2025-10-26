@@ -64,7 +64,8 @@
       "Bash(do echo \"Generating $version provider...\")",
       "Bash(exit 1)",
       "Bash(fhir-codegen/src/fhir-codegen/bin/Release/net8.0/fhir-codegen.exe generate:*)",
-      "Bash(do echo \"✓ Generating $version provider...\")"
+      "Bash(do echo \"✓ Generating $version provider...\")",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

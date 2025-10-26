@@ -17,21 +17,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
-    public DataTable CreateDataTable()
-    {
-        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
-    }
-
-    public DataTable GenerateRows(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
-    }
-    #pragma warning restore CS0618
+    private int _recordCount;
 
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
@@ -66,8 +52,14 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not ReferenceSearchValue refValue)
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
+                var searchParamUrl = searchIndex.SearchParameter.Url.ToString();
+                if (!searchParameterIdMap.TryGetValue(searchParamUrl, out var searchParamId))
+                {
+                    System.Diagnostics.Debug.WriteLine($"ReferenceSearchParameterRowGenerator: WARNING - SearchParam URL not found in map: {searchParamUrl} for resource {resource.ResourceType}/{resource.ResourceId}");
                     continue;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"ReferenceSearchParameterRowGenerator: Matched URL={searchParamUrl} → SearchParamId={searchParamId} for {resource.ResourceType}/{resource.ResourceId}");
 
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);
@@ -91,8 +83,12 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
                 // Version is optional
                 record.SetDBNull(6); // TODO Phase 3: Extract version if available
 
+                _recordCount++;
+                System.Diagnostics.Debug.WriteLine($"ReferenceSearchParameterRowGenerator: Yielding record #{_recordCount} - ResourceType={resourceTypeId}, SearchParam={searchParamId}, RefResourceType={record.GetInt16(4)}, RefResourceId={refValue.ResourceId}");
                 yield return record;
             }
         }
+
+        System.Diagnostics.Debug.WriteLine($"ReferenceSearchParameterRowGenerator: Total records generated: {_recordCount}");
     }
 }

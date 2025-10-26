@@ -17,22 +17,6 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    #pragma warning disable CS0618 // Use of obsolete member - stub implementation for interface compatibility
-    public DataTable CreateDataTable()
-    {
-        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
-    }
-
-    public DataTable GenerateRows(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
-    {
-        throw new NotImplementedException("Simple generators use GenerateSqlDataRecords() instead");
-    }
-    #pragma warning restore CS0618
-
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -65,7 +49,7 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not NumberSearchValue numberValue)
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Code, out var searchParamId))
+                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
                     continue;
 
                 var record = new SqlDataRecord(metadata);

@@ -268,7 +268,15 @@ public class FhirDbContext : DbContext
 
         // ReferenceSearchParam
         var referenceEntity = modelBuilder.Entity<ReferenceSearchParamEntity>();
+        // EF Core requires a key, but SQL Server uses a keyless table with UNIQUE constraint
+        // Use a composite key on non-nullable columns only
         referenceEntity.HasKey(r => new { r.ResourceTypeId, r.ResourceSurrogateId, r.SearchParamId, r.ReferenceResourceId });
+
+        // Add unique index matching SQL Server UNIQUE constraint
+        // Note: SQL Server allows multiple NULLs in UNIQUE constraints, EF Core index matches this behavior
+        referenceEntity.HasIndex(r => new { r.ResourceTypeId, r.ResourceSurrogateId, r.SearchParamId, r.BaseUri, r.ReferenceResourceTypeId, r.ReferenceResourceId })
+            .IsUnique()
+            .HasDatabaseName("UQ_ReferenceSearchParam");
 
         // UriSearchParam
         var uriEntity = modelBuilder.Entity<UriSearchParamEntity>();

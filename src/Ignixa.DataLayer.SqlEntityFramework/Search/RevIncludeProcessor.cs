@@ -164,15 +164,31 @@ public class RevIncludeProcessor
             return new List<SearchEntryResult>();
         }
 
+        // Step 4.5: Get SearchParamId for the reference search parameter
+        short? searchParamId = null;
+        if (revIncludeExpr.ReferenceSearchParameter?.Url != null)
+        {
+            searchParamId = await _cache.GetSearchParamIdAsync(revIncludeExpr.ReferenceSearchParameter.Url.ToString());
+            if (!searchParamId.HasValue)
+            {
+                _logger.LogWarning("SearchParamId not found for: {Url}", revIncludeExpr.ReferenceSearchParameter.Url);
+                return new List<SearchEntryResult>();
+            }
+
+            _logger.LogDebug("Using SearchParamId {Id} for {Url}", searchParamId.Value, revIncludeExpr.ReferenceSearchParameter.Url);
+        }
+
         // Step 5: Find references FROM source type TO target resources
         // Query: ReferenceSearchParams where:
         //   - ResourceTypeId = source type (e.g., Observation)
         //   - ReferenceResourceTypeId = target type (e.g., Patient)
+        //   - SearchParamId = specific search parameter (e.g., Encounter-subject)
         //   - Join to resolve ReferenceResourceId to surrogate ID
         //   - Filter by target surrogate IDs (the main results we're finding references to)
         var referencingResourceIds = await _context.ReferenceSearchParams
             .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value
-                && rsp.ReferenceResourceTypeId == targetResourceTypeId.Value)
+                && rsp.ReferenceResourceTypeId == targetResourceTypeId.Value
+                && (searchParamId == null || rsp.SearchParamId == searchParamId.Value))
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },

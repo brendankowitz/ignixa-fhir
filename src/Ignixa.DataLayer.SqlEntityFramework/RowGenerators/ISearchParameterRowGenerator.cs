@@ -30,24 +30,4 @@ public interface ISearchParameterRowGenerator
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
         IReadOnlyDictionary<string, short> searchParameterIdMap,
         IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap);
-
-    /// <summary>
-    /// Creates a DataTable schema for the search parameter type.
-    /// DEPRECATED: Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step.
-    /// Only composite generators still use this; simple generators have been refactored to stream SqlDataRecord directly.
-    /// </summary>
-    [Obsolete("Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step")]
-    DataTable CreateDataTable();
-
-    /// <summary>
-    /// Generates DataTable rows from search indices.
-    /// DEPRECATED: Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step.
-    /// Only composite generators still use this; simple generators have been refactored to stream SqlDataRecord directly.
-    /// </summary>
-    [Obsolete("Use GenerateSqlDataRecords() instead - avoids DataTable intermediate step")]
-    DataTable GenerateRows(
-        IReadOnlyList<ResourceWrapper> resources,
-        IReadOnlyDictionary<string, short> resourceTypeIdMap,
-        IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap);
 }

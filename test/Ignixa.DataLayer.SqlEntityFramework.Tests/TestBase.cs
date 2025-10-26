@@ -59,7 +59,8 @@ public abstract class TestBase : IDisposable
             new SearchParamEntity { SearchParamId = 2, Uri = "http://hl7.org/fhir/SearchParameter/Patient-organization" },
             new SearchParamEntity { SearchParamId = 3, Uri = "http://hl7.org/fhir/SearchParameter/Observation-patient" },
             new SearchParamEntity { SearchParamId = 4, Uri = "http://hl7.org/fhir/SearchParameter/Observation-code" },
-            new SearchParamEntity { SearchParamId = 5, Uri = "http://hl7.org/fhir/SearchParameter/Organization-name" }
+            new SearchParamEntity { SearchParamId = 5, Uri = "http://hl7.org/fhir/SearchParameter/Organization-name" },
+            new SearchParamEntity { SearchParamId = 6, Uri = "http://hl7.org/fhir/SearchParameter/Encounter-subject" }
         );
 
         Context.SaveChanges();
@@ -109,8 +110,7 @@ public abstract class TestBase : IDisposable
             ResourceSurrogateId = sourceSurrogateId,
             SearchParamId = searchParamId,
             ReferenceResourceTypeId = targetTypeId,
-            ReferenceResourceId = targetResourceId,
-            IsHistory = false
+            ReferenceResourceId = targetResourceId
         };
 
         Context.ReferenceSearchParams.Add(reference);
@@ -128,7 +128,8 @@ public abstract class TestBase : IDisposable
             ResourceSurrogateId = resourceSurrogateId,
             SearchParamId = searchParamId,
             Text = text,
-            IsHistory = false
+            IsMin = false,
+            IsMax = false
         };
 
         Context.StringSearchParams.Add(param);
