@@ -195,7 +195,7 @@ public static class StreamingBundleSerializer
         {
             var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
             parsedQuery["after"] = continuationToken;
-            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value.ToString())}"))}";
+            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v)}")))}";
         }
 
         // Write links (now that we know if there's a next link)
