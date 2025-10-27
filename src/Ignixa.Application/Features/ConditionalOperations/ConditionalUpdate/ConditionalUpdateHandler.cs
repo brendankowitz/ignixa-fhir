@@ -279,9 +279,8 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
     /// </summary>
     private static ResourceWrapper ConvertSearchEntryToWrapper(SearchEntryResult entry)
     {
-        // Parse the raw bytes to ResourceJsonNode using synchronous Parse(string) method
-        var json = System.Text.Encoding.UTF8.GetString(entry.ResourceBytes.Span);
-        var jsonNode = JsonSourceNodeFactory.Parse(json);
+        // Parse the raw bytes directly (zero-copy) to ResourceJsonNode
+        var jsonNode = JsonSourceNodeFactory.Parse(entry.ResourceBytes);
 
         var request = entry.Request ?? new ResourceRequest("PUT", $"{entry.ResourceType}/{entry.ResourceId}");
 

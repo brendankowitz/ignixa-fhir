@@ -132,6 +132,7 @@ public class FhirPathPatchHelper
 
     /// <summary>
     /// Serialize value to JsonNode.
+    /// Deep clones if the value is already a JsonNode to avoid parent conflicts.
     /// </summary>
     /// <param name="value">The value to serialize</param>
     /// <returns>JsonNode representation of the value</returns>
@@ -144,7 +145,9 @@ public class FhirPathPatchHelper
 
         if (value is JsonNode node)
         {
-            return node;
+            // Deep clone to avoid "node already has a parent" error
+            // JsonNode doesn't allow a node to have multiple parents
+            return JsonNode.Parse(node.ToJsonString());
         }
 
         var json = JsonSerializer.Serialize(value);
