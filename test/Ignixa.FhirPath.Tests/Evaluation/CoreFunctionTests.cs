@@ -373,6 +373,54 @@ public class CoreFunctionTests
 
     #endregion
 
+    #region FHIR-Specific Function Tests
+
+    [Fact]
+    public void GivenResourceWithExtension_WhenExtensionFunction_ThenReturnsMatchingExtension()
+    {
+        // Arrange
+        var expr = _compiler.Parse("extension('http://example.org/fhir/StructureDefinition/participation-agreement')");
+        var resource = CreateResourceWithExtensions();
+
+        // Act
+        var result = _evaluator.Evaluate(resource, expr).ToList();
+
+        // Assert
+        Assert.Single(result);
+        var extension = result[0];
+        Assert.Equal("Extension", extension.InstanceType);
+    }
+
+    [Fact]
+    public void GivenResourceWithMultipleExtensions_WhenExtensionFunction_ThenReturnsOnlyMatching()
+    {
+        // Arrange
+        var expr = _compiler.Parse("extension('http://example.org/test')");
+        var resource = CreateResourceWithExtensions();
+
+        // Act
+        var result = _evaluator.Evaluate(resource, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // No extension with this URL
+    }
+
+    [Fact]
+    public void GivenResourceWithoutExtensions_WhenExtensionFunction_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _compiler.Parse("extension('http://example.org/test')");
+        var resource = CreateIntegerElement(42);
+
+        // Act
+        var result = _evaluator.Evaluate(resource, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private ITypedElement CreateIntegerElement(int value)
@@ -383,6 +431,24 @@ public class CoreFunctionTests
     private ITypedElement CreateBooleanElement(bool value)
     {
         return new PrimitiveTypedElement(value, "boolean");
+    }
+
+    private ITypedElement CreateResourceWithExtensions()
+    {
+        // Create a simple resource with one extension
+        var extensionUrl = new PrimitiveTypedElement("http://example.org/fhir/StructureDefinition/participation-agreement", "uri");
+        var extensionValue = new PrimitiveTypedElement(true, "boolean");
+
+        var extension = new ComplexTypedElement("Extension", "extension",
+            new (string, ITypedElement)[] {
+                ("url", extensionUrl),
+                ("valueBoolean", extensionValue)
+            });
+
+        return new ComplexTypedElement("Patient", "Patient",
+            new (string, ITypedElement)[] {
+                ("extension", extension)
+            });
     }
 
     /// <summary>
@@ -403,6 +469,35 @@ public class CoreFunctionTests
         public IElementDefinitionSummary? Definition => null;
 
         public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+    }
+
+    /// <summary>
+    /// Test implementation of ITypedElement for complex elements with children.
+    /// </summary>
+    private class ComplexTypedElement : ITypedElement
+    {
+        private readonly List<(string name, ITypedElement element)> _children;
+
+        public ComplexTypedElement(string instanceType, string name, IEnumerable<(string name, ITypedElement element)> children)
+        {
+            InstanceType = instanceType;
+            Name = name;
+            _children = children.ToList();
+        }
+
+        public string Name { get; }
+        public string InstanceType { get; }
+        public object? Value => null;
+        public string Location => string.Empty;
+        public IElementDefinitionSummary? Definition => null;
+
+        public IEnumerable<ITypedElement> Children(string? name = null)
+        {
+            if (name == null)
+                return _children.Select(c => c.element);
+
+            return _children.Where(c => c.name == name).Select(c => c.element);
+        }
     }
 
     #endregion

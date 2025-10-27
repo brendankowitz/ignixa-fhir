@@ -160,6 +160,9 @@ public class FhirPathEvaluator
             "children" => EvaluateChildren(focusElements),
             "descendants" => EvaluateDescendants(focusElements),
 
+            // FHIR-specific functions
+            "extension" => EvaluateExtension(focusElements, func.Arguments, context),
+
             // Utility functions
             "trace" => EvaluateTrace(focusElements, func.Arguments, context),
             "now" => EvaluateNow(),
@@ -1023,6 +1026,42 @@ public class FhirPathEvaluator
         }
 
         return result;
+    }
+
+    // FHIR-specific functions
+    private IEnumerable<ITypedElement> EvaluateExtension(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments, EvaluationContext context)
+    {
+        // extension(url : string) : collection
+        // Filters the input collection for items named "extension" with the given url
+        // Equivalent to: .extension.where(url = <urlValue>)
+
+        if (arguments.Count == 0)
+            throw new ArgumentException("extension() requires a url argument");
+
+        // Evaluate the url argument to get the string value
+        var urlArgument = arguments[0];
+        var urlResult = EvaluateExpression(focus, urlArgument, context).FirstOrDefault();
+
+        if (urlResult == null)
+            yield break;
+
+        var urlValue = urlResult.Value?.ToString();
+        if (string.IsNullOrEmpty(urlValue))
+            yield break;
+
+        // Navigate to "extension" children and filter by url
+        foreach (var element in focus)
+        {
+            foreach (var extension in element.Children("extension"))
+            {
+                // Check if this extension has a url child with matching value
+                var urlChild = extension.Children("url").FirstOrDefault();
+                if (urlChild != null && urlChild.Value?.ToString() == urlValue)
+                {
+                    yield return extension;
+                }
+            }
+        }
     }
 
     // Utility functions
