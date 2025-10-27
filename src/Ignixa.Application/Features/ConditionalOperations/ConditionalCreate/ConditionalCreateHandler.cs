@@ -222,16 +222,19 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
             HttpMethod: System.Net.Http.HttpMethod.Post,
             Coordinator: null); // No bundle context for conditional create
 
-        var resourceKey = await _mediator.SendAsync(createCommand, cancellationToken);
+        var updateResult = await _mediator.SendAsync(createCommand, cancellationToken);
 
-        // Get the created resource to return
-        var repository = await _repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
-        var createdEntry = await repository.GetAsync(resourceKey, cancellationToken);
-
-        if (createdEntry == null)
+        // Convert UpdateResult to SearchEntryResult for ConvertSearchEntryToWrapper
+        var createdEntry = new SearchEntryResult(
+            ResourceType: updateResult.Key.ResourceType,
+            ResourceId: updateResult.Key.Id,
+            VersionId: updateResult.Key.VersionId ?? "1",
+            LastModified: updateResult.LastModified,
+            ResourceBytes: updateResult.ResourceBytes.ToArray())
         {
-            throw new InvalidOperationException($"Failed to retrieve created resource {resourceType}/{resourceKey.Id}");
-        }
+            TenantId = updateResult.Key.TenantId,
+            Request = updateResult.Request
+        };
 
         // Convert SearchEntryResult to ResourceWrapper
         return ConvertSearchEntryToWrapper(createdEntry);

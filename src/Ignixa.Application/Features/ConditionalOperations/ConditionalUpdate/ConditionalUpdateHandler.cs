@@ -193,16 +193,19 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             HttpMethod: System.Net.Http.HttpMethod.Put,
             Coordinator: null); // No bundle context for conditional update
 
-        var resourceKey = await _mediator.SendAsync(createCommand, cancellationToken);
+        var updateResult = await _mediator.SendAsync(createCommand, cancellationToken);
 
-        // Get the created resource to return
-        var repository = await _repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
-        var createdEntry = await repository.GetAsync(resourceKey, cancellationToken);
-
-        if (createdEntry == null)
+        // Convert UpdateResult to SearchEntryResult for ConvertSearchEntryToWrapper
+        var createdEntry = new SearchEntryResult(
+            ResourceType: updateResult.Key.ResourceType,
+            ResourceId: updateResult.Key.Id,
+            VersionId: updateResult.Key.VersionId ?? "1",
+            LastModified: updateResult.LastModified,
+            ResourceBytes: updateResult.ResourceBytes.ToArray())
         {
-            throw new InvalidOperationException($"Failed to retrieve created resource {resourceType}/{resourceKey.Id}");
-        }
+            TenantId = updateResult.Key.TenantId,
+            Request = updateResult.Request
+        };
 
         // Convert SearchEntryResult to ResourceWrapper
         return ConvertSearchEntryToWrapper(createdEntry);
@@ -258,16 +261,19 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             Coordinator: null, // No bundle context for conditional update
             IfMatch: existingVersionId); // Pass version ID for optimistic concurrency control
 
-        var resourceKey = await _mediator.SendAsync(updateCommand, cancellationToken);
+        var updateResult = await _mediator.SendAsync(updateCommand, cancellationToken);
 
-        // Get the updated resource to return
-        var repository = await _repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
-        var updatedEntry = await repository.GetAsync(resourceKey, cancellationToken);
-
-        if (updatedEntry == null)
+        // Convert UpdateResult to SearchEntryResult for ConvertSearchEntryToWrapper
+        var updatedEntry = new SearchEntryResult(
+            ResourceType: updateResult.Key.ResourceType,
+            ResourceId: updateResult.Key.Id,
+            VersionId: updateResult.Key.VersionId ?? "1",
+            LastModified: updateResult.LastModified,
+            ResourceBytes: updateResult.ResourceBytes.ToArray())
         {
-            throw new InvalidOperationException($"Failed to retrieve updated resource {resourceType}/{resourceKey.Id}");
-        }
+            TenantId = updateResult.Key.TenantId,
+            Request = updateResult.Request
+        };
 
         // Convert SearchEntryResult to ResourceWrapper
         return ConvertSearchEntryToWrapper(updatedEntry);

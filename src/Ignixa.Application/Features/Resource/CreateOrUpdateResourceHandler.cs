@@ -30,7 +30,7 @@ namespace Ignixa.Application.Features.Resource;
 /// 4. Get repository from IFhirRepositoryFactory
 /// 5. Execute CreateOrUpdateAsync directly (no execution strategy for CRUD)
 /// </summary>
-public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResourceCommand, ResourceKey>
+public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>
 {
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRepositoryFactory _repositoryFactory;
@@ -52,7 +52,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<ResourceKey> HandleAsync(CreateOrUpdateResourceCommand command, CancellationToken cancellationToken)
+    public async Task<UpdateResult> HandleAsync(CreateOrUpdateResourceCommand command, CancellationToken cancellationToken)
     {
         // Business logic - always runs for both bundle and standalone operations
         // NOTE: Validation now handled by ValidationBehavior in the pipeline
@@ -68,7 +68,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         // Create wrapper (needed for both paths now)
         var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider);
 
-        ResourceKey key;
+        UpdateResult result;
 
         // Resolve coordinator from command OR HttpContext.Items (pipeline routing fallback)
         DeferredWriteCoordinator? coordinator = command.Coordinator
@@ -101,10 +101,18 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 command.Id);
 
             // Queue wrapper for deferred batch write
-            key = await coordinator.QueueWriteAsync(
+            var key = await coordinator.QueueWriteAsync(
                 wrapper,
                 entryIndex,
                 cancellationToken);
+
+            // For bundle operations, construct minimal UpdateResult from ResourceKey
+            // Full resource not available until batch is committed
+            var resourceJson = System.Text.Json.JsonSerializer.Serialize(command.JsonNode.MutableNode);
+            result = new UpdateResult(
+                Key: key,
+                ResourceBytes: System.Text.Encoding.UTF8.GetBytes(resourceJson),
+                LastModified: DateTimeOffset.UtcNow);
         }
         else
         {
@@ -152,18 +160,18 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // 4. Get repository from factory
             var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
-            // 5. Write immediately to repository
-            key = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
+            // 5. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
+            result = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
         }
 
         // Success logging - always runs for both bundle and standalone operations
         _logger.LogInformation(
             "Created/Updated {ResourceType}/{Id} with version {VersionId}",
-            key.ResourceType,
-            key.Id,
-            key.VersionId);
+            result.Key.ResourceType,
+            result.Key.Id,
+            result.Key.VersionId);
 
-        return key;
+        return result;
     }
 
     /// <summary>

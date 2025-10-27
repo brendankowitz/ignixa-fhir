@@ -20,10 +20,11 @@ public interface IFhirRepository
     ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default);
 
     /// <summary>
-    /// Creates or updates a resource. Returns the persisted resource key with version.
+    /// Creates or updates a resource. Returns the resource key, raw bytes, and metadata.
     /// Accepts ResourceJsonNode so data layer can set id/meta before final serialization.
+    /// Returns UpdateResult with ResourceKey + raw bytes - only deserialize if needed.
     /// </summary>
-    ValueTask<ResourceKey> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default);
+    ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default);
 
     /// <summary>
     /// Allocates a new transaction ID for coordinated writes.

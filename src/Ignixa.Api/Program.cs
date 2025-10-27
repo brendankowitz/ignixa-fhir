@@ -208,7 +208,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .InstancePerDependency();
 
     containerBuilder.RegisterType<CreateOrUpdateResourceHandler>()
-        .As<IRequestHandler<CreateOrUpdateResourceCommand, Ignixa.Domain.Models.ResourceKey>>()
+        .As<IRequestHandler<CreateOrUpdateResourceCommand, Ignixa.Domain.Models.UpdateResult>>()
         .InstancePerDependency();
 
     containerBuilder.RegisterType<DeleteResourceHandler>()

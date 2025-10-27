@@ -142,19 +142,19 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         };
 
         // 10. Save via repository (increments versionId, updates lastUpdated)
-        var savedKey = await repository.CreateOrUpdateAsync(updated, cancellationToken);
+        var saveResult = await repository.CreateOrUpdateAsync(updated, cancellationToken);
 
         // 11. Update patchedResource meta with saved version info
         patchedResource.Meta ??= new();
-        patchedResource.Meta.VersionId = savedKey.VersionId ?? "1";
-        patchedResource.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        patchedResource.Meta.VersionId = saveResult.Key.VersionId ?? "1";
+        patchedResource.Meta.LastUpdated = saveResult.LastModified;
 
         // 12. Create final ResourceWrapper with updated meta
         var result = new ResourceWrapper(
             patchedResource.ResourceType,
             patchedResource.Id ?? request.ResourceId,
-            savedKey.VersionId ?? "1",
-            patchedResource.Meta.LastUpdated.Value,
+            saveResult.Key.VersionId ?? "1",
+            saveResult.LastModified,
             patchedResource,
             new ResourceRequest(
                 "PATCH",
@@ -168,7 +168,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             "PATCH succeeded: {ResourceType}/{ResourceId} updated to version {Version} in tenant {TenantId}",
             request.ResourceType,
             request.ResourceId,
-            savedKey.VersionId,
+            saveResult.Key.VersionId,
             request.TenantId);
 
         return result;

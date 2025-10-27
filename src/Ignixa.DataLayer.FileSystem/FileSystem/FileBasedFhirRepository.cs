@@ -112,7 +112,7 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
         }
     }
 
-    public async ValueTask<ResourceKey> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
+    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
     {
         var key = new ResourceKey(resource.ResourceType, resource.ResourceId);
 
@@ -166,12 +166,23 @@ public sealed class FileBasedFhirRepository : IFhirRepository, IDisposable
             string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
             await File.WriteAllTextAsync(internalMetadataPath, metadataJson, ct).ConfigureAwait(false);
 
-            var resultKey = new ResourceKey(resource.ResourceType, resource.ResourceId, metadata.VersionId);
-
             _logger.LogInformation("Stored resource: {ResourceType}/{Id} version {VersionId} tx {TransactionId}",
                 resource.ResourceType, resource.ResourceId, metadata.VersionId, transactionId);
 
-            return resultKey;
+            // Return UpdateResult with ResourceKey + raw bytes (only deserialize if needed)
+            var resourceBytes = System.Text.Encoding.UTF8.GetBytes(resourceJson);
+            var resultKey = new ResourceKey(
+                ResourceType: resource.ResourceType,
+                Id: resource.ResourceId,
+                VersionId: metadata.VersionId);
+
+            return new UpdateResult(
+                Key: resultKey,
+                ResourceBytes: resourceBytes,
+                LastModified: timestamp)
+            {
+                Request = resource.Request
+            };
         }
         finally
         {

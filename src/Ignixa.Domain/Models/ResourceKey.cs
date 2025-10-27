@@ -9,6 +9,7 @@ public record ResourceKey(
     string? VersionId = null,
     int? TenantId = null)
 {
+
     /// <summary>
     /// Returns a string representation suitable for logging.
     /// </summary>

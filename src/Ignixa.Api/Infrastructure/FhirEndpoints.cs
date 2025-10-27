@@ -420,35 +420,36 @@ public static class FhirEndpoints
 
         // Send generic command with optional coordinator and validation override
         var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, null, validationOverride);
-        ResourceKey result = await mediator.SendAsync(command, ct);
+        UpdateResult result = await mediator.SendAsync(command, ct);
 
-        // Add ETag and Preference-Applied headers
-        context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
+        // Add ETag, Last-Modified, and Preference-Applied headers
+        context.Response.Headers.Append("ETag", $"W/\"{result.Key.VersionId}\"");
+        context.Response.Headers.Append("Last-Modified", result.LastModified.ToString("R"));
         if (validationOverride.HasValue)
         {
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
         }
 
         // Determine if created or updated
-        bool isCreated = result.VersionId == "1";
+        bool isCreated = result.Key.VersionId == "1";
 
         if (isCreated)
         {
-            logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Id, result.VersionId, tenantId);
-            return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Id}", new
+            logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
+            return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Key.Id}", new
             {
                 resourceType = resourceType,
-                id = result.Id,
-                meta = new { versionId = result.VersionId }
+                id = result.Key.Id,
+                meta = new { versionId = result.Key.VersionId }
             });
         }
 
-        logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Id, result.VersionId, tenantId);
+        logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
         return Results.Ok(new
         {
             resourceType = resourceType,
-            id = result.Id,
-            meta = new { versionId = result.VersionId }
+            id = result.Key.Id,
+            meta = new { versionId = result.Key.VersionId }
         });
     }
 
@@ -736,29 +737,30 @@ public static class FhirEndpoints
 
         // Send generic command with HTTP POST method
         var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride);
-        ResourceKey createResult = await mediator.SendAsync(createCommand, ct);
+        UpdateResult createResult = await mediator.SendAsync(createCommand, ct);
 
-        // Add ETag and Preference-Applied headers
-        context.Response.Headers.Append("ETag", $"W/\"{createResult.VersionId}\"");
+        // Add ETag, Last-Modified, and Preference-Applied headers
+        context.Response.Headers.Append("ETag", $"W/\"{createResult.Key.VersionId}\"");
+        context.Response.Headers.Append("Last-Modified", createResult.LastModified.ToString("R"));
         if (validationOverride.HasValue)
         {
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
         }
 
         // POST always creates (returns 201 Created)
-        string createLocation = $"/tenant/{tenantId}/{resourceType}/{createResult.Id}";
+        string createLocation = $"/tenant/{tenantId}/{resourceType}/{createResult.Key.Id}";
         logger.LogInformation(
             "Created {ResourceType}/{Id} (version {VersionId}) in tenant {TenantId}",
             resourceType,
-            createResult.Id,
-            createResult.VersionId,
+            createResult.Key.Id,
+            createResult.Key.VersionId,
             tenantId);
 
         return Results.Created(createLocation, new
         {
             resourceType,
-            id = createResult.Id,
-            meta = new { versionId = createResult.VersionId }
+            id = createResult.Key.Id,
+            meta = new { versionId = createResult.Key.VersionId }
         });
     }
 

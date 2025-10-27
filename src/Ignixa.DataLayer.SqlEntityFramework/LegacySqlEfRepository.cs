@@ -114,7 +114,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ResourceKey> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
+    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentException.ThrowIfNullOrEmpty(resource.ResourceType);
@@ -142,7 +142,23 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
         _logger.LogInformation("Created resource {ResourceType}/{ResourceId} version {Version}", resource.ResourceType, resource.ResourceId, newVersion);
 
-        return new ResourceKey(resource.ResourceType, resource.ResourceId, newVersion.ToString(), resource.TenantId);
+        // Return UpdateResult with ResourceKey + raw bytes (only deserialize if needed)
+        var compressedData = entity.RawResource;
+        var lastModified = entity.Transaction?.CreateDate ?? resource.Resource.Meta.LastUpdated ?? DateTimeOffset.UtcNow;
+
+        var key = new ResourceKey(
+            ResourceType: resource.ResourceType,
+            Id: resource.ResourceId,
+            VersionId: newVersion.ToString(),
+            TenantId: resource.TenantId);
+
+        return new UpdateResult(
+            Key: key,
+            ResourceBytes: _compressor.DecompressBytes(compressedData),
+            LastModified: lastModified)
+        {
+            Request = resource.Request
+        };
     }
 
     /// <inheritdoc/>
@@ -595,6 +611,18 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         {
             currentEntity.IsHistory = true;
             // TODO: Set HistoryTransactionId
+        }
+
+        // Update resource metadata with version and lastUpdated
+        // This ensures the stored JSON has the correct meta.versionId and meta.lastUpdated
+        resource.Meta.VersionId = newVersion.ToString();
+        if (transactionId.HasValue)
+        {
+            resource.Meta.LastUpdated = transactionId.Value.ToDate();
+        }
+        else
+        {
+            resource.Meta.LastUpdated = DateTimeOffset.UtcNow;
         }
 
         // Compress JSON

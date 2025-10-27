@@ -32,7 +32,7 @@ public record CreateOrUpdateResourceCommand(
     HttpMethod HttpMethod,
     DeferredWriteCoordinator? Coordinator = null,
     string? IfMatch = null,
-    ValidationTier? ValidationTierOverride = null) : IRequest<ResourceKey>, IRequireCapability
+    ValidationTier? ValidationTierOverride = null) : IRequest<UpdateResult>, IRequireCapability
 {
     /// <summary>
     /// Returns FHIRPath expression to validate update capability for this resource type.
