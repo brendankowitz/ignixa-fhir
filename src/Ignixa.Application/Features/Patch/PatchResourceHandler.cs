@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.SourceNodes;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -97,7 +98,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
 
         // 5. Deserialize existing resource from bytes
         var existingJson = System.Text.Encoding.UTF8.GetString(existing.ResourceBytes.Span);
-        var existingResource = JsonSerializer.Deserialize<ResourceJsonNode>(existingJson);
+        var existingResource = JsonSourceNodeFactory.Parse(existingJson);
         if (existingResource == null)
         {
             throw new FhirPatchException("Failed to deserialize existing resource");
@@ -179,8 +180,8 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
     /// </summary>
     private static ResourceJsonNode CloneResource(ResourceJsonNode source)
     {
-        var json = JsonSerializer.Serialize(source);
-        return JsonSerializer.Deserialize<ResourceJsonNode>(json)
+        var json = source.SerializeToString();
+        return JsonSourceNodeFactory.Parse(json)
             ?? throw new FhirPatchException("Failed to clone resource for validation");
     }
 }
