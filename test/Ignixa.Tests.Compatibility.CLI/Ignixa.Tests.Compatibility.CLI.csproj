@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RootNamespace>Ignixa.Tests.Compatibility.CLI</RootNamespace>
+    <AssemblyName>fhir-compat</AssemblyName>
+    <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="xunit.runner.utility" />
+    <PackageReference Include="Microsoft.Health.Fhir.R4.Tests.E2E" />
+  </ItemGroup>
+
+</Project>

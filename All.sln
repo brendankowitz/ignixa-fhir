@@ -94,6 +94,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Setup", "Setup", "{4E79045F
 		deploy\azure\README.md = deploy\azure\README.md
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Tests.Compatibility.CLI", "test\Ignixa.Tests.Compatibility.CLI\Ignixa.Tests.Compatibility.CLI.csproj", "{AA74CA3A-252D-4823-AB66-3D445C8A9970}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -332,6 +334,18 @@ Global
 		{F450B9BC-9675-4940-A8F0-C8C75241091F}.Release|x64.Build.0 = Release|Any CPU
 		{F450B9BC-9675-4940-A8F0-C8C75241091F}.Release|x86.ActiveCfg = Release|Any CPU
 		{F450B9BC-9675-4940-A8F0-C8C75241091F}.Release|x86.Build.0 = Release|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Debug|x64.Build.0 = Debug|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Debug|x86.Build.0 = Debug|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Release|x64.ActiveCfg = Release|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Release|x64.Build.0 = Release|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Release|x86.ActiveCfg = Release|Any CPU
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -362,5 +376,6 @@ Global
 		{C0A088E4-9B1E-40F1-80FC-C22AE3BCAEA1} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
 		{F450B9BC-9675-4940-A8F0-C8C75241091F} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 		{4E79045F-F848-4683-88EE-9AF17228E267} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
+		{AA74CA3A-252D-4823-AB66-3D445C8A9970} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal

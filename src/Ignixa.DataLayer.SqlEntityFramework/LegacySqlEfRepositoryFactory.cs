@@ -30,17 +30,20 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
 {
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly ConcurrentDictionary<int, TenantServices> _servicesCache;
+    private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
     /// <summary>
-    /// Container for tenant-specific services that share a DbContext.
+    /// Container for tenant-specific configuration and factory delegates.
+    /// Does NOT cache DbContext instances - creates new instances per request instead.
     /// </summary>
-    private class TenantServices
+    private class TenantServiceFactory
     {
-        public required FhirDbContext DbContext { get; init; }
-        public required IFhirRepository Repository { get; init; }
-        public required ISearchService SearchService { get; init; }
+        public required DbContextOptions<FhirDbContext> DbContextOptions { get; init; }
+        public required Func<FhirDbContext, IFhirRepository> CreateRepository { get; init; }
+        public required Func<FhirDbContext, IFhirRepository, ISearchService> CreateSearchService { get; init; }
+        public required string? ManagedIdentityName { get; init; }
+        public required bool IsInitialized { get; init; }
     }
 
     /// <summary>
@@ -54,30 +57,47 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
-        _servicesCache = new ConcurrentDictionary<int, TenantServices>();
+        _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
         _definitionManagersCache = new ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
 
     /// <inheritdoc/>
     public async Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default)
     {
-        var services = await GetOrCreateServicesAsync(tenantId, ct);
-        return services.Repository;
+        var factory = await GetOrCreateFactoryAsync(tenantId, ct);
+
+        // Create a new DbContext for this request (thread-safe)
+        // CA2000: DbContext disposal is responsibility of calling code (Repository will be disposed by DI container)
+#pragma warning disable CA2000 // Dispose objects before losing scope
+        var dbContext = new FhirDbContext(factory.DbContextOptions);
+#pragma warning restore CA2000
+
+        // Use the cached factory function to create the repository with the new DbContext
+        return factory.CreateRepository(dbContext);
     }
 
     /// <inheritdoc/>
     public async Task<ISearchService> GetSearchServiceAsync(int tenantId, CancellationToken ct = default)
     {
-        var services = await GetOrCreateServicesAsync(tenantId, ct);
-        return services.SearchService;
+        var factory = await GetOrCreateFactoryAsync(tenantId, ct);
+
+        // Create a new DbContext for this request (thread-safe)
+        // CA2000: DbContext disposal is responsibility of calling code (SearchService will be disposed by DI container)
+#pragma warning disable CA2000 // Dispose objects before losing scope
+        var dbContext = new FhirDbContext(factory.DbContextOptions);
+#pragma warning restore CA2000
+
+        // Create repository and search service with the new DbContext
+        var repository = factory.CreateRepository(dbContext);
+        return factory.CreateSearchService(dbContext, repository);
     }
 
-    private async Task<TenantServices> GetOrCreateServicesAsync(int tenantId, CancellationToken ct)
+    private async Task<TenantServiceFactory> GetOrCreateFactoryAsync(int tenantId, CancellationToken ct)
     {
         // Check cache first
-        if (_servicesCache.TryGetValue(tenantId, out var cachedServices))
+        if (_factoryCache.TryGetValue(tenantId, out var cachedFactory))
         {
-            return cachedServices;
+            return cachedFactory;
         }
 
         // Get tenant configuration
@@ -113,10 +133,10 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // SECURITY: Validate that connection string uses Managed Identity (Azure AD) authentication
         ValidateManagedIdentityAuthentication(tenantConfig.Storage.ConnectionString, tenantId);
 
-        // Create services and cache them
-        var services = _servicesCache.GetOrAdd(tenantId, _ => CreateServices(tenantId, tenantConfig));
+        // Create factory and cache it
+        var factory = _factoryCache.GetOrAdd(tenantId, _ => CreateServiceFactory(tenantId, tenantConfig));
 
-        return services;
+        return factory;
     }
 
     /// <summary>
@@ -189,12 +209,12 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         });
     }
 
-    private TenantServices CreateServices(int tenantId, Domain.Models.TenantConfiguration tenantConfig)
+    private TenantServiceFactory CreateServiceFactory(int tenantId, Domain.Models.TenantConfiguration tenantConfig)
     {
         var logger = _loggerFactory.CreateLogger<SqlEntityFrameworkRepositoryFactory>();
-        logger.LogInformation("Creating services for tenant {TenantId} ({DisplayName})", tenantId, tenantConfig.DisplayName);
+        logger.LogInformation("Creating service factory for tenant {TenantId} ({DisplayName})", tenantId, tenantConfig.DisplayName);
 
-        // Create DbContext with tenant-specific connection string
+        // Create DbContext OPTIONS (thread-safe, can be cached)
         var optionsBuilder = new DbContextOptionsBuilder<FhirDbContext>();
         optionsBuilder.UseSqlServer(
             tenantConfig.Storage.ConnectionString,
@@ -207,11 +227,15 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Enable sensitive data logging in development (optional)
         // optionsBuilder.EnableSensitiveDataLogging();
 
-        var dbContext = new FhirDbContext(optionsBuilder.Options);
+        var dbContextOptions = optionsBuilder.Options;
+
+        // Create a TEMPORARY DbContext just for initialization (will be disposed)
+        var initDbContext = new FhirDbContext(dbContextOptions);
 
         // CRITICAL: Apply pending migrations automatically on first access
         // This ensures TVP types and stored procedures are created
         // Also sets up Managed Identity database user (extracted from environment or configuration)
+        string? managedIdentityName = null;
         try
         {
             logger.LogInformation("Ensuring database migrations are applied for tenant {TenantId}...", tenantId);
@@ -219,10 +243,10 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             // Attempt to extract Managed Identity name from connection string (User ID parameter)
             // If specified in connection string, use that for MI setup
             // Otherwise, the running process identity is used (Managed Identity of App Service)
-            var managedIdentityName = ExtractManagedIdentityNameFromConnectionString(tenantConfig.Storage.ConnectionString);
+            managedIdentityName = ExtractManagedIdentityNameFromConnectionString(tenantConfig.Storage.ConnectionString);
 
             var initializer = new DatabaseInitializer(
-                dbContext,
+                initDbContext,
                 _loggerFactory.CreateLogger<DatabaseInitializer>());
 
             // Initialize with optional MI setup (idempotent - safe to run multiple times)
@@ -238,42 +262,11 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 ex.Message);
             throw;
         }
-
-        // Create shared dependencies
-        var compressor = new GzipResourceCompressor();
-        var searchIndexCache = new SearchIndexReferenceDataCache(
-            dbContext,
-            _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
-        var searchIndexWriter = new SearchIndexWriter(
-            dbContext,
-            searchIndexCache,
-            _loggerFactory.CreateLogger<SearchIndexWriter>());
-
-        // Create SqlMergeRepository for high-performance batch operations
-        var sqlMergeRepository = new SqlMergeRepository(
-            dbContext,
-            compressor,
-            _loggerFactory.CreateLogger<SqlMergeRepository>());
-
-        // Create repository
-        var repository = new SqlEntityFrameworkRepository(
-            dbContext,
-            compressor,
-            searchIndexWriter,
-            sqlMergeRepository,
-            _loggerFactory.CreateLogger<SqlEntityFrameworkRepository>());
-
-        // Create search service components
-        var parameterQueryGenerator = new Search.SearchParameterQueryGenerator(
-            dbContext,
-            searchIndexCache,
-            _loggerFactory.CreateLogger<Search.SearchParameterQueryGenerator>());
-
-        var chainedExpressionProcessor = new Search.ChainedExpressionProcessor(
-            dbContext,
-            searchIndexCache,
-            parameterQueryGenerator,
-            _loggerFactory.CreateLogger<Search.ChainedExpressionProcessor>());
+        finally
+        {
+            // Dispose the temporary initialization DbContext
+            initDbContext.Dispose();
+        }
 
         // Convert FhirVersion string to FhirSpecification enum using extension method
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
@@ -284,56 +277,101 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Get or create cached definition managers (reused across tenants with same FHIR version)
         var (compartmentManager, parameterManager) = GetOrCreateDefinitionManagers(fhirSpec, schemaProvider);
 
-        // Create compartment query generator for optimized wildcard compartment searches
-        var compartmentQueryGenerator = new Search.CompartmentSearchQueryGenerator(
-            dbContext,
-            searchIndexCache,
-            compartmentManager,
-            parameterManager,
-            _loggerFactory.CreateLogger<Search.CompartmentSearchQueryGenerator>());
-
-        // Pass compartment query generator to SearchExpressionQueryBuilder so it can intercept CompartmentSearchExpression
-        var queryBuilder = new Search.SearchExpressionQueryBuilder(
-            dbContext,
-            parameterQueryGenerator,
-            chainedExpressionProcessor,
-            compartmentQueryGenerator,
-            _loggerFactory.CreateLogger<Search.SearchExpressionQueryBuilder>());
-
-        var includeProcessor = new Search.IncludeProcessor(
-            dbContext,
-            searchIndexCache,
-            compressor,
-            _loggerFactory.CreateLogger<Search.IncludeProcessor>());
-
-        var revIncludeProcessor = new Search.RevIncludeProcessor(
-            dbContext,
-            searchIndexCache,
-            compressor,
-            _loggerFactory.CreateLogger<Search.RevIncludeProcessor>());
-
-        var iterateProcessor = new Search.IterateProcessor(
-            includeProcessor,
-            revIncludeProcessor,
-            _loggerFactory.CreateLogger<Search.IterateProcessor>());
-
-        var searchService = new Search.SqlEntityFrameworkSearchService(
-            dbContext,
-            repository,
-            queryBuilder,
-            includeProcessor,
-            revIncludeProcessor,
-            iterateProcessor,
-            compressor,
-            _loggerFactory.CreateLogger<Search.SqlEntityFrameworkSearchService>());
-
-        logger.LogInformation("Successfully created services for tenant {TenantId}", tenantId);
-
-        return new TenantServices
+        // Create factory delegate for Repository (accepts DbContext parameter)
+        Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
-            DbContext = dbContext,
-            Repository = repository,
-            SearchService = searchService
+            var compressor = new GzipResourceCompressor();
+            var searchIndexCache = new SearchIndexReferenceDataCache(
+                dbContext,
+                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
+            var searchIndexWriter = new SearchIndexWriter(
+                dbContext,
+                searchIndexCache,
+                _loggerFactory.CreateLogger<SearchIndexWriter>());
+
+            var sqlMergeRepository = new SqlMergeRepository(
+                dbContext,
+                compressor,
+                _loggerFactory.CreateLogger<SqlMergeRepository>());
+
+            return new SqlEntityFrameworkRepository(
+                dbContext,
+                compressor,
+                searchIndexWriter,
+                sqlMergeRepository,
+                _loggerFactory.CreateLogger<SqlEntityFrameworkRepository>());
+        };
+
+        // Create factory delegate for SearchService (accepts DbContext and Repository parameters)
+        Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (dbContext, repository) =>
+        {
+            var compressor = new GzipResourceCompressor();
+            var searchIndexCache = new SearchIndexReferenceDataCache(
+                dbContext,
+                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
+
+            var parameterQueryGenerator = new Search.SearchParameterQueryGenerator(
+                dbContext,
+                searchIndexCache,
+                _loggerFactory.CreateLogger<Search.SearchParameterQueryGenerator>());
+
+            var chainedExpressionProcessor = new Search.ChainedExpressionProcessor(
+                dbContext,
+                searchIndexCache,
+                parameterQueryGenerator,
+                _loggerFactory.CreateLogger<Search.ChainedExpressionProcessor>());
+
+            var compartmentQueryGenerator = new Search.CompartmentSearchQueryGenerator(
+                dbContext,
+                searchIndexCache,
+                compartmentManager,
+                parameterManager,
+                _loggerFactory.CreateLogger<Search.CompartmentSearchQueryGenerator>());
+
+            var queryBuilder = new Search.SearchExpressionQueryBuilder(
+                dbContext,
+                parameterQueryGenerator,
+                chainedExpressionProcessor,
+                compartmentQueryGenerator,
+                _loggerFactory.CreateLogger<Search.SearchExpressionQueryBuilder>());
+
+            var includeProcessor = new Search.IncludeProcessor(
+                dbContext,
+                searchIndexCache,
+                compressor,
+                _loggerFactory.CreateLogger<Search.IncludeProcessor>());
+
+            var revIncludeProcessor = new Search.RevIncludeProcessor(
+                dbContext,
+                searchIndexCache,
+                compressor,
+                _loggerFactory.CreateLogger<Search.RevIncludeProcessor>());
+
+            var iterateProcessor = new Search.IterateProcessor(
+                includeProcessor,
+                revIncludeProcessor,
+                _loggerFactory.CreateLogger<Search.IterateProcessor>());
+
+            return new Search.SqlEntityFrameworkSearchService(
+                dbContext,
+                repository,
+                queryBuilder,
+                includeProcessor,
+                revIncludeProcessor,
+                iterateProcessor,
+                compressor,
+                _loggerFactory.CreateLogger<Search.SqlEntityFrameworkSearchService>());
+        };
+
+        logger.LogInformation("Successfully created service factory for tenant {TenantId}", tenantId);
+
+        return new TenantServiceFactory
+        {
+            DbContextOptions = dbContextOptions,
+            CreateRepository = createRepository,
+            CreateSearchService = createSearchService,
+            ManagedIdentityName = managedIdentityName,
+            IsInitialized = true
         };
     }
 
@@ -409,16 +447,16 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     }
 
     /// <summary>
-    /// Clears all caches (services and definition managers). Useful for testing or when tenant configurations change.
+    /// Clears all caches (factory delegates and definition managers). Useful for testing or when tenant configurations change.
     /// </summary>
     public void ClearCache()
     {
-        _servicesCache.Clear();
+        _factoryCache.Clear();
         _definitionManagersCache.Clear();
     }
 
     /// <summary>
-    /// Gets the current number of cached tenant service sets.
+    /// Gets the current number of cached tenant service factories.
     /// </summary>
-    public int CachedServicesCount => _servicesCache.Count;
+    public int CachedServicesCount => _factoryCache.Count;
 }

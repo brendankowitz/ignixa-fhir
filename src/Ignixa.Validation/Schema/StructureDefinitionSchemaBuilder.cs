@@ -60,7 +60,9 @@ public class StructureDefinitionSchemaBuilder
         // Cardinality checks enforce both minimum (required fields have min=1) and maximum cardinality
         // This eliminates the need for a separate RequiredFieldCheck
         // Use explicit Min/Max from IExtendedElementMetadata if available, otherwise infer from IsRequired/IsCollection
+        // IMPORTANT: Skip xhtml primitive elements (e.g., div.value) - xhtml stores content directly, not in a .value child
         var cardinalityChecks = elements
+            .Where(e => e.DefaultTypeName != "xhtml") // Skip xhtml elements - they don't have .value children
             .Select(e =>
             {
                 // Try to get explicit cardinality from extended metadata
@@ -301,7 +303,8 @@ public class StructureDefinitionSchemaBuilder
             }
 
             // Skip special types that have dedicated checks
-            if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension")
+            // Also skip xhtml - it's a primitive that stores content directly, not in child elements
+            if (typeName is "Reference" or "CodeableConcept" or "Coding" or "Extension" or "xhtml")
             {
                 continue;
             }

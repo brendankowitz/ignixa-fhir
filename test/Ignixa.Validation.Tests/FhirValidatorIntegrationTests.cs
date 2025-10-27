@@ -136,6 +136,36 @@ public class FhirValidatorIntegrationTests
         result.Issues.Should().Contain(i => i.Path.Contains("text.status"));
     }
 
+    [Fact]
+    public void GivenObservationWithValidNarrative_WhenValidating_ThenShouldPass()
+    {
+        // Arrange & Act - This test demonstrates the xhtml validation bug
+        // The Observation has a valid text.div element with proper XHTML content
+        // According to FHIR R4 spec, xhtml primitive stores content directly (not in a .value child)
+        // Bug: StructureDefinitionSchemaBuilder creates CardinalityCheck for div.value
+        // Result: Validation incorrectly fails with "Observation.text.div.value must have at least 1 occurrence(s), but found 0"
+        var result = ValidateResource(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""example"",
+            ""status"": ""final"",
+            ""code"": {
+                ""coding"": [{
+                    ""system"": ""http://loinc.org"",
+                    ""code"": ""15074-8"",
+                    ""display"": ""Glucose [Moles/volume] in Blood""
+                }]
+            },
+            ""text"": {
+                ""status"": ""generated"",
+                ""div"": ""<div xmlns=\""http://www.w3.org/1999/xhtml\""><p><b>Generated Narrative</b></p></div>""
+            }
+        }");
+
+        // Assert - Should pass because text.div is present and valid
+        // Currently fails due to bug in StructureDefinitionSchemaBuilder
+        result.IsValid.Should().BeTrue($"Observation with valid narrative should pass validation. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+    }
+
     #endregion
 
     #region Schema-Driven Checks

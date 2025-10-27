@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Expose internal types (including implicit Program class) to compatibility tests -->
+    <InternalsVisibleTo Include="Ignixa.Tests.Compatibility.E2E" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Core packages - versions managed in Directory.Packages.props -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />

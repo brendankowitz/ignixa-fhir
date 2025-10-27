@@ -43,12 +43,20 @@
     <PackageVersion Include="Autofac" Version="8.2.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
     <!-- Testing -->
-    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="xunit.runner.utility" Version="2.9.3" />
+    <PackageVersion Include="xunit.extensibility.core" Version="2.9.3" />
+    <PackageVersion Include="xunit.extensibility.execution" Version="2.9.3" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <!-- CLI Tools -->
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.3" />
+    <!-- Microsoft Health FHIR E2E Tests (from Azure DevOps feed) -->
+    <PackageVersion Include="Microsoft.Health.Fhir.R4.Tests.E2E" Version="4.0.559" />
     <!-- Benchmarking -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
   </ItemGroup>
