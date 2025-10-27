@@ -97,8 +97,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         }
 
         // 5. Deserialize existing resource from bytes
-        var existingJson = System.Text.Encoding.UTF8.GetString(existing.ResourceBytes.Span);
-        var existingResource = JsonSourceNodeFactory.Parse(existingJson);
+        var existingResource = JsonSourceNodeFactory.Parse(existing.ResourceBytes);
         if (existingResource == null)
         {
             throw new FhirPatchException("Failed to deserialize existing resource");
