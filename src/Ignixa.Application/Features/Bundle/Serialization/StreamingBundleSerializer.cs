@@ -607,7 +607,7 @@ public static class StreamingBundleSerializer
         // Filter out unsupported parameters
         var filteredQuery = parsedQuery
             .Where(kvp => !unsupportedParams.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase))
-            .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value.ToString())}");
+            .SelectMany(kvp => kvp.Value.Select(v => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(v)}"));
 
         string result = string.Join("&", filteredQuery);
 
