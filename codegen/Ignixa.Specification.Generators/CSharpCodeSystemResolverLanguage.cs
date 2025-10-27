@@ -260,10 +260,10 @@ public sealed class CSharpCodeSystemResolverLanguage : ILanguage
         // For HL7 value sets, try to extract the code system from the URL pattern
         if (valueSetUrl.StartsWith("http://hl7.org/fhir/ValueSet/"))
         {
-            string valuSetName = valueSetUrl.Substring("http://hl7.org/fhir/ValueSet/".Length);
+            string valueSetName = valueSetUrl.Substring("http://hl7.org/fhir/ValueSet/".Length);
             // Many HL7 value sets map to code systems with similar names
             // For example: ValueSet/administrative-gender → CodeSystem/administrative-gender
-            string possibleCodeSystemUrl = $"http://hl7.org/fhir/CodeSystem/{valuSetName}";
+            string possibleCodeSystemUrl = $"http://hl7.org/fhir/CodeSystem/{valueSetName}";
             // We could validate this exists, but for now assume the pattern holds
             return possibleCodeSystemUrl;
         }
