@@ -211,7 +211,7 @@ Content-Type: application/fhir+json
         },
         {
           "name": "path",
-          "valueString": "Patient.name[0].family"
+          "valueString": "name[0].family"
         },
         {
           "name": "value",

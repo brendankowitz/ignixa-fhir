@@ -166,7 +166,7 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
     internal static JsonNodeSourceNode FromRoot(JsonObject rootNode, string name = "")
     {
         string resourceType = GetResourceTypePropertyFromObject(rootNode, name);
-        return new JsonNodeSourceNode(null, rootNode, resourceType, null, resourceType);
+        return new JsonNodeSourceNode(null, rootNode, name, null, resourceType);
     }
 
     /// <summary>
