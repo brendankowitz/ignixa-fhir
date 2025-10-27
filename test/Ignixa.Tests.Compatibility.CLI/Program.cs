@@ -51,12 +51,34 @@ class Program
             description: "Skip test categories (comma-separated). Options: Import, Export, Convert, Bulk, Auth, Metrics, Audit, CustomConvert, CustomImport, CustomExport",
             getDefaultValue: () => "Import,Export,Convert,Bulk,CustomConvert,CustomImport,CustomExport");
 
+        // Viewer command options
+        var viewerCommand = new Command("viewer", "Launch the test results viewer UI");
+
+        var portOption = new Option<int>(
+            name: "--port",
+            description: "HTTP server port for the viewer",
+            getDefaultValue: () => 8080);
+
+        var reportOption = new Option<string>(
+            name: "--report",
+            description: "Auto-load a test report JSON file",
+            getDefaultValue: () => string.Empty);
+
+        viewerCommand.AddOption(portOption);
+        viewerCommand.AddOption(reportOption);
+
+        viewerCommand.SetHandler(async (port, report) =>
+        {
+            await TestResultsViewerCommand.RunViewerAsync(port, string.IsNullOrEmpty(report) ? null : report);
+        }, portOption, reportOption);
+
         var rootCommand = new RootCommand("FHIR Compatibility Test Tool - Runs Microsoft.Health.Fhir.R4.Tests.E2E against target server")
         {
             urlOption,
             outputOption,
             filterOption,
-            skipOption
+            skipOption,
+            viewerCommand
         };
 
         rootCommand.SetHandler(async (url, output, filter, skip) =>
