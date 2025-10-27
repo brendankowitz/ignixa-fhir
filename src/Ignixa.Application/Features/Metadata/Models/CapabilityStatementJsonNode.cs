@@ -122,7 +122,7 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
     }
 
     [JsonIgnore]
-    public IList<string>? Format
+    public IReadOnlyList<string>? Format
     {
         get
         {
@@ -133,22 +133,46 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
 
             return formatArray.Select(n => n?.GetValue<string>()).Where(s => s != null).ToList()!;
         }
-        set
+    }
+
+    /// <summary>
+    /// Helper method to add a format to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddFormat(string format)
+    {
+        if (string.IsNullOrEmpty(format))
         {
-            if (value == null)
-            {
-                MutableNode.Remove("format");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(s => JsonValue.Create(s)).ToArray());
-                MutableNode["format"] = array;
-            }
+            throw new ArgumentException("Format cannot be null or empty", nameof(format));
+        }
+
+        if (!MutableNode.TryGetPropertyValue("format", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["format"] = array;
+        }
+
+        array.Add(JsonValue.Create(format));
+    }
+
+    /// <summary>
+    /// Helper method to replace all formats.
+    /// </summary>
+    public void SetFormats(IEnumerable<string> formats)
+    {
+        if (formats == null)
+        {
+            MutableNode.Remove("format");
+        }
+        else
+        {
+            var array = new JsonArray(formats.Select(s => JsonValue.Create(s)).ToArray());
+            MutableNode["format"] = array;
         }
     }
 
     [JsonIgnore]
-    public IList<string>? PatchFormat
+    public IReadOnlyList<string>? PatchFormat
     {
         get
         {
@@ -159,22 +183,46 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
 
             return patchFormatArray.Select(n => n?.GetValue<string>()).Where(s => s != null).ToList()!;
         }
-        set
+    }
+
+    /// <summary>
+    /// Helper method to add a patch format to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddPatchFormat(string patchFormat)
+    {
+        if (string.IsNullOrEmpty(patchFormat))
         {
-            if (value == null)
-            {
-                MutableNode.Remove("patchFormat");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(s => JsonValue.Create(s)).ToArray());
-                MutableNode["patchFormat"] = array;
-            }
+            throw new ArgumentException("PatchFormat cannot be null or empty", nameof(patchFormat));
+        }
+
+        if (!MutableNode.TryGetPropertyValue("patchFormat", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["patchFormat"] = array;
+        }
+
+        array.Add(JsonValue.Create(patchFormat));
+    }
+
+    /// <summary>
+    /// Helper method to replace all patch formats.
+    /// </summary>
+    public void SetPatchFormats(IEnumerable<string> patchFormats)
+    {
+        if (patchFormats == null)
+        {
+            MutableNode.Remove("patchFormat");
+        }
+        else
+        {
+            var array = new JsonArray(patchFormats.Select(s => JsonValue.Create(s)).ToArray());
+            MutableNode["patchFormat"] = array;
         }
     }
 
     [JsonIgnore]
-    public IList<RestComponentJsonNode>? Rest
+    public IReadOnlyList<RestComponentJsonNode>? Rest
     {
         get
         {
@@ -191,23 +239,47 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
 
             return result;
         }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("rest");
-            }
-            else
-            {
-                // Propagate FhirVersion to child components
-                foreach (var restComponent in value)
-                {
-                    restComponent.FhirVersion = FhirVersion;
-                }
+    }
 
-                var array = new JsonArray(value.Select(r => r.MutableNode).ToArray());
-                MutableNode["rest"] = array;
+    /// <summary>
+    /// Helper method to add a REST component to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddRest(RestComponentJsonNode rest)
+    {
+        ArgumentNullException.ThrowIfNull(rest);
+
+        rest.FhirVersion = FhirVersion;
+
+        if (!MutableNode.TryGetPropertyValue("rest", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["rest"] = array;
+        }
+
+        array.Add(rest.MutableNode);
+    }
+
+    /// <summary>
+    /// Helper method to replace all REST components.
+    /// </summary>
+    public void SetRest(IEnumerable<RestComponentJsonNode> rest)
+    {
+        if (rest == null)
+        {
+            MutableNode.Remove("rest");
+        }
+        else
+        {
+            // Propagate FhirVersion to child components
+            var restList = rest as List<RestComponentJsonNode> ?? rest.ToList();
+            foreach (var restComponent in restList)
+            {
+                restComponent.FhirVersion = FhirVersion;
             }
+
+            var array = new JsonArray(restList.Select(r => r.MutableNode).ToArray());
+            MutableNode["rest"] = array;
         }
     }
 

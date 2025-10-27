@@ -55,18 +55,14 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         // Initialize REST component if not exists
         if (statement.Rest == null || statement.Rest.Count == 0)
         {
-            statement.Rest = new List<RestComponentJsonNode>
+            var newRestComponent = new RestComponentJsonNode
             {
-                new RestComponentJsonNode
-                {
-                    Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
-                    Resource = new List<ResourceComponentJsonNode>(),
-                    Interaction = new List<SystemInteractionJsonNode>(),
-                },
+                Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
             };
+            statement.AddRest(newRestComponent);
         }
 
-        var restComponent = statement.Rest[0];
+        var restComponent = statement.Rest![0];
 
         // Add resource components with interactions
         foreach (var resourceType in resourceTypes)

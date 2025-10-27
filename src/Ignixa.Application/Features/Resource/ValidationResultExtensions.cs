@@ -22,26 +22,25 @@ public static class ValidationResultExtensions
     {
         ArgumentNullException.ThrowIfNull(validationResult);
 
-        var outcome = new OperationOutcomeJsonNode
-        {
-            Issue = new List<OperationOutcomeJsonNode.IssueComponent>()
-        };
+        var outcome = new OperationOutcomeJsonNode();
+        var issueList = new List<OperationOutcomeJsonNode.IssueComponent>();
 
         foreach (var issue in validationResult.Issues)
         {
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var issueComponent = new OperationOutcomeJsonNode.IssueComponent
             {
                 Severity = MapSeverity(issue.Severity),
                 Code = OperationOutcomeJsonNode.IssueType.Invalid,
-                Diagnostics = issue.Message,
-                Expression = new List<string> { issue.Path }
-            });
+                Diagnostics = issue.Message
+            };
+            issueComponent.AddExpression(issue.Path);
+            issueList.Add(issueComponent);
         }
 
         // If no issues, add a success message
-        if (outcome.Issue.Count == 0)
+        if (issueList.Count == 0)
         {
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            issueList.Add(new OperationOutcomeJsonNode.IssueComponent
             {
                 Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
                 Code = OperationOutcomeJsonNode.IssueType.Informational,
@@ -49,6 +48,7 @@ public static class ValidationResultExtensions
             });
         }
 
+        outcome.SetIssues(issueList);
         return outcome;
     }
 

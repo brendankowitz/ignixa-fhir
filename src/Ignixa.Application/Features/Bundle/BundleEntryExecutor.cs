@@ -231,12 +231,16 @@ public class BundleEntryExecutor
 
             // Create OperationOutcome with detailed diagnostics
             var operationOutcome = new OperationOutcomeJsonNode();
-            operationOutcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            var issueList = new List<OperationOutcomeJsonNode.IssueComponent>
             {
-                Severity = severity,
-                Code = code,
-                Diagnostics = ex.Message
-            });
+                new OperationOutcomeJsonNode.IssueComponent
+                {
+                    Severity = severity,
+                    Code = code,
+                    Diagnostics = ex.Message
+                }
+            };
+            operationOutcome.SetIssues(issueList);
 
             var resourceJson = operationOutcome.SerializeToString();
 

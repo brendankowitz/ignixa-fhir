@@ -311,22 +311,27 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Patch operation executors (Phase 2 - Strategy Pattern)
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.AddOperationExecutor>()
         .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .AsSelf()
         .InstancePerLifetimeScope();
 
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.InsertOperationExecutor>()
         .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .AsSelf()
         .InstancePerLifetimeScope();
 
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.DeleteOperationExecutor>()
         .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .AsSelf()
         .InstancePerLifetimeScope();
 
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.ReplaceOperationExecutor>()
         .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .AsSelf()
         .InstancePerLifetimeScope();
 
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.MoveOperationExecutor>()
         .As<Ignixa.Application.Features.Patch.Executors.IOperationExecutor>()
+        .AsSelf()
         .InstancePerLifetimeScope();
 
     // NOTE: FileBasedSearchService is no longer registered as singleton

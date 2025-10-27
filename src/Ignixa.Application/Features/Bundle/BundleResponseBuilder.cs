@@ -45,14 +45,13 @@ public class BundleResponseBuilder
 
         var bundle = new BundleJsonNode
         {
-            Type = responseType,
-            Entry = new List<BundleComponentJsonNode>()
+            Type = responseType
         };
 
         foreach (var response in responses)
         {
             var entryComponent = BuildEntryComponent(response);
-            bundle.Entry.Add(entryComponent);
+            bundle.AddEntry(entryComponent);
         }
 
         _logger.LogDebug("Successfully built {Type} response bundle", bundleType);
@@ -106,18 +105,16 @@ public class BundleResponseBuilder
                     response.StatusCode);
 
                 // Add OperationOutcome if parsing fails
-                var outcome = new OperationOutcomeJsonNode
+                var outcome = new OperationOutcomeJsonNode();
+                outcome.SetIssues(new List<OperationOutcomeJsonNode.IssueComponent>
                 {
-                    Issue = new List<OperationOutcomeJsonNode.IssueComponent>
+                    new OperationOutcomeJsonNode.IssueComponent
                     {
-                        new OperationOutcomeJsonNode.IssueComponent
-                        {
-                            Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
-                            Code = OperationOutcomeJsonNode.IssueType.Invalid,
-                            Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
-                        }
+                        Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
+                        Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                        Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
                     }
-                };
+                });
                 entry.Response.Outcome = outcome;
             }
         }

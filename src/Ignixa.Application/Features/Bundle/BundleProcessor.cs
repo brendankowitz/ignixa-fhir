@@ -507,34 +507,33 @@ public class BundleProcessor
 
     private BundleJsonNode CreateErrorBundle(string message, string details)
     {
-        var outcome = new OperationOutcomeJsonNode
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.SetIssues(new List<OperationOutcomeJsonNode.IssueComponent>
         {
-            Issue = new List<OperationOutcomeJsonNode.IssueComponent>
+            new OperationOutcomeJsonNode.IssueComponent
             {
-                new OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                    Code = OperationOutcomeJsonNode.IssueType.Processing,
-                    Diagnostics = $"{message}: {details}"
-                }
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.Processing,
+                Diagnostics = $"{message}: {details}"
             }
-        };
+        });
 
-        return new BundleJsonNode
+        var bundle = new BundleJsonNode
         {
-            Type = BundleJsonNode.BundleType.TransactionResponse,
-            Entry = new List<BundleComponentJsonNode>
+            Type = BundleJsonNode.BundleType.TransactionResponse
+        };
+        bundle.SetEntries(new List<BundleComponentJsonNode>
+        {
+            new BundleComponentJsonNode
             {
-                new BundleComponentJsonNode
+                Response = new BundleComponentResponseJsonNode
                 {
-                    Response = new BundleComponentResponseJsonNode
-                    {
-                        Status = "500",
-                        Outcome = outcome
-                    }
+                    Status = "500",
+                    Outcome = outcome
                 }
             }
-        };
+        });
+        return bundle;
     }
 
     /// <summary>

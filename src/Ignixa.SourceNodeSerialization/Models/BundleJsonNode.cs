@@ -100,13 +100,13 @@ public class BundleJsonNode : ResourceJsonNode
     }
 
     [JsonIgnore]
-    public IList<BundleComponentJsonNode> Entry
+    public IReadOnlyList<BundleComponentJsonNode> Entry
     {
         get
         {
             if (!MutableNode.TryGetPropertyValue("entry", out var entryNode) || entryNode is not JsonArray array)
             {
-                return null;
+                return Array.Empty<BundleComponentJsonNode>();
             }
 
             var list = new List<BundleComponentJsonNode>();
@@ -121,22 +121,43 @@ public class BundleJsonNode : ResourceJsonNode
 
             return list;
         }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("entry");
-            }
-            else
-            {
-                var array = new JsonArray();
-                foreach (var item in value)
-                {
-                    array.Add(item.MutableNode);
-                }
+    }
 
-                MutableNode["entry"] = array;
+    /// <summary>
+    /// Helper method to add a bundle entry to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddEntry(BundleComponentJsonNode entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        if (!MutableNode.TryGetPropertyValue("entry", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["entry"] = array;
+        }
+
+        array.Add(entry.MutableNode);
+    }
+
+    /// <summary>
+    /// Helper method to replace all bundle entries.
+    /// </summary>
+    public void SetEntries(IEnumerable<BundleComponentJsonNode> entries)
+    {
+        if (entries == null)
+        {
+            MutableNode.Remove("entry");
+        }
+        else
+        {
+            var array = new JsonArray();
+            foreach (var item in entries)
+            {
+                array.Add(item.MutableNode);
             }
+
+            MutableNode["entry"] = array;
         }
     }
 

@@ -57,7 +57,7 @@ public class ProfileCapabilitySegment : ICapabilitySegment
         foreach (var resource in restComponent.Resource)
         {
             // Initialize empty list for future Phase 11 population
-            resource.SupportedProfile = new List<ReferenceOrCanonicalJsonNode>();
+            resource.SetSupportedProfiles(new List<ReferenceOrCanonicalJsonNode>());
         }
 
         _logger.LogDebug("Profile capability segment applied (Phase 3: no profiles loaded)");

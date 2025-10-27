@@ -101,9 +101,11 @@ public sealed record ValidationResult
             {
                 Severity = MapSeverity(issue.Severity),
                 Code = DetermineIssueType(issue.Code),
-                Diagnostics = issue.Message,
-                Expression = new[] { issue.Path }
+                Diagnostics = issue.Message
             };
+
+            // Add expression using the new method to ensure persistence
+            issueComponent.AddExpression(issue.Path);
 
             // Set details if available
             if (issue.Details != null)
@@ -115,17 +117,15 @@ public sealed record ValidationResult
 
                 if (issue.Details.Coding?.Any() == true)
                 {
-                    var codingList = new List<CodingJsonNode>();
                     foreach (var coding in issue.Details.Coding)
                     {
-                        codingList.Add(new CodingJsonNode
+                        detailsNode.AddCoding(new CodingJsonNode
                         {
                             System = coding.System ?? string.Empty,
                             Code = coding.Code ?? string.Empty,
                             Display = coding.Display ?? string.Empty
                         });
                     }
-                    detailsNode.Coding = codingList;
                 }
 
                 issueComponent.Details = detailsNode;
@@ -142,8 +142,8 @@ public sealed record ValidationResult
             issueList.Add(issueComponent);
         }
 
-        // Use the setter to properly set the issues in the mutable node
-        outcome.Issue = issueList;
+        // Use the new method to properly set the issues in the mutable node
+        outcome.SetIssues(issueList);
 
         return outcome;
     }

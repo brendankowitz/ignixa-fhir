@@ -18,9 +18,20 @@ namespace Ignixa.SourceNodeSerialization.Models;
 /// </summary>
 public class ParametersJsonNode : ResourceJsonNode
 {
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
     public ParametersJsonNode()
     {
         ResourceType = "Parameters";
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal ParametersJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
     }
 
     /// <summary>

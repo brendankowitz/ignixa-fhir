@@ -21,17 +21,16 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
     public OperationOutcomeJsonNode()
     {
         ResourceType = "OperationOutcome";
-        Issue = new List<IssueComponent>();
     }
 
     [JsonIgnore]
-    public IList<IssueComponent> Issue
+    public IReadOnlyList<IssueComponent> Issue
     {
         get
         {
             if (!MutableNode.TryGetPropertyValue("issue", out var issueNode) || issueNode is not JsonArray array)
             {
-                return null;
+                return Array.Empty<IssueComponent>();
             }
 
             var list = new List<IssueComponent>();
@@ -46,22 +45,43 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
 
             return list;
         }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("issue");
-            }
-            else
-            {
-                var array = new JsonArray();
-                foreach (var item in value)
-                {
-                    array.Add(item.MutableNode);
-                }
+    }
 
-                MutableNode["issue"] = array;
+    /// <summary>
+    /// Helper method to add an issue to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddIssue(IssueComponent issue)
+    {
+        ArgumentNullException.ThrowIfNull(issue);
+
+        if (!MutableNode.TryGetPropertyValue("issue", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["issue"] = array;
+        }
+
+        array.Add(issue.MutableNode);
+    }
+
+    /// <summary>
+    /// Helper method to replace all issues.
+    /// </summary>
+    public void SetIssues(IEnumerable<IssueComponent> issues)
+    {
+        if (issues == null)
+        {
+            MutableNode.Remove("issue");
+        }
+        else
+        {
+            var array = new JsonArray();
+            foreach (var item in issues)
+            {
+                array.Add(item.MutableNode);
             }
+
+            MutableNode["issue"] = array;
         }
     }
 
@@ -136,13 +156,13 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         }
 
         [JsonIgnore]
-        public IList<string> Expression
+        public IReadOnlyList<string> Expression
         {
             get
             {
                 if (!MutableNode.TryGetPropertyValue("expression", out var expressionNode) || expressionNode is not JsonArray array)
                 {
-                    return null;
+                    return Array.Empty<string>();
                 }
 
                 var list = new List<string>();
@@ -157,22 +177,46 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
 
                 return list;
             }
-            set
-            {
-                if (value == null)
-                {
-                    MutableNode.Remove("expression");
-                }
-                else
-                {
-                    var array = new JsonArray();
-                    foreach (var item in value)
-                    {
-                        array.Add(item);
-                    }
+        }
 
-                    MutableNode["expression"] = array;
+        /// <summary>
+        /// Helper method to add an expression to the underlying JSON array.
+        /// This ensures the addition is persisted to the MutableNode.
+        /// </summary>
+        public void AddExpression(string expression)
+        {
+            if (string.IsNullOrEmpty(expression))
+            {
+                throw new ArgumentException("Expression cannot be null or empty", nameof(expression));
+            }
+
+            if (!MutableNode.TryGetPropertyValue("expression", out var node) || node is not JsonArray array)
+            {
+                array = new JsonArray();
+                MutableNode["expression"] = array;
+            }
+
+            array.Add(JsonValue.Create(expression));
+        }
+
+        /// <summary>
+        /// Helper method to replace all expressions.
+        /// </summary>
+        public void SetExpressions(IEnumerable<string> expressions)
+        {
+            if (expressions == null)
+            {
+                MutableNode.Remove("expression");
+            }
+            else
+            {
+                var array = new JsonArray();
+                foreach (var item in expressions)
+                {
+                    array.Add(JsonValue.Create(item));
                 }
+
+                MutableNode["expression"] = array;
             }
         }
 
@@ -438,13 +482,13 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
 public class CodeableConceptJsonNode : BaseJsonNode
 {
     [JsonIgnore]
-    public IList<CodingJsonNode> Coding
+    public IReadOnlyList<CodingJsonNode> Coding
     {
         get
         {
             if (!MutableNode.TryGetPropertyValue("coding", out var codingNode) || codingNode is not JsonArray array)
             {
-                return null;
+                return Array.Empty<CodingJsonNode>();
             }
 
             var list = new List<CodingJsonNode>();
@@ -459,22 +503,43 @@ public class CodeableConceptJsonNode : BaseJsonNode
 
             return list;
         }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("coding");
-            }
-            else
-            {
-                var array = new JsonArray();
-                foreach (var item in value)
-                {
-                    array.Add(item.MutableNode);
-                }
+    }
 
-                MutableNode["coding"] = array;
+    /// <summary>
+    /// Helper method to add a coding to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddCoding(CodingJsonNode coding)
+    {
+        ArgumentNullException.ThrowIfNull(coding);
+
+        if (!MutableNode.TryGetPropertyValue("coding", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["coding"] = array;
+        }
+
+        array.Add(coding.MutableNode);
+    }
+
+    /// <summary>
+    /// Helper method to replace all codings.
+    /// </summary>
+    public void SetCodings(IEnumerable<CodingJsonNode> codings)
+    {
+        if (codings == null)
+        {
+            MutableNode.Remove("coding");
+        }
+        else
+        {
+            var array = new JsonArray();
+            foreach (var item in codings)
+            {
+                array.Add(item.MutableNode);
             }
+
+            MutableNode["coding"] = array;
         }
     }
 

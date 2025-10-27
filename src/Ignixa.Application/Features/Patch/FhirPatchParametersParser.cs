@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.Features.Patch;
@@ -22,20 +23,27 @@ public class FhirPatchParametersParser
             throw new ArgumentException("Parameters JSON cannot be null or empty", nameof(parametersJson));
         }
 
-        // Parse using ParametersJsonNode
-        var resource = ParametersJsonNode.Parse(parametersJson);
-
-        if (resource.ResourceType != "Parameters")
+        // Parse using the generic Parse<T> method to explicitly deserialize as ParametersJsonNode
+        ParametersJsonNode parameters;
+        try
+        {
+            parameters = JsonSourceNodeFactory.Parse<ParametersJsonNode>(parametersJson);
+        }
+        catch (Exception ex)
         {
             throw new FhirPatchException(
-                $"Expected resourceType 'Parameters', got '{resource.ResourceType}'");
+                $"Failed to parse Parameters resource: {ex.Message}", ex);
         }
 
-        // Cast to ParametersJsonNode to access Parameter property
-        var parameters = resource as ParametersJsonNode;
         if (parameters == null)
         {
-            throw new FhirPatchException("Failed to parse Parameters resource");
+            throw new FhirPatchException("Failed to parse Parameters resource: deserialization returned null");
+        }
+
+        if (parameters.ResourceType != "Parameters")
+        {
+            throw new FhirPatchException(
+                $"Expected resourceType 'Parameters', got '{parameters.ResourceType}'");
         }
 
         if (parameters.Parameter == null || parameters.Parameter.Count == 0)

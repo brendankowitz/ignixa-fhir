@@ -120,16 +120,15 @@ public sealed record ValidationIssue
 
         var details = new CodeableConceptJsonNode
         {
-            Coding = new List<CodingJsonNode>
-            {
-                new()
-                {
-                    System = "http://hl7.org/fhir/tools/CodeSystem/tx-issue-type",
-                    Code = issueType
-                }
-            },
             Text = message
         };
+
+        // Add coding using the new method to ensure persistence
+        details.AddCoding(new CodingJsonNode
+        {
+            System = "http://hl7.org/fhir/tools/CodeSystem/tx-issue-type",
+            Code = issueType
+        });
 
         return new ValidationIssue(
             severity: IssueSeverity.Error,

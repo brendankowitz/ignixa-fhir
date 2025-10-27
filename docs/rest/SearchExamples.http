@@ -194,3 +194,30 @@ Content-Type: application/json
     "reference" : "Organization/good"
   }
 }
+
+###
+PATCH {{hostname}}/Patient/searchpatient3
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "operation",
+      "part": [
+        {
+          "name": "type",
+          "valueCode": "replace"
+        },
+        {
+          "name": "path",
+          "valueString": "Patient.name[0].family"
+        },
+        {
+          "name": "value",
+          "valueString": "NewLastName"
+        }
+      ]
+    }
+  ]
+}

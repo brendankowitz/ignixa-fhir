@@ -71,7 +71,7 @@ public class ConditionalOperationException : FhirException
 
         if (!string.IsNullOrEmpty(searchCriteria))
         {
-            issue.Expression = new[] { searchCriteria };
+            issue.AddExpression(searchCriteria);
         }
 
         return issue;

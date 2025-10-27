@@ -44,8 +44,8 @@ public class StaticCapabilitySegment : ICapabilitySegment
         statement.Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance;
 
         // Supported formats
-        statement.Format = new List<string> { "application/fhir+json" };
-        statement.PatchFormat = new List<string> { "application/json-patch+json" };
+        statement.SetFormats(new List<string> { "application/fhir+json" });
+        statement.SetPatchFormats(new List<string> { "application/json-patch+json" });
 
         // Software component
         statement.Software = new SoftwareComponentJsonNode

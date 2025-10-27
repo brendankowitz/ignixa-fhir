@@ -163,7 +163,7 @@ public class CapabilityStatementService
 
         _logger.LogDebug(
             "Built capability statement with {ResourceCount} resources",
-            statement.Rest?.FirstOrDefault()?.Resource?.Count ?? 0);
+            statement.Rest?[0]?.Resource?.Count ?? 0);
 
         return statement;
     }

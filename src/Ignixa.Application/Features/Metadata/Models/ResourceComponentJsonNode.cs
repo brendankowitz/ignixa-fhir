@@ -92,7 +92,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IList<ReferenceOrCanonicalJsonNode>? SupportedProfile
+    public IReadOnlyList<ReferenceOrCanonicalJsonNode>? SupportedProfile
     {
         get
         {
@@ -117,35 +117,62 @@ public class ResourceComponentJsonNode : BaseJsonNode
 
             return result;
         }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("supportedProfile");
-            }
-            else
-            {
-                var array = new JsonArray();
-                foreach (var item in value)
-                {
-                    // VERSION-AWARE: Use FhirVersion to determine storage format
-                    // STU3: Store as Reference object (with reference and display)
-                    // R4/R4B/R5: Store as canonical string
-                    if (FhirVersion == FhirSpecification.Stu3)
-                    {
-                        // STU3: Always use object form
-                        item.FhirVersion = FhirVersion;
-                        array.Add(item.MutableNode);
-                    }
-                    else
-                    {
-                        // R4/R4B/R5: Use canonical string form
-                        array.Add(JsonValue.Create(item.Reference));
-                    }
-                }
+    }
 
-                MutableNode["supportedProfile"] = array;
+    /// <summary>
+    /// Helper method to add a supported profile to the underlying JSON array.
+    /// This ensures the addition is persisted to the MutableNode.
+    /// </summary>
+    public void AddSupportedProfile(ReferenceOrCanonicalJsonNode supportedProfile)
+    {
+        ArgumentNullException.ThrowIfNull(supportedProfile);
+
+        supportedProfile.FhirVersion = FhirVersion;
+
+        if (!MutableNode.TryGetPropertyValue("supportedProfile", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            MutableNode["supportedProfile"] = array;
+        }
+
+        // VERSION-AWARE: Use FhirVersion to determine storage format
+        if (FhirVersion == FhirSpecification.Stu3)
+        {
+            array.Add(supportedProfile.MutableNode);
+        }
+        else
+        {
+            array.Add(JsonValue.Create(supportedProfile.Reference));
+        }
+    }
+
+    /// <summary>
+    /// Helper method to replace all supported profiles.
+    /// </summary>
+    public void SetSupportedProfiles(IEnumerable<ReferenceOrCanonicalJsonNode> supportedProfiles)
+    {
+        if (supportedProfiles == null)
+        {
+            MutableNode.Remove("supportedProfile");
+        }
+        else
+        {
+            var array = new JsonArray();
+            foreach (var item in supportedProfiles)
+            {
+                item.FhirVersion = FhirVersion;
+                // VERSION-AWARE: Use FhirVersion to determine storage format
+                if (FhirVersion == FhirSpecification.Stu3)
+                {
+                    array.Add(item.MutableNode);
+                }
+                else
+                {
+                    array.Add(JsonValue.Create(item.Reference));
+                }
             }
+
+            MutableNode["supportedProfile"] = array;
         }
     }
 
