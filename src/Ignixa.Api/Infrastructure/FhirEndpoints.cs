@@ -519,6 +519,9 @@ public static class FhirEndpoints
 
     /// <summary>
     /// POST /tenant/{tenantId:int}/{resourceType}/_search - Search with form-urlencoded body
+    /// FHIR Spec Requirement: All pagination links SHALL be expressed as HTTP GET requests.
+    /// Even though the search request uses POST with form parameters, pagination links must convert
+    /// to GET requests with query parameters in the URL.
     /// </summary>
     private static async Task<IResult> HandlePostSearchResource(
         HttpContext context,
@@ -567,13 +570,18 @@ public static class FhirEndpoints
         SearchResourcesResult result = await mediator.SendAsync(searchQuery, ct);
 
         // Build base URL for link generation
-        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
+        // FHIR Spec: Pagination links must be GET requests, so use the GET search endpoint (without /_search)
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}";
+
+        // FHIR Spec: All pagination links SHALL preserve search parameters as query parameters
+        // Convert form parameters back to query string for inclusion in pagination links
+        string queryString = BuildQueryStringFromParameters(queryParameters);
 
         // Set response headers
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
         // Stream Bundle response with count-as-render pagination
-        // POST _search doesn't include original query params in links, use baseUrl only
+        // Pagination links will be GET requests with search parameters preserved
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
             bundleType: "searchset",
@@ -581,7 +589,7 @@ public static class FhirEndpoints
             entries: result.Resources,
             searchOptions: result.SearchOptions!,
             baseUrl: baseUrl,
-            queryString: string.Empty, // POST _search: no query string in links
+            queryString: queryString, // POST _search: convert to GET with query parameters
             pretty: false,
             cancellationToken: ct);
 
@@ -1116,6 +1124,46 @@ public static class FhirEndpoints
         }
     }
 
+
+    /// <summary>
+    /// Converts QueryParameter list to a query string suitable for URL links.
+    /// FHIR Spec Requirement: Pagination links must preserve all search parameters.
+    /// </summary>
+    /// <param name="parameters">The query parameters to convert.</param>
+    /// <returns>Query string with leading '?' (e.g., "?name=John&birthdate=gt2000"), or empty string if no parameters.</returns>
+    private static string BuildQueryStringFromParameters(IReadOnlyList<QueryParameter> parameters)
+    {
+        if (parameters == null || parameters.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var encodedPairs = new List<string>();
+
+        foreach (var param in parameters)
+        {
+            // Skip continuation token - it will be added by the serializer as 'after' parameter
+            if (param.Name.Equals("ct", StringComparison.OrdinalIgnoreCase) ||
+                param.Name.Equals("after", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // URL-encode parameter name and value
+            string encodedName = Uri.EscapeDataString(param.Name);
+            string encodedValue = Uri.EscapeDataString(param.Value);
+
+            encodedPairs.Add($"{encodedName}={encodedValue}");
+        }
+
+        if (encodedPairs.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        string queryString = "?" + string.Join("&", encodedPairs);
+        return queryString;
+    }
 
     /// <summary>
     /// Converts a list to an async enumerable.

@@ -195,7 +195,7 @@ public static class StreamingBundleSerializer
         {
             var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
             parsedQuery["after"] = continuationToken;
-            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v)}")))}";
+            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
         }
 
         // Write links (now that we know if there's a next link)
@@ -607,7 +607,7 @@ public static class StreamingBundleSerializer
         // Filter out unsupported parameters
         var filteredQuery = parsedQuery
             .Where(kvp => !unsupportedParams.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase))
-            .SelectMany(kvp => kvp.Value.Select(v => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(v)}"));
+            .SelectMany(kvp => kvp.Value.Select(v => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(v ?? string.Empty)}"));
 
         string result = string.Join("&", filteredQuery);
 
