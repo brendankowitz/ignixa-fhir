@@ -50,11 +50,9 @@ public class ParametersJsonNode : ResourceJsonNode
             var parameters = new List<ParameterJsonNode>();
             foreach (var item in array.OfType<JsonObject>())
             {
-                var param = JsonSerializer.Deserialize<ParameterJsonNode>(item.ToJsonString());
-                if (param != null)
-                {
-                    parameters.Add(param);
-                }
+                // Directly wrap the JsonObject in ParameterJsonNode to avoid deserialization issues
+                var param = new ParameterJsonNode(item);
+                parameters.Add(param);
             }
 
             return parameters;
@@ -77,6 +75,21 @@ public class ParametersJsonNode : ResourceJsonNode
 /// </summary>
 public class ParameterJsonNode : BaseJsonNode
 {
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
+    public ParameterJsonNode()
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal ParameterJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
+
     /// <summary>
     /// Gets or sets the parameter name.
     /// </summary>
@@ -106,11 +119,9 @@ public class ParameterJsonNode : BaseJsonNode
             var parts = new List<ParameterJsonNode>();
             foreach (var item in array.OfType<JsonObject>())
             {
-                var part = JsonSerializer.Deserialize<ParameterJsonNode>(item.ToJsonString());
-                if (part != null)
-                {
-                    parts.Add(part);
-                }
+                // Directly wrap the JsonObject in ParameterJsonNode to avoid deserialization issues
+                var part = new ParameterJsonNode(item);
+                parts.Add(part);
             }
 
             return parts;

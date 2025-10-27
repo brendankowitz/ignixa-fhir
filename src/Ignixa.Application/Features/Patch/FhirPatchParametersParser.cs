@@ -56,7 +56,9 @@ public class FhirPatchParametersParser
 
         foreach (var parameter in parameters.Parameter)
         {
-            if (parameter.Name == "operation")
+            // Debug: Log parameter info
+            var paramName = parameter.Name;
+            if (paramName == "operation")
             {
                 var operation = ParseOperation(parameter);
                 operations.Add(operation);
@@ -65,7 +67,9 @@ public class FhirPatchParametersParser
 
         if (operations.Count == 0)
         {
-            throw new FhirPatchException("Parameters resource must contain at least one 'operation' parameter");
+            // Debug: Build diagnostic message with parameter names found
+            var parameterNames = string.Join(", ", parameters.Parameter.Select(p => p.Name ?? "[null]"));
+            throw new FhirPatchException($"Parameters resource must contain at least one 'operation' parameter. Found parameters: {parameterNames}");
         }
 
         return operations.ToArray();
