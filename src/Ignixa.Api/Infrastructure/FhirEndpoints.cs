@@ -18,6 +18,7 @@ using Ignixa.Application.Features.ConditionalOperations.ConditionalDelete;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalRead;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Utilities;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Validation;
 using Ignixa.Search.Models;
@@ -400,7 +401,7 @@ public static class FhirEndpoints
                 "Resource type mismatch: expected '{ExpectedType}', got '{ActualType}'",
                 resourceType,
                 jsonNode.ResourceType);
-            return Results.BadRequest(new { error = $"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'" });
+            throw new BadRequestException($"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'");
         }
 
         // Extract deferred write coordinator from HttpContext if in bundle context
@@ -418,6 +419,9 @@ public static class FhirEndpoints
             logger.LogDebug("Using bundle validation tier override: {ValidationTier}", validationOverride.Value);
         }
 
+        // Extract return preference from Prefer header (RFC 7240)
+        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
+
         // Send generic command with optional coordinator and validation override
         var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, null, validationOverride);
         UpdateResult result = await mediator.SendAsync(command, ct);
@@ -433,9 +437,28 @@ public static class FhirEndpoints
         // Determine if created or updated
         bool isCreated = result.Key.VersionId == "1";
 
+        // Determine actual return preference: prefer representation if explicitly requested, otherwise minimal
+        var actualReturnPreference = returnPreference == ReturnPreference.Representation
+            ? ReturnPreference.Representation
+            : ReturnPreference.Minimal;
+
+        // Add Preference-Applied header for return preference
+        if (returnPreference != ReturnPreference.Unspecified)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
+        }
+
         if (isCreated)
         {
             logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
+
+            if (actualReturnPreference == ReturnPreference.Representation)
+            {
+                // Return full resource representation
+                var resourceJson = System.Text.Encoding.UTF8.GetString(result.ResourceBytes.Span);
+                return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Key.Id}", System.Text.Json.JsonDocument.Parse(resourceJson).RootElement);
+            }
+
             return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Key.Id}", new
             {
                 resourceType = resourceType,
@@ -445,6 +468,14 @@ public static class FhirEndpoints
         }
 
         logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
+
+        if (actualReturnPreference == ReturnPreference.Representation)
+        {
+            // Return full resource representation
+            var resourceJson = System.Text.Encoding.UTF8.GetString(result.ResourceBytes.Span);
+            return Results.Ok(System.Text.Json.JsonDocument.Parse(resourceJson).RootElement);
+        }
+
         return Results.Ok(new
         {
             resourceType = resourceType,
@@ -717,7 +748,7 @@ public static class FhirEndpoints
                 "Resource type mismatch: expected '{ExpectedType}', got '{ActualType}'",
                 resourceType,
                 jsonNode.ResourceType);
-            return Results.BadRequest(new { error = $"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'" });
+            throw new BadRequestException($"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'");
         }
 
         // Extract deferred write coordinator from HttpContext if in bundle context
@@ -735,6 +766,9 @@ public static class FhirEndpoints
             logger.LogDebug("Using bundle validation tier override: {ValidationTier}", validationOverride.Value);
         }
 
+        // Extract return preference from Prefer header (RFC 7240)
+        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
+
         // Send generic command with HTTP POST method
         var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride);
         UpdateResult createResult = await mediator.SendAsync(createCommand, ct);
@@ -747,6 +781,17 @@ public static class FhirEndpoints
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
         }
 
+        // Determine actual return preference: prefer representation if explicitly requested, otherwise minimal
+        var actualReturnPreference = returnPreference == ReturnPreference.Representation
+            ? ReturnPreference.Representation
+            : ReturnPreference.Minimal;
+
+        // Add Preference-Applied header for return preference
+        if (returnPreference != ReturnPreference.Unspecified)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
+        }
+
         // POST always creates (returns 201 Created)
         string createLocation = $"/tenant/{tenantId}/{resourceType}/{createResult.Key.Id}";
         logger.LogInformation(
@@ -755,6 +800,13 @@ public static class FhirEndpoints
             createResult.Key.Id,
             createResult.Key.VersionId,
             tenantId);
+
+        if (actualReturnPreference == ReturnPreference.Representation)
+        {
+            // Return full resource representation
+            var resourceJson = System.Text.Encoding.UTF8.GetString(createResult.ResourceBytes.Span);
+            return Results.Created(createLocation, System.Text.Json.JsonDocument.Parse(resourceJson).RootElement);
+        }
 
         return Results.Created(createLocation, new
         {

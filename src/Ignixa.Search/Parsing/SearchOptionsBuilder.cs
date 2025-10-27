@@ -184,7 +184,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             "TEXT" => SummaryType.Text,
             "DATA" => SummaryType.Data,
             "COUNT" => SummaryType.Count,
-            _ => SummaryType.False,
+            _ => throw new InvalidSearchOperationException(
+                $"Invalid _summary parameter value: '{value}'. Valid values are: true, false, text, data, count"),
         };
     }
 

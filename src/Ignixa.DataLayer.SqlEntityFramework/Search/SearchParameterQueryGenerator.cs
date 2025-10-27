@@ -218,13 +218,16 @@ public class SearchParameterQueryGenerator
         StringOperator stringOperator,
         CancellationToken ct)
     {
+        // Normalize search text to uppercase for case-insensitive matching
+        var normalizedText = searchText.ToUpperInvariant();
+
         // Build the LIKE pattern based on StringOperator
         var pattern = stringOperator switch
         {
-            StringOperator.StartsWith => $"{searchText}%",
-            StringOperator.EndsWith => $"%{searchText}",
-            StringOperator.Contains => $"%{searchText}%",
-            StringOperator.Equals => searchText,
+            StringOperator.StartsWith => $"{normalizedText}%",
+            StringOperator.EndsWith => $"%{normalizedText}",
+            StringOperator.Contains => $"%{normalizedText}%",
+            StringOperator.Equals => normalizedText,
             _ => throw new NotSupportedException($"StringOperator {stringOperator} is not supported")
         };
 

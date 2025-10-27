@@ -22,4 +22,9 @@ public class NotAcceptableException : FhirException
             Diagnostics = message
         });
     }
+
+    /// <summary>
+    /// Returns HTTP 406 Not Acceptable status code.
+    /// </summary>
+    public override int StatusCode => 406;
 }

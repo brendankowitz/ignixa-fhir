@@ -62,7 +62,7 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
 
-                var textValue = stringValue.String;
+                var textValue = stringValue.String?.ToUpperInvariant();
                 if (textValue != null && textValue.Length > StringColumnMaxLength)
                 {
                     record.SetString(3, textValue.Substring(0, StringColumnMaxLength));

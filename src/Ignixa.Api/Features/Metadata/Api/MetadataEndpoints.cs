@@ -7,6 +7,7 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Domain;
+using Ignixa.Domain.Exceptions;
 using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Api.Features.Metadata.Api;
@@ -68,6 +69,9 @@ public static class MetadataEndpoints
     {
         logger.LogInformation("GET /metadata (tenant-agnostic)");
 
+        // Validate Accept header for content negotiation
+        ValidateAcceptHeader(context);
+
         // Check if TenantId was resolved by TenantResolutionMiddleware (single-tenant auto-detect)
         int? tenantId = null;
         if (context.Items.TryGetValue("TenantId", out var tenantIdObj) &&
@@ -96,6 +100,9 @@ public static class MetadataEndpoints
     {
         logger.LogInformation("GET /tenant/{TenantId}/metadata", tenantId);
 
+        // Validate Accept header for content negotiation
+        ValidateAcceptHeader(context);
+
         // TenantResolutionMiddleware already validated the tenant exists and is active
         // The tenantId is stored in HttpContext.Items
 
@@ -103,5 +110,44 @@ public static class MetadataEndpoints
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
         return Results.Content(capabilityStatement.SerializeToString(), "application/fhir+json");
+    }
+
+    /// <summary>
+    /// Validates the Accept header for FHIR-compliant content negotiation.
+    /// Throws NotAcceptableException if the Accept header specifies unsupported media types.
+    /// </summary>
+    private static void ValidateAcceptHeader(HttpContext context)
+    {
+        const string fhirJsonMediaType = "application/fhir+json";
+        const string jsonMediaType = "application/json";
+
+        var acceptHeader = context.Request.Headers.Accept.ToString();
+
+        if (string.IsNullOrWhiteSpace(acceptHeader))
+        {
+            // Accept header is optional; if not provided, default to application/fhir+json
+            return;
+        }
+
+        // Parse Accept header values (may contain multiple values separated by comma)
+        var acceptedTypes = acceptHeader.Split(',')
+            .Select(t => t.Trim())
+            .Select(t => t.Split(';')[0].Trim()) // Remove quality factors and parameters
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToList();
+
+        // Check if any accepted type is supported
+        bool hasAcceptableType = acceptedTypes.Any(t =>
+            t.Equals(fhirJsonMediaType, StringComparison.OrdinalIgnoreCase) ||
+            t.Equals(jsonMediaType, StringComparison.OrdinalIgnoreCase) ||
+            t.Equals("*/*", StringComparison.OrdinalIgnoreCase));
+
+        if (!hasAcceptableType)
+        {
+            // No acceptable media type found
+            throw new NotAcceptableException(
+                $"The server cannot produce content matching the requested Accept header: '{acceptHeader}'. " +
+                $"Supported media types: application/fhir+json, application/json");
+        }
     }
 }
