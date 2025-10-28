@@ -8,6 +8,7 @@ using System.Text.Json;
 using EnsureThat;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
+using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
@@ -96,6 +97,7 @@ public static class StreamingBundleSerializer
     /// <param name="searchOptions">Search options containing page size and continuation token.</param>
     /// <param name="baseUrl">Base URL for generating self and next links.</param>
     /// <param name="queryString">Original query string for link generation.</param>
+    /// <param name="schemaProvider">Optional FHIR schema provider for element filtering (used by _elements parameter).</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Pagination result with hasMore flag and continuation token.</returns>
@@ -107,6 +109,7 @@ public static class StreamingBundleSerializer
         SearchOptions searchOptions,
         string baseUrl,
         string queryString,
+        IStructureDefinitionSummaryProvider? schemaProvider = null,
         bool pretty = false,
         CancellationToken cancellationToken = default)
     {
@@ -163,8 +166,8 @@ public static class StreamingBundleSerializer
             string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
             writer.WriteString("fullUrl", fullUrl);
 
-            // Write resource using helper
-            WriteResourceBytes(writer, resource);
+            // Write resource using helper (with optional element filtering)
+            WriteResourceBytes(writer, resource, searchOptions, schemaProvider);
 
             // Write search metadata
 #pragma warning disable CA1308
@@ -469,20 +472,43 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
-    /// Writes the resource property using zero-copy ResourceBytes or fallback minimal JSON.
+    /// Writes a resource, optionally filtering to specific elements.
     /// </summary>
-    private static void WriteResourceBytes(FhirJsonWriter writer, SearchEntryResult resource)
+    /// <param name="writer">The JSON writer.</param>
+    /// <param name="resource">The resource entry with raw bytes.</param>
+    /// <param name="searchOptions">Optional search options (may contain Elements filter).</param>
+    /// <param name="schemaProvider">Optional schema provider for element filtering.</param>
+    private static void WriteResourceBytes(
+        FhirJsonWriter writer,
+        SearchEntryResult resource,
+        SearchOptions? searchOptions = null,
+        IStructureDefinitionSummaryProvider? schemaProvider = null)
     {
-        if (resource.ResourceBytes.Length > 0)
-        {
-            writer.WriteRawProperty("resource", resource.ResourceBytes);
-        }
-        else
+        if (resource.ResourceBytes.Length == 0)
         {
             // Minimal fallback (should not happen - all SearchEntryResults should have bytes)
             writer.WriteObject("resource",
                 w => w.WriteString("resourceType", resource.ResourceType)
                     .WriteString("id", resource.ResourceId));
+            return;
+        }
+
+        // Check if element filtering is requested
+        if (searchOptions?.Elements?.Count > 0 && schemaProvider != null)
+        {
+            // Write filtered resource directly to the writer (no intermediate buffering)
+            ResourceElementsSerializer.WriteFilteredResourceProperty(
+                writer,
+                "resource",
+                resource.ResourceBytes,
+                schemaProvider,
+                searchOptions.Elements,
+                resource.ResourceType);
+        }
+        else
+        {
+            // Zero-copy fast path: write raw bytes directly
+            writer.WriteRawProperty("resource", resource.ResourceBytes);
         }
     }
 

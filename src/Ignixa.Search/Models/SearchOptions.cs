@@ -44,6 +44,11 @@ public class SearchOptions
     public IReadOnlyList<IncludeExpression> RevInclude { get; set; } = Array.Empty<IncludeExpression>();
 
     /// <summary>
+    /// Gets or sets the _elements parameter (comma-separated list of element names to include).
+    /// </summary>
+    public IReadOnlySet<string> Elements { get; set; }
+
+    /// <summary>
     /// Gets or sets whether to include the total count of matching resources.
     /// </summary>
     public TotalType Total { get; set; } = TotalType.None;

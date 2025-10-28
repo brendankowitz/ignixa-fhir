@@ -33,6 +33,11 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the underlying Utf8JsonWriter for advanced scenarios that need direct access.
+    /// </summary>
+    internal Utf8JsonWriter UnderlyingWriter => _writer;
+
+    /// <summary>
     /// Creates a new FhirJsonWriter for streaming JSON to the output stream.
     /// </summary>
     /// <param name="outputStream">The stream to write JSON to.</param>

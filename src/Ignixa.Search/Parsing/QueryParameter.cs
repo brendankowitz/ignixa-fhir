@@ -31,6 +31,7 @@ public record QueryParameter(string Name, string Value)
             "_sort" => ParameterCategory.Sort,
             "_include" => ParameterCategory.Include,
             "_revinclude" => ParameterCategory.RevInclude,
+            "_elements" => ParameterCategory.Elements,
 
             // Other underscore parameters are control parameters
             _ when name.StartsWith('_') => ParameterCategory.Control,
@@ -85,6 +86,11 @@ public enum ParameterCategory
     /// Reverse include parameter (_revinclude).
     /// </summary>
     RevInclude,
+
+    /// <summary>
+    /// Elements parameter (_elements) - filters which elements to return.
+    /// </summary>
+    Elements,
 
     /// <summary>
     /// Other control parameters (start with underscore but not recognized).
