@@ -39,7 +39,7 @@ public sealed class VersionAwareCompartmentDefinitionManager : ICompartmentDefin
         }
 
         // Slow path: create and initialize new manager
-        await _initializationLock.WaitAsync(cancellationToken);
+        await _initializationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Double-check after acquiring lock

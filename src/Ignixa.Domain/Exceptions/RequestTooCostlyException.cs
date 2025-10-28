@@ -10,8 +10,26 @@ namespace Ignixa.Domain.Exceptions;
 
 public class RequestTooCostlyException : FhirException
 {
+    public RequestTooCostlyException()
+        : base()
+    {
+    }
+
     public RequestTooCostlyException(string message)
         : base(message)
+    {
+        EnsureArg.IsNotNull(message, nameof(message));
+
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.TooCostly,
+            Diagnostics = message
+        });
+    }
+
+    public RequestTooCostlyException(string message, Exception innerException)
+        : base(message, innerException)
     {
         EnsureArg.IsNotNull(message, nameof(message));
 

@@ -25,6 +25,9 @@
 
     <AnalysisLevel>latest-All</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Run full analysis in all configurations (Debug and Release) -->
+    <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+    <RunAnalyzersDuringLiveAnalysis>true</RunAnalyzersDuringLiveAnalysis>
   </PropertyGroup>
   <!-- Shared dependencies versions.-->
   <PropertyGroup>

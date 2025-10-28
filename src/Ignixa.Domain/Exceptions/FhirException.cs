@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -9,6 +9,21 @@ namespace Ignixa.Domain.Exceptions;
 
 public abstract class FhirException : Exception
 {
+    protected FhirException()
+        : base()
+    {
+    }
+
+    protected FhirException(string? message)
+        : base(message)
+    {
+    }
+
+    protected FhirException(string? message, Exception? innerException)
+        : base(message, innerException)
+    {
+    }
+
     protected FhirException(params OperationOutcomeJsonNode.IssueComponent[] issues)
         : this(null!, issues)
     {

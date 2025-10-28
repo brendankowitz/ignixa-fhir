@@ -12,6 +12,21 @@ namespace Ignixa.Domain.Exceptions;
 /// </summary>
 public class InvalidDefinitionException : FhirException
 {
+    public InvalidDefinitionException()
+        : base()
+    {
+    }
+
+    public InvalidDefinitionException(string message)
+        : base(message)
+    {
+    }
+
+    public InvalidDefinitionException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
     public InvalidDefinitionException(string message, OperationOutcomeJsonNode.IssueComponent[]? issues = null)
         : base(message, issues)
     {

@@ -10,8 +10,26 @@ namespace Ignixa.Domain.Exceptions;
 
 public class RequestNotValidException : FhirException
 {
+    public RequestNotValidException()
+        : base()
+    {
+    }
+
     public RequestNotValidException(string message)
         : base(message)
+    {
+        EnsureArg.IsNotNull(message, nameof(message));
+
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.Invalid,
+            Diagnostics = message
+        });
+    }
+
+    public RequestNotValidException(string message, Exception innerException)
+        : base(message, innerException)
     {
         EnsureArg.IsNotNull(message, nameof(message));
 

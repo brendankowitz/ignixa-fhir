@@ -10,8 +10,26 @@ namespace Ignixa.Domain.Exceptions;
 
 public class ResourceNotFoundException : FhirException
 {
+    public ResourceNotFoundException()
+        : base()
+    {
+    }
+
     public ResourceNotFoundException(string message)
         : base(message)
+    {
+        Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty");
+
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.NotFound,
+            Diagnostics = message
+        });
+    }
+
+    public ResourceNotFoundException(string message, Exception innerException)
+        : base(message, innerException)
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty");
 

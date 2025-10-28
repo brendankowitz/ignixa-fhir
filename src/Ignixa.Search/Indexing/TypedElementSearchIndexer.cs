@@ -21,7 +21,7 @@ namespace Ignixa.Search.Indexing;
 /// <summary>
 /// Provides a mechanism to create search indices.
 /// </summary>
-public class TypedElementSearchIndexer : ISearchIndexer
+public partial class TypedElementSearchIndexer : ISearchIndexer
 {
     private readonly ITypedElementToSearchValueConverterManager _fhirElementTypeConverterManager;
     private readonly ILogger<TypedElementSearchIndexer> _logger;
@@ -112,10 +112,7 @@ public class TypedElementSearchIndexer : ISearchIndexer
                 // Skip if the component's search parameter is not resolved
                 if (componentSearchParameterDefinition == null)
                 {
-                    _logger.LogWarning(
-                        "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null ResolvedSearchParameter. Skipping this composite value.",
-                        i,
-                        searchParameter.Code);
+                    Log.ComponentNullResolvedSearchParameter(_logger, i, searchParameter.Code);
                     skip = true;
                     break;
                 }
@@ -123,10 +120,7 @@ public class TypedElementSearchIndexer : ISearchIndexer
                 // Skip if the component expression is null or empty
                 if (string.IsNullOrEmpty(component.Expression))
                 {
-                    _logger.LogWarning(
-                        "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.",
-                        i,
-                        searchParameter.Code);
+                    Log.ComponentNullOrEmptyExpression(_logger, i, searchParameter.Code);
                     skip = true;
                     break;
                 }
@@ -168,7 +162,7 @@ public class TypedElementSearchIndexer : ISearchIndexer
         // Skip indexing for search parameters with empty or whitespace expressions
         if (string.IsNullOrWhiteSpace(searchParameter.Expression))
         {
-            _logger.LogDebug("Skipping search parameter {Code} with empty expression", searchParameter.Code);
+            Log.SkippingSearchParameterEmptyExpression(_logger, searchParameter.Code);
             yield break;
         }
 
@@ -205,11 +199,7 @@ public class TypedElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}'.",
-                fhirPathExpression,
-                element.GetType());
+            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.GetType());
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -244,16 +234,13 @@ public class TypedElementSearchIndexer : ISearchIndexer
         {
             if (string.IsNullOrEmpty(extractedValue.InstanceType))
             {
-                _logger.LogWarning(
-                    "Skipping element with null or empty InstanceType during search indexing.");
+                Log.SkippingElementNullOrEmptyInstanceType(_logger);
                 continue;
             }
 
             if (!_fhirElementTypeConverterManager.TryGetConverter(extractedValue.InstanceType, GetSearchValueTypeForSearchParamType(searchParameterType), out ITypedElementToSearchValueConverter converter))
             {
-                _logger.LogWarning(
-                    "The FHIR element '{ElementType}' is not supported.",
-                    extractedValue.InstanceType);
+                Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType);
 
                 continue;
             }
@@ -308,5 +295,26 @@ public class TypedElementSearchIndexer : ISearchIndexer
             default:
                 throw new ArgumentOutOfRangeException(nameof(searchParamType), searchParamType, null);
         }
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null ResolvedSearchParameter. Skipping this composite value.")]
+        public static partial void ComponentNullResolvedSearchParameter(ILogger logger, int componentIndex, string searchParameterCode);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.")]
+        public static partial void ComponentNullOrEmptyExpression(ILogger logger, int componentIndex, string searchParameterCode);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping search parameter {Code} with empty expression")]
+        public static partial void SkippingSearchParameterEmptyExpression(ILogger logger, string code);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}'.")]
+        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, Type elementType);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType during search indexing.")]
+        public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
+        public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);
     }
 }

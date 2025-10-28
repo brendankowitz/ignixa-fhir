@@ -9,6 +9,21 @@ namespace Ignixa.Domain.Exceptions;
 
 public class UnsupportedConfigurationException : FhirException
 {
+    public UnsupportedConfigurationException()
+        : base()
+    {
+    }
+
+    public UnsupportedConfigurationException(string message)
+        : base(message)
+    {
+    }
+
+    public UnsupportedConfigurationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
     public UnsupportedConfigurationException(string message, OperationOutcomeJsonNode.IssueComponent[]? issues = null)
         : base(message, issues)
     {

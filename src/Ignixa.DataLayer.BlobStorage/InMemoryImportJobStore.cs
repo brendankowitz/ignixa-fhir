@@ -14,10 +14,22 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// In-memory implementation of <see cref="IImportJobStore"/>.
 /// Suitable for development and testing. Production should use SQL Server or similar.
 /// </summary>
-public class InMemoryImportJobStore : IImportJobStore
+public partial class InMemoryImportJobStore : IImportJobStore
 {
     private readonly ConcurrentDictionary<string, BulkImportJob> _jobs = new();
     private readonly ILogger<InMemoryImportJobStore> _logger;
+
+    private static partial class Log
+    {
+        [LoggerMessage(Level = LogLevel.Information, Message = "Created import job {JobId} for tenant {TenantId}")]
+        public static partial void CreatedImportJob(ILogger logger, string jobId, int tenantId);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Updated import job {JobId} (Status: {Status})")]
+        public static partial void UpdatedImportJob(ILogger logger, string jobId, string status);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Listed {Count} jobs for tenant {TenantId}")]
+        public static partial void ListedJobsForTenant(ILogger logger, int count, int tenantId);
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryImportJobStore"/> class.
@@ -40,7 +52,7 @@ public class InMemoryImportJobStore : IImportJobStore
             throw new InvalidOperationException($"Import job with ID '{job.JobId}' already exists for tenant {job.TenantId}");
         }
 
-        _logger.LogInformation("Created import job {JobId} for tenant {TenantId}", job.JobId, job.TenantId);
+        Log.CreatedImportJob(_logger, job.JobId, job.TenantId);
 
         return Task.CompletedTask;
     }
@@ -67,7 +79,7 @@ public class InMemoryImportJobStore : IImportJobStore
 
         _jobs[key] = job;
 
-        _logger.LogDebug("Updated import job {JobId} (Status: {Status})", job.JobId, job.Status);
+        Log.UpdatedImportJob(_logger, job.JobId, job.Status);
 
         return Task.CompletedTask;
     }
@@ -80,7 +92,7 @@ public class InMemoryImportJobStore : IImportJobStore
             .OrderByDescending(j => j.CreateDate)
             .ToList();
 
-        _logger.LogDebug("Listed {Count} jobs for tenant {TenantId}", jobs.Count, tenantId);
+        Log.ListedJobsForTenant(_logger, jobs.Count, tenantId);
 
         return Task.FromResult<IReadOnlyList<BulkImportJob>>(jobs);
     }

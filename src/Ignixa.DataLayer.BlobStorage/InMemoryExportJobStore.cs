@@ -9,10 +9,28 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// In-memory implementation of <see cref="IExportJobStore"/>.
 /// Suitable for development and testing. Production should use SQL Server or similar.
 /// </summary>
-public class InMemoryExportJobStore : IExportJobStore
+public partial class InMemoryExportJobStore : IExportJobStore
 {
     private readonly ConcurrentDictionary<string, BulkExportJob> _jobs = new();
     private readonly ILogger<InMemoryExportJobStore> _logger;
+
+    private static partial class Log
+    {
+        [LoggerMessage(Level = LogLevel.Information, Message = "Created export job {JobId} for tenant {TenantId}")]
+        public static partial void CreatedExportJob(ILogger logger, string jobId, int tenantId);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Updated export job {JobId} (Status: {Status})")]
+        public static partial void UpdatedExportJob(ILogger logger, string jobId, ExportJobStatus status);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Deleted export job {JobId}")]
+        public static partial void DeletedExportJob(ILogger logger, string jobId);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Attempted to delete non-existent job: {JobId}")]
+        public static partial void AttemptedDeleteNonExistentJob(ILogger logger, string jobId);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Listed {Count} jobs for tenant {TenantId}")]
+        public static partial void ListedJobsForTenant(ILogger logger, int count, int tenantId);
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryExportJobStore"/> class.
@@ -33,7 +51,7 @@ public class InMemoryExportJobStore : IExportJobStore
             throw new InvalidOperationException($"Export job with ID '{job.JobId}' already exists");
         }
 
-        _logger.LogInformation("Created export job {JobId} for tenant {TenantId}", job.JobId, job.TenantId);
+        Log.CreatedExportJob(_logger, job.JobId, job.TenantId);
 
         return Task.CompletedTask;
     }
@@ -57,7 +75,7 @@ public class InMemoryExportJobStore : IExportJobStore
 
         _jobs[job.JobId] = job;
 
-        _logger.LogDebug("Updated export job {JobId} (Status: {Status})", job.JobId, job.Status);
+        Log.UpdatedExportJob(_logger, job.JobId, job.Status);
 
         return Task.CompletedTask;
     }
@@ -67,11 +85,11 @@ public class InMemoryExportJobStore : IExportJobStore
     {
         if (_jobs.TryRemove(jobId, out var job))
         {
-            _logger.LogInformation("Deleted export job {JobId}", jobId);
+            Log.DeletedExportJob(_logger, jobId);
         }
         else
         {
-            _logger.LogWarning("Attempted to delete non-existent job: {JobId}", jobId);
+            Log.AttemptedDeleteNonExistentJob(_logger, jobId);
         }
 
         return Task.CompletedTask;
@@ -85,7 +103,7 @@ public class InMemoryExportJobStore : IExportJobStore
             .OrderByDescending(j => j.CreatedAt)
             .ToList();
 
-        _logger.LogDebug("Listed {Count} jobs for tenant {TenantId}", jobs.Count, tenantId);
+        Log.ListedJobsForTenant(_logger, jobs.Count, tenantId);
 
         return Task.FromResult(jobs);
     }

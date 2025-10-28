@@ -18,6 +18,14 @@ public class InvalidSearchOperationException : FhirException
     /// <summary>
     /// Initializes a new instance of the <see cref="InvalidSearchOperationException"/> class.
     /// </summary>
+    public InvalidSearchOperationException()
+        : base()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InvalidSearchOperationException"/> class.
+    /// </summary>
     /// <param name="message">The message to display.</param>
     public InvalidSearchOperationException(string message)
         : base(message)
@@ -30,5 +38,15 @@ public class InvalidSearchOperationException : FhirException
             Code = OperationOutcomeJsonNode.IssueType.Invalid,
             Diagnostics = message
         });
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InvalidSearchOperationException"/> class.
+    /// </summary>
+    /// <param name="message">The error message that explains the reason for the exception.</param>
+    /// <param name="innerException">The exception that is the cause of the current exception.</param>
+    public InvalidSearchOperationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 }

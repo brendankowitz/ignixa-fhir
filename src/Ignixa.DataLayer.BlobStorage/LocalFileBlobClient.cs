@@ -8,10 +8,40 @@ namespace Ignixa.DataLayer.BlobStorage;
 /// Local filesystem implementation of <see cref="IBlobStorageClient"/>.
 /// Stores blobs as files in a configurable root directory.
 /// </summary>
-public class LocalFileBlobClient : IBlobStorageClient
+public partial class LocalFileBlobClient : IBlobStorageClient
 {
     private readonly string _rootDirectory;
     private readonly ILogger<LocalFileBlobClient> _logger;
+
+    private static partial class Log
+    {
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Writing blob to {Path}")]
+        public static partial void WritingBlob(ILogger logger, string path);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Successfully wrote blob to {Path} ({Bytes} bytes)")]
+        public static partial void SuccessfullyWroteBlob(ILogger logger, string path, long bytes);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Appending to blob at {Path}")]
+        public static partial void AppendingToBlob(ILogger logger, string path);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Successfully appended to blob at {Path} ({Bytes} bytes appended)")]
+        public static partial void SuccessfullyAppendedToBlob(ILogger logger, string path, long bytes);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Reading blob from {Path}")]
+        public static partial void ReadingBlob(ILogger logger, string path);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Deleted blob at {Path}")]
+        public static partial void DeletedBlob(ILogger logger, string path);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Attempted to delete non-existent blob: {Path}")]
+        public static partial void AttemptedDeleteNonExistentBlob(ILogger logger, string path);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Listed {Count} blobs under prefix {Prefix}")]
+        public static partial void ListedBlobs(ILogger logger, int count, string prefix);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Generated blob URL for {Path}: {Url}")]
+        public static partial void GeneratedBlobUrl(ILogger logger, string path, string url);
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LocalFileBlobClient"/> class.
@@ -41,12 +71,15 @@ public class LocalFileBlobClient : IBlobStorageClient
             Directory.CreateDirectory(directory);
         }
 
-        _logger.LogDebug("Writing blob to {Path}", fullPath);
+        Log.WritingBlob(_logger, fullPath);
 
-        await using var fileStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
-        await content.CopyToAsync(fileStream, cancellationToken);
+        var fileStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
+        await using (fileStream.ConfigureAwait(false))
+        {
+            await content.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Successfully wrote blob to {Path} ({Bytes} bytes)", fullPath, fileStream.Length);
+            Log.SuccessfullyWroteBlob(_logger, fullPath, fileStream.Length);
+        }
     }
 
     /// <inheritdoc/>
@@ -60,13 +93,16 @@ public class LocalFileBlobClient : IBlobStorageClient
             Directory.CreateDirectory(directory);
         }
 
-        _logger.LogDebug("Appending to blob at {Path}", fullPath);
+        Log.AppendingToBlob(_logger, fullPath);
 
         // Open in Append mode - creates file if it doesn't exist, appends if it does
-        await using var fileStream = new FileStream(fullPath, FileMode.Append, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
-        await content.CopyToAsync(fileStream, cancellationToken);
+        var fileStream = new FileStream(fullPath, FileMode.Append, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
+        await using (fileStream.ConfigureAwait(false))
+        {
+            await content.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Successfully appended to blob at {Path} ({Bytes} bytes appended)", fullPath, content.Length);
+            Log.SuccessfullyAppendedToBlob(_logger, fullPath, content.Length);
+        }
     }
 
     /// <inheritdoc/>
@@ -79,7 +115,7 @@ public class LocalFileBlobClient : IBlobStorageClient
             throw new FileNotFoundException($"Blob not found: {path}", fullPath);
         }
 
-        _logger.LogDebug("Reading blob from {Path}", fullPath);
+        Log.ReadingBlob(_logger, fullPath);
 
         Stream fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
         return Task.FromResult(fileStream);
@@ -93,11 +129,11 @@ public class LocalFileBlobClient : IBlobStorageClient
         if (File.Exists(fullPath))
         {
             File.Delete(fullPath);
-            _logger.LogInformation("Deleted blob at {Path}", fullPath);
+            Log.DeletedBlob(_logger, fullPath);
         }
         else
         {
-            _logger.LogWarning("Attempted to delete non-existent blob: {Path}", fullPath);
+            Log.AttemptedDeleteNonExistentBlob(_logger, fullPath);
         }
 
         return Task.CompletedTask;
@@ -131,7 +167,7 @@ public class LocalFileBlobClient : IBlobStorageClient
             .Select(f => Path.GetRelativePath(_rootDirectory, f).Replace('\\', '/'))
             .ToList();
 
-        _logger.LogDebug("Listed {Count} blobs under prefix {Prefix}", files.Count, pathPrefix);
+        Log.ListedBlobs(_logger, files.Count, pathPrefix);
 
         return Task.FromResult(files);
     }
@@ -145,7 +181,7 @@ public class LocalFileBlobClient : IBlobStorageClient
         // In production (Azure Blob), this would return a SAS URL with expiration
         var fileUri = new Uri(fullPath).AbsoluteUri;
 
-        _logger.LogDebug("Generated blob URL for {Path}: {Url}", path, fileUri);
+        Log.GeneratedBlobUrl(_logger, path, fileUri);
 
         return Task.FromResult(fileUri);
     }

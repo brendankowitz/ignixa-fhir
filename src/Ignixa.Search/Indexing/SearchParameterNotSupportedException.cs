@@ -19,6 +19,24 @@ public class SearchParameterNotSupportedException : FhirException
     /// <summary>
     /// Initializes a new instance of the <see cref="SearchParameterNotSupportedException"/> class.
     /// </summary>
+    public SearchParameterNotSupportedException()
+        : base()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchParameterNotSupportedException"/> class.
+    /// </summary>
+    /// <param name="message">The error message that explains the reason for the exception.</param>
+    /// <param name="innerException">The exception that is the cause of the current exception.</param>
+    public SearchParameterNotSupportedException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchParameterNotSupportedException"/> class.
+    /// </summary>
     /// <param name="resourceType">The resource type.</param>
     /// <param name="paramName">The parameter name.</param>
     public SearchParameterNotSupportedException(Type resourceType, string paramName)

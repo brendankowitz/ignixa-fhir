@@ -120,12 +120,12 @@ public class BindingCheck : IValidationCheck
         if (hasCoding)
         {
             // This is a CodeableConcept - validate each coding
-            return await ValidateCodeableConcept(node, location, settings);
+            return await ValidateCodeableConcept(node, location, settings).ConfigureAwait(false);
         }
         else if (hasSystem || hasCode)
         {
             // This is a Coding - validate it
-            return await ValidateCoding(node, location, settings);
+            return await ValidateCoding(node, location, settings).ConfigureAwait(false);
         }
         else
         {
@@ -133,7 +133,7 @@ public class BindingCheck : IValidationCheck
             var codeValue = node.Text;
             if (!string.IsNullOrEmpty(codeValue))
             {
-                return await ValidateCode(null, codeValue, location, settings);
+                return await ValidateCode(null, codeValue, location, settings).ConfigureAwait(false);
             }
         }
 
@@ -160,7 +160,7 @@ public class BindingCheck : IValidationCheck
 
         foreach (var coding in codings)
         {
-            var result = await ValidateCoding(coding, $"{location}.coding", settings);
+            var result = await ValidateCoding(coding, $"{location}.coding", settings).ConfigureAwait(false);
             results.Add(result);
 
             // Track if we have at least one valid coding
@@ -200,7 +200,7 @@ public class BindingCheck : IValidationCheck
         var code = node.Children("code").FirstOrDefault()?.Text;
         var display = node.Children("display").FirstOrDefault()?.Text;
 
-        return await ValidateCode(system, code, location, settings);
+        return await ValidateCode(system, code, location, settings).ConfigureAwait(false);
     }
 
     private async Task<ValidationResult> ValidateCode(
@@ -216,7 +216,7 @@ public class BindingCheck : IValidationCheck
                 code,
                 display: null,
                 _valueSetUrl,
-                CancellationToken.None);
+                CancellationToken.None).ConfigureAwait(false);
 
             // Handle different failure modes
             if (!result.IsValid)

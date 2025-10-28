@@ -36,7 +36,7 @@ public static class JsonSourceNodeFactory
     public static async ValueTask<T> Parse<T>(Stream jsonReader)
         where T : ResourceJsonNode
     {
-        T resource = await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions);
+        T resource = await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions).ConfigureAwait(false);
         return resource;
     }
 

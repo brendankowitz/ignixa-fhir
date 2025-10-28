@@ -1,0 +1,71 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# Test projects (exclude from container)
+**/*.Tests/
+**/*.Tests.*/
+**/test/
+**/tests/
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.cache
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+LICENSE
+README*
+
+# CI/CD
+.github/
+.gitlab/
+azure-pipelines*.yml
+.gitlab-ci.yml
+
+# Node modules (if any)
+node_modules/
+npm-debug.log
+
+# Package management
+*.nupkg
+packages/
+
+# Third-party directories (if not needed at runtime)
+ThirdParty/
+
+# Code generation (already built)
+codegen/
+
+# Local data directories
+**/fhir-data/
+**/fhir-data/tenants/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+*.log
+.env
+.env.*
+!.env.example

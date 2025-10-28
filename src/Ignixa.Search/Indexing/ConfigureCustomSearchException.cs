@@ -18,12 +18,30 @@ public class ConfigureCustomSearchException : FhirException
     /// <summary>
     /// Initializes a new instance of the <see cref="ConfigureCustomSearchException"/> class.
     /// </summary>
+    public ConfigureCustomSearchException()
+        : base()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ConfigureCustomSearchException"/> class.
+    /// </summary>
     /// <param name="error">The error message to include in the operation outcome issues list.</param>
     public ConfigureCustomSearchException(string error)
     {
         Debug.Assert(!string.IsNullOrEmpty(error), "Exception message should not be empty");
 
         AddIssue(error);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ConfigureCustomSearchException"/> class.
+    /// </summary>
+    /// <param name="message">The error message that explains the reason for the exception.</param>
+    /// <param name="innerException">The exception that is the cause of the current exception.</param>
+    public ConfigureCustomSearchException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 
     private void AddIssue(string diagnostics)
