@@ -3,9 +3,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy Directory.Build.props and Directory.Packages.props for centralized package management
+# Copy root-level configuration files for centralized package management and code style
 COPY Directory.Build.props ./
 COPY Directory.Packages.props ./
+COPY .editorconfig ./
 
 # Copy all source project files for layer caching
 COPY src/Ignixa.Api/Ignixa.Api.csproj src/Ignixa.Api/
