@@ -46,7 +46,7 @@ public class SearchOptions
     /// <summary>
     /// Gets or sets the _elements parameter (comma-separated list of element names to include).
     /// </summary>
-    public IReadOnlySet<string> Elements { get; set; }
+    public IReadOnlySet<string> Elements { get; set; } = new HashSet<string>();
 
     /// <summary>
     /// Gets or sets whether to include the total count of matching resources.
