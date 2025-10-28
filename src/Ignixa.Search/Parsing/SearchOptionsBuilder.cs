@@ -290,22 +290,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
     {
         var elements = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (string elementsParam in elementsParameters)
-        {
-            // Elements format: "element1,element2,element3"
-            string[] elementNames = elementsParam.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        // Elements format: "element1,element2,element3"
+        var trimmedElements = elementsParameters
+            .SelectMany(param => param.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .Select(elementName => elementName.Trim())
+            .Where(trimmedElement => !string.IsNullOrEmpty(trimmedElement));
 
-            foreach (string elementName in elementNames)
-            {
-                string trimmedElement = elementName.Trim();
-
-                if (!string.IsNullOrEmpty(trimmedElement))
-                {
-                    elements.Add(trimmedElement);
-                }
-            }
-        }
-
+        elements.UnionWith(trimmedElements);
         return elements;
     }
 
