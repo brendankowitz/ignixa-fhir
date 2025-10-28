@@ -11,9 +11,9 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Features.Resource;
 

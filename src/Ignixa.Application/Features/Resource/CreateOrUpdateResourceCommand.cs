@@ -8,8 +8,7 @@ using Medino;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 
 namespace Ignixa.Application.Features.Resource;

@@ -7,18 +7,19 @@ using Hl7.Fhir.Serialization;
 using Hl7.FhirPath; // SDK 6.0 FHIRPath extension methods
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.SourceNodeSerialization.SourceNodes; // Ignixa FHIRPath extension methods
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
+// Ignixa FHIRPath extension methods
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
+using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
 
 // Static using for extension methods
-using static Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
-using TypedElementExtensions = Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using TypedElementExtensions = Ignixa.Serialization.SourceNodes.TypedElementExtensions;
 
 namespace Ignixa.Benchmarks;
 

@@ -5,7 +5,7 @@
 
 using EnsureThat;
 using Ignixa.Domain.Constants;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Definition.BundleNavigators;
 

@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing.Converters;
 

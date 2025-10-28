@@ -4,8 +4,7 @@
 // </copyright>
 
 using Ignixa.FhirPath;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.Specification;
+using Ignixa.Serialization.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;

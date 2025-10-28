@@ -6,7 +6,7 @@
 using System.Diagnostics;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Constants;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Search.Indexing;
 

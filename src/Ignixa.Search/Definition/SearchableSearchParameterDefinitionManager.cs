@@ -6,7 +6,7 @@
 using EnsureThat;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Definition;
 

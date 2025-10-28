@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
 </Project>

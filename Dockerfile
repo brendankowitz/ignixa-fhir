@@ -19,7 +19,7 @@ COPY src/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework
 COPY src/Ignixa.Domain/Ignixa.Domain.csproj src/Ignixa.Domain/
 COPY src/Ignixa.FhirPath/Ignixa.FhirPath.csproj src/Ignixa.FhirPath/
 COPY src/Ignixa.Search/Ignixa.Search.csproj src/Ignixa.Search/
-COPY src/Ignixa.SourceNodeSerialization/Ignixa.SourceNodeSerialization.csproj src/Ignixa.SourceNodeSerialization/
+COPY src/Ignixa.Serialization/Ignixa.Serialization.csproj src/Ignixa.Serialization/
 COPY src/Ignixa.Specification/Ignixa.Specification.csproj src/Ignixa.Specification/
 COPY src/Ignixa.Validation/Ignixa.Validation.csproj src/Ignixa.Validation/
 

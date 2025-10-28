@@ -21,10 +21,10 @@ using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
-using Ignixa.SourceNodeSerialization.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
 using Ignixa.Validation;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
@@ -482,7 +482,7 @@ public static class FhirEndpoints
         }
 
         // Get version-specific search options builder and schema provider
-        var fhirSpec = Ignixa.SourceNodeSerialization.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
         var schemaProvider = schemaProviderResolver(fhirSpec);
 
@@ -555,7 +555,7 @@ public static class FhirEndpoints
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
 
-        var fhirSpec = Ignixa.SourceNodeSerialization.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
         var schemaProvider = schemaProviderResolver(fhirSpec);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);

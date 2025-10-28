@@ -4,9 +4,9 @@
 // </copyright>
 
 using System;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.Models;
 using Ignixa.Specification.Generated;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.Models;
 
 namespace Ignixa.Specification.Providers;
 

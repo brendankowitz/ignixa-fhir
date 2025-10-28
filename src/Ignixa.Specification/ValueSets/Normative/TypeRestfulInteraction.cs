@@ -6,7 +6,7 @@
 
 // Generated from FHIR R4 ValueSet: http://hl7.org/fhir/ValueSet/type-restful-interaction
 
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Specification.ValueSets.Normative;
 

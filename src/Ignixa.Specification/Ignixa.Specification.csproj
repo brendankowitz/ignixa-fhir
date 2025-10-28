@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

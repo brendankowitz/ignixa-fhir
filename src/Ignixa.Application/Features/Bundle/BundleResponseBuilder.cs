@@ -7,8 +7,8 @@ using EnsureThat;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.History;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Bundle;
 

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Medino;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;

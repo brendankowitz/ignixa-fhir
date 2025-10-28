@@ -12,10 +12,9 @@ using Ignixa.Domain.ElementModel;
 using Ignixa.Domain.Specification;
 using Hl7.FhirPath;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Ignixa.Specification;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Schema;
 using Xunit;
 

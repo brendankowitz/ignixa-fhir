@@ -5,10 +5,10 @@
 
 using EnsureThat;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Domain.Constants;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Generated;
+using Ignixa.Serialization;
 
 namespace Ignixa.Search.Definition;
 

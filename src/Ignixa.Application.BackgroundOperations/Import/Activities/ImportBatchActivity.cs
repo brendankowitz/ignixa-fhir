@@ -10,10 +10,10 @@ using Ignixa.Domain.Constants;
 using Ignixa.Domain;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Infrastructure;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;

@@ -24,11 +24,11 @@ using Ignixa.Search.Parsing;
 using Ignixa.Search.Definition;
 using Ignixa.Specification;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 // using Ignixa.Validation.SourceNodeValidation; // Removed - migrating to new FastValidator in Phase 3
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -467,7 +467,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Register ValidationSchemaResolver FACTORY (creates version-specific cached resolvers)
     // Usage: Func<FhirSpecification, IValidationSchemaResolver> factory = resolve from DI
     //        IValidationSchemaResolver resolver = factory(FhirSpecification.R4)
-    containerBuilder.Register<Func<Ignixa.SourceNodeSerialization.FhirSpecification, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
+    containerBuilder.Register<Func<FhirSpecification, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
         {
             var versionContext = c.Resolve<Ignixa.Application.Infrastructure.IFhirVersionContext>();
             var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();

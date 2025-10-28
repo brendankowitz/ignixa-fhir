@@ -6,7 +6,7 @@
 using System.Collections.Concurrent;
 using EnsureThat;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Definition;

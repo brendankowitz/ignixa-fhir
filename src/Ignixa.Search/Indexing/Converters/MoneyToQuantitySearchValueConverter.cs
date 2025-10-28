@@ -4,11 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing.Converters;
 

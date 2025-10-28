@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Patch;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Patch;

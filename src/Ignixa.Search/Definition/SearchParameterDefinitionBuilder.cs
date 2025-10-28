@@ -10,13 +10,13 @@ using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Constants;
 using Ignixa.Specification;
 using Ignixa.Specification.ValueSets.Normative;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Search.Definition.BundleNavigators;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Definition;
 

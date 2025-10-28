@@ -11,7 +11,7 @@ using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Search.Expressions.Parsers;
 

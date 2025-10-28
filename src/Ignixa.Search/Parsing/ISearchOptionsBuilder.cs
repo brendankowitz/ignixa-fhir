@@ -6,7 +6,7 @@
 #nullable enable
 
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Parsing;
 

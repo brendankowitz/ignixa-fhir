@@ -6,7 +6,7 @@
 using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Api.Middleware;
 

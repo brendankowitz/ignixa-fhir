@@ -7,8 +7,8 @@ using EnsureThat;
 using Ignixa.Domain.Constants;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing.Converters;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Definition.BundleNavigators;
 

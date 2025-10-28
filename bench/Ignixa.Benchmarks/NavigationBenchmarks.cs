@@ -7,18 +7,18 @@ using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ISourceNode = Ignixa.SourceNodeSerialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
 
 // Static using for extension methods
-using static Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
-using TypedElementExtensions = Ignixa.SourceNodeSerialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using TypedElementExtensions = Ignixa.Serialization.SourceNodes.TypedElementExtensions;
 
 namespace Ignixa.Benchmarks;
 

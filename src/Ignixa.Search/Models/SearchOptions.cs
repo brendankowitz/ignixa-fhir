@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Search.Expressions;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Search.Models;
 

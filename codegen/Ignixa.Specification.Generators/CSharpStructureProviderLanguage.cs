@@ -91,9 +91,9 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Collections.Immutable;");
         sb.AppendLine("using Ignixa.Domain;");
-        sb.AppendLine("using Ignixa.SourceNodeSerialization;");
-        sb.AppendLine("using Ignixa.SourceNodeSerialization.Abstractions;");
-        sb.AppendLine("using Ignixa.SourceNodeSerialization.Specification;");
+        sb.AppendLine("using Ignixa.Serialization;");
+        sb.AppendLine("using Ignixa.Serialization.Abstractions;");
+        sb.AppendLine("using Ignixa.Serialization.Specification;");
         sb.AppendLine("using Ignixa.Specification;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
@@ -729,7 +729,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using Ignixa.SourceNodeSerialization.Models;");
+        sb.AppendLine("using Ignixa.Serialization.SourceNodes.Models;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();

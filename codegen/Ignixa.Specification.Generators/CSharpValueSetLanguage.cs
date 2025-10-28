@@ -121,7 +121,7 @@ public sealed class CSharpValueSetLanguage : ILanguage
         sb.AppendLine($"// Generated from FHIR {fhirVersion} ValueSet: {valueSet.Url}");
         sb.AppendLine();
 
-        sb.AppendLine("using Ignixa.SourceNodeSerialization.Utility;");
+        sb.AppendLine("using Ignixa.Serialization.Utilities;");
         sb.AppendLine();
         sb.AppendLine($"namespace {namespaceName};");
         sb.AppendLine();

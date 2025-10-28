@@ -4,9 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.Specification;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Specification;
 

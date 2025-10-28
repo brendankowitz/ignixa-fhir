@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.Schema;
 using Xunit;

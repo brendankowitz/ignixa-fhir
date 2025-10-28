@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Exceptions;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Application.Features.ConditionalOperations;
 

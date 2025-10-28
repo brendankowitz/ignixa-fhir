@@ -4,7 +4,6 @@
 // </copyright>
 
 using FluentAssertions;
-using Ignixa.SourceNodeSerialization.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;

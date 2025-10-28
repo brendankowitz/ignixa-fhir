@@ -7,7 +7,7 @@
 #nullable enable
 
 using System.Collections.Generic;
-using Ignixa.SourceNodeSerialization.SourceNodes.Models;
+using Ignixa.Serialization.SourceNodes.Models;
 
 namespace Sparky.Specification.Generated;
 

@@ -10,12 +10,12 @@ using EnsureThat;
 using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Generated;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Definition;
 

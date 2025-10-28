@@ -24,7 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ignixa.Search\Ignixa.Search.csproj"/>
     <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj"/>
-    <ProjectReference Include="..\..\src\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj"/>
+    <ProjectReference Include="..\..\src\Ignixa.Serialization\Ignixa.Serialization.csproj"/>
   </ItemGroup>
 
 </Project>

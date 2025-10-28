@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Validation.Abstractions;
 

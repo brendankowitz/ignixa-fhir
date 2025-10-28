@@ -13,8 +13,8 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
 

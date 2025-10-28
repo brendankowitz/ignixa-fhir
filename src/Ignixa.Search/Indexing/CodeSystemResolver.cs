@@ -5,8 +5,8 @@
 
 using System.Text.RegularExpressions;
 using EnsureThat;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Search.Generated;
+using Ignixa.Serialization;
 
 namespace Ignixa.Search.Indexing;
 

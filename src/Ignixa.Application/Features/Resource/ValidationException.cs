@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Exceptions;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 using Ignixa.Validation;
 
 namespace Ignixa.Application.Features.Resource;

@@ -8,7 +8,7 @@ using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure.Caching;
 

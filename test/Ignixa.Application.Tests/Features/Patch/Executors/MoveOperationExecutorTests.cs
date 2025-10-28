@@ -9,7 +9,8 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Infrastructure;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -31,7 +32,7 @@ public class MoveOperationExecutorTests
         var compiler = new Ignixa.FhirPath.FhirPathCompiler();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var versionContext = new FhirVersionContext(loggerFactory);
-        var structureProvider = versionContext.GetSchemaProvider(Ignixa.SourceNodeSerialization.FhirSpecification.R4);
+        var structureProvider = versionContext.GetSchemaProvider(FhirSpecification.R4);
         var fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
 
         var deleteExecutor = new DeleteOperationExecutor(deleteLogger, fhirPathHelper);

@@ -5,7 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.FhirPath;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;

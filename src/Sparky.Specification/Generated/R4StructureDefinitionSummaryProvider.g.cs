@@ -10,7 +10,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using Hl7.Fhir.Specification;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 
 namespace Sparky.Specification.Generated;

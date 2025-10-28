@@ -1,5 +1,5 @@
 using System;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch.Validation;
 

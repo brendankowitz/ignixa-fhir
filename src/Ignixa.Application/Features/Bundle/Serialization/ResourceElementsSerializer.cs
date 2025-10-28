@@ -6,7 +6,7 @@
 using System.Text;
 using System.Text.Json;
 using EnsureThat;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
 

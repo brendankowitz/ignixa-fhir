@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Resource;
 

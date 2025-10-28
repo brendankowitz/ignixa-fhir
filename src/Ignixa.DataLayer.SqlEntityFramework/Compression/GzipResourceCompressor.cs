@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.IO.Compression;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Microsoft.IO;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Compression;

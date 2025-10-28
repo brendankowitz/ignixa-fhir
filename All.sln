@@ -6,7 +6,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api", "src\Ignixa.Ap
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api.Tests", "test\Ignixa.Api.Tests\Ignixa.Api.Tests.csproj", "{817ACD8E-4EC0-48DF-8AFC-232ADEB168CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SourceNodeSerialization", "src\Ignixa.SourceNodeSerialization\Ignixa.SourceNodeSerialization.csproj", "{73ACFCE5-F840-42F1-8382-DDFAF74529AF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Serialization", "src\Ignixa.Serialization\Ignixa.Serialization.csproj", "{73ACFCE5-F840-42F1-8382-DDFAF74529AF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Search", "src\Ignixa.Search\Ignixa.Search.csproj", "{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}"
 EndProject
@@ -35,7 +35,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{0C88DD14-F
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.Tests", "test\Ignixa.Application.Tests\Ignixa.Application.Tests.csproj", "{F326E4BD-4AE4-4756-85B5-EB31FC650D6F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SourceNodeSerialization.Tests", "test\Ignixa.SourceNodeSerialization.Tests\Ignixa.SourceNodeSerialization.Tests.csproj", "{12496AA6-CA27-442E-9A67-0417FE38EEFC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Serialization.Tests", "test\Ignixa.Serialization.Tests\Ignixa.Serialization.Tests.csproj", "{12496AA6-CA27-442E-9A67-0417FE38EEFC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Validation", "src\Ignixa.Validation\Ignixa.Validation.csproj", "{F6F5D9E6-8F04-4F23-99F8-C6857C6BBE2E}"
 EndProject

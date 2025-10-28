@@ -5,9 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.SourceNodes;
-using Ignixa.SourceNodeSerialization.Specification;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch;
 

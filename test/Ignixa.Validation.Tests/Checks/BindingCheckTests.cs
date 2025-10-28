@@ -6,7 +6,7 @@
 #pragma warning disable CA1861 // Avoid constant arrays as arguments
 
 using System.Text.Json.Nodes;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;

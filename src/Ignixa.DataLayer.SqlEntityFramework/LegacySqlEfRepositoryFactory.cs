@@ -14,7 +14,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Extensions;
 using Ignixa.Search.Definition;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 

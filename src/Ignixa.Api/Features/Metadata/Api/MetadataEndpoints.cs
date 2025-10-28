@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Domain.Exceptions;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Api.Features.Metadata.Api;
 

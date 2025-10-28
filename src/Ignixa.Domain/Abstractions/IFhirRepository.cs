@@ -1,5 +1,5 @@
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Domain.Abstractions;
 

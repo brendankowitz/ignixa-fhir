@@ -7,7 +7,7 @@
 #nullable enable
 
 using System.Collections.Generic;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Specification.Generated;
 

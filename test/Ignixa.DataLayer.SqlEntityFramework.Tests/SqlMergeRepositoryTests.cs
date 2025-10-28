@@ -12,7 +12,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
 

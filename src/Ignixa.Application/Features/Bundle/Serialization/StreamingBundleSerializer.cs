@@ -8,8 +8,8 @@ using System.Text.Json;
 using EnsureThat;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Abstractions;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
 
@@ -583,7 +583,7 @@ public static class StreamingBundleSerializer
     private static void WriteCodeableConcept(
         FhirJsonWriter writer,
         string propertyName,
-        Ignixa.SourceNodeSerialization.Models.CodeableConceptJsonNode concept)
+        CodeableConceptJsonNode concept)
     {
         writer.WriteStartObject(propertyName);
 

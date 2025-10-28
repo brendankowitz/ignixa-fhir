@@ -12,8 +12,8 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Serialization;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.DataLayer.FileSystem.FileSystem;
 

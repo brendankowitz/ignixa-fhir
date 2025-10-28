@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Ignixa.SourceNodeSerialization.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch;
 

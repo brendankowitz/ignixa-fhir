@@ -5,7 +5,7 @@
 
 using System.Globalization;
 using EnsureThat;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Domain.Exceptions;
 

@@ -11,7 +11,7 @@ using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Api.Features.Compartment;
 
@@ -212,7 +212,7 @@ public static class CompartmentEndpoints
         }
 
         // Get version-specific search options builder
-        var fhirSpec = Ignixa.SourceNodeSerialization.FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
 
         // Parse query parameters

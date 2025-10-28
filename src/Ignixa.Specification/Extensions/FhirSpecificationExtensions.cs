@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Ignixa.Specification.Generated;
 
 namespace Ignixa.Specification.Extensions;

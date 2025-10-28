@@ -10,7 +10,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 

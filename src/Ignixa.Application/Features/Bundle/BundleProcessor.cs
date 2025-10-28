@@ -7,7 +7,7 @@ using EnsureThat;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Application.Features.Bundle;
 

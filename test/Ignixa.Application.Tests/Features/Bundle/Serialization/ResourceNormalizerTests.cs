@@ -8,7 +8,7 @@
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
-using Ignixa.SourceNodeSerialization.Extensions;
+using Ignixa.Serialization.Extensions;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Bundle.Serialization;

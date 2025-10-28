@@ -6,9 +6,9 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
+using Ignixa.Serialization;
 using Ignixa.Specification.Generated;
 
 namespace Ignixa.Application.Infrastructure;

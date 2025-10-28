@@ -5,7 +5,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Checks;

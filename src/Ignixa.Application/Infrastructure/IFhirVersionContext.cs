@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;
 

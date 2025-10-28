@@ -7,7 +7,7 @@ using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;

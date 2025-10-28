@@ -4,10 +4,10 @@
 // </copyright>
 
 using System;
+using Ignixa.Serialization.Helpers;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Providers;
-using Ignixa.SourceNodeSerialization.Helpers;
-using Ignixa.SourceNodeSerialization.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Specification.Extensions;
 

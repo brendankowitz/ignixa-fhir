@@ -6,7 +6,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;
 

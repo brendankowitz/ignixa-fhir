@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
+using Ignixa.Serialization;
 
 namespace Ignixa.Specification;
 

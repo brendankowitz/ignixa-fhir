@@ -15,8 +15,8 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Application.Features.Bundle;
 

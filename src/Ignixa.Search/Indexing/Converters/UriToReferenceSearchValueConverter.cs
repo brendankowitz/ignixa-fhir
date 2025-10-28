@@ -5,7 +5,7 @@
 
 using EnsureThat;
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Indexing.Converters;
 

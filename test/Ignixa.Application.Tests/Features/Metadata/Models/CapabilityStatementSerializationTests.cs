@@ -7,8 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Ignixa.Application.Features.Metadata.Models;
-using Ignixa.SourceNodeSerialization;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Tests.Features.Metadata.Models;

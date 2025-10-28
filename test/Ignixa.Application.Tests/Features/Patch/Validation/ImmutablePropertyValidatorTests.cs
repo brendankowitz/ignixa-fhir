@@ -6,7 +6,7 @@
 using System;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Validation;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Patch.Validation;

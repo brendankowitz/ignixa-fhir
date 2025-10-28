@@ -4,11 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using ISourceNode = Ignixa.SourceNodeSerialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.SourceNodeSerialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
+
 // For ToTypedElement extension method
 
 // For ResourceJsonNode

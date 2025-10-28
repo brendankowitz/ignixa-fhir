@@ -1,5 +1,5 @@
 using Ignixa.Domain.Models;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Serialization.SourceNodes;
 using Medino;
 
 namespace Ignixa.Application.Features.Patch;

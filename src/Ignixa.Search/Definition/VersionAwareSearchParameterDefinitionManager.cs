@@ -7,10 +7,10 @@ using System.Collections.Concurrent;
 using EnsureThat;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.Specification;
 using Ignixa.Search.Models;
-using Ignixa.SourceNodeSerialization.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Definition;
 
