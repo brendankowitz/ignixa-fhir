@@ -219,73 +219,26 @@ internal static class TestResultsViewerCommand
 
     /// <summary>
     /// Gets the embedded HTML content for the viewer.
-    /// In production, this would be loaded from a resource or external file.
+    /// The HTML is embedded as a resource in the assembly.
     /// </summary>
     private static string GetEmbeddedHtml()
     {
-        // Try to load from external file first (for development)
-        var externalPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "test-results-viewer.html");
+        var assembly = typeof(TestResultsViewerCommand).Assembly;
+        var resourceName = $"{typeof(TestResultsViewerCommand).Namespace}.test-results-viewer.html";
 
-        if (File.Exists(externalPath))
+        using (var stream = assembly.GetManifestResourceStream(resourceName))
         {
-            try
+            if (stream == null)
             {
-                return File.ReadAllText(externalPath);
+                throw new InvalidOperationException(
+                    $"Embedded resource '{resourceName}' not found. " +
+                    $"Ensure test-results-viewer.html is included as an embedded resource in the project.");
             }
-            catch
+
+            using (var reader = new System.IO.StreamReader(stream))
             {
-                // Fall through to inline version
+                return reader.ReadToEnd();
             }
         }
-
-        // Return minimal inline version for fallback
-        return GetMinimalHtml();
-    }
-
-    private static string GetMinimalHtml()
-    {
-        const string html = "<!DOCTYPE html>" +
-            "<html><head>" +
-            "<meta charset=\"UTF-8\">" +
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" +
-            "<title>FHIR Test Results Viewer</title>" +
-            "<style>" +
-            "* { box-sizing: border-box; }" +
-            "html, body { height: 100%; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }" +
-            "body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }" +
-            ".container { max-width: 1200px; margin: 0 auto; }" +
-            ".header { text-align: center; color: white; margin-bottom: 40px; }" +
-            ".header h1 { font-size: 2.5em; margin: 0 0 10px 0; }" +
-            ".upload-zone { background: white; border-radius: 12px; padding: 40px; text-align: center; border: 2px dashed #667eea; cursor: pointer; }" +
-            ".btn { padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em; margin: 10px auto; display: block; }" +
-            ".file-input { display: none; }" +
-            ".dashboard { background: white; border-radius: 12px; padding: 40px; margin-bottom: 30px; }" +
-            ".metric-card { background: #f5f5f5; padding: 20px; border-radius: 8px; border-left: 4px solid #667eea; text-align: center; }" +
-            ".metric-value { font-size: 2.2em; font-weight: 700; color: #333; }" +
-            "</style>" +
-            "</head><body>" +
-            "<div class=\"container\">" +
-            "<div class=\"header\"><h1>Test Results Viewer</h1></div>" +
-            "<div id=\"root\"></div>" +
-            "</div>" +
-            "<input type=\"file\" id=\"fileInput\" class=\"file-input\" accept=\".json\">" +
-            "<script>" +
-            "function show(data) {" +
-            "var h='<div class=\"dashboard\">';h+='<div>Server: '+(data.ServerUrl||'N/A')+'</div>';h+='<div>Pass Rate: '+((data.PassRate*100).toFixed(1))+'%</div>';h+='</div>';document.getElementById('root').innerHTML=h;" +
-            "}" +
-            "function load() { " +
-            "var z=document.createElement('div');z.className='upload-zone';z.innerHTML='<h2>Drop JSON here</h2>';z.id='z';document.getElementById('root').innerHTML='';document.getElementById('root').appendChild(z);" +
-            "var f=document.getElementById('fileInput');z.onclick=()=>f.click();z.ondrop=(e)=>{e.preventDefault();var file=e.dataTransfer.files[0];if(file){var r=new FileReader();r.onload=()=>{try{show(JSON.parse(r.result));}catch(e){alert('Invalid JSON')}}; r.readAsText(file);}};" +
-            "z.ondragover=(e)=>e.preventDefault();f.onchange=(e)=>{if(e.target.files[0]){var r=new FileReader();r.onload=()=>{try{show(JSON.parse(r.result));}catch(e){alert('Invalid JSON')}}; r.readAsText(e.target.files[0]);}}" +
-            "}" +
-            "fetch('/api/report').then(r=>r.ok?r.json():Promise.reject()).then(show).catch(load);" +
-            "</script>" +
-            "</body></html>";
-        return html;
     }
 }
