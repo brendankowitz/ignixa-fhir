@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
+using Microsoft.IO;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Exceptions;
@@ -27,15 +28,18 @@ public class BundleEntryExecutor
 {
     private readonly IPipelineExecutor _pipelineExecutor;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly ILogger<BundleEntryExecutor> _logger;
 
     public BundleEntryExecutor(
         IPipelineExecutor pipelineExecutor,
         IHttpContextAccessor httpContextAccessor,
+        RecyclableMemoryStreamManager memoryStreamManager,
         ILogger<BundleEntryExecutor> logger)
     {
         _pipelineExecutor = EnsureArg.IsNotNull(pipelineExecutor, nameof(pipelineExecutor));
         _httpContextAccessor = EnsureArg.IsNotNull(httpContextAccessor, nameof(httpContextAccessor));
+        _memoryStreamManager = EnsureArg.IsNotNull(memoryStreamManager, nameof(memoryStreamManager));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
     }
 
@@ -66,7 +70,7 @@ public class BundleEntryExecutor
         {
             // Create mini HttpContext for bundle entry
             var httpContext = new DefaultHttpContext();
-            var responseBodyStream = new MemoryStream();
+            var responseBodyStream = _memoryStreamManager.GetStream("bundle-entry-response");
 
             // Copy RequestServices from parent HttpContext if available
             // This allows endpoints to resolve dependencies via [FromServices]
@@ -285,7 +289,11 @@ public class BundleEntryExecutor
         // Fast path: Use pre-captured raw JSON from parsing
         if (!string.IsNullOrEmpty(entry.RawJson))
         {
-            return new MemoryStream(Encoding.UTF8.GetBytes(entry.RawJson));
+            var stream = _memoryStreamManager.GetStream("bundle-entry-request");
+            var bytes = Encoding.UTF8.GetBytes(entry.RawJson);
+            stream.Write(bytes, 0, bytes.Length);
+            stream.Position = 0;
+            return stream;
         }
 
         // Fallback: If RawJson not available, this indicates a parser bug

@@ -6,6 +6,7 @@
 using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.IO;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain;
@@ -30,6 +31,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
 {
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
@@ -51,12 +53,15 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// </summary>
     /// <param name="tenantStore">The tenant configuration store.</param>
     /// <param name="loggerFactory">The logger factory.</param>
+    /// <param name="memoryStreamManager">The recyclable memory stream manager for efficient memory management.</param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        RecyclableMemoryStreamManager memoryStreamManager)
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
         _definitionManagersCache = new ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
@@ -280,7 +285,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Create factory delegate for Repository (accepts DbContext parameter)
         Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
-            var compressor = new GzipResourceCompressor();
+            var compressor = new GzipResourceCompressor(_memoryStreamManager);
             var searchIndexCache = new SearchIndexReferenceDataCache(
                 dbContext,
                 _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
@@ -305,7 +310,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Create factory delegate for SearchService (accepts DbContext and Repository parameters)
         Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (dbContext, repository) =>
         {
-            var compressor = new GzipResourceCompressor();
+            var compressor = new GzipResourceCompressor(_memoryStreamManager);
             var searchIndexCache = new SearchIndexReferenceDataCache(
                 dbContext,
                 _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());

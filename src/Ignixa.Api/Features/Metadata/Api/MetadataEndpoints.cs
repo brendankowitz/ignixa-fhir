@@ -7,7 +7,6 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Metadata;
-using Ignixa.Domain;
 using Ignixa.Domain.Exceptions;
 using Ignixa.SourceNodeSerialization;
 
@@ -35,7 +34,7 @@ public static class MetadataEndpoints
         // Tenant-explicit route: GET /tenant/{tenantId}/metadata
         endpoints.MapGet("/tenant/{tenantId:int}/metadata", HandleGetTenantMetadata)
             .WithName("GetTenantMetadata")
-            .Produces(StatusCodes.Status200OK, contentType: "KnownContentTypes.ApplicationFhirJson")
+            .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status404NotFound);
 
         return endpoints;
@@ -51,7 +50,7 @@ public static class MetadataEndpoints
         // Tenant-agnostic route: GET /metadata
         endpoints.MapGet("/metadata", HandleGetMetadata)
             .WithName("GetMetadata")
-            .Produces(StatusCodes.Status200OK, contentType: "KnownContentTypes.ApplicationFhirJson");
+            .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson);
 
         return endpoints;
     }
@@ -85,7 +84,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        return Results.Content(capabilityStatement.SerializeToString(), "KnownContentTypes.ApplicationFhirJson");
+        return Results.Content(capabilityStatement.SerializeToString(), KnownContentTypes.ApplicationFhirJson);
     }
 
     /// <summary>
@@ -110,7 +109,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        return Results.Content(capabilityStatement.SerializeToString(), "KnownContentTypes.ApplicationFhirJson");
+        return Results.Content(capabilityStatement.SerializeToString(), KnownContentTypes.ApplicationFhirJson);
     }
 
     /// <summary>
@@ -119,8 +118,8 @@ public static class MetadataEndpoints
     /// </summary>
     private static void ValidateAcceptHeader(HttpContext context)
     {
-        const string fhirJsonMediaType = "KnownContentTypes.ApplicationFhirJson";
-        const string jsonMediaType = "KnownContentTypes.ApplicationJson";
+        const string fhirJsonMediaType = KnownContentTypes.ApplicationFhirJson;
+        const string jsonMediaType = KnownContentTypes.ApplicationJson;
 
         var acceptHeader = context.Request.Headers.Accept.ToString();
 

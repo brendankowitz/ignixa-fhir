@@ -46,7 +46,7 @@ GET {{hostname}}/metadata
 GET {{hostname}}/Patient/example/*
 
 ### Sort Name
-GET {{hostname}}/Patient?_sort=name
+GET {{hostname}}/Patient?_sort=name&_total=accurate&_count=10000
 
 ### Sort Birthdate
 GET {{hostname}}/Patient?_sort=birthDate
@@ -284,3 +284,7 @@ Content-Type: application/fhir+json
         "code": "kg"
     }
 }
+
+### History
+
+GET {{hostname}}/Observation/f8adc129-3d07-44fe-b505-9dd75bef6876/_history?_count=20

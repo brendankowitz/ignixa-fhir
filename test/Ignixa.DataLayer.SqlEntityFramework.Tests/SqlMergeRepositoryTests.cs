@@ -6,6 +6,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IO;
 using Xunit;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
@@ -26,7 +27,8 @@ public class SqlMergeRepositoryTests : TestBase
 
     public SqlMergeRepositoryTests()
     {
-        _compressor = new GzipResourceCompressor();
+        var memoryStreamManager = new RecyclableMemoryStreamManager();
+        _compressor = new GzipResourceCompressor(memoryStreamManager);
         _repository = new SqlMergeRepository(
             Context,
             _compressor,

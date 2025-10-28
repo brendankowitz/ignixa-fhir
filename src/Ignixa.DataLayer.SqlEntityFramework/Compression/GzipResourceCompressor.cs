@@ -4,40 +4,24 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.IO.Compression;
-using System.Text;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.SourceNodes;
+using Microsoft.IO;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Compression;
 
 /// <summary>
 /// Compresses and decompresses FHIR resource JSON using Gzip.
 /// Provides ~70% storage reduction for typical FHIR resources.
+/// Uses RecyclableMemoryStream for efficient memory management.
 /// </summary>
-public class GzipResourceCompressor
+public class GzipResourceCompressor(RecyclableMemoryStreamManager memoryStreamManager)
 {
-    /// <summary>
-    /// Compresses JSON string to byte array using Gzip.
-    /// </summary>
-    /// <param name="json">The JSON string to compress.</param>
-    /// <returns>Compressed byte array.</returns>
-    public byte[] Compress(string json)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(json);
-
-        var bytes = Encoding.UTF8.GetBytes(json);
-        using var outputStream = new MemoryStream();
-        using (var gzipStream = new GZipStream(outputStream, CompressionLevel.Optimal))
-        {
-            gzipStream.Write(bytes, 0, bytes.Length);
-        }
-
-        return outputStream.ToArray();
-    }
+    private readonly RecyclableMemoryStreamManager _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
 
     public byte[] SerializeAndCompress(ResourceJsonNode node)
     {
-        using var outputStream = new MemoryStream();
+        using RecyclableMemoryStream outputStream = _memoryStreamManager.GetStream("gzip-compress");
         using (var gzipStream = new GZipStream(outputStream, CompressionLevel.Optimal))
         {
             node.SerializeToStream(gzipStream);
@@ -47,28 +31,6 @@ public class GzipResourceCompressor
         return outputStream.ToArray();
     }
 
-    /// <summary>
-    /// Decompresses byte array to JSON string using Gzip.
-    /// </summary>
-    /// <param name="compressedData">The compressed byte array.</param>
-    /// <returns>Decompressed JSON string.</returns>
-    public string Decompress(byte[] compressedData)
-    {
-        ArgumentNullException.ThrowIfNull(compressedData);
-
-        if (compressedData.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        using var inputStream = new MemoryStream(compressedData);
-        using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
-        using var outputStream = new MemoryStream();
-        gzipStream.CopyTo(outputStream);
-
-        return Encoding.UTF8.GetString(outputStream.ToArray());
-    }
-
     public ReadOnlyMemory<byte> DecompressBytes(ReadOnlyMemory<byte> compressedData)
     {
         if (compressedData.Length == 0)
@@ -76,13 +38,13 @@ public class GzipResourceCompressor
             return ReadOnlyMemory<byte>.Empty;
         }
 
-        using var inputStream = new MemoryStream();
+        using RecyclableMemoryStream inputStream = _memoryStreamManager.GetStream("gzip-decompress-input");
         inputStream.Write(compressedData.Span);
         inputStream.Position = 0;
         using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
-        using var outputStream = new MemoryStream();
+        using RecyclableMemoryStream outputStream = _memoryStreamManager.GetStream("gzip-decompress-output");
         gzipStream.CopyTo(outputStream);
-
+        
         return outputStream.ToArray();
     }
 }

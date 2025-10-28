@@ -216,19 +216,23 @@ public static class StreamingBundleSerializer
     /// <param name="entries">Async stream of search entry results (raw bytes) to include in the bundle.</param>
     /// <param name="links">Pagination links (self, first, prev, next, last).</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
+    /// <param name="pageSize"></param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public static async Task SerializeHistoryAsync(
-        Stream outputStream,
+    public static async Task SerializeHistoryAsync(Stream outputStream,
         string bundleType,
         int? total,
         IAsyncEnumerable<SearchEntryResult> entries,
         IReadOnlyList<BundleLinkJsonNode>? links = null,
         bool pretty = false,
+        int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
         EnsureArg.IsNotNull(outputStream, nameof(outputStream));
         EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
         EnsureArg.IsNotNull(entries, nameof(entries));
+        
+        int entryCount = 0;
+        bool hasMore = false;
 
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
 
@@ -236,7 +240,7 @@ public static class StreamingBundleSerializer
         WriteBundleHeader(writer, bundleType, total);
 
         // Write links
-        WriteBundleLinks(writer, links);
+        //WriteBundleLinks(writer, links);
 
         // Write entry array
         writer.WriteStartArray("entry");
@@ -244,6 +248,14 @@ public static class StreamingBundleSerializer
         // Stream entries as they become available (zero-copy from raw bytes)
         await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
         {
+            entryCount++;
+
+            if (entryCount > pageSize)
+            {
+                hasMore = true;
+                continue;
+            }
+            
             writer.WriteStartObject();
 
             // Write fullUrl with version for history bundles
@@ -275,8 +287,20 @@ public static class StreamingBundleSerializer
             await writer.FlushAsync(cancellationToken);
         }
 
-        // Write bundle footer
-        await WriteBundleFooterAsync(writer, cancellationToken);
+        writer.WriteEndArray();
+
+        if (links != null)
+        {
+            if (!hasMore || entryCount == 0)
+            {
+                links = links.Where(x => x.Relation != "next").ToList();
+            }
+            
+            WriteBundleLinks(writer, links);
+        }
+
+        writer.WriteEndObject(); // end bundle
+        await writer.FlushAsync(cancellationToken);
     }
 
     /// <summary>

@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Patch;
 using Ignixa.SourceNodeSerialization;
+using Ignixa.SourceNodeSerialization.Models;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Patch;
@@ -32,7 +33,7 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act
-        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse<ParametersJsonNode>(parametersJson);
         var operations = _parser.Parse(parsedJson);
 
         // Assert
@@ -72,7 +73,7 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act
-        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse<ParametersJsonNode>(parametersJson);
         var operations = _parser.Parse(parsedJson);
 
         // Assert
@@ -101,7 +102,7 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act
-        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse<ParametersJsonNode>(parametersJson);
         var operations = _parser.Parse(parsedJson);
 
         // Assert
@@ -129,7 +130,7 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act & Assert
-        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse<ParametersJsonNode>(parametersJson);
         var ex = Assert.Throws<FhirPatchException>(() => _parser.Parse(parsedJson));
         Assert.Contains("must contain at least one 'operation' parameter", ex.Message);
     }
@@ -138,7 +139,7 @@ public class FhirPatchParametersParserTests
     public void GivenNullJson_WhenParsing_ThenThrowsException()
     {
         // Act & Assert
-        var ex = Assert.Throws<ArgumentException>(() => _parser.Parse(null));
-        Assert.Contains("Parameters JSON cannot be null or empty", ex.Message);
+        var ex = Assert.Throws<ArgumentNullException>(() => _parser.Parse(null));
+        Assert.Contains("Parameters resource cannot be null", ex.Message);
     }
 }

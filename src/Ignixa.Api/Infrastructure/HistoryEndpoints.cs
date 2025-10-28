@@ -7,6 +7,7 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
+using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 
@@ -143,6 +144,7 @@ public static class HistoryEndpoints
             entries: result.Entries,
             links: result.Links,
             pretty: false,
+            pageSize: parameters.Count,
             cancellationToken: ct);
 
         // Response already written to stream
@@ -162,7 +164,7 @@ public static class HistoryEndpoints
         CancellationToken ct)
     {
         // Parse query parameters
-        var parameters = HistoryQueryParametersParser.Parse(context.Request.Query);
+        HistoryQueryParameters parameters = HistoryQueryParametersParser.Parse(context.Request.Query);
 
         // Build URLs for pagination
         var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
@@ -190,6 +192,7 @@ public static class HistoryEndpoints
             entries: result.Entries,
             links: result.Links,
             pretty: false,
+            pageSize: parameters.Count,
             cancellationToken: ct);
 
         // Response already written to stream
@@ -235,6 +238,7 @@ public static class HistoryEndpoints
             entries: result.Entries,
             links: result.Links,
             pretty: false,
+            pageSize: parameters.Count,
             cancellationToken: ct);
 
         // Response already written to stream

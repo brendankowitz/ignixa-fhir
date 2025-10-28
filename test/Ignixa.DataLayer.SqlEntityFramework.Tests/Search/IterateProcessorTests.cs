@@ -5,6 +5,7 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IO;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Domain.Models;
@@ -25,7 +26,8 @@ public class IterateProcessorTests : TestBase
 
     public IterateProcessorTests()
     {
-        var compressor = new GzipResourceCompressor();
+        var memoryStreamManager = new RecyclableMemoryStreamManager();
+        var compressor = new GzipResourceCompressor(memoryStreamManager);
 
         _includeProcessor = new IncludeProcessor(
             Context,
