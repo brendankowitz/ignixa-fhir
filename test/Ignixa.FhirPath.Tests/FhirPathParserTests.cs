@@ -268,4 +268,57 @@ public class FhirPathParserTests
         Assert.Null(result);
         Assert.NotNull(error);
     }
+
+    [Fact]
+    public void GivenContainsFunction_WhenParsing_ThenReturnsFunctionCallExpression()
+    {
+        // FHIRPath spec: contains() is a function that checks if a collection contains a value
+        // Example from FHIR search parameters: ValueSet.expansion.contains.code
+        var expr = _compiler.Parse("ValueSet.expansion.contains.code");
+
+        Assert.IsType<ChildExpression>(expr);
+        var code = (ChildExpression)expr;
+        Assert.Equal("code", code.ChildName);
+
+        Assert.IsType<ChildExpression>(code.Focus);
+        var contains = (ChildExpression)code.Focus!;
+        Assert.Equal("contains", contains.ChildName);
+
+        Assert.IsType<ChildExpression>(contains.Focus);
+        var expansion = (ChildExpression)contains.Focus!;
+        Assert.Equal("expansion", expansion.ChildName);
+    }
+
+    [Fact]
+    public void GivenContainsAsFunctionCall_WhenParsing_ThenReturnsFunctionCallExpression()
+    {
+        // FHIRPath spec: contains() as a function (not property accessor)
+        // Example: name.contains('John')
+        var expr = _compiler.Parse("name.contains('John')");
+
+        Assert.IsType<FunctionCallExpression>(expr);
+        var func = (FunctionCallExpression)expr;
+        Assert.Equal("contains", func.FunctionName);
+        Assert.Single(func.Arguments);
+
+        Assert.IsType<ConstantExpression>(func.Arguments[0]);
+        var arg = (ConstantExpression)func.Arguments[0];
+        Assert.Equal("John", arg.Value);
+    }
+
+    [Fact]
+    public void GivenAsOperator_WhenParsing_ThenReturnsAsExpression()
+    {
+        // FHIRPath spec: 'as' operator for type casting
+        // Example: value as Quantity
+        var expr = _compiler.Parse("value as Quantity");
+
+        // This will fail until we implement the 'as' operator
+        // Expected: AsExpression with operand and type
+        Assert.IsType<BinaryExpression>(expr);
+        var asExpr = (BinaryExpression)expr;
+        Assert.Equal("as", asExpr.Operator);
+        Assert.IsType<FunctionCallExpression>(asExpr.Left); // value
+        Assert.IsType<FunctionCallExpression>(asExpr.Right); // Quantity (type identifier)
+    }
 }

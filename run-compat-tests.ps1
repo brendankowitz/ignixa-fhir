@@ -22,9 +22,12 @@
 .PARAMETER KeepServerRunning
     Don't stop the API server after tests complete
 
+.PARAMETER Silent
+    Don't launch the viewer after tests complete
+
 .EXAMPLE
     .\run-compat-tests.ps1
-    Run all compatibility tests
+    Run all compatibility tests and launch viewer
 
 .EXAMPLE
     .\run-compat-tests.ps1 -Filter "CreateTests"
@@ -33,6 +36,10 @@
 .EXAMPLE
     .\run-compat-tests.ps1 -SkipBuild
     Run tests without rebuilding
+
+.EXAMPLE
+    .\run-compat-tests.ps1 -Silent
+    Run tests without launching the viewer
 
 .EXAMPLE
     .\run-compat-tests.ps1 -KeepServerRunning
@@ -44,7 +51,8 @@ param(
     [string]$Url = "http://localhost:5000",
     [string]$Output = "compatibility-report.json",
     [switch]$SkipBuild,
-    [switch]$KeepServerRunning
+    [switch]$KeepServerRunning,
+    [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
@@ -151,6 +159,12 @@ try {
 
     dotnet @testArgs
     $testExitCode = $LASTEXITCODE
+
+    # Launch viewer after tests complete (unless Silent flag is set)
+    if ((Test-Path $Output) -and -not $Silent) {
+        Write-Step "Launching test results viewer..."
+        dotnet run --project $testProject --no-build --configuration Release -- viewer
+    }
 
     # Step 5: Display results
     Write-Host ""

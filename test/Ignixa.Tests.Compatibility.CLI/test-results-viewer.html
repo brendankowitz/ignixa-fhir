@@ -329,8 +329,11 @@
                 {sortedResults.map((result, index) => (
                   <React.Fragment key={index}>
                     <tr className="test-row" onClick={() => toggleRow(index)}>
-                      <td style={{ fontSize: '0.9em' }}>
-                        {result.TestName.split('.').pop()}
+                      <td style={{ fontSize: '0.9em' }} title={result.TestName.split('.').pop()}>
+                        {(() => {
+                          const testName = result.TestName.split('.').pop();
+                          return testName.length > 255 ? testName.substring(0, 255) + '...' : testName;
+                        })()}
                       </td>
                       <td>{result.Category}</td>
                       <td>

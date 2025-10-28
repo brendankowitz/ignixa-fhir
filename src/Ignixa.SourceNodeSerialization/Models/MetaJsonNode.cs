@@ -71,7 +71,8 @@ public class MetaJsonNode : BaseJsonNode
             }
             else
             {
-                // Store as ISO 8601 string
+                // Store as ISO 8601 string in UTC format (FHIR requires UTC)
+                // Use UtcDateTime to get the DateTime in UTC, then create DateTimeOffset with zero offset
                 MutableNode["lastUpdated"] = value.Value.ToString("o");
             }
         }

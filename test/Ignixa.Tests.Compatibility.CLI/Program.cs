@@ -43,7 +43,7 @@ class Program
 
         var filterOption = new Option<string>(
             name: "--filter",
-            description: "Filter test names (e.g., 'CreateTests' or 'Metadata')",
+            description: "Filter test names (e.g., 'CreateTests' or comma-separated: 'CreateTests,UpdateTests,SearchTests')",
             getDefaultValue: () => string.Empty);
 
         var skipOption = new Option<string>(
@@ -178,10 +178,12 @@ class Program
                 // Include if SqlServer AND Json, but NOT CosmosDb
                 bool matchesDataStore = isSqlServer && isJson && !isCosmosDb;
 
-                // Apply additional test name filter if specified
+                // Apply additional test name filter if specified (supports comma-separated OR logic)
                 if (!string.IsNullOrEmpty(testFilter))
                 {
-                    matchesDataStore = matchesDataStore && displayName.Contains(testFilter, StringComparison.OrdinalIgnoreCase);
+                    var filters = testFilter.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    bool matchesAnyFilter = filters.Any(f => displayName.Contains(f, StringComparison.OrdinalIgnoreCase));
+                    matchesDataStore = matchesDataStore && matchesAnyFilter;
                 }
 
                 return matchesDataStore;

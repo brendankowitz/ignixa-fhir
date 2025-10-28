@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Medino;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
@@ -17,5 +18,5 @@ public record ConditionalPatchCommand(
     int TenantId,
     string ResourceType,
     string SearchCriteria,  // Query string parameters (e.g., "identifier=system|value")
-    string PatchBody,  // Raw FHIR Parameters resource (JSON)
+    ResourceJsonNode PatchDocument,  // FHIR Parameters resource (parsed at endpoint layer)
     string? RequestId = null) : IRequest<ConditionalPatchResult>;

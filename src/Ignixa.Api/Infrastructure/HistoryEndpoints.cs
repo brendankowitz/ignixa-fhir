@@ -3,10 +3,11 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Medino;
-using Microsoft.AspNetCore.Mvc;
+using Ignixa.Api.Extensions;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
+using Medino;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -74,7 +75,7 @@ public static class HistoryEndpoints
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
         endpoints.MapGet("/{resourceType}/{id}/_history", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleGetResourceHistory(context, ExtractTenantId(context), resourceType, id, mediator, ct))
+            HandleGetResourceHistory(context, context.GetTenantId(), resourceType, id, mediator, ct))
             .WithName("GetResourceHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
@@ -83,7 +84,7 @@ public static class HistoryEndpoints
         // GET /{resourceType}/_history - Type-level history (agnostic)
         endpoints.MapGet("/{resourceType}/_history", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleGetTypeHistory(context, ExtractTenantId(context), resourceType, mediator, ct))
+            HandleGetTypeHistory(context, context.GetTenantId(), resourceType, mediator, ct))
             .WithName("GetTypeHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
@@ -91,25 +92,12 @@ public static class HistoryEndpoints
         // GET /_history - System-level history (agnostic)
         endpoints.MapGet("/_history", (HttpContext context,
             [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleGetSystemHistory(context, ExtractTenantId(context), mediator, ct))
+            HandleGetSystemHistory(context, context.GetTenantId(), mediator, ct))
             .WithName("GetSystemHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
         return endpoints;
-    }
-
-    /// <summary>
-    /// Extracts tenant ID from HttpContext.Items (populated by TenantResolutionMiddleware).
-    /// </summary>
-    private static int ExtractTenantId(HttpContext context)
-    {
-        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            throw new InvalidOperationException(
-                "TenantId not found in HttpContext.Items. TenantResolutionMiddleware may not have run.");
-        }
-        return tenantId;
     }
 
     /// <summary>

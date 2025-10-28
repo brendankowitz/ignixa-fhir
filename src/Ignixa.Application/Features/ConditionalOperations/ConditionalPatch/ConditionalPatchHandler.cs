@@ -117,7 +117,7 @@ public class ConditionalPatchHandler : IRequestHandler<ConditionalPatchCommand, 
                 request.TenantId,
                 request.ResourceType,
                 existingId,
-                request.PatchBody,
+                request.PatchDocument,
                 IfMatch: existingVersionId); // Pass version ID for optimistic concurrency control
 
             var patchResult = await _mediator.SendAsync(patchCommand, cancellationToken);

@@ -19,7 +19,7 @@ namespace Ignixa.Search {
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    internal class Resources {
+    public class Resources {
 
         private static global::System.Resources.ResourceManager resourceMan;
 
@@ -220,9 +220,9 @@ namespace Ignixa.Search {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to Operation was not attempted because search criteria was not selective enough..
+        ///   Looks up a localized string similar to Conditional operation on {0} was not attempted because search criteria was not selective enough..
         /// </summary>
-        internal static string ConditionalOperationNotSelectiveEnough {
+        public static string ConditionalOperationNotSelectiveEnough {
             get {
                 return ResourceManager.GetString("ConditionalOperationNotSelectiveEnough", resourceCulture);
             }

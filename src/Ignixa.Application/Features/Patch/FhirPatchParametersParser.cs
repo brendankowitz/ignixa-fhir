@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.Models;
+using Ignixa.SourceNodeSerialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch;
 
@@ -14,30 +14,19 @@ namespace Ignixa.Application.Features.Patch;
 public class FhirPatchParametersParser
 {
     /// <summary>
-    /// Parse a Parameters resource JSON string into an array of FhirPatchOperation.
+    /// Parse a Parameters resource (already parsed ResourceJsonNode) into an array of FhirPatchOperation.
     /// </summary>
-    public FhirPatchOperation[] Parse(string parametersJson)
+    public FhirPatchOperation[] Parse(ResourceJsonNode parametersNode)
     {
-        if (string.IsNullOrWhiteSpace(parametersJson))
+        if (parametersNode == null)
         {
-            throw new ArgumentException("Parameters JSON cannot be null or empty", nameof(parametersJson));
+            throw new ArgumentNullException(nameof(parametersNode), "Parameters resource cannot be null");
         }
 
-        // Parse using the generic Parse<T> method to explicitly deserialize as ParametersJsonNode
-        ParametersJsonNode parameters;
-        try
+        // Cast to ParametersJsonNode
+        if (parametersNode is not ParametersJsonNode parameters)
         {
-            parameters = JsonSourceNodeFactory.Parse<ParametersJsonNode>(parametersJson);
-        }
-        catch (Exception ex)
-        {
-            throw new FhirPatchException(
-                $"Failed to parse Parameters resource: {ex.Message}", ex);
-        }
-
-        if (parameters == null)
-        {
-            throw new FhirPatchException("Failed to parse Parameters resource: deserialization returned null");
+            throw new FhirPatchException($"Expected ParametersJsonNode but got {parametersNode.GetType().Name}");
         }
 
         if (parameters.ResourceType != "Parameters")

@@ -162,6 +162,27 @@ public class SearchIndexWriter
             text = text.Substring(0, 256);
         }
 
+        // Check if an entity with the same composite key is already being tracked
+        // Composite key: {ResourceTypeId, ResourceSurrogateId, SearchParamId, Text}
+        var existingEntity = _context.StringSearchParams.Local
+            .FirstOrDefault(e =>
+                e.ResourceTypeId == resourceTypeId &&
+                e.ResourceSurrogateId == resourceSurrogateId &&
+                e.SearchParamId == searchParamId &&
+                e.Text == text);
+
+        if (existingEntity != null)
+        {
+            // Entity already tracked - skip duplicate
+            _logger.LogDebug(
+                "Skipping duplicate StringSearchParam: ResourceSurrogateId={ResourceSurrogateId}, SearchParamId={SearchParamId}, Text={Text}",
+                resourceSurrogateId,
+                searchParamId,
+                text.Length > 50 ? string.Concat(text.AsSpan(0, 50), "...") : text);
+            await Task.CompletedTask;
+            return;
+        }
+
         var entity = new StringSearchParamEntity
         {
             ResourceTypeId = resourceTypeId,
@@ -196,6 +217,26 @@ public class SearchIndexWriter
         {
             codeOverflow = code;
             code = code.Substring(0, 256);
+        }
+
+        // Check if an entity with the same composite key is already being tracked
+        // Composite key: {ResourceTypeId, ResourceSurrogateId, SearchParamId, Code}
+        var existingEntity = _context.TokenSearchParams.Local
+            .FirstOrDefault(e =>
+                e.ResourceTypeId == resourceTypeId &&
+                e.ResourceSurrogateId == resourceSurrogateId &&
+                e.SearchParamId == searchParamId &&
+                e.Code == code);
+
+        if (existingEntity != null)
+        {
+            // Entity already tracked - skip duplicate
+            _logger.LogDebug(
+                "Skipping duplicate TokenSearchParam: ResourceSurrogateId={ResourceSurrogateId}, SearchParamId={SearchParamId}, Code={Code}",
+                resourceSurrogateId,
+                searchParamId,
+                code.Length > 50 ? string.Concat(code.AsSpan(0, 50), "...") : code);
+            return;
         }
 
         var entity = new TokenSearchParamEntity
@@ -253,6 +294,27 @@ public class SearchIndexWriter
 
         // Check if longer than a day
         var isLongerThanADay = (endDateTime - startDateTime).TotalDays > 1;
+
+        // Check if an entity with the same composite key is already being tracked
+        // Composite key: {ResourceTypeId, ResourceSurrogateId, SearchParamId, StartDateTime}
+        var existingEntity = _context.DateTimeSearchParams.Local
+            .FirstOrDefault(e =>
+                e.ResourceTypeId == resourceTypeId &&
+                e.ResourceSurrogateId == resourceSurrogateId &&
+                e.SearchParamId == searchParamId &&
+                e.StartDateTime == startDateTime);
+
+        if (existingEntity != null)
+        {
+            // Entity already tracked - skip duplicate
+            _logger.LogDebug(
+                "Skipping duplicate DateTimeSearchParam: ResourceSurrogateId={ResourceSurrogateId}, SearchParamId={SearchParamId}, StartDateTime={StartDateTime}",
+                resourceSurrogateId,
+                searchParamId,
+                startDateTime);
+            await Task.CompletedTask;
+            return;
+        }
 
         var entity = new DateTimeSearchParamEntity
         {
@@ -325,6 +387,26 @@ public class SearchIndexWriter
             }
         }
 
+        // Check if an entity with the same composite key is already being tracked
+        // Composite key: {ResourceTypeId, ResourceSurrogateId, SearchParamId, ReferenceResourceId}
+        var existingEntity = _context.ReferenceSearchParams.Local
+            .FirstOrDefault(e =>
+                e.ResourceTypeId == resourceTypeId &&
+                e.ResourceSurrogateId == resourceSurrogateId &&
+                e.SearchParamId == searchParamId &&
+                e.ReferenceResourceId == value.ResourceId);
+
+        if (existingEntity != null)
+        {
+            // Entity already tracked - skip duplicate
+            _logger.LogDebug(
+                "Skipping duplicate ReferenceSearchParam: ResourceSurrogateId={ResourceSurrogateId}, SearchParamId={SearchParamId}, ReferenceResourceId={ReferenceResourceId}",
+                resourceSurrogateId,
+                searchParamId,
+                value.ResourceId);
+            return;
+        }
+
         var entity = new ReferenceSearchParamEntity
         {
             ResourceTypeId = resourceTypeId,
@@ -352,6 +434,27 @@ public class SearchIndexWriter
         {
             _logger.LogWarning("URI search value exceeds 256 characters, truncating: {Uri}", uri);
             uri = uri.Substring(0, 256);
+        }
+
+        // Check if an entity with the same composite key is already being tracked
+        // Composite key: {ResourceTypeId, ResourceSurrogateId, SearchParamId, Uri}
+        var existingEntity = _context.UriSearchParams.Local
+            .FirstOrDefault(e =>
+                e.ResourceTypeId == resourceTypeId &&
+                e.ResourceSurrogateId == resourceSurrogateId &&
+                e.SearchParamId == searchParamId &&
+                e.Uri == uri);
+
+        if (existingEntity != null)
+        {
+            // Entity already tracked - skip duplicate
+            _logger.LogDebug(
+                "Skipping duplicate UriSearchParam: ResourceSurrogateId={ResourceSurrogateId}, SearchParamId={SearchParamId}, Uri={Uri}",
+                resourceSurrogateId,
+                searchParamId,
+                uri.Length > 50 ? string.Concat(uri.AsSpan(0, 50), "...") : uri);
+            await Task.CompletedTask;
+            return;
         }
 
         var entity = new UriSearchParamEntity

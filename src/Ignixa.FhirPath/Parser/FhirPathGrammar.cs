@@ -105,13 +105,6 @@ public static class FhirPathGrammar
             UnescapeString(unitToken.ToStringValue()),
             CreatePosition(valueToken, unitToken));
 
-    // Identifier: plain or delimited identifier
-    private static readonly TokenListParser<FhirPathTokenKind, IdentifierExpression> Identifier =
-        Token.EqualTo(FhirPathTokenKind.Identifier)
-            .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
-            .Select(t => new IdentifierExpression(
-                UnescapeIdentifier(t.ToStringValue()),
-                CreatePosition(t)));
 
     // Axis: $this, $index, $total
     private static readonly TokenListParser<FhirPathTokenKind, AxisExpression> Axis =
@@ -144,9 +137,14 @@ public static class FhirPathGrammar
 
     // Helper: identifier that could be function(args) or bare identifier
     // Bare identifiers at root level are treated as function calls (e.g., "Patient" = "Patient()")
+    // NOTE: Keywords can be used as function/property names in certain contexts
     private static TokenListParser<FhirPathTokenKind, Expression> IdentifierOrFunction() =>
         from nameToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
+            .Or(Token.EqualTo(FhirPathTokenKind.Contains)) // Allow "contains" as function/property name
+            .Or(Token.EqualTo(FhirPathTokenKind.As)) // Allow "as" as function/property name
+            .Or(Token.EqualTo(FhirPathTokenKind.Is)) // Allow "is" as function/property name
+            .Or(Token.EqualTo(FhirPathTokenKind.In)) // Allow "in" as function/property name
         from maybeArgs in (
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
             from args in Parse.Ref(() => Expression!)
@@ -161,9 +159,14 @@ public static class FhirPathGrammar
             maybeArgs.HasValue ? CreatePosition(nameToken, maybeArgs.Value.rparen) : CreatePosition(nameToken));
 
     // Function call: identifier(args) - used by DotInvocation
+    // NOTE: Keywords can be used as function names in certain contexts
     private static TokenListParser<FhirPathTokenKind, FunctionCallExpression> FunctionCall(Expression? focus) =>
         from nameToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
+            .Or(Token.EqualTo(FhirPathTokenKind.Contains)) // Allow "contains" as function name
+            .Or(Token.EqualTo(FhirPathTokenKind.As)) // Allow "as" as function name
+            .Or(Token.EqualTo(FhirPathTokenKind.Is)) // Allow "is" as function name
+            .Or(Token.EqualTo(FhirPathTokenKind.In)) // Allow "in" as function name
         from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
         from args in Parse.Ref(() => Expression!)
             .ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
@@ -184,10 +187,15 @@ public static class FhirPathGrammar
             .Or(IdentifierOrFunction());
 
     // Dot invocation: .identifier or .function()
+    // NOTE: Keywords can be used as property/function names after dot (e.g., .contains, .as, .is, .in)
     private static readonly TokenListParser<FhirPathTokenKind, Func<Expression, Expression>> DotInvocation =
         from dot in Token.EqualTo(FhirPathTokenKind.Dot)
         from nameToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
+            .Or(Token.EqualTo(FhirPathTokenKind.Contains)) // Allow "contains" as property/function name
+            .Or(Token.EqualTo(FhirPathTokenKind.As)) // Allow "as" as property/function name
+            .Or(Token.EqualTo(FhirPathTokenKind.Is)) // Allow "is" as property/function name
+            .Or(Token.EqualTo(FhirPathTokenKind.In)) // Allow "in" as property/function name
         from maybeFunction in (
             from lparen in Token.EqualTo(FhirPathTokenKind.LeftParen)
             from args in Parse.Ref(() => Expression!)
@@ -271,11 +279,12 @@ public static class FhirPathGrammar
             UnionExpression);
 
     // Type operators: is as
+    // NOTE: Type name on right side should be treated as function call (e.g., "Quantity" = "Quantity()")
     private static readonly TokenListParser<FhirPathTokenKind, Expression> TypeExpression =
         InequalityExpression.Then(left =>
             Token.EqualTo(FhirPathTokenKind.Is)
                 .Or(Token.EqualTo(FhirPathTokenKind.As))
-                .Then(op => Identifier.Select(typeName => (op, typeName)))
+                .Then(op => IdentifierOrFunction().Select(typeName => (op, typeName)))
                 .Optional()
                 .Select(typeOp =>
                     typeOp.HasValue

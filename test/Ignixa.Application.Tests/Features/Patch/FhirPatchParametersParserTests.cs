@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Patch;
+using Ignixa.SourceNodeSerialization;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Patch;
@@ -31,7 +32,8 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act
-        var operations = _parser.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var operations = _parser.Parse(parsedJson);
 
         // Assert
         Assert.NotNull(operations);
@@ -70,7 +72,8 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act
-        var operations = _parser.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var operations = _parser.Parse(parsedJson);
 
         // Assert
         Assert.NotNull(operations);
@@ -98,7 +101,8 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act
-        var operations = _parser.Parse(parametersJson);
+        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var operations = _parser.Parse(parsedJson);
 
         // Assert
         Assert.NotNull(operations);
@@ -125,7 +129,8 @@ public class FhirPatchParametersParserTests
         }";
 
         // Act & Assert
-        var ex = Assert.Throws<FhirPatchException>(() => _parser.Parse(parametersJson));
+        var parsedJson = JsonSourceNodeFactory.Parse(parametersJson);
+        var ex = Assert.Throws<FhirPatchException>(() => _parser.Parse(parsedJson));
         Assert.Contains("must contain at least one 'operation' parameter", ex.Message);
     }
 

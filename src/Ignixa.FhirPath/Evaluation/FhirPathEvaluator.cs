@@ -1296,13 +1296,24 @@ public class FhirPathEvaluator
         if (left.Count != 1)
             return Enumerable.Empty<ITypedElement>();
 
-        // Extract type name from identifier expression
-        if (typeExpr is not IdentifierExpression idExpr)
+        // Extract type name from identifier or function call expression
+        // NOTE: Parser treats bare identifiers as function calls (e.g., "integer" = "integer()")
+        string? typeName = null;
+        if (typeExpr is IdentifierExpression idExpr)
+        {
+            typeName = idExpr.Name;
+        }
+        else if (typeExpr is FunctionCallExpression funcExpr)
+        {
+            typeName = funcExpr.FunctionName;
+        }
+
+        if (typeName == null)
             return Enumerable.Empty<ITypedElement>();
 
         // FhirPath type names are lowercase, ToLowerInvariant is intentional
 #pragma warning disable CA1308 // Normalize strings to uppercase
-        var typeName = idExpr.Name.ToLowerInvariant();
+        typeName = typeName.ToLowerInvariant();
         var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
@@ -1315,12 +1326,24 @@ public class FhirPathEvaluator
         if (left.Count != 1)
             return Enumerable.Empty<ITypedElement>();
 
-        if (typeExpr is not IdentifierExpression idExpr)
+        // Extract type name from identifier or function call expression
+        // NOTE: Parser treats bare identifiers as function calls (e.g., "integer" = "integer()")
+        string? typeName = null;
+        if (typeExpr is IdentifierExpression idExpr)
+        {
+            typeName = idExpr.Name;
+        }
+        else if (typeExpr is FunctionCallExpression funcExpr)
+        {
+            typeName = funcExpr.FunctionName;
+        }
+
+        if (typeName == null)
             return Enumerable.Empty<ITypedElement>();
 
         // FhirPath type names are lowercase, ToLowerInvariant is intentional
 #pragma warning disable CA1308 // Normalize strings to uppercase
-        var typeName = idExpr.Name.ToLowerInvariant();
+        typeName = typeName.ToLowerInvariant();
         var elementType = left[0].InstanceType?.ToLowerInvariant() ?? string.Empty;
 #pragma warning restore CA1308 // Normalize strings to uppercase
 

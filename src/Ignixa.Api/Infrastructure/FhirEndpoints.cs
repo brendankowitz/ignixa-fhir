@@ -6,10 +6,8 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using Medino;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.IO;
+using Azure;
+using Ignixa.Api.Extensions;
 using Ignixa.Application.Features;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
@@ -20,12 +18,16 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
-using Ignixa.Validation;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.SourceNodeSerialization;
 using Ignixa.SourceNodeSerialization.Models;
 using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Validation;
+using Medino;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.IO;
 using DeferredWriteCoordinator = Ignixa.Application.Features.Bundle.DeferredWriteCoordinator;
 
 namespace Ignixa.Api.Infrastructure;
@@ -87,7 +89,9 @@ public static class FhirEndpoints
 
         // PUT /tenant/{tenantId:int}/{resourceType} - Conditional Update (no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
-        endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}", HandleConditionalUpdateResourceExplicit)
+        endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
+            HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalUpdateResourceExplicit")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
@@ -164,7 +168,7 @@ public static class FhirEndpoints
         // GET /{resourceType}/{id} - Read resource (agnostic)
         endpoints.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleGetResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
+            HandleGetResource(context, context.GetTenantId(), resourceType, id, mediator, logger, ct))
             .WithName("GetResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status404NotFound)
@@ -173,8 +177,8 @@ public static class FhirEndpoints
         // PUT /{resourceType} - Conditional Update (agnostic, no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
         endpoints.MapPut("/{resourceType}", (HttpContext context, string resourceType,
-            [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleConditionalUpdateResource(context, resourceType, mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
+            HandleConditionalUpdateResource(context, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalUpdateResourceAgnostic")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
@@ -186,7 +190,7 @@ public static class FhirEndpoints
         endpoints.MapPut("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
             [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandlePutResource(context, ExtractTenantId(context), resourceType, id, mediator, memoryStreamManager, logger, ct))
+            HandlePutResource(context, context.GetTenantId(), resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PutResourceAgnostic")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status200OK)
@@ -208,7 +212,7 @@ public static class FhirEndpoints
         // DELETE /{resourceType}/{id} - Delete resource (agnostic)
         endpoints.MapDelete("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleDeleteResource(context, ExtractTenantId(context), resourceType, id, mediator, logger, ct))
+            HandleDeleteResource(context, context.GetTenantId(), resourceType, id, mediator, logger, ct))
             .WithName("DeleteResourceAgnostic")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound)
@@ -219,7 +223,7 @@ public static class FhirEndpoints
         endpoints.MapGet("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleSearchResource(context, ExtractTenantId(context), resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
+            HandleSearchResource(context, context.GetTenantId(), resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
             .WithName("SearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
@@ -228,7 +232,7 @@ public static class FhirEndpoints
         endpoints.MapPost("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
             [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandlePostResource(context, ExtractTenantId(context), resourceType, mediator, memoryStreamManager, logger, ct))
+            HandlePostResource(context, context.GetTenantId(), resourceType, mediator, memoryStreamManager, logger, ct))
             .WithName("PostResourceAgnostic")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces(StatusCodes.Status201Created)
@@ -237,7 +241,7 @@ public static class FhirEndpoints
         // POST / - Transaction/Batch bundle (agnostic)
         endpoints.MapPost("/", (HttpContext context, [FromServices] BundleProcessor bundleProcessor,
             [FromServices] StreamingBundleParser streamingParser, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleBundle(context, ExtractTenantId(context), bundleProcessor, streamingParser, logger, ct))
+            HandleBundle(context, context.GetTenantId(), bundleProcessor, streamingParser, logger, ct))
             .WithName("BundleAgnostic")
             .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
@@ -245,20 +249,6 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status501NotImplemented);
 
         return endpoints;
-    }
-
-    /// <summary>
-    /// Extracts tenant ID from HttpContext.Items (populated by TenantResolutionMiddleware).
-    /// Throws if tenant ID not found - should never happen if middleware ran successfully.
-    /// </summary>
-    private static int ExtractTenantId(HttpContext context)
-    {
-        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            throw new InvalidOperationException(
-                "TenantId not found in HttpContext.Items. TenantResolutionMiddleware may not have run.");
-        }
-        return tenantId;
     }
 
     /// <summary>
@@ -275,14 +265,7 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
-
-        // Validate resource type exists
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
-        }
-
+        
         // Check for conditional read headers
         var ifNoneMatch = context.Request.Headers["If-None-Match"].FirstOrDefault();
         var ifModifiedSince = context.Request.Headers["If-Modified-Since"].FirstOrDefault();
@@ -377,13 +360,6 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         logger.LogInformation("PUT /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
-
-        // Validate resource type
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.BadRequest(new { error = $"Resource type '{resourceType}' not supported" });
-        }
 
         // Read request body
         ResourceJsonNode jsonNode;
@@ -499,13 +475,6 @@ public static class FhirEndpoints
     {
         logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}?{QueryString}", tenantId, resourceType, context.Request.QueryString);
 
-        // Validate resource type
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
-        }
-
         // Get tenant configuration to determine FHIR version
         if (!context.Items.TryGetValue("TenantConfiguration", out var tenantConfigObj) ||
             tenantConfigObj is not Domain.Models.TenantConfiguration tenantConfig)
@@ -577,14 +546,6 @@ public static class FhirEndpoints
 
         logger.LogDebug("Converted {Count} form parameters to query parameters", queryParameters.Count);
 
-        // Delegate to the existing search handler logic
-        // Build SearchOptions same way as GET search
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
-        }
-
         // Get tenant configuration
         if (!context.Items.TryGetValue("TenantConfiguration", out var tenantConfigObj) ||
             tenantConfigObj is not Domain.Models.TenantConfiguration tenantConfig)
@@ -651,11 +612,12 @@ public static class FhirEndpoints
                 ifNoneExist.ToString());
 
             // Read request body
-            string requestBody;
+            ResourceJsonNode conditionalJsonNode;
             await using (RecyclableMemoryStream memoryStream = memoryStreamManager.GetStream("request-body"))
             {
                 await context.Request.Body.CopyToAsync(memoryStream, ct);
-                requestBody = System.Text.Encoding.UTF8.GetString(memoryStream.ToArray());
+                memoryStream.Position = 0;
+                conditionalJsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
             }
 
             // Execute conditional create
@@ -663,7 +625,7 @@ public static class FhirEndpoints
                 TenantId: tenantId,
                 ResourceType: resourceType,
                 IfNoneExist: ifNoneExist.ToString(),
-                RequestBody: requestBody,
+                JsonNode: conditionalJsonNode,
                 RequestId: context.TraceIdentifier);
 
             var result = await mediator.SendAsync(command, ct);
@@ -677,8 +639,14 @@ public static class FhirEndpoints
 
             if (result.WasCreated)
             {
-                // 201 Created - return Location header
-                var location = $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
+                // 201 Created - return Location header with version history
+                // In single-tenant mode (agnostic routes), use /{resourceType}/{id}/_history/{versionId}
+                // In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/{id}/_history/{versionId}
+                var isAgnosticRouteConditional = context.Items.ContainsKey("IsAgnosticRoute") && (bool)context.Items["IsAgnosticRoute"]!;
+                var relativePathConditional = isAgnosticRouteConditional
+                    ? $"/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}"
+                    : $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
+                var location = $"{context.Request.Scheme}://{context.Request.Host}{relativePathConditional}";
                 context.Response.Headers.Append("Location", location);
 
                 logger.LogInformation(
@@ -691,7 +659,11 @@ public static class FhirEndpoints
                 {
                     resourceType = result.Resource.ResourceType,
                     id = result.Resource.ResourceId,
-                    meta = new { versionId = result.Resource.VersionId }
+                    meta = new
+                    {
+                        versionId = result.Resource.VersionId,
+                        lastUpdated = result.Resource.LastModified.ToUniversalTime()
+                    }
                 });
             }
             else
@@ -723,13 +695,6 @@ public static class FhirEndpoints
             // Generate ID
             id = Guid.NewGuid().ToString("N");
             logger.LogInformation("Generated ID {Id} for new {ResourceType} in tenant {TenantId}", id, resourceType, tenantId);
-        }
-
-        // Validate resource type
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.BadRequest(new { error = $"Resource type '{resourceType}' not supported" });
         }
 
         // Read request body
@@ -793,7 +758,13 @@ public static class FhirEndpoints
         }
 
         // POST always creates (returns 201 Created)
-        string createLocation = $"/tenant/{tenantId}/{resourceType}/{createResult.Key.Id}";
+        // In single-tenant mode (agnostic routes), use /{resourceType}/{id}/_history/{versionId}
+        // In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/{id}/_history/{versionId}
+        var isAgnosticRoute = context.Items.ContainsKey("IsAgnosticRoute") && (bool)context.Items["IsAgnosticRoute"]!;
+        var relativePath = isAgnosticRoute
+            ? $"/{resourceType}/{createResult.Key.Id}/_history/{createResult.Key.VersionId}"
+            : $"/tenant/{tenantId}/{resourceType}/{createResult.Key.Id}/_history/{createResult.Key.VersionId}";
+        string createLocation = $"{context.Request.Scheme}://{context.Request.Host}{relativePath}";
         logger.LogInformation(
             "Created {ResourceType}/{Id} (version {VersionId}) in tenant {TenantId}",
             resourceType,
@@ -804,15 +775,18 @@ public static class FhirEndpoints
         if (actualReturnPreference == ReturnPreference.Representation)
         {
             // Return full resource representation
-            var resourceJson = System.Text.Encoding.UTF8.GetString(createResult.ResourceBytes.Span);
-            return Results.Created(createLocation, System.Text.Json.JsonDocument.Parse(resourceJson).RootElement);
+            return Results.Created(createLocation, Encoding.UTF8.GetString(createResult.ResourceBytes.Span));
         }
 
         return Results.Created(createLocation, new
         {
             resourceType,
             id = createResult.Key.Id,
-            meta = new { versionId = createResult.Key.VersionId }
+            meta = new
+            {
+                versionId = createResult.Key.VersionId,
+                lastUpdated = createResult.LastModified.ToUniversalTime()
+            }
         });
     }
 
@@ -829,13 +803,6 @@ public static class FhirEndpoints
         CancellationToken ct)
     {
         logger.LogInformation("DELETE /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
-
-        // Validate resource type
-        if (!IsValidResourceType(resourceType, context))
-        {
-            logger.LogWarning("Resource type '{ResourceType}' not supported", resourceType);
-            return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
-        }
 
         // Send delete command
         var command = new DeleteResourceCommand(resourceType, id);
@@ -993,10 +960,11 @@ public static class FhirEndpoints
         HttpContext context,
         string resourceType,
         IMediator mediator,
+        RecyclableMemoryStreamManager memoryStreamManager,
         CancellationToken ct)
     {
-        var tenantId = ExtractTenantId(context);
-        return await HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, ct);
+        var tenantId = context.GetTenantId();
+        return await HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct);
     }
 
     /// <summary>
@@ -1011,6 +979,7 @@ public static class FhirEndpoints
         int tenantId,
         string resourceType,
         IMediator mediator,
+        RecyclableMemoryStreamManager memoryStreamManager,
         CancellationToken ct)
     {
         // Extract query string (search criteria)
@@ -1027,17 +996,21 @@ public static class FhirEndpoints
         // Remove leading '?'
         var searchCriteria = queryString.TrimStart('?');
 
-        // Read request body
-        using var memoryStream = new MemoryStream();
-        await context.Request.Body.CopyToAsync(memoryStream, ct);
-        var requestBody = Encoding.UTF8.GetString(memoryStream.ToArray());
+        // Parse request body to ResourceJsonNode
+        ResourceJsonNode jsonNode;
+        await using (var memoryStream = memoryStreamManager.GetStream("conditional-update-request"))
+        {
+            await context.Request.Body.CopyToAsync(memoryStream, ct);
+            memoryStream.Position = 0;
+            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        }
 
         // Execute conditional update via mediator
         var command = new Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateCommand(
             TenantId: tenantId,
             ResourceType: resourceType,
             SearchCriteria: searchCriteria,
-            RequestBody: requestBody,
+            JsonNode: jsonNode,
             RequestId: context.TraceIdentifier);
 
         var result = await mediator.SendAsync(command, ct);
@@ -1065,17 +1038,6 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// Validates resource type against capability statement or schema provider.
-    /// For now, returns true for all resource types (will implement proper validation later).
-    /// </summary>
-    private static bool IsValidResourceType(string resourceType, HttpContext context)
-    {
-        // TODO: Implement proper validation using IFhirSchemaProvider or ICapabilityStatementService
-        // For now, accept all resource types to support dynamic routing
-        return true;
-    }
-
-    /// <summary>
     /// DELETE /{resourceType} - Conditional Delete (tenant-agnostic)
     /// Delegates to tenant-explicit handler with extracted tenant ID.
     /// </summary>
@@ -1085,7 +1047,7 @@ public static class FhirEndpoints
         IMediator mediator,
         CancellationToken ct)
     {
-        var tenantId = ExtractTenantId(context);
+        var tenantId = context.GetTenantId();
         return await HandleConditionalDeleteResourceExplicit(context, tenantId, resourceType, mediator, ct);
     }
 

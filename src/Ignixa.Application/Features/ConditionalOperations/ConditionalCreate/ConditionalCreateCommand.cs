@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.SourceNodeSerialization.SourceNodes;
 using Medino;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
@@ -16,11 +17,11 @@ namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
 /// <param name="TenantId">The tenant ID for multi-tenant isolation.</param>
 /// <param name="ResourceType">The FHIR resource type.</param>
 /// <param name="IfNoneExist">Search query from If-None-Exist header.</param>
-/// <param name="RequestBody">Raw FHIR JSON resource to create.</param>
+/// <param name="JsonNode">Raw FHIR JSON resource to create.</param>
 /// <param name="RequestId">Optional request ID for logging correlation.</param>
 public record ConditionalCreateCommand(
     int TenantId,
     string ResourceType,
     string IfNoneExist,
-    string RequestBody,
+    ResourceJsonNode JsonNode,
     string? RequestId = null) : IRequest<ConditionalCreateResult>;

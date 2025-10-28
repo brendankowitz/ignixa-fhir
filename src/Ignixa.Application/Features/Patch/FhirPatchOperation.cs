@@ -37,15 +37,6 @@ public record FhirPatchOperation
     /// Destination path for Move operation
     /// </summary>
     public string? Destination { get; init; }
-
-    /// <summary>
-    /// Parse a Parameters resource JSON string into an array of FhirPatchOperation.
-    /// </summary>
-    public static FhirPatchOperation[] ParseFromParameters(string parametersJson)
-    {
-        var parser = new FhirPatchParametersParser();
-        return parser.Parse(parametersJson);
-    }
 }
 
 /// <summary>
