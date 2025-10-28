@@ -333,7 +333,7 @@ class Program
                 var className = parts[parts.Length - 2];
                 if (className.EndsWith("Tests"))
                 {
-                    return className.Substring(0, className.Length - 5);
+                    return className[..^5];
                 }
                 return className;
             }
