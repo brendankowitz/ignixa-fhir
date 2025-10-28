@@ -278,58 +278,6 @@ public static class ResourceElementsSerializer
     }
 
     /// <summary>
-    /// Writes an entire array value (used for nested arrays within arrays).
-    /// </summary>
-    private static void WriteArrayValue(ref Utf8JsonReader reader, Utf8JsonWriter writer)
-    {
-        writer.WriteStartArray();
-        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
-        {
-            switch (reader.TokenType)
-            {
-                case JsonTokenType.Null:
-                    writer.WriteNullValue();
-                    break;
-
-                case JsonTokenType.True:
-                    writer.WriteBooleanValue(true);
-                    break;
-
-                case JsonTokenType.False:
-                    writer.WriteBooleanValue(false);
-                    break;
-
-                case JsonTokenType.Number:
-                    if (reader.TryGetInt64(out long intValue))
-                    {
-                        writer.WriteNumberValue(intValue);
-                    }
-                    else if (reader.TryGetDouble(out double doubleValue))
-                    {
-                        writer.WriteNumberValue(doubleValue);
-                    }
-                    break;
-
-                case JsonTokenType.String:
-                    writer.WriteStringValue(reader.GetString());
-                    break;
-
-                case JsonTokenType.StartObject:
-                    FilterResourceObject(ref reader, writer, new HashSet<string>(StringComparer.Ordinal));
-                    break;
-
-                case JsonTokenType.StartArray:
-                    WriteArrayValue(ref reader, writer);
-                    break;
-
-                default:
-                    break;
-            }
-        }
-        writer.WriteEndArray();
-    }
-
-    /// <summary>
     /// Copies an entire JSON object without filtering (writes all properties and nested content).
     /// </summary>
     private static void CopyObjectValue(ref Utf8JsonReader reader, Utf8JsonWriter writer)
