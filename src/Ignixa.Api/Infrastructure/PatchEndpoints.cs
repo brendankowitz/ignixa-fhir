@@ -5,6 +5,7 @@
 
 using System.Text;
 using Ignixa.Api.Extensions;
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
 using Ignixa.Application.Features.Patch;
 using Ignixa.SourceNodeSerialization;
@@ -157,13 +158,13 @@ public static class PatchEndpoints
             return Results.NotFound();
         }
 
-        // Add ETag header
-        context.Response.Headers.Append("ETag", $"W/\"{result.VersionId}\"");
-
         // Return 200 OK with patched resource
         var resourceJson = result.Resource.SerializeToString();
+        var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
         logger.LogInformation("Patched {ResourceType}/{Id} (version {VersionId})", resourceType, id, result.VersionId);
-        return Results.Content(resourceJson, ContentTypeApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+        return FhirResults.Ok(resourceBytes)
+            .WithETag(result.VersionId)
+            .WithLastModified(result.LastModified);
     }
 
     /// <summary>
@@ -231,7 +232,10 @@ public static class PatchEndpoints
 
         // Return 200 OK with patched resource (ConditionalPatchResult.Resource is ResourceWrapper)
         var resourceJson = result.Resource.Resource.SerializeToString();
-        return Results.Content(resourceJson, ContentTypeApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+        var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+        return FhirResults.Ok(resourceBytes)
+            .WithETag(result.Resource.VersionId)
+            .WithLastModified(result.Resource.LastModified);
     }
 
     /// <summary>

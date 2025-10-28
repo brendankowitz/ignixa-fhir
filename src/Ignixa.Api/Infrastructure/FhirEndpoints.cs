@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Azure;
 using Ignixa.Api.Extensions;
+using Ignixa.Api.Http;
 using Ignixa.Application.Features;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
@@ -295,19 +296,17 @@ public static class FhirEndpoints
             if (conditionalResult.NotModified)
             {
                 // 304 Not Modified: Include ETag and Last-Modified headers but no body
-                context.Response.Headers["ETag"] = ConditionalHeaderParser.FormatETag(conditionalResult.Resource.VersionId);
-                context.Response.Headers["Last-Modified"] = ConditionalHeaderParser.FormatHttpDate(conditionalResult.Resource.LastModified);
-
                 logger.LogInformation("Resource {ResourceType}/{Id} not modified, returning 304", resourceType, id);
-                return Results.StatusCode(StatusCodes.Status304NotModified);
+                return FhirResults.NotModified()
+                    .WithETag(conditionalResult.Resource.VersionId)
+                    .WithLastModified(conditionalResult.Resource.LastModified);
             }
 
-            // Resource modified: Add headers and return resource
-            context.Response.Headers["ETag"] = ConditionalHeaderParser.FormatETag(conditionalResult.Resource.VersionId);
-            context.Response.Headers["Last-Modified"] = ConditionalHeaderParser.FormatHttpDate(conditionalResult.Resource.LastModified);
-
+            // Resource modified: Return resource with headers
             logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", resourceType, id);
-            return Results.Bytes(conditionalResult.Resource.ResourceBytes, _contentTypeApplicationFhirJson);
+            return FhirResults.Ok(conditionalResult.Resource.ResourceBytes)
+                .WithETag(conditionalResult.Resource.VersionId)
+                .WithLastModified(conditionalResult.Resource.LastModified);
         }
 
         // Normal GET (no conditional headers)
@@ -338,12 +337,10 @@ public static class FhirEndpoints
                 detail: $"{resourceType}/{id} has been deleted (last version: {result.VersionId})");
         }
 
-        // ALWAYS include ETag and Last-Modified headers in normal GET responses
-        context.Response.Headers["ETag"] = ConditionalHeaderParser.FormatETag(result.VersionId);
-        context.Response.Headers["Last-Modified"] = result.LastModified.ToString("R");
-
-        // Return raw JSON bytes (zero-copy serialization)
-        return Results.Bytes(result.ResourceBytes, _contentTypeApplicationFhirJson);
+        // Return raw JSON bytes with FHIR headers (zero-copy serialization)
+        return FhirResults.Ok(result.ResourceBytes)
+            .WithETag(result.VersionId)
+            .WithLastModified(result.LastModified);
     }
 
     /// <summary>
@@ -424,40 +421,42 @@ public static class FhirEndpoints
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
         }
 
+        var location = $"/tenant/{tenantId}/{resourceType}/{result.Key.Id}";
+
         if (isCreated)
         {
             logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
 
             if (actualReturnPreference == ReturnPreference.Representation)
             {
-                // Return full resource representation
-                var resourceJson = System.Text.Encoding.UTF8.GetString(result.ResourceBytes.Span);
-                return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Key.Id}", System.Text.Json.JsonDocument.Parse(resourceJson).RootElement);
+                // Return full resource representation with Location and ETag headers
+                return FhirResults.Created(location, result.ResourceBytes)
+                    .WithETag(result.Key.VersionId!)
+                    .WithLastModified(result.LastModified);
             }
 
-            return Results.Created($"/tenant/{tenantId}/{resourceType}/{result.Key.Id}", new
-            {
-                resourceType = resourceType,
-                id = result.Key.Id,
-                meta = new { versionId = result.Key.VersionId }
-            });
+            // Prefer: return=minimal - return minimal body
+            return FhirResults.Created(location)
+                .WithETag(result.Key.VersionId!)
+                .WithLastModified(result.LastModified)
+                .WithMinimalBody(resourceType, result.Key.Id, result.Key.VersionId!, result.LastModified);
         }
 
         logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType, result.Key.Id, result.Key.VersionId, tenantId);
 
         if (actualReturnPreference == ReturnPreference.Representation)
         {
-            // Return full resource representation
-            var resourceJson = System.Text.Encoding.UTF8.GetString(result.ResourceBytes.Span);
-            return Results.Ok(System.Text.Json.JsonDocument.Parse(resourceJson).RootElement);
+            // Return full resource representation with ETag headers
+            return FhirResults.Ok(result.ResourceBytes)
+                .WithETag(result.Key.VersionId!)
+                .WithLastModified(result.LastModified);
         }
 
-        return Results.Ok(new
-        {
-            resourceType = resourceType,
-            id = result.Key.Id,
-            meta = new { versionId = result.Key.VersionId }
-        });
+        // Prefer: return=minimal - return minimal body
+        return FhirResults.Ok(result.ResourceBytes)
+            .WithETag(result.Key.VersionId!)
+            .WithLastModified(result.LastModified)
+            .WithMinimalBody(resourceType, result.Key.Id, result.Key.VersionId!, result.LastModified);
     }
 
     /// <summary>
@@ -775,19 +774,16 @@ public static class FhirEndpoints
         if (actualReturnPreference == ReturnPreference.Representation)
         {
             // Return full resource representation
-            return Results.Created(createLocation, Encoding.UTF8.GetString(createResult.ResourceBytes.Span));
+            return FhirResults.Created(createLocation, createResult.ResourceBytes)
+                .WithETag(createResult.Key.VersionId!)
+                .WithLastModified(createResult.LastModified);
         }
 
-        return Results.Created(createLocation, new
-        {
-            resourceType,
-            id = createResult.Key.Id,
-            meta = new
-            {
-                versionId = createResult.Key.VersionId,
-                lastUpdated = createResult.LastModified.ToUniversalTime()
-            }
-        });
+        // Prefer: return=minimal - return minimal body
+        return FhirResults.Created(createLocation)
+            .WithETag(createResult.Key.VersionId!)
+            .WithLastModified(createResult.LastModified)
+            .WithMinimalBody(resourceType, createResult.Key.Id, createResult.Key.VersionId!, createResult.LastModified);
     }
 
     /// <summary>
