@@ -22,8 +22,6 @@ namespace Ignixa.Api.Infrastructure;
 /// </summary>
 public static class PatchEndpoints
 {
-    private const string ContentTypeApplicationFhirJson = "application/fhir+json";
-    private const string ContentTypeApplicationJson = "application/json";
 
     /// <summary>
     /// Registers FHIR PATCH endpoints.
@@ -60,18 +58,18 @@ public static class PatchEndpoints
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalPatchResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalPatchResourceExplicit")
-            .Accepts<object>(ContentTypeApplicationFhirJson, ContentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, ContentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, ContentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, ContentTypeApplicationFhirJson);
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
 
         // PATCH /tenant/{tenantId:int}/{resourceType}/{id} - Direct Patch
         endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}/{id}", (HttpContext context, int tenantId, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePatchResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResource")
-            .Accepts<object>(ContentTypeApplicationFhirJson, ContentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, ContentTypeApplicationFhirJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status404NotFound);
 
         return endpoints;
@@ -92,10 +90,10 @@ public static class PatchEndpoints
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalPatchResource(context, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalPatchResourceAgnostic")
-            .Accepts<object>(ContentTypeApplicationFhirJson, ContentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, ContentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, ContentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, ContentTypeApplicationFhirJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest);
 
         // PATCH /{resourceType}/{id} - Direct Patch (agnostic)
@@ -103,8 +101,8 @@ public static class PatchEndpoints
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePatchResource(context, context.GetTenantId(), resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResourceAgnostic")
-            .Accepts<object>(ContentTypeApplicationFhirJson, ContentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, ContentTypeApplicationFhirJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status400BadRequest);
 

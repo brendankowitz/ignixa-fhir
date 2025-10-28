@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Api.Extensions;
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
 using Medino;
@@ -17,7 +18,6 @@ namespace Ignixa.Api.Infrastructure;
 /// </summary>
 public static class HistoryEndpoints
 {
-    private const string ContentTypeApplicationFhirJson = "application/fhir+json";
 
     /// <summary>
     /// Registers FHIR _history endpoints.
@@ -133,7 +133,7 @@ public static class HistoryEndpoints
         var result = await mediator.SendAsync(query, ct);
 
         // Set response content type
-        context.Response.ContentType = ContentTypeApplicationFhirJson + "; charset=utf-8";
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
         // Stream history bundle directly to response
         await StreamingBundleSerializer.SerializeHistoryAsync(
@@ -180,7 +180,7 @@ public static class HistoryEndpoints
         var result = await mediator.SendAsync(query, ct);
 
         // Set response content type
-        context.Response.ContentType = ContentTypeApplicationFhirJson + "; charset=utf-8";
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
         // Stream history bundle directly to response
         await StreamingBundleSerializer.SerializeHistoryAsync(
@@ -225,7 +225,7 @@ public static class HistoryEndpoints
         var result = await mediator.SendAsync(query, ct);
 
         // Set response content type
-        context.Response.ContentType = ContentTypeApplicationFhirJson + "; charset=utf-8";
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
         // Stream history bundle directly to response
         await StreamingBundleSerializer.SerializeHistoryAsync(

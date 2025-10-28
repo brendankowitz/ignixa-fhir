@@ -5,6 +5,7 @@
 
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Domain;
 using Ignixa.Domain.Exceptions;
@@ -34,7 +35,7 @@ public static class MetadataEndpoints
         // Tenant-explicit route: GET /tenant/{tenantId}/metadata
         endpoints.MapGet("/tenant/{tenantId:int}/metadata", HandleGetTenantMetadata)
             .WithName("GetTenantMetadata")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status200OK, contentType: "KnownContentTypes.ApplicationFhirJson")
             .Produces(StatusCodes.Status404NotFound);
 
         return endpoints;
@@ -50,7 +51,7 @@ public static class MetadataEndpoints
         // Tenant-agnostic route: GET /metadata
         endpoints.MapGet("/metadata", HandleGetMetadata)
             .WithName("GetMetadata")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json");
+            .Produces(StatusCodes.Status200OK, contentType: "KnownContentTypes.ApplicationFhirJson");
 
         return endpoints;
     }
@@ -84,7 +85,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        return Results.Content(capabilityStatement.SerializeToString(), "application/fhir+json");
+        return Results.Content(capabilityStatement.SerializeToString(), "KnownContentTypes.ApplicationFhirJson");
     }
 
     /// <summary>
@@ -109,7 +110,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        return Results.Content(capabilityStatement.SerializeToString(), "application/fhir+json");
+        return Results.Content(capabilityStatement.SerializeToString(), "KnownContentTypes.ApplicationFhirJson");
     }
 
     /// <summary>
@@ -118,14 +119,14 @@ public static class MetadataEndpoints
     /// </summary>
     private static void ValidateAcceptHeader(HttpContext context)
     {
-        const string fhirJsonMediaType = "application/fhir+json";
-        const string jsonMediaType = "application/json";
+        const string fhirJsonMediaType = "KnownContentTypes.ApplicationFhirJson";
+        const string jsonMediaType = "KnownContentTypes.ApplicationJson";
 
         var acceptHeader = context.Request.Headers.Accept.ToString();
 
         if (string.IsNullOrWhiteSpace(acceptHeader))
         {
-            // Accept header is optional; if not provided, default to application/fhir+json
+            // Accept header is optional; if not provided, default to KnownContentTypes.ApplicationFhirJson
             return;
         }
 
@@ -147,7 +148,7 @@ public static class MetadataEndpoints
             // No acceptable media type found
             throw new NotAcceptableException(
                 $"The server cannot produce content matching the requested Accept header: '{acceptHeader}'. " +
-                $"Supported media types: application/fhir+json, application/json");
+                $"Supported media types: KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson");
         }
     }
 }

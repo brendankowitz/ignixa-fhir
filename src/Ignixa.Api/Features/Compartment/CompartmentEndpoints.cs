@@ -5,6 +5,7 @@
 
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Domain.Models;
@@ -39,7 +40,7 @@ public static class CompartmentEndpoints
         // Tenant-explicit route: GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}
         endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentExplicitAsync)
             .WithName("SearchCompartmentExplicit")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
@@ -47,7 +48,7 @@ public static class CompartmentEndpoints
         // IMPORTANT: Must use literal "/*" constraint to match asterisk character
         endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardExplicitAsync)
             .WithName("SearchCompartmentWildcardExplicit")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
@@ -64,14 +65,14 @@ public static class CompartmentEndpoints
         // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}
         endpoints.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentAsync)
             .WithName("SearchCompartment")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
         // Tenant-agnostic wildcard route: GET /{compartmentType}/{compartmentId}/*
         endpoints.MapGet("/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardAsync)
             .WithName("SearchCompartmentWildcard")
-            .Produces(StatusCodes.Status200OK, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
@@ -234,7 +235,7 @@ public static class CompartmentEndpoints
         string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
 
         // Set response headers
-        context.Response.ContentType = "application/fhir+json; charset=utf-8";
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
         // Stream Bundle response (95% memory reduction vs buffering)
         await StreamingBundleSerializer.SerializeWithPaginationAsync(

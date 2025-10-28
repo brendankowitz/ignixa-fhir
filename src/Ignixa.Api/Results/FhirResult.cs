@@ -11,7 +11,6 @@ namespace Ignixa.Api.Http;
 /// </summary>
 public sealed class FhirResult : IResult
 {
-    private const string ContentTypeFhirJson = "application/fhir+json";
 
     private readonly ReadOnlyMemory<byte>? _bytes;
     private readonly int _statusCode;
@@ -83,7 +82,7 @@ public sealed class FhirResult : IResult
     public async Task ExecuteAsync(HttpContext httpContext)
     {
         httpContext.Response.StatusCode = _statusCode;
-        httpContext.Response.ContentType = ContentTypeFhirJson;
+        httpContext.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
 
         // Set FHIR-specific headers
         if (_eTag != null)

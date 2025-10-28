@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Http;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 
@@ -61,7 +62,7 @@ public class TenantResolutionMiddleware : IDisposable
                     context.Request.Path);
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                context.Response.ContentType = "application/json";
+                context.Response.ContentType = KnownContentTypes.ApplicationJson;
                 await context.Response.WriteAsJsonAsync(new
                 {
                     resourceType = "OperationOutcome",
@@ -92,7 +93,7 @@ public class TenantResolutionMiddleware : IDisposable
                     context.Request.Path);
 
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
-                context.Response.ContentType = "application/json";
+                context.Response.ContentType = KnownContentTypes.ApplicationJson;
                 await context.Response.WriteAsJsonAsync(new
                 {
                     resourceType = "OperationOutcome",
@@ -157,7 +158,7 @@ public class TenantResolutionMiddleware : IDisposable
                     context.Request.Path);
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                context.Response.ContentType = "application/json";
+                context.Response.ContentType = KnownContentTypes.ApplicationJson;
                 await context.Response.WriteAsJsonAsync(new
                 {
                     resourceType = "OperationOutcome",

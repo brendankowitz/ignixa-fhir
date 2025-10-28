@@ -39,9 +39,6 @@ namespace Ignixa.Api.Infrastructure;
 /// </summary>
 public static class FhirEndpoints
 {
-    private const string _contentTypeApplicationFhirJson = "application/fhir+json";
-    private const string _contentTypeApplicationJson = "application/json";
-
     // Reusable JsonSerializerOptions for FHIR bundle serialization (CA1869 compliance)
     private static readonly JsonSerializerOptions BundleJsonOptions = new()
     {
@@ -85,7 +82,7 @@ public static class FhirEndpoints
         // GET /tenant/{tenantId:int}/{resourceType}/{id} - Read resource
         endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/{id}", HandleGetResource)
             .WithName("GetResource")
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status404NotFound);
 
         // PUT /tenant/{tenantId:int}/{resourceType} - Conditional Update (no ID in URL, uses query string)
@@ -94,15 +91,15 @@ public static class FhirEndpoints
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalUpdateResourceExplicit")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status201Created, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson);
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status201Created, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
 
         // PUT /tenant/{tenantId:int}/{resourceType}/{id} - Create or update resource
         endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}/{id}", HandlePutResource)
             .WithName("PutResource")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status201Created);
 
@@ -111,9 +108,9 @@ public static class FhirEndpoints
         endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}", HandleConditionalDeleteResourceExplicit)
             .WithName("ConditionalDeleteResourceExplicit")
             .Produces(StatusCodes.Status204NoContent)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson);
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
 
         // DELETE /tenant/{tenantId:int}/{resourceType}/{id} - Delete resource
         endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}/{id}", HandleDeleteResource)
@@ -127,7 +124,7 @@ public static class FhirEndpoints
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
             .WithName("SearchResource")
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
         // POST /tenant/{tenantId:int}/{resourceType}/_search - Search with form-urlencoded
@@ -136,20 +133,20 @@ public static class FhirEndpoints
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePostSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
             .WithName("PostSearchResource")
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
         // POST /tenant/{tenantId:int}/{resourceType} - Create resource (server assigns ID)
         endpoints.MapPost("/tenant/{tenantId:int}/{resourceType}", HandlePostResource)
             .WithName("PostResource")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status201Created);
 
         // POST /tenant/{tenantId:int} - Transaction/Batch bundle
         endpoints.MapPost("/tenant/{tenantId:int}", HandleBundle)
             .WithName("Bundle")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status501NotImplemented);
 
         return endpoints;
@@ -171,7 +168,7 @@ public static class FhirEndpoints
             [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleGetResource(context, context.GetTenantId(), resourceType, id, mediator, logger, ct))
             .WithName("GetResourceAgnostic")
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -181,10 +178,10 @@ public static class FhirEndpoints
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalUpdateResource(context, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalUpdateResourceAgnostic")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status201Created, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status201Created, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest);
 
         // PUT /{resourceType}/{id} - Create or update resource (agnostic)
@@ -193,7 +190,7 @@ public static class FhirEndpoints
             [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePutResource(context, context.GetTenantId(), resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PutResourceAgnostic")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest);
@@ -205,9 +202,9 @@ public static class FhirEndpoints
             HandleConditionalDeleteResource(context, resourceType, mediator, ct))
             .WithName("ConditionalDeleteResourceAgnostic")
             .Produces(StatusCodes.Status204NoContent)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status404NotFound, _contentTypeApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, _contentTypeApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest);
 
         // DELETE /{resourceType}/{id} - Delete resource (agnostic)
@@ -226,7 +223,7 @@ public static class FhirEndpoints
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleSearchResource(context, context.GetTenantId(), resourceType, mediator, queryParser, searchOptionsBuilderFactory, logger, ct))
             .WithName("SearchResourceAgnostic")
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
         // POST /{resourceType} - Create resource with server-assigned ID (agnostic)
@@ -235,7 +232,7 @@ public static class FhirEndpoints
             [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePostResource(context, context.GetTenantId(), resourceType, mediator, memoryStreamManager, logger, ct))
             .WithName("PostResourceAgnostic")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -244,8 +241,8 @@ public static class FhirEndpoints
             [FromServices] StreamingBundleParser streamingParser, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleBundle(context, context.GetTenantId(), bundleProcessor, streamingParser, logger, ct))
             .WithName("BundleAgnostic")
-            .Accepts<object>(_contentTypeApplicationFhirJson, _contentTypeApplicationJson)
-            .Produces<object>(StatusCodes.Status200OK, _contentTypeApplicationFhirJson)
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status501NotImplemented);
 
@@ -629,12 +626,9 @@ public static class FhirEndpoints
 
             var result = await mediator.SendAsync(command, ct);
 
-            // Return appropriate status code based on WasCreated
-            var statusCode = result.WasCreated ? StatusCodes.Status201Created : StatusCodes.Status200OK;
-
-            // Add headers
-            context.Response.Headers.Append("ETag", $"W/\"{result.Resource.VersionId}\"");
-            context.Response.Headers.Append("Last-Modified", result.Resource.LastModified.ToString("R"));
+            // Serialize the resource to bytes
+            var resourceJson = result.Resource.Resource.SerializeToString();
+            var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
 
             if (result.WasCreated)
             {
@@ -646,7 +640,6 @@ public static class FhirEndpoints
                     ? $"/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}"
                     : $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
                 var location = $"{context.Request.Scheme}://{context.Request.Host}{relativePathConditional}";
-                context.Response.Headers.Append("Location", location);
 
                 logger.LogInformation(
                     "Conditional create: Created new {ResourceType}/{Id} (version {VersionId})",
@@ -654,16 +647,14 @@ public static class FhirEndpoints
                     result.Resource.ResourceId,
                     result.Resource.VersionId);
 
-                return Results.Created(location, new
-                {
-                    resourceType = result.Resource.ResourceType,
-                    id = result.Resource.ResourceId,
-                    meta = new
-                    {
-                        versionId = result.Resource.VersionId,
-                        lastUpdated = result.Resource.LastModified.ToUniversalTime()
-                    }
-                });
+                return FhirResults.Created(location)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified)
+                    .WithMinimalBody(
+                        result.Resource.ResourceType,
+                        result.Resource.ResourceId,
+                        result.Resource.VersionId,
+                        result.Resource.LastModified);
             }
             else
             {
@@ -674,9 +665,9 @@ public static class FhirEndpoints
                     result.Resource.ResourceId,
                     result.Resource.VersionId);
 
-                // Serialize the resource and return
-                var resourceJson = result.Resource.Resource.SerializeToString();
-                return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: statusCode);
+                return FhirResults.Ok(resourceBytes)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified);
             }
         }
 
@@ -898,7 +889,7 @@ public static class FhirEndpoints
                 context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
             }
 
-            return Results.Content(responseJson, _contentTypeApplicationFhirJson);
+            return Results.Content(responseJson, KnownContentTypes.ApplicationFhirJson);
         }
         else
         {
@@ -1011,25 +1002,24 @@ public static class FhirEndpoints
 
         var result = await mediator.SendAsync(command, ct);
 
-        // Return 201 Created or 200 OK based on WasCreated
-        var statusCode = result.WasCreated ? StatusCodes.Status201Created : StatusCodes.Status200OK;
-
-        // Add ETag header
-        context.Response.Headers.Append("ETag", $"W/\"{result.Resource.VersionId}\"");
-
-        // Serialize resource to JSON
+        // Serialize resource to JSON and convert to bytes
         var resourceJson = result.Resource.Resource.SerializeToString();
+        var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
 
         if (result.WasCreated)
         {
             // 201 Created - include Location header
             var location = $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
-            return Results.Created(location, resourceJson);
+            return FhirResults.Created(location, resourceBytes)
+                .WithETag(result.Resource.VersionId)
+                .WithLastModified(result.Resource.LastModified);
         }
         else
         {
             // 200 OK
-            return Results.Content(resourceJson, _contentTypeApplicationFhirJson, statusCode: statusCode);
+            return FhirResults.Ok(resourceBytes)
+                .WithETag(result.Resource.VersionId)
+                .WithLastModified(result.Resource.LastModified);
         }
     }
 

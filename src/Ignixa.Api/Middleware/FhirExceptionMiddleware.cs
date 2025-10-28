@@ -5,6 +5,7 @@
 
 using System.Net;
 using System.Text.Json;
+using Ignixa.Api.Http;
 using Ignixa.SourceNodeSerialization;
 
 namespace Ignixa.Api.Middleware;
@@ -56,7 +57,7 @@ public class FhirExceptionMiddleware
         // Handle all FhirException types generically
         if (exception is Domain.Exceptions.FhirException fhirException)
         {
-            context.Response.ContentType = "application/fhir+json";
+            context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
             context.Response.StatusCode = fhirException.StatusCode;
 
             var operationOutcomeJson = fhirException.OperationOutcome.SerializeToString();
