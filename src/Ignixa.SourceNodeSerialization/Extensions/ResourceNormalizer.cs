@@ -34,7 +34,7 @@ public static class ResourceNormalizer
         var reader = new Utf8JsonReader(resourceBytes.Span);
         using var output = _memoryStreamManager.GetStream("resource-normalization");
 
-        using var writer = new Utf8JsonWriter(output);
+        using var writer = new Utf8JsonWriter((Stream)output);
         CopyResourceWithoutVersionMetadata(ref reader, writer);
         writer.Flush();
         output.TryGetBuffer(out ArraySegment<byte> buffer);
