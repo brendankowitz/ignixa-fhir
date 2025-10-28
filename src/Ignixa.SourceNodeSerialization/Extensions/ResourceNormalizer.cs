@@ -37,7 +37,8 @@ public static class ResourceNormalizer
         using var writer = new Utf8JsonWriter(output);
         CopyResourceWithoutVersionMetadata(ref reader, writer);
         writer.Flush();
-        return new ReadOnlyMemory<byte>(output.ToArray());
+        output.TryGetBuffer(out ArraySegment<byte> buffer);
+        return new ReadOnlyMemory<byte>(buffer.Array!, buffer.Offset, (int)output.Length);
     }
 
     /// <summary>
