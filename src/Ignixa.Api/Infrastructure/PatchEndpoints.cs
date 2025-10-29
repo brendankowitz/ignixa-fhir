@@ -5,6 +5,7 @@
 
 using System.Text;
 using Ignixa.Api.Extensions;
+using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
 using Ignixa.Application.Features.Patch;
@@ -47,14 +48,19 @@ public static class PatchEndpoints
     /// <summary>
     /// Registers tenant-explicit FHIR PATCH endpoints (/tenant/{tenantId}/...).
     /// Always supported in all multi-tenancy scenarios.
+    /// All routes validate resource type against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapPatchTenantEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // TENANT-EXPLICIT ROUTES (always supported)
+        // Create a route group with the filter applied to all endpoints
+        var tenantGroup = endpoints
+            .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
 
-        // PATCH /tenant/{tenantId:int}/{resourceType} - Conditional Patch
+        // PATCH /{resourceType} - Conditional Patch
         // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
-        endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
+        tenantGroup.MapPatch("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalPatchResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalPatchResourceExplicit")
@@ -63,8 +69,8 @@ public static class PatchEndpoints
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
 
-        // PATCH /tenant/{tenantId:int}/{resourceType}/{id} - Direct Patch
-        endpoints.MapPatch("/tenant/{tenantId:int}/{resourceType}/{id}", (HttpContext context, int tenantId, string resourceType, string id,
+        // PATCH /{resourceType}/{id} - Direct Patch
+        tenantGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, int tenantId, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePatchResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResource")
@@ -79,14 +85,19 @@ public static class PatchEndpoints
     /// Registers tenant-agnostic FHIR PATCH endpoints (/{resourceType}/...).
     /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
     /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// All routes validate resource type against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapPatchAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // TENANT-AGNOSTIC ROUTES (single-tenant auto-detect)
+        // Create a route group with the filter applied to all endpoints
+        var agnosticGroup = endpoints
+            .MapGroup(string.Empty)
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // PATCH /{resourceType} - Conditional Patch (agnostic)
         // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
-        endpoints.MapPatch("/{resourceType}", (HttpContext context, string resourceType,
+        agnosticGroup.MapPatch("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalPatchResource(context, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalPatchResourceAgnostic")
@@ -97,7 +108,7 @@ public static class PatchEndpoints
             .Produces<object>(StatusCodes.Status400BadRequest);
 
         // PATCH /{resourceType}/{id} - Direct Patch (agnostic)
-        endpoints.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePatchResource(context, context.GetTenantId(), resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResourceAgnostic")

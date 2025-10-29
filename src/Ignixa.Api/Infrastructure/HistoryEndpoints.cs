@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Api.Extensions;
+using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
@@ -40,23 +41,28 @@ public static class HistoryEndpoints
     /// <summary>
     /// Registers tenant-explicit FHIR _history endpoints (/tenant/{tenantId}/.../_history).
     /// Always supported in all multi-tenancy scenarios.
+    /// Routes with {resourceType} validate against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapFhirHistoryTenantEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // TENANT-EXPLICIT ROUTES (always supported)
+        // Create a route group with the filter for resource-type-specific routes
+        var tenantGroup = endpoints
+            .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
 
-        // GET /tenant/{tenantId:int}/{resourceType}/{id}/_history - Instance-level history
-        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/{id}/_history", HandleGetResourceHistory)
+        // GET /{resourceType}/{id}/_history - Instance-level history
+        tenantGroup.MapGet("/{resourceType}/{id}/_history", HandleGetResourceHistory)
             .WithName("GetResourceHistory")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
-        // GET /tenant/{tenantId:int}/{resourceType}/_history - Type-level history
-        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/_history", HandleGetTypeHistory)
+        // GET /{resourceType}/_history - Type-level history
+        tenantGroup.MapGet("/{resourceType}/_history", HandleGetTypeHistory)
             .WithName("GetTypeHistory")
             .Produces(StatusCodes.Status200OK);
 
-        // GET /tenant/{tenantId:int}/_history - System-level history
+        // GET /_history - System-level history (no resource type, no filter needed)
         endpoints.MapGet("/tenant/{tenantId:int}/_history", HandleGetSystemHistory)
             .WithName("GetSystemHistory")
             .Produces(StatusCodes.Status200OK);
@@ -68,13 +74,18 @@ public static class HistoryEndpoints
     /// Registers tenant-agnostic FHIR _history endpoints (/.../_history).
     /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
     /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// Routes with {resourceType} validate against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapFhirHistoryAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // TENANT-AGNOSTIC ROUTES (FHIR-compliant, single-tenant auto-detection)
+        // Create a route group with the filter for resource-type-specific routes
+        var agnosticGroup = endpoints
+            .MapGroup(string.Empty)
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
-        endpoints.MapGet("/{resourceType}/{id}/_history", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapGet("/{resourceType}/{id}/_history", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, CancellationToken ct) =>
             HandleGetResourceHistory(context, context.GetTenantId(), resourceType, id, mediator, ct))
             .WithName("GetResourceHistoryAgnostic")
@@ -83,14 +94,14 @@ public static class HistoryEndpoints
             .Produces(StatusCodes.Status400BadRequest);
 
         // GET /{resourceType}/_history - Type-level history (agnostic)
-        endpoints.MapGet("/{resourceType}/_history", (HttpContext context, string resourceType,
+        agnosticGroup.MapGet("/{resourceType}/_history", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, CancellationToken ct) =>
             HandleGetTypeHistory(context, context.GetTenantId(), resourceType, mediator, ct))
             .WithName("GetTypeHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
-        // GET /_history - System-level history (agnostic)
+        // GET /_history - System-level history (agnostic, no resource type, no filter needed)
         endpoints.MapGet("/_history", (HttpContext context,
             [FromServices] IMediator mediator, CancellationToken ct) =>
             HandleGetSystemHistory(context, context.GetTenantId(), mediator, ct))

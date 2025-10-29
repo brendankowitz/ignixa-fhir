@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Azure;
 using Ignixa.Api.Extensions;
+using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features;
 using Ignixa.Application.Features.Bundle;
@@ -75,20 +76,25 @@ public static class FhirEndpoints
     /// <summary>
     /// Registers tenant-explicit FHIR endpoints (/tenant/{tenantId}/...).
     /// Always supported in all multi-tenancy scenarios.
+    /// All routes within this group validate resource type against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapFhirTenantEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // TENANT-EXPLICIT ROUTES (always supported, all scenarios)
+        // Create a route group with the filter applied to all endpoints
+        var tenantGroup = endpoints
+            .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
 
-        // GET /tenant/{tenantId:int}/{resourceType}/{id} - Read resource
-        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}/{id}", HandleGetResource)
+        // GET /{resourceType}/{id} - Read resource
+        tenantGroup.MapGet("/{resourceType}/{id}", HandleGetResource)
             .WithName("GetResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status404NotFound);
 
-        // PUT /tenant/{tenantId:int}/{resourceType} - Conditional Update (no ID in URL, uses query string)
+        // PUT /{resourceType} - Conditional Update (no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
-        endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
+        tenantGroup.MapPut("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalUpdateResourceExplicit")
@@ -97,30 +103,30 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status201Created, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
 
-        // PUT /tenant/{tenantId:int}/{resourceType}/{id} - Create or update resource
-        endpoints.MapPut("/tenant/{tenantId:int}/{resourceType}/{id}", HandlePutResource)
+        // PUT /{resourceType}/{id} - Create or update resource
+        tenantGroup.MapPut("/{resourceType}/{id}", HandlePutResource)
             .WithName("PutResource")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status201Created);
 
-        // DELETE /tenant/{tenantId:int}/{resourceType} - Conditional Delete (no ID in URL, uses query string)
+        // DELETE /{resourceType} - Conditional Delete (no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE DELETE /{resourceType}/{id} to match correctly
-        endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}", HandleConditionalDeleteResourceExplicit)
+        tenantGroup.MapDelete("/{resourceType}", HandleConditionalDeleteResourceExplicit)
             .WithName("ConditionalDeleteResourceExplicit")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
 
-        // DELETE /tenant/{tenantId:int}/{resourceType}/{id} - Delete resource
-        endpoints.MapDelete("/tenant/{tenantId:int}/{resourceType}/{id}", HandleDeleteResource)
+        // DELETE /{resourceType}/{id} - Delete resource
+        tenantGroup.MapDelete("/{resourceType}/{id}", HandleDeleteResource)
             .WithName("DeleteResource")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
-        // GET /tenant/{tenantId:int}/{resourceType} - Search resources
-        endpoints.MapGet("/tenant/{tenantId:int}/{resourceType}", (HttpContext context, int tenantId, string resourceType,
+        // GET /{resourceType} - Search resources
+        tenantGroup.MapGet("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] FhirSchemaProviderResolver schemaProviderResolver, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, schemaProviderResolver, logger, ct))
@@ -128,8 +134,8 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
-        // POST /tenant/{tenantId:int}/{resourceType}/_search - Search with form-urlencoded
-        endpoints.MapPost("/tenant/{tenantId:int}/{resourceType}/_search", (HttpContext context, int tenantId, string resourceType,
+        // POST /{resourceType}/_search - Search with form-urlencoded
+        tenantGroup.MapPost("/{resourceType}/_search", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] FhirSchemaProviderResolver schemaProviderResolver, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePostSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, schemaProviderResolver, logger, ct))
@@ -137,14 +143,14 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
-        // POST /tenant/{tenantId:int}/{resourceType} - Create resource (server assigns ID)
-        endpoints.MapPost("/tenant/{tenantId:int}/{resourceType}", HandlePostResource)
+        // POST /{resourceType} - Create resource (server assigns ID)
+        tenantGroup.MapPost("/{resourceType}", HandlePostResource)
             .WithName("PostResource")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status201Created);
 
-        // POST /tenant/{tenantId:int} - Transaction/Batch bundle
-        endpoints.MapPost("/tenant/{tenantId:int}", HandleBundle)
+        // POST / - Transaction/Batch bundle
+        tenantGroup.MapPost("/", HandleBundle)
             .WithName("Bundle")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -157,15 +163,20 @@ public static class FhirEndpoints
     /// Registers tenant-agnostic FHIR endpoints (/{resourceType}/...).
     /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
     /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// All routes within this group validate resource type against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapFhirAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // TENANT-AGNOSTIC ROUTES (FHIR-compliant, single-tenant auto-detection)
         // Middleware validates: single tenant = auto-apply, multi-tenant = 400 Bad Request
         // These routes delegate to the same handlers - middleware provides tenant context
+        // Create a route group with the filter applied to all endpoints
+        var agnosticGroup = endpoints
+            .MapGroup(string.Empty)
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource (agnostic)
-        endpoints.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleGetResource(context, context.GetTenantId(), resourceType, id, mediator, logger, ct))
             .WithName("GetResourceAgnostic")
@@ -175,7 +186,7 @@ public static class FhirEndpoints
 
         // PUT /{resourceType} - Conditional Update (agnostic, no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
-        endpoints.MapPut("/{resourceType}", (HttpContext context, string resourceType,
+        agnosticGroup.MapPut("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
             HandleConditionalUpdateResource(context, resourceType, mediator, memoryStreamManager, ct))
             .WithName("ConditionalUpdateResourceAgnostic")
@@ -186,7 +197,7 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status400BadRequest);
 
         // PUT /{resourceType}/{id} - Create or update resource (agnostic)
-        endpoints.MapPut("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapPut("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
             [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePutResource(context, context.GetTenantId(), resourceType, id, mediator, memoryStreamManager, logger, ct))
@@ -198,7 +209,7 @@ public static class FhirEndpoints
 
         // DELETE /{resourceType} - Conditional Delete (agnostic, no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE DELETE /{resourceType}/{id} to match correctly
-        endpoints.MapDelete("/{resourceType}", (HttpContext context, string resourceType,
+        agnosticGroup.MapDelete("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, CancellationToken ct) =>
             HandleConditionalDeleteResource(context, resourceType, mediator, ct))
             .WithName("ConditionalDeleteResourceAgnostic")
@@ -209,7 +220,7 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status400BadRequest);
 
         // DELETE /{resourceType}/{id} - Delete resource (agnostic)
-        endpoints.MapDelete("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapDelete("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleDeleteResource(context, context.GetTenantId(), resourceType, id, mediator, logger, ct))
             .WithName("DeleteResourceAgnostic")
@@ -217,9 +228,8 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status400BadRequest);
 
-
         // GET /{resourceType} - Search resources (agnostic)
-        endpoints.MapGet("/{resourceType}", (HttpContext context, string resourceType,
+        agnosticGroup.MapGet("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] FhirSchemaProviderResolver schemaProviderResolver, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleSearchResource(context, context.GetTenantId(), resourceType, mediator, queryParser, searchOptionsBuilderFactory, schemaProviderResolver, logger, ct))
@@ -228,7 +238,7 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status400BadRequest);
 
         // POST /{resourceType} - Create resource with server-assigned ID (agnostic)
-        endpoints.MapPost("/{resourceType}", (HttpContext context, string resourceType,
+        agnosticGroup.MapPost("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
             [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandlePostResource(context, context.GetTenantId(), resourceType, mediator, memoryStreamManager, logger, ct))
@@ -238,7 +248,7 @@ public static class FhirEndpoints
             .Produces(StatusCodes.Status400BadRequest);
 
         // POST / - Transaction/Batch bundle (agnostic)
-        endpoints.MapPost("/", (HttpContext context, [FromServices] BundleProcessor bundleProcessor,
+        agnosticGroup.MapPost("/", (HttpContext context, [FromServices] BundleProcessor bundleProcessor,
             [FromServices] StreamingBundleParser streamingParser, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleBundle(context, context.GetTenantId(), bundleProcessor, streamingParser, logger, ct))
             .WithName("BundleAgnostic")

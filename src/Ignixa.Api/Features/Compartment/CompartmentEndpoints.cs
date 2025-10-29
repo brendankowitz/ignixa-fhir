@@ -5,6 +5,7 @@
 
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Bundle.Serialization;
@@ -34,19 +35,26 @@ public static class CompartmentEndpoints
     /// <summary>
     /// Registers tenant-explicit FHIR compartment endpoints (/tenant/{tenantId}/{compartmentType}/...).
     /// Always supported in all multi-tenancy scenarios.
+    /// Routes with {resourceType} validate against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapCompartmentTenantEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // Tenant-explicit route: GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}
-        endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentExplicitAsync)
+        // Create a route group with the filter for resource-type-specific routes
+        var tenantGroup = endpoints
+            .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
+
+        // Tenant-explicit route: GET /{compartmentType}/{compartmentId}/{resourceType}
+        tenantGroup.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentExplicitAsync)
             .WithName("SearchCompartmentExplicit")
             .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
-        // Tenant-explicit wildcard route: GET /tenant/{tenantId}/{compartmentType}/{compartmentId}/*
+        // Tenant-explicit wildcard route: GET /{compartmentType}/{compartmentId}/*
         // IMPORTANT: Must use literal "/*" constraint to match asterisk character
-        endpoints.MapGet("/tenant/{tenantId:int}/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardExplicitAsync)
+        // Wildcard route doesn't have resourceType parameter, so filter doesn't apply, but register on group for consistency
+        tenantGroup.MapGet("/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardExplicitAsync)
             .WithName("SearchCompartmentWildcardExplicit")
             .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
@@ -59,18 +67,25 @@ public static class CompartmentEndpoints
     /// Registers tenant-agnostic FHIR compartment endpoints (/{compartmentType}/...).
     /// Supported in single-tenant mode (auto-detect) and distributed mode (future).
     /// Blocked in multi-tenant mode by TenantResolutionMiddleware (400 Bad Request).
+    /// Routes with {resourceType} validate against tenant's FHIR version via ResourceTypeValidationFilter.
     /// </summary>
     public static IEndpointRouteBuilder MapCompartmentAgnosticEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // Create a route group with the filter for resource-type-specific routes
+        var agnosticGroup = endpoints
+            .MapGroup(string.Empty)
+            .AddEndpointFilter<ResourceTypeValidationFilter>();
+
         // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}
-        endpoints.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentAsync)
+        agnosticGroup.MapGet("/{compartmentType}/{compartmentId}/{resourceType}", HandleSearchCompartmentAsync)
             .WithName("SearchCompartment")
             .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
         // Tenant-agnostic wildcard route: GET /{compartmentType}/{compartmentId}/*
-        endpoints.MapGet("/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardAsync)
+        // Wildcard route doesn't have resourceType parameter, so filter doesn't apply, but register on group for consistency
+        agnosticGroup.MapGet("/{compartmentType}/{compartmentId}/*", HandleSearchCompartmentWildcardAsync)
             .WithName("SearchCompartmentWildcard")
             .Produces(StatusCodes.Status200OK, contentType: KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
