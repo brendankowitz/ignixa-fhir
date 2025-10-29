@@ -167,6 +167,11 @@ public class ChainedExpressionProcessor
         {
             targetResourceIds = await ProcessMultiaryTargetExpressionAsync(targetResourceTypeIds[0], multiaryExpr, ct);
         }
+        else if (chainedExpression.Expression is ChainedExpression nestedChain)
+        {
+            // Nested chain: recursively process
+            targetResourceIds = await ProcessChainAsync(targetResourceTypeIds[0], nestedChain, ct);
+        }
         else
         {
             _logger.LogWarning("Unsupported reverse chain expression type: {Type}", chainedExpression.Expression?.GetType().Name);
