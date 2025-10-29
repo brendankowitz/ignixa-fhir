@@ -211,10 +211,7 @@ public static class PatchEndpoints
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {
-            return Results.BadRequest(new
-            {
-                error = "Conditional patch requires search parameters in query string"
-            });
+            throw new Domain.Exceptions.BadRequestException("Conditional patch requires search parameters in query string");
         }
 
         // Remove leading '?'

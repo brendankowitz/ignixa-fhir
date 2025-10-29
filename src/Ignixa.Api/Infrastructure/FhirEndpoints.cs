@@ -991,10 +991,7 @@ public static class FhirEndpoints
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {
-            return Results.BadRequest(new
-            {
-                error = "Conditional update requires search parameters in query string"
-            });
+            throw new Domain.Exceptions.BadRequestException("Conditional update requires search parameters in query string");
         }
 
         // Remove leading '?'
@@ -1080,10 +1077,7 @@ public static class FhirEndpoints
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {
-            return Results.BadRequest(new
-            {
-                error = "Conditional delete requires search parameters in query string"
-            });
+            throw new Domain.Exceptions.BadRequestException("Conditional delete requires search parameters in query string");
         }
 
         // Parse query string to extract _count and search criteria
