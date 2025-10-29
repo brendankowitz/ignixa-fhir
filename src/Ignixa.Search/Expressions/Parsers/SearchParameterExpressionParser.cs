@@ -102,6 +102,19 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
                         // Find the corresponding search parameter info.
                         SearchParameterInfo componentSearchParameter = searchParameter.Component[componentIndex].ResolvedSearchParameter;
 
+                        if (componentSearchParameter == null)
+                        {
+                            // Component not resolved - this indicates a search parameter definition issue
+                            throw new InvalidSearchOperationException(
+                                string.Format(
+                                    CultureInfo.InvariantCulture,
+                                    "Composite search parameter '{0}' component {1} (definition: {2}) is not properly resolved. " +
+                                    "This indicates the search parameter was not properly built during initialization.",
+                                    searchParameter.Code,
+                                    componentIndex,
+                                    searchParameter.Component[componentIndex].DefinitionUrl?.ToString() ?? "unknown"));
+                        }
+
                         string componentValue = compositeValueParts[componentIndex];
 
                         compositeExpressions[componentIndex] = Build(

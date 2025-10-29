@@ -77,6 +77,11 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
             }
         }
 
+        // CRITICAL: Resolve composite search parameter components after loading pre-generated parameters
+        // Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null
+        // We must resolve these references by looking up the component parameters in UrlLookup
+        ResolveCompositeComponents(baseParameters, logger);
+
         CalculateSearchParameterHash();
     }
 
@@ -117,6 +122,61 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
         }
 
         return expanded;
+    }
+
+    /// <summary>
+    /// Resolves composite search parameter component references after loading pre-generated parameters.
+    /// Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null.
+    /// This method populates ResolvedSearchParameter by looking up component parameters in UrlLookup.
+    /// </summary>
+    private void ResolveCompositeComponents(SearchParameterInfo[] parameters, ILogger logger)
+    {
+        int resolvedCount = 0;
+        int unresolvedCount = 0;
+
+        foreach (var parameter in parameters)
+        {
+            // Skip non-composite parameters
+            if (parameter.Component == null || parameter.Component.Count == 0)
+            {
+                continue;
+            }
+
+            // Resolve each component
+            for (int i = 0; i < parameter.Component.Count; i++)
+            {
+                var component = parameter.Component[i];
+
+                // Skip if already resolved (shouldn't happen with pre-generated params, but defensive check)
+                if (component.ResolvedSearchParameter != null)
+                {
+                    continue;
+                }
+
+                // Look up component parameter by definition URL
+                if (component.DefinitionUrl != null && UrlLookup.TryGetValue(component.DefinitionUrl, out var componentParameter))
+                {
+                    component.ResolvedSearchParameter = componentParameter;
+                    resolvedCount++;
+                }
+                else
+                {
+                    unresolvedCount++;
+                    logger.LogWarning(
+                        "Composite search parameter '{ParameterCode}' (URL: {ParameterUrl}) component {ComponentIndex} " +
+                        "references unknown definition URL: {DefinitionUrl}",
+                        parameter.Code,
+                        parameter.Url,
+                        i,
+                        component.DefinitionUrl);
+                }
+            }
+        }
+
+        logger.LogInformation(
+            "Resolved {ResolvedCount} composite search parameter components, {UnresolvedCount} unresolved",
+            resolvedCount,
+            unresolvedCount);
     }
 
     internal ConcurrentDictionary<Uri, SearchParameterInfo> UrlLookup { get; set; }
