@@ -30,7 +30,8 @@ public class ResourceConverter : JsonConverter<ResourceJsonNode>
             throw new JsonException();
         }
 
-        if (jsonObject["resourceType"]?.GetValue<string>() == Searchparameter)
+        var type = jsonObject["resourceType"]?.GetValue<string>();
+        if (type == Searchparameter)
         {
             return jsonObject.Deserialize<SearchParameterJsonNode>(options);
         }

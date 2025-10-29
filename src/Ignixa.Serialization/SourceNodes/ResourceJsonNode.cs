@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Serialization.Abstractions;
@@ -32,9 +33,10 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     }
 
     /// <summary>
-    /// Internal constructor for JsonConverter and other types in this assembly (accepts pre-parsed JsonObject).
+    /// Protected internal constructor for JsonConverter and derived types (accepts pre-parsed JsonObject).
+    /// Uses 'protected internal' to allow subclasses in other assemblies to use it.
     /// </summary>
-    internal ResourceJsonNode(JsonObject jsonObject)
+    protected internal ResourceJsonNode(JsonObject jsonObject)
         : base(jsonObject)
     {
     }
@@ -135,5 +137,71 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     public static ResourceJsonNode Parse(string json)
     {
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+    }
+
+    /// <summary>
+    /// Converts this ResourceJsonNode to a strongly-typed subclass (e.g., ParametersJsonNode).
+    /// Uses reflection to invoke the internal constructor, providing zero-copy conversion.
+    /// </summary>
+    /// <typeparam name="T">Target type (must be a ResourceJsonNode subclass with internal JsonObject constructor).</typeparam>
+    /// <param name="validate">If true (default), validates that the resource type matches the expected type for T.</param>
+    /// <returns>A new instance of T wrapping the same underlying JsonObject.</returns>
+    /// <exception cref="InvalidOperationException">If the internal constructor cannot be found.</exception>
+    /// <exception cref="InvalidCastException">If validation is enabled and the resource type doesn't match the expected type.</exception>
+    public T As<T>(bool validate = true) where T : ResourceJsonNode
+    {
+        // no-op if already the correct type
+        if(this is T thisInstance)
+        {
+            return thisInstance;
+        }
+
+        Type targetType = typeof(T);
+
+        //downcast if needed
+        if (targetType == typeof(ResourceJsonNode))
+        {
+            return (T)this;
+        }
+
+        // Try up-cast to derived type
+        string targetResourceType = targetType.Name.Replace("JsonNode", string.Empty, StringComparison.Ordinal);
+        if (validate && targetResourceType != ResourceType)
+        {
+            throw new InvalidOperationException($"{ResourceType} cannot be cast to {targetType.Name}");
+        }
+
+        T? instance;
+        if (ResourceTypeRegistry.TryCreateInstance(
+                targetResourceType,
+                MutableNode,
+                out ResourceJsonNode? newInstance))
+        {
+            instance = (T)newInstance;
+        }
+        else
+        {
+            // Use reflection to invoke the internal constructor T(JsonObject)
+            ConstructorInfo? constructor = targetType.GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                null,
+                [typeof(JsonObject)],
+                null);
+
+            if (constructor == null)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{targetType.Name}' does not have an internal constructor with signature (JsonObject)");
+            }
+
+            // Create the new instance by invoking the internal constructor with our MutableNode
+            instance = (T)constructor.Invoke([MutableNode])
+                       ?? throw new InvalidOperationException($"Failed to create instance of {targetType.Name}");
+        }
+
+        // Copy FhirVersion to maintain metadata
+        instance.FhirVersion = FhirVersion;
+
+        return instance;
     }
 }

@@ -28,6 +28,14 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
         ResourceType = "CapabilityStatement";
     }
 
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal CapabilityStatementJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
+
     [JsonIgnore]
     public string? Url
     {

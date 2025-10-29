@@ -23,6 +23,14 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         ResourceType = "OperationOutcome";
     }
 
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal OperationOutcomeJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
+
     [JsonIgnore]
     public IReadOnlyList<IssueComponent> Issue
     {

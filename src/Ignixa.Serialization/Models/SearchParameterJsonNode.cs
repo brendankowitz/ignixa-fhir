@@ -12,6 +12,22 @@ namespace Ignixa.Serialization.Models;
 
 public class SearchParameterJsonNode : ResourceJsonNode
 {
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
+    public SearchParameterJsonNode()
+    {
+        ResourceType = "SearchParameter";
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal SearchParameterJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
+
     [JsonIgnore]
     public string Name
     {

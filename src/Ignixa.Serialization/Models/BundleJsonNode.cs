@@ -20,6 +20,14 @@ public class BundleJsonNode : ResourceJsonNode
         ResourceType = "Bundle";
     }
 
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    internal BundleJsonNode(JsonObject jsonObject)
+        : base(jsonObject)
+    {
+    }
+
     [JsonIgnore]
     public BundleType? Type
     {

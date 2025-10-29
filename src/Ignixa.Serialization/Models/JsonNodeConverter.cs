@@ -21,7 +21,14 @@ public class JsonNodeConverter<TJsonNodeType> : JsonConverter<TJsonNodeType>
  where TJsonNodeType : BaseJsonNode
 {
     /// <summary>
-    /// Reads JSON and creates ResourceJsonNode with internal JsonObject storage.
+    /// Reads JSON and creates a ResourceJsonNode with internal JsonObject storage.
+    ///
+    /// Smart routing: If the caller requested the base ResourceJsonNode type (not a specific subclass),
+    /// the converter inspects the resourceType field and creates the appropriate specific type
+    /// (e.g., ParametersJsonNode, BundleJsonNode) using the factory registry.
+    ///
+    /// This allows polymorphic deserialization: Parse<ResourceJsonNode>(json) → creates ParametersJsonNode
+    /// while maintaining backward compatibility: Parse<ParametersJsonNode>(json) → creates ParametersJsonNode
     /// </summary>
     public override TJsonNodeType Read(
         ref Utf8JsonReader reader,
@@ -36,14 +43,31 @@ public class JsonNodeConverter<TJsonNodeType> : JsonConverter<TJsonNodeType>
             throw new JsonException("Failed to parse JSON into JsonObject for ResourceJsonNode");
         }
 
-        // Create ResourceJsonNode with internal storage using the 1-parameter constructor (JsonObject)
+        Type actualType = typeToConvert;
+
+        // Smart routing: Only for ResourceJsonNode base type
+        // If the caller asked for a specific subclass (ParametersJsonNode, etc.), skip smart routing
+        if (typeToConvert == typeof(ResourceJsonNode))
+        {
+            var resourceType = jsonObject["resourceType"]?.GetValue<string>();
+            if (!string.IsNullOrEmpty(resourceType) &&
+                ResourceTypeRegistry.TryCreateInstance(resourceType, jsonObject, out var specificInstance))
+            {
+                // Successfully created the specific type via registry
+                return (TJsonNodeType)(object)specificInstance;
+            }
+
+            // Fall back to generic ResourceJsonNode for unknown resource types
+        }
+
+        // For specific types or unknown resource types, use reflection to invoke the internal constructor
         // BindingFlags must include Instance to find instance constructors
         return (TJsonNodeType)Activator.CreateInstance(
-            typeToConvert,
+            actualType,
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             null,
             [jsonObject],
-            CultureInfo.InvariantCulture);
+            CultureInfo.InvariantCulture)!;
     }
 
     /// <summary>
