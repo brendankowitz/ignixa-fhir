@@ -1,14 +1,13 @@
 
 <div align="center">
-  <img src="docs/assets/ignixa_transparent.png" alt="Ignixa Logo" width="300"/>
+  <img src="docs/assets/ignixa_transparent_enhanced.png" alt="Ignixa Logo" width="350"/>
 </div>
 
 # Ignixa
-
-A blazing-fast Reference Implementation FHIR server built in .NET/C#.
+ A blazing-fast multi-FHIR, multi-tenant, multi-database, request and response streaming reference implementation FHIR Server built in dotnet.
 
 [![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
-[![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20STU3-orange)](https://hl7.org/fhir/)
+[![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20R6%20%7C%20STU3-orange)](https://hl7.org/fhir/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Overview
@@ -18,7 +17,7 @@ Ignixa is a next-generation FHIR server implementation built from the ground up 
 ### Key Features
 
 **Core FHIR Capabilities**
-- **Multi-Version FHIR Support**: R4, R4B, R5, and STU3 with version-aware search parameters
+- **Multi-Version FHIR Support**: R4, R4B, R5, R6-Ballot2, and STU3 with version-aware search parameters
 - **Complete RESTful API**: CRUD operations, search, transactions, history, patch, bulk operations
 - **FHIRPath Patch Operations**: Complex path expressions (`.where()`, `.first()`, etc.) with in-place mutation
 - **FHIR Validation**: Three-tier validation system (Fast, Spec, Profile) with OperationOutcome support
@@ -27,15 +26,14 @@ Ignixa is a next-generation FHIR server implementation built from the ground up 
 **High Performance**
 - **Zero-Copy Serialization**: Direct JSON → HTTP response without intermediate POCO objects
 - **Streaming Responses**: Bundle responses stream results without loading entire dataset into memory
-- **Memory Efficiency**: 95% memory reduction for bulk operations (50 MB → 2-3 MB)
-- **Fast Indexing**: In-memory resource location index with custom converters for each search parameter type
-- **Minimal API Pattern**: 14% faster than MVC Controllers
+- **Memory Efficiency**: Optimized memory for bulk operations
+- **Minimal API Pattern**: Faster than MVC Controllers
 
 **Architecture & Design**
 - **Clean Architecture**: Strict layer separation (Domain → Application → DataLayer → API)
 - **CQRS Pattern**: Medino-based handlers for Commands/Queries with cross-cutting concerns
 - **Factory Pattern**: Tenant-scoped repository and search service factories
-- **Strategy Pattern**: Pluggable partition strategies and operation executors (PATCH operations, execution strategies)
+- **Strategy Pattern**: Pluggable partition strategies and operation executors (PATCH operations, partition location, query execution strategies)
 
 **Multi-Tenancy**
 - **Multi-Tenant Data Partitioning**: Isolation mode with per-tenant file systems or SQL databases
@@ -48,10 +46,10 @@ Ignixa is a next-generation FHIR server implementation built from the ground up 
 - **Transaction Watcher**: Automatic detection and recovery of stalled transactions across all tenants
 
 **Developer Experience**
-- **Generated Code**: Structure providers auto-generated from official FHIR packages (R4/R4B/R5/STU3)
+- **Generated Code**: Structure providers auto-generated from official FHIR packages (R4/R4B/R5/R6/STU3)
 - **Comprehensive Documentation**: CLAUDE.md development guide, ADRs, investigation documents
-- **Multiple Storage Backends**: File system (prototype), SQL Server (production), Cosmos DB (planned)
-- **Extensive Test Coverage**: 8 test projects with xUnit framework and BDD naming
+- **Multiple Storage Backends**: File system (prototype), SQL Server (production)
+- **Extensive Test Coverage**: Test projects with xUnit framework and BDD naming
 
 ## Quick Start
 
@@ -124,14 +122,6 @@ Ignixa follows a **layered architecture** with clear separation of concerns:
 
 ## Current Status
 
-| Category | Status |
-|----------|--------|
-| **Latest Features** | ✅ FHIR History Operations (_history endpoints) |
-| **Build** | ✅ All projects build (0 warnings, 0 errors) |
-| **Tests** | ✅ All tests passing |
-| **.NET Version** | 9.0.201 |
-| **SDK** | Firely SDK 6.0.0 final (R4/R4B/R5/STU3) |
-
 ### Fully Implemented Endpoints
 
 **Resource CRUD**
@@ -179,13 +169,13 @@ fhir-server-contrib/
 │   ├── Ignixa.Specification/          # Structure definitions
 │   ├── Ignixa.Validation/             # Validation engine
 │   ├── Ignixa.FhirPath/               # FHIRPath engine
-│   └── Ignixa.SourceNodeSerialization/# JSON serialization
+│   └── Ignixa.Serialization/# JSON serialization
 ├── test/
 │   ├── Ignixa.Api.Tests/
 │   ├── Ignixa.Application.Tests/
 │   ├── Ignixa.Extensions.Tests/
 │   ├── Ignixa.FhirPath.Tests/
-│   ├── Ignixa.SourceNodeSerialization.Tests/
+│   ├── Ignixa.Serialization.Tests/
 │   └── Ignixa.Validation.Tests/
 ├── codegen/                           # Code generation tools
 │   ├── Ignixa.Specification.Generators/
