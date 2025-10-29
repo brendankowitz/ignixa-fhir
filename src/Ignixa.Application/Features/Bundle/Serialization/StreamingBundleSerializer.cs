@@ -8,6 +8,8 @@ using System.Text.Json;
 using EnsureThat;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
+using Ignixa.Serialization;
+using Ignixa.Specification;
 using Ignixa.Serialization.Abstractions;
 using Ignixa.Serialization.Models;
 
@@ -109,7 +111,7 @@ public static class StreamingBundleSerializer
         SearchOptions searchOptions,
         string baseUrl,
         string queryString,
-        IStructureDefinitionSummaryProvider? schemaProvider = null,
+        IFhirSchemaProvider? schemaProvider = null,
         bool pretty = false,
         CancellationToken cancellationToken = default)
     {
@@ -124,6 +126,7 @@ public static class StreamingBundleSerializer
         int entryCount = 0;
         bool hasMore = false;
         int currentOffset = 0;
+        var fhirVersion = schemaProvider?.Version ?? FhirSpecification.R4;
 
         // Parse current offset from existing continuation token
         if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
@@ -146,6 +149,10 @@ public static class StreamingBundleSerializer
         // Write entry array
         writer.WriteStartArray("entry");
 
+        // For R4/R4B/STU3, write issues as a Bundle entry with search.mode="outcome" (pre-R5 format)
+        // R5+ will write Bundle.issues property at the end instead
+        WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
+
         // Write buffered entries
         await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
         {
@@ -159,7 +166,7 @@ public static class StreamingBundleSerializer
                 hasMore = true;
                 break;
             }
-            
+
             writer.WriteStartObject();
 
             // Write fullUrl
@@ -182,7 +189,8 @@ public static class StreamingBundleSerializer
         writer.WriteEndArray();
 
         // Write Bundle issues if present (e.g., unsupported search parameters)
-        WriteBundleIssues(writer, searchOptions.BundleIssues);
+        // NOTE: Bundle.issues only exists in FHIR R5+, not in R4/R4B/STU3
+        WriteBundleIssues(writer, searchOptions.BundleIssues, fhirVersion);
 
         // Generate continuation token if there are more results
         string? continuationToken = null;
@@ -233,7 +241,7 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNull(outputStream, nameof(outputStream));
         EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
         EnsureArg.IsNotNull(entries, nameof(entries));
-        
+
         int entryCount = 0;
         bool hasMore = false;
 
@@ -258,7 +266,7 @@ public static class StreamingBundleSerializer
                 hasMore = true;
                 continue;
             }
-            
+
             writer.WriteStartObject();
 
             // Write fullUrl with version for history bundles
@@ -298,7 +306,7 @@ public static class StreamingBundleSerializer
             {
                 links = links.Where(x => x.Relation != "next").ToList();
             }
-            
+
             WriteBundleLinks(writer, links);
         }
 
@@ -519,14 +527,21 @@ public static class StreamingBundleSerializer
     /// </summary>
     private static void WriteBundleIssues(
         FhirJsonWriter writer,
-        IReadOnlyList<IssueComponent>? issues)
+        IReadOnlyList<IssueComponent>? issues,
+        FhirSpecification version)
     {
         if (issues == null || issues.Count == 0)
         {
             return;
         }
 
-        // Write "issues" property containing an OperationOutcome resource
+        // Bundle.issues element only exists in FHIR R5+ (not in R4/R4B/STU3)
+        if (version < FhirSpecification.R5)
+        {
+            return;
+        }
+
+        // Write "issues" property containing an OperationOutcome resource (R5+ only)
         writer.WriteStartObject("issues");
         writer.WriteString("resourceType", "OperationOutcome");
 
@@ -575,6 +590,82 @@ public static class StreamingBundleSerializer
 
         writer.WriteEndArray(); // end issue array
         writer.WriteEndObject(); // end OperationOutcome resource
+    }
+
+    /// <summary>
+    /// Writes Bundle issues as a Bundle entry with search mode="outcome".
+    /// Used for FHIR R4/R4B/STU3 which don't support Bundle.issues element.
+    /// The issues are represented as an OperationOutcome resource in a Bundle entry.
+    /// </summary>
+    private static void WriteBundleIssuesPreR5(
+        FhirJsonWriter writer,
+        IReadOnlyList<IssueComponent>? issues,
+        FhirSpecification version)
+    {
+        // Only write for pre-R5 versions (R4/R4B/STU3)
+        if (version >= FhirSpecification.R5)
+        {
+            return;
+        }
+
+        if (issues == null || issues.Count == 0)
+        {
+            return;
+        }
+
+        // Start a new Bundle entry
+        writer.WriteStartObject();
+
+        // Full URL: Use a synthetic URL for the outcome entry
+        writer.WriteString("fullUrl", "urn:uuid:operation-outcome");
+
+        // Resource: OperationOutcome
+        writer.WriteStartObject("resource");
+        writer.WriteString("resourceType", "OperationOutcome");
+
+        // Issue array
+        writer.WriteStartArray("issue");
+        foreach (var issue in issues)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("severity", issue.Severity);
+            writer.WriteString("code", issue.Code);
+
+            if (!string.IsNullOrEmpty(issue.Diagnostics))
+            {
+                writer.WriteString("diagnostics", issue.Diagnostics);
+            }
+
+            if (issue.Location != null && issue.Location.Count > 0)
+            {
+                writer.WriteStartArray("location");
+                foreach (var location in issue.Location)
+                {
+                    writer.WriteStringValue(location);
+                }
+                writer.WriteEndArray();
+            }
+
+            if (issue.Expression != null && issue.Expression.Count > 0)
+            {
+                writer.WriteStartArray("expression");
+                foreach (var expr in issue.Expression)
+                {
+                    writer.WriteStringValue(expr);
+                }
+                writer.WriteEndArray();
+            }
+
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray(); // end issue array
+        writer.WriteEndObject(); // end OperationOutcome resource
+
+        // Search: Mark as outcome entry
+        writer.WriteObject("search", w => w.WriteString("mode", "outcome"));
+
+        writer.WriteEndObject(); // end entry
     }
 
     /// <summary>
