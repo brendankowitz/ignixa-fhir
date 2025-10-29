@@ -61,6 +61,13 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return cachedIndexer;
         }
 
+        // IMPORTANT: Call dependency methods BEFORE acquiring lock to avoid nested lock acquisition
+        // This prevents potential deadlock where:
+        // - Thread A: holds _indexerLock, waits for _searchParamLock (in GetSearchParameterDefinitionManager)
+        // - Thread B: holds _searchParamLock, waits for _indexerLock
+        var schemaProvider = GetSchemaProvider(fhirVersion);
+        var searchParamManager = GetSearchParameterDefinitionManager(fhirVersion);
+
         // Slow path: create new indexer (synchronous factory with lock)
         _indexerLock.Wait();
         try
@@ -73,8 +80,6 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 
             // Create new search indexer
             // Factory initializes synchronously using pre-generated search parameters
-            var schemaProvider = GetSchemaProvider(fhirVersion);
-            var searchParamManager = GetSearchParameterDefinitionManager(fhirVersion);
             var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager);
 
             // Cache and return

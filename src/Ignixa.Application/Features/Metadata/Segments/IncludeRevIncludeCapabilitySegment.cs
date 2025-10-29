@@ -43,9 +43,9 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
     {
         _logger.LogDebug("Applying include/revinclude capability segment for {FhirVersion}", context.FhirVersion);
 
-        // Get manager for this FHIR version
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion) as SearchParameterDefinitionManager
-            ?? throw new InvalidOperationException("Expected SearchParameterDefinitionManager from version context");
+        // Get manager and schema provider for this FHIR version
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
+        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
 
         if (statement.Rest == null || statement.Rest.Count == 0)
         {
@@ -156,7 +156,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
     /// </summary>
     private List<string> BuildSearchRevIncludes(
         string targetResourceType,
-        SearchParameterDefinitionManager manager,
+        ISearchParameterDefinitionManager manager,
         IEnumerable<string> allResourceTypes)
     {
         var revIncludes = new List<string>();

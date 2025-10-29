@@ -42,13 +42,12 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
     {
         _logger.LogDebug("Applying resource interaction capability segment for {FhirVersion}", context.FhirVersion);
 
-        // Get manager for this FHIR version
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion) as SearchParameterDefinitionManager
-            ?? throw new InvalidOperationException("Expected SearchParameterDefinitionManager from version context");
+        // Get schema provider for this FHIR version
+        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
 
-        // Get all resource types from search parameter manager
-        // (ResourceTypeNames is already expanded from abstract base types at initialization)
-        var resourceTypes = manager.ResourceTypeNames
+        // Get all resource types from schema provider
+        // (ResourceTypeNames contains all concrete FHIR resource types for this version)
+        var resourceTypes = schemaProvider.ResourceTypeNames
             .OrderBy(rt => rt)
             .ToList();
 
@@ -99,10 +98,9 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         CancellationToken cancellationToken)
     {
         // Hash is based on FHIR version + sorted resource type list
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion) as SearchParameterDefinitionManager
-            ?? throw new InvalidOperationException("Expected SearchParameterDefinitionManager from version context");
+        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
 
-        var resourceTypes = manager.ResourceTypeNames
+        var resourceTypes = schemaProvider.ResourceTypeNames
             .OrderBy(rt => rt)
             .ToList();
 
