@@ -8,20 +8,25 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Definition;
 using Ignixa.Serialization;
 using Ignixa.Specification.Generated;
 
-namespace Ignixa.Application.Infrastructure;
+namespace Ignixa.Search.Infrastructure;
 
 /// <summary>
 /// Provides version-specific FHIR context with caching.
-/// Thread-safe singleton that creates and caches schema providers and search indexers per FHIR version.
+/// Thread-safe singleton that creates and caches schema providers, search indexers, and search parameter definition managers per FHIR version.
 /// </summary>
 public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 {
     private readonly ConcurrentDictionary<FhirSpecification, IFhirSchemaProvider> _schemaProviders = new();
     private readonly ConcurrentDictionary<FhirSpecification, ISearchIndexer> _searchIndexers = new();
+    private readonly ConcurrentDictionary<FhirSpecification, ISearchParameterDefinitionManager> _searchParamManagers = new();
+    private readonly ConcurrentDictionary<FhirSpecification, ICompartmentDefinitionManager> _compartmentManagers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
+    private readonly SemaphoreSlim _searchParamLock = new(1, 1);
+    private readonly SemaphoreSlim _compartmentLock = new(1, 1);
     private readonly ILoggerFactory _loggerFactory;
     private bool _disposed;
 
@@ -69,7 +74,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             // Create new search indexer
             // Factory initializes synchronously using pre-generated search parameters
             var schemaProvider = GetSchemaProvider(fhirVersion);
-            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory);
+            var searchParamManager = GetSearchParameterDefinitionManager(fhirVersion);
+            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager);
 
             // Cache and return
             _searchIndexers.TryAdd(fhirVersion, indexer);
@@ -78,6 +84,74 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         finally
         {
             _indexerLock.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion)
+    {
+        // Fast path: check if already cached
+        if (_searchParamManagers.TryGetValue(fhirVersion, out var cachedManager))
+        {
+            return cachedManager;
+        }
+
+        // Slow path: create new manager (synchronous with lock)
+        _searchParamLock.Wait();
+        try
+        {
+            // Double-check after acquiring lock
+            if (_searchParamManagers.TryGetValue(fhirVersion, out cachedManager))
+            {
+                return cachedManager;
+            }
+
+            // Create new search parameter definition manager
+            // Manager initializes synchronously using pre-generated search parameters
+            var schemaProvider = GetSchemaProvider(fhirVersion);
+            var logger = _loggerFactory.CreateLogger<SearchParameterDefinitionManager>();
+            var manager = new SearchParameterDefinitionManager(schemaProvider, logger);
+
+            // Cache and return
+            _searchParamManagers.TryAdd(fhirVersion, manager);
+            return manager;
+        }
+        finally
+        {
+            _searchParamLock.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    public ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirSpecification fhirVersion)
+    {
+        // Fast path: check if already cached
+        if (_compartmentManagers.TryGetValue(fhirVersion, out var cachedManager))
+        {
+            return cachedManager;
+        }
+
+        // Slow path: create new manager (synchronous with lock)
+        _compartmentLock.Wait();
+        try
+        {
+            // Double-check after acquiring lock
+            if (_compartmentManagers.TryGetValue(fhirVersion, out cachedManager))
+            {
+                return cachedManager;
+            }
+
+            // Create new compartment definition manager
+            // Manager initializes synchronously using pre-generated compartment definitions
+            var manager = new CompartmentDefinitionManager(fhirVersion);
+
+            // Cache and return
+            _compartmentManagers.TryAdd(fhirVersion, manager);
+            return manager;
+        }
+        finally
+        {
+            _compartmentLock.Release();
         }
     }
 
@@ -92,6 +166,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         }
 
         _indexerLock?.Dispose();
+        _searchParamLock?.Dispose();
+        _compartmentLock?.Dispose();
         _disposed = true;
         GC.SuppressFinalize(this);
     }

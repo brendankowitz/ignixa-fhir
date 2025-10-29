@@ -53,7 +53,10 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     {
         SearchParameterInfo parameter = _inner.GetSearchParameter(resourceType, code);
 
-        if (parameter.IsSearchable || UsePartialSearchParams(parameter)) return parameter;
+        if (parameter.IsSearchable || UsePartialSearchParams(parameter))
+        {
+            return parameter;
+        }
 
         throw new SearchParameterNotSupportedException(resourceType, code);
     }

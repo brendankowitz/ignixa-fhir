@@ -223,7 +223,7 @@ Content-Type: application/fhir+json
 }
 
 ###
-POST {{hostname}}/Observation
+PUT {{hostname}}/Observation
 Content-Type: application/fhir+json
 
 {
@@ -288,3 +288,8 @@ Content-Type: application/fhir+json
 ### History
 
 GET {{hostname}}/Observation/f8adc129-3d07-44fe-b505-9dd75bef6876/_history?_count=20
+
+###
+
+GET {{hostname}}/Observation
+If-Match: _id=f8adc129-3d07-44fe-b505-9dd75bef6876

@@ -5,7 +5,7 @@ using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
-using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;

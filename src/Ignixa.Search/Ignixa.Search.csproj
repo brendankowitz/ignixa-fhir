@@ -36,10 +36,4 @@
     <None Remove="Data\R4B\unsupported-search-parameters.json" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Update="Definition\VersionAwareSearchParameterDefinitionManager.cs">
-      <DependentUpon>SupportedSearchParameterDefinitionManager.cs</DependentUpon>
-    </Compile>
-  </ItemGroup>
-
 </Project>

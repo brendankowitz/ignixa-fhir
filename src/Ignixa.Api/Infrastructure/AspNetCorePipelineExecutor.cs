@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing.Matching;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.Routing.Template;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Linq;

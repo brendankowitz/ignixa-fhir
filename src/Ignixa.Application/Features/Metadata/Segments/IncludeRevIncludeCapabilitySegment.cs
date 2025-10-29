@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -20,14 +21,14 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// </summary>
 public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
 {
-    private readonly VersionAwareSearchParameterDefinitionManager _searchParamManager;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<IncludeRevIncludeCapabilitySegment> _logger;
 
     public IncludeRevIncludeCapabilitySegment(
-        VersionAwareSearchParameterDefinitionManager searchParamManager,
+        IFhirVersionContext versionContext,
         ILogger<IncludeRevIncludeCapabilitySegment> logger)
     {
-        _searchParamManager = searchParamManager ?? throw new ArgumentNullException(nameof(searchParamManager));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -35,7 +36,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
 
     public int Priority => 40; // Execute after search parameters (30)
 
-    public async ValueTask ApplyAsync(
+    public ValueTask ApplyAsync(
         CapabilityStatementJsonNode statement,
         CapabilityContext context,
         CancellationToken cancellationToken)
@@ -43,19 +44,20 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         _logger.LogDebug("Applying include/revinclude capability segment for {FhirVersion}", context.FhirVersion);
 
         // Get manager for this FHIR version
-        var manager = await _searchParamManager.GetManagerForVersionAsync(context.FhirVersion, cancellationToken);
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion) as SearchParameterDefinitionManager
+            ?? throw new InvalidOperationException("Expected SearchParameterDefinitionManager from version context");
 
         if (statement.Rest == null || statement.Rest.Count == 0)
         {
             _logger.LogWarning("No REST component found in capability statement - includes will not be added");
-            return;
+            return ValueTask.CompletedTask;
         }
 
         var restComponent = statement.Rest[0];
         if (restComponent.Resource == null)
         {
             _logger.LogWarning("No resources found in REST component - includes will not be added");
-            return;
+            return ValueTask.CompletedTask;
         }
 
         // Build a map of all resource types for quick lookup
@@ -93,14 +95,16 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
 
         _logger.LogDebug("Added {IncludeCount} _include and {RevIncludeCount} _revinclude entries across {ResourceCount} resources",
             totalIncludes, totalRevIncludes, restComponent.Resource.Count);
+
+        return ValueTask.CompletedTask;
     }
 
-    public async ValueTask<string> GetVersionHashAsync(
+    public ValueTask<string> GetVersionHashAsync(
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
         // Hash is based on all reference search parameters and their targets
-        var manager = await _searchParamManager.GetManagerForVersionAsync(context.FhirVersion, cancellationToken);
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
 
         var referenceParams = manager.AllSearchParameters
             .Where(sp => sp.IsSupported && sp.Type == SearchParamType.Reference)
@@ -112,7 +116,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         var hashInput = string.Join("|", referenceParams);
 
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(hashInput));
-        return Convert.ToBase64String(hashBytes);
+        return ValueTask.FromResult(Convert.ToBase64String(hashBytes));
     }
 
     /// <summary>

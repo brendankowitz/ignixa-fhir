@@ -11,6 +11,7 @@ using Ignixa.Specification;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 
 namespace Ignixa.Search.Parsing;
@@ -23,21 +24,15 @@ namespace Ignixa.Search.Parsing;
 /// </summary>
 public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, IDisposable
 {
-    private readonly FhirSchemaProviderResolver _providerResolver;
-    private readonly ILoggerFactory _loggerFactory;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ConcurrentDictionary<(TenantContext Tenant, FhirSpecification Version), ISearchOptionsBuilder> _builderCache = new();
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
-    public SearchOptionsBuilderFactory(
-        FhirSchemaProviderResolver providerResolver,
-        ILoggerFactory loggerFactory)
+    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext)
     {
-        EnsureArg.IsNotNull(providerResolver, nameof(providerResolver));
-        EnsureArg.IsNotNull(loggerFactory, nameof(loggerFactory));
-
-        _providerResolver = providerResolver;
-        _loggerFactory = loggerFactory;
+        EnsureArg.IsNotNull(versionContext, nameof(versionContext));
+        _versionContext = versionContext;
     }
 
     /// <inheritdoc/>
@@ -52,7 +47,11 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     /// Creates a SearchOptionsBuilder for the specified tenant and FHIR version.
     /// Internal method for future multi-tenant support.
     /// </summary>
-    private ISearchOptionsBuilder CreateForTenant(TenantContext tenant, FhirSpecification fhirVersion)
+    /// <param name="tenant">The tenant context.</param>
+    /// <param name="fhirVersion">The FHIR version.</param>
+    private ISearchOptionsBuilder CreateForTenant(
+        TenantContext tenant,
+        FhirSpecification fhirVersion)
     {
         var cacheKey = (tenant, fhirVersion);
 
@@ -72,14 +71,9 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
                 return cachedBuilder;
             }
 
-            // Get version-specific provider
-            var schemaProvider = _providerResolver(fhirVersion);
-
-            // Create version-specific SearchParameterDefinitionManager
-            // Manager initializes synchronously in constructor with pre-generated search parameters
-            var searchParamDefinitionManager = new SearchParameterDefinitionManager(
-                schemaProvider,
-                _loggerFactory.CreateLogger<SearchParameterDefinitionManager>());
+            // Get version-specific components from context (cached and reused)
+            var schemaProvider = _versionContext.GetSchemaProvider(fhirVersion);
+            var searchParamDefinitionManager = _versionContext.GetSearchParameterDefinitionManager(fhirVersion);
 
             // Create resolver delegate for SearchParameterDefinitionManager
             ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver resolver =

@@ -32,6 +32,7 @@ public record QueryParameter(string Name, string Value)
             "_include" => ParameterCategory.Include,
             "_revinclude" => ParameterCategory.RevInclude,
             "_elements" => ParameterCategory.Elements,
+            _ when name.StartsWith("_has", StringComparison.Ordinal) => ParameterCategory.Search,
 
             // Other underscore parameters are control parameters
             _ when name.StartsWith('_') => ParameterCategory.Control,

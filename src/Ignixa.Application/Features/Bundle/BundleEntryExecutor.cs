@@ -13,6 +13,7 @@ using Microsoft.Extensions.Primitives;
 using Microsoft.IO;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;

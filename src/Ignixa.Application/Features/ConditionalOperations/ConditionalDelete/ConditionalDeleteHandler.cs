@@ -1,5 +1,6 @@
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;

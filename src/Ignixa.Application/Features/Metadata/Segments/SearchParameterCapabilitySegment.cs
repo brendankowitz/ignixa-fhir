@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.ValueSets.Normative;
 using IgnixaSearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
@@ -20,14 +21,14 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// </summary>
 public class SearchParameterCapabilitySegment : ICapabilitySegment
 {
-    private readonly VersionAwareSearchParameterDefinitionManager _searchParamManager;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<SearchParameterCapabilitySegment> _logger;
 
     public SearchParameterCapabilitySegment(
-        VersionAwareSearchParameterDefinitionManager searchParamManager,
+        IFhirVersionContext versionContext,
         ILogger<SearchParameterCapabilitySegment> logger)
     {
-        _searchParamManager = searchParamManager ?? throw new ArgumentNullException(nameof(searchParamManager));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -35,7 +36,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
 
     public int Priority => 30; // Execute after interactions
 
-    public async ValueTask ApplyAsync(
+    public ValueTask ApplyAsync(
         CapabilityStatementJsonNode statement,
         CapabilityContext context,
         CancellationToken cancellationToken)
@@ -43,19 +44,19 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         _logger.LogDebug("Applying search parameter capability segment for {FhirVersion}", context.FhirVersion);
 
         // Get manager for this FHIR version
-        var manager = await _searchParamManager.GetManagerForVersionAsync(context.FhirVersion, cancellationToken);
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
 
         if (statement.Rest == null || statement.Rest.Count == 0)
         {
             _logger.LogWarning("No REST component found in capability statement - search parameters will not be added");
-            return;
+            return ValueTask.CompletedTask;
         }
 
         var restComponent = statement.Rest[0];
         if (restComponent.Resource == null)
         {
             _logger.LogWarning("No resources found in REST component - search parameters will not be added");
-            return;
+            return ValueTask.CompletedTask;
         }
 
         int totalSearchParams = 0;
@@ -77,14 +78,16 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
 
         _logger.LogDebug("Added {Count} total search parameters across {ResourceCount} resources",
             totalSearchParams, restComponent.Resource.Count);
+
+        return ValueTask.CompletedTask;
     }
 
-    public async ValueTask<string> GetVersionHashAsync(
+    public ValueTask<string> GetVersionHashAsync(
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
         // Hash is based on all search parameter URLs
-        var manager = await _searchParamManager.GetManagerForVersionAsync(context.FhirVersion, cancellationToken);
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
 
         var allSearchParams = manager.AllSearchParameters
             .Where(sp => sp.IsSupported)
@@ -95,7 +98,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         var hashInput = string.Join("|", allSearchParams);
 
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(hashInput));
-        return Convert.ToBase64String(hashBytes);
+        return ValueTask.FromResult(Convert.ToBase64String(hashBytes));
     }
 
     private IReadOnlyList<SearchParamJsonNode> BuildSearchParameters(List<Search.Models.SearchParameterInfo> searchParams)

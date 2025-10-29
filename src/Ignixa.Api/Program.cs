@@ -26,6 +26,7 @@ using Ignixa.Specification;
 using Ignixa.Domain;
 // using Ignixa.Validation.SourceNodeValidation; // Removed - migrating to new FastValidator in Phase 3
 using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -342,18 +343,20 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IQueryParameterParser>()
         .InstancePerDependency();
 
+    // Register FhirVersionContext (provides version-specific schema providers, search indexers, etc.)
+    // Similar to HAPI FHIR's FhirContext pattern - caches instances per FHIR version
+    // Moved to Ignixa.Search layer for proper dependency management
+    containerBuilder.RegisterType<FhirVersionContext>()
+        .As<IFhirVersionContext>()
+        .SingleInstance();
+
     // Register SearchOptionsBuilderFactory for version-aware search options builders
     // Factory creates and caches builders per (tenant, FHIR version) pair
     // Phase 1: Single-tenant mode (uses TenantContext.Default)
     // Phase 2+: Multi-tenant mode with custom search parameters per tenant
+    // Now uses IFhirVersionContext to reuse cached managers
     containerBuilder.RegisterType<SearchOptionsBuilderFactory>()
         .As<ISearchOptionsBuilderFactory>()
-        .SingleInstance();
-
-    // Register FhirVersionContext (provides version-specific schema providers and search indexers)
-    // Similar to HAPI FHIR's FhirContext pattern - caches instances per FHIR version
-    containerBuilder.RegisterType<Ignixa.Application.Infrastructure.FhirVersionContext>()
-        .As<Ignixa.Application.Infrastructure.IFhirVersionContext>()
         .SingleInstance();
 
     // Register FhirSchemaProviderResolver - enables version-aware components to resolve
@@ -364,11 +367,16 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         return (FhirSpecification version) => versionContext.GetSchemaProvider(version);
     }).SingleInstance();
 
-    // Register version-aware wrapper that caches SearchParameterDefinitionManager per FHIR version
-    containerBuilder.RegisterType<VersionAwareSearchParameterDefinitionManager>()
-        .As<ISearchParameterDefinitionManager>()
-        .AsSelf() // Also register as self for version-aware access
-        .SingleInstance();
+    // DEPRECATED: VersionAwareSearchParameterDefinitionManager replaced by FhirVersionContext.GetSearchParameterDefinitionManager()
+    // Multi-version support now provided via FhirVersionContext pattern (same as SearchIndexer and SchemaProvider)
+    // For single-tenant mode (Phase 1), default to R4 for backward compatibility
+    containerBuilder.Register<ISearchParameterDefinitionManager>(c =>
+    {
+        var versionContext = c.Resolve<IFhirVersionContext>();
+        // Single-tenant mode: default to R4 for backward compatibility
+        // Multi-tenant mode: will be resolved from tenant-specific FHIR version in request context
+        return versionContext.GetSearchParameterDefinitionManager(FhirSpecification.R4);
+    }).SingleInstance();
 
     containerBuilder.Register<ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver>(c =>
     {
@@ -376,11 +384,13 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         return () => manager;
     }).SingleInstance();
 
-    // Register version-aware wrapper that caches CompartmentDefinitionManager per FHIR version
-    containerBuilder.RegisterType<VersionAwareCompartmentDefinitionManager>()
-        .As<ICompartmentDefinitionManager>()
-        .AsSelf() // Also register as self for version-aware access
-        .SingleInstance();
+    // DEPRECATED: VersionAwareCompartmentDefinitionManager replaced by FhirVersionContext.GetCompartmentDefinitionManager()
+    // Register default ICompartmentDefinitionManager as R4 (for legacy code that doesn't specify version)
+    containerBuilder.Register<ICompartmentDefinitionManager>(c =>
+    {
+        var versionContext = c.Resolve<IFhirVersionContext>();
+        return versionContext.GetCompartmentDefinitionManager(FhirSpecification.R4);
+    }).SingleInstance();
 
     // NOTE: ReferenceSearchValueParser, SearchParameterExpressionParser, ExpressionParser, and SearchOptionsBuilder
     // are now created by SearchOptionsBuilderFactory with version-specific dependencies
@@ -469,7 +479,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     //        IValidationSchemaResolver resolver = factory(FhirSpecification.R4)
     containerBuilder.Register<Func<FhirSpecification, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
         {
-            var versionContext = c.Resolve<Ignixa.Application.Infrastructure.IFhirVersionContext>();
+            var versionContext = c.Resolve<Ignixa.Search.Infrastructure.IFhirVersionContext>();
             var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();
 
             return (version) =>

@@ -6,9 +6,10 @@
 using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Definition;
 using Ignixa.Serialization;
 
-namespace Ignixa.Application.Infrastructure;
+namespace Ignixa.Search.Infrastructure;
 
 /// <summary>
 /// Provides version-specific FHIR context (schema provider, search indexer, etc.).
@@ -31,4 +32,20 @@ public interface IFhirVersionContext
     /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
     /// <returns>Search indexer for the specified version.</returns>
     ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion);
+
+    /// <summary>
+    /// Gets the search parameter definition manager for the specified FHIR version.
+    /// Initializes synchronously using pre-generated search parameters.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <returns>Search parameter definition manager for the specified version.</returns>
+    ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion);
+
+    /// <summary>
+    /// Gets the compartment definition manager for the specified FHIR version.
+    /// Initializes synchronously using pre-generated compartment definitions.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <returns>Compartment definition manager for the specified version.</returns>
+    ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirSpecification fhirVersion);
 }

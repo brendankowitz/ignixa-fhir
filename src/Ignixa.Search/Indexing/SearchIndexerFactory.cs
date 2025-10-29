@@ -15,9 +15,14 @@ namespace Ignixa.Search.Indexing;
 
 public static class SearchIndexerFactory
 {
-    public static ISearchIndexer CreateInstance(IFhirSchemaProvider fhirSchemaProvider, ILoggerFactory loggerProvider)
+    public static ISearchIndexer CreateInstance(
+        IFhirSchemaProvider fhirSchemaProvider,
+        ILoggerFactory loggerProvider,
+        ISearchParameterDefinitionManager searchParameterDefinitionManager = null)
     {
-        var definitionManager = new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());
+        // If no manager provided, create new instance (backward compatibility)
+        var definitionManager = searchParameterDefinitionManager
+            ?? new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());
 
         var referenceParser = new ReferenceSearchValueParser(fhirSchemaProvider);
         var elementResolver = new LightweightReferenceToElementResolver(referenceParser, fhirSchemaProvider);

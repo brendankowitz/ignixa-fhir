@@ -5,7 +5,7 @@ using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Hl7.FhirPath; // SDK 6.0 FHIRPath extension methods
-using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.FhirPath;

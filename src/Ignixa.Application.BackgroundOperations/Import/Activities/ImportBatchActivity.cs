@@ -9,7 +9,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain;
 using Ignixa.Application.BackgroundOperations.Import.Models;
-using Ignixa.Application.Infrastructure;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
