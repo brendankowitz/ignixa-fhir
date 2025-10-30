@@ -163,12 +163,10 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         var logger = _loggerFactory.CreateLogger<SqlEntityFrameworkRepositoryFactory>();
 
         // Check if connection string contains password-based authentication indicators
-        bool hasUserId = connectionString.Contains("User ID=", StringComparison.OrdinalIgnoreCase) ||
-                         connectionString.Contains("uid=", StringComparison.OrdinalIgnoreCase);
         bool hasPassword = connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase) ||
                            connectionString.Contains("pwd=", StringComparison.OrdinalIgnoreCase);
 
-        if (hasUserId || hasPassword)
+        if (hasPassword)
         {
             logger.LogError(
                 "Tenant {TenantId} connection string contains local SQL authentication (User ID/Password). " +
