@@ -66,7 +66,11 @@
       "Bash(fhir-codegen/src/fhir-codegen/bin/Release/net8.0/fhir-codegen.exe generate:*)",
       "Bash(do echo \"✓ Generating $version provider...\")",
       "Bash(sed:*)",
-      "WebFetch(domain:microsofthealthoss.pkgs.visualstudio.com)"
+      "WebFetch(domain:microsofthealthoss.pkgs.visualstudio.com)",
+      "mcp__roslyn__roslyn_search_symbols",
+      "mcp__sqlserver__execute_sql",
+      "mcp__sqlserver__describe_table",
+      "mcp__roslyn__roslyn_load_solution"
     ],
     "deny": [],
     "ask": []

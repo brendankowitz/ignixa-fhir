@@ -41,11 +41,17 @@ public class LightweightReferenceToElementResolver : IReferenceToElementResolver
 
     public ITypedElement Resolve(string reference)
     {
-        if (string.IsNullOrWhiteSpace(reference)) return null;
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return null;
+        }
 
         ReferenceSearchValue parsed = _referenceParser.Parse(reference);
 
-        if (parsed == null) return null;
+        if (parsed == null)
+        {
+            return null;
+        }
 
         // Create a minimal FHIR resource with just resourceType and id
         string json = $"{{\"resourceType\":\"{parsed.ResourceType}\",\"id\":\"{parsed.ResourceId}\"}}";

@@ -114,15 +114,28 @@ public class ChainedExpressionProcessor
             return Enumerable.Empty<long>().AsQueryable();
         }
 
+        // Step 2.5: Get the SearchParamId for the reference search parameter
+        // This ensures we only match references using the specific parameter requested in the chain
+        var refSearchParamId = await _cache.GetSearchParamIdAsync(chainedExpression.ReferenceSearchParameter.Url.ToString());
+        if (!refSearchParamId.HasValue)
+        {
+            _logger.LogWarning(
+                "Reference search parameter not found for forward chain: {Uri}",
+                chainedExpression.ReferenceSearchParameter.Url);
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
         // Step 3: Find references from source to matching targets
         // Query: Find ReferenceSearchParams where:
         //   - ResourceTypeId = source type (e.g., Patient)
         //   - ReferenceResourceTypeId IN target types (e.g., Organization)
+        //   - SearchParamId = reference parameter (e.g., organization) - the specific reference parameter
         //   - Join with Resource table to get surrogate ID of referenced resource
         //   - Filter by matching target surrogate IDs
         var referenceQuery = _context.ReferenceSearchParams
             .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId
-                && EF.Constant(targetResourceTypeIds).Contains(rsp.ReferenceResourceTypeId ?? 0))
+                && EF.Constant(targetResourceTypeIds).Contains(rsp.ReferenceResourceTypeId ?? 0)
+                && rsp.SearchParamId == refSearchParamId.Value)
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },
@@ -146,31 +159,34 @@ public class ChainedExpressionProcessor
         // Example: Patient?_has:Observation:patient:code=1234-5
         //   Find Patients that are referenced by Observations where code=1234-5
 
-        // Step 1: Get target resource type IDs (the type that references us)
-        var targetResourceTypeIds = await GetResourceTypeIdsAsync(chainedExpression.TargetResourceTypes, ct);
-        if (targetResourceTypeIds.Count == 0)
+        // Step 1: Get referencing resource type IDs (the type that references us)
+        // For reverse chains: chainedExpression.ResourceTypes contains the referencing type (e.g., Observation)
+        //                     chainedExpression.TargetResourceTypes contains the referenced type (e.g., Patient)
+        var referencingResourceTypeIds = await GetResourceTypeIdsAsync(chainedExpression.ResourceTypes, ct);
+        if (referencingResourceTypeIds.Count == 0)
         {
-            _logger.LogWarning("Target resource types not found: {TargetTypes}", string.Join(",", chainedExpression.TargetResourceTypes));
+            _logger.LogWarning("Referencing resource types not found: {ReferencingTypes}", string.Join(",", chainedExpression.ResourceTypes));
             return Enumerable.Empty<long>().AsQueryable();
         }
 
-        // Step 2: Process the target expression to get matching target resource IDs
-        IQueryable<long> targetResourceIds;
+        // Step 2: Process the expression to get matching referencing resource IDs
+        // These are Observations (the referencing type) that match the criteria (e.g., code=527)
+        IQueryable<long> referencingResourceIds;
         if (chainedExpression.Expression is SearchParameterExpression searchParamExpr)
         {
-            targetResourceIds = await _parameterQueryGenerator.GenerateQueryAsync(
-                targetResourceTypeIds[0],
+            referencingResourceIds = await _parameterQueryGenerator.GenerateQueryAsync(
+                referencingResourceTypeIds[0],
                 searchParamExpr,
                 ct);
         }
         else if (chainedExpression.Expression is MultiaryExpression multiaryExpr)
         {
-            targetResourceIds = await ProcessMultiaryTargetExpressionAsync(targetResourceTypeIds[0], multiaryExpr, ct);
+            referencingResourceIds = await ProcessMultiaryTargetExpressionAsync(referencingResourceTypeIds[0], multiaryExpr, ct);
         }
         else if (chainedExpression.Expression is ChainedExpression nestedChain)
         {
             // Nested chain: recursively process
-            targetResourceIds = await ProcessChainAsync(targetResourceTypeIds[0], nestedChain, ct);
+            referencingResourceIds = await ProcessChainAsync(referencingResourceTypeIds[0], nestedChain, ct);
         }
         else
         {
@@ -178,16 +194,29 @@ public class ChainedExpressionProcessor
             return Enumerable.Empty<long>().AsQueryable();
         }
 
-        // Step 3: Find references FROM matching targets TO source type
+        // Step 2.5: Get the SearchParamId for the reference search parameter
+        // This ensures we only match references using the specific parameter requested in the _has query
+        var refSearchParamId = await _cache.GetSearchParamIdAsync(chainedExpression.ReferenceSearchParameter.Url.ToString());
+        if (!refSearchParamId.HasValue)
+        {
+            _logger.LogWarning(
+                "Reference search parameter not found for reverse chain: {Uri}",
+                chainedExpression.ReferenceSearchParameter.Url);
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Step 3: Find references FROM matching referencing resources TO source type
         // Query: Find ReferenceSearchParams where:
-        //   - ResourceTypeId IN target types (e.g., Observation) - the referencing resource
-        //   - ResourceSurrogateId IN (matching target IDs) - the specific referencing resources
+        //   - ResourceTypeId IN referencing types (e.g., Observation) - the referencing resource
+        //   - ResourceSurrogateId IN (matching referencing IDs) - the specific referencing resources
         //   - ReferenceResourceTypeId = source type (e.g., Patient) - what they reference
+        //   - SearchParamId = reference parameter (e.g., clinical-patient) - the specific reference parameter
         //   - Join with Resource table to get surrogate ID of the referenced source resource
         var reverseReferenceQuery = _context.ReferenceSearchParams
-            .Where(rsp => EF.Constant(targetResourceTypeIds).Contains(rsp.ResourceTypeId)
-                && targetResourceIds.Contains(rsp.ResourceSurrogateId)
-                && rsp.ReferenceResourceTypeId == sourceResourceTypeId)
+            .Where(rsp => EF.Constant(referencingResourceTypeIds).Contains(rsp.ResourceTypeId)
+                && referencingResourceIds.Contains(rsp.ResourceSurrogateId)
+                && rsp.ReferenceResourceTypeId == sourceResourceTypeId
+                && rsp.SearchParamId == refSearchParamId.Value)
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },

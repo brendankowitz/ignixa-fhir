@@ -94,6 +94,7 @@ public class FhirPathEvaluator
             "any" => EvaluateAny(focusElements, func.Arguments, context),
             "repeat" => EvaluateRepeat(focusElements, func.Arguments, context),
             "oftype" => EvaluateOfType(focusElements, func.Arguments),
+            "as" => EvaluateAs(focusElements, func.Arguments),
 
             // Subsetting functions
             "first" => EvaluateFirst(focusElements),
@@ -161,6 +162,7 @@ public class FhirPathEvaluator
 
             // FHIR-specific functions
             "extension" => EvaluateExtension(focusElements, func.Arguments, context),
+            "resolve" => EvaluateResolve(focusElements, context),
 
             // Utility functions
             "trace" => EvaluateTrace(focusElements, func.Arguments, context),
@@ -533,6 +535,24 @@ public class FhirPathEvaluator
             return Enumerable.Empty<ITypedElement>();
 
         // FhirPath type names are lowercase, ToLowerInvariant is intentional
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        var typeName = idExpr.Name.ToLowerInvariant();
+        return focus.Where(e => e.InstanceType?.ToLowerInvariant() == typeName);
+#pragma warning restore CA1308 // Normalize strings to uppercase
+    }
+
+    private IEnumerable<ITypedElement> EvaluateAs(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments)
+    {
+        // as() is functionally identical to ofType() - it casts/filters by type
+        // as(type) returns the input if it is of the specified type, otherwise returns empty
+        if (arguments.Count == 0)
+            throw new ArgumentException("as() requires a type argument");
+
+        // Extract type name from identifier expression
+        if (arguments[0] is not IdentifierExpression idExpr)
+            return Enumerable.Empty<ITypedElement>();
+
+        // FhirPath type names are case-insensitive
 #pragma warning disable CA1308 // Normalize strings to uppercase
         var typeName = idExpr.Name.ToLowerInvariant();
         return focus.Where(e => e.InstanceType?.ToLowerInvariant() == typeName);
@@ -1061,6 +1081,58 @@ public class FhirPathEvaluator
                 }
             }
         }
+    }
+
+    private IEnumerable<ITypedElement> EvaluateResolve(IEnumerable<ITypedElement> focus, EvaluationContext context)
+    {
+        // resolve() : collection
+        // Takes a Reference element and resolves it to the actual resource.
+        // Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
+        // Per FHIR spec: resolve() returns empty on failure (does not throw).
+
+        var results = new List<ITypedElement>();
+
+        if (context is not FhirEvaluationContext fhirContext || fhirContext.ElementResolver == null)
+        {
+            // No resolver available - return empty (this is expected during indexing)
+            return results;
+        }
+
+        foreach (var element in focus)
+        {
+            // resolve() only works on Reference types
+            if (element.InstanceType != "Reference" && element.InstanceType != "ResourceReference")
+            {
+                // Not a reference - skip
+                continue;
+            }
+
+            // Extract the reference string (e.g., "Patient/123" or "http://example.org/fhir/Patient/123")
+            var referenceValue = element.Scalar("reference") as string;
+            if (string.IsNullOrEmpty(referenceValue))
+            {
+                // No reference value - skip
+                continue;
+            }
+
+            // Call the ElementResolver to resolve the reference
+            try
+            {
+                var resolved = fhirContext.ElementResolver(referenceValue);
+                if (resolved != null)
+                {
+                    results.Add(resolved);
+                }
+                // If resolved is null, the reference couldn't be resolved - skip silently
+            }
+            catch
+            {
+                // If resolution fails, skip silently (FHIR spec: resolve() returns empty on failure)
+                continue;
+            }
+        }
+
+        return results;
     }
 
     // Utility functions
