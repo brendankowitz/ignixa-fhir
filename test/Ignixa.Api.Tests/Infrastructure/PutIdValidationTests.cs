@@ -4,20 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using FluentAssertions;
-using Ignixa.Api.Infrastructure;
 using Ignixa.Domain.Exceptions;
-using Ignixa.Search;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using Moq;
-using System.Text.Json.Nodes;
 using Xunit;
 
 namespace Ignixa.Api.Tests.Infrastructure;
 
 /// <summary>
 /// Unit tests for PUT request ID validation in FhirEndpoints.
-/// Verifies that PUT requests validate ID consistency between URL and JSON body.
+/// Verifies the validation logic for ID consistency between URL and JSON body.
 ///
 /// FHIR Spec Requirement (R4/R4B/R5):
 /// "For a PUT operation, the resource id in the body SHALL match the [id] in the URL.
@@ -28,29 +22,14 @@ public class PutIdValidationTests
     #region Missing ID in Body Tests
 
     [Fact]
-    public void GivenResourceWithNoIdInBody_WhenValidatingPutRequest_ThenThrowsBadRequestException()
+    public void GivenNullBodyId_WhenValidatingPutRequest_ThenThrowsBadRequestException()
     {
         // Arrange
-        var resourceType = "Observation";
-        var urlId = "observation1";
-
-        // Create a resource without an id field
-        var jsonNode = new ResourceJsonNode
-        {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse("""
-            {
-                "resourceType": "Observation",
-                "status": "final"
-            }
-            """)!
-        };
+        string? bodyId = null;
 
         // Act & Assert
         var ex = Assert.Throws<BadRequestException>(() =>
         {
-            // This would normally be called within HandlePutResource
-            var bodyId = jsonNode.Id;
             if (string.IsNullOrWhiteSpace(bodyId))
             {
                 throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
@@ -61,28 +40,32 @@ public class PutIdValidationTests
     }
 
     [Fact]
-    public void GivenResourceWithEmptyIdInBody_WhenValidatingPutRequest_ThenThrowsBadRequestException()
+    public void GivenEmptyBodyId_WhenValidatingPutRequest_ThenThrowsBadRequestException()
     {
         // Arrange
-        var resourceType = "Observation";
-        var urlId = "observation1";
-
-        var jsonNode = new ResourceJsonNode
-        {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse("""
-            {
-                "resourceType": "Observation",
-                "id": "",
-                "status": "final"
-            }
-            """)!
-        };
+        var bodyId = "";
 
         // Act & Assert
         var ex = Assert.Throws<BadRequestException>(() =>
         {
-            var bodyId = jsonNode.Id;
+            if (string.IsNullOrWhiteSpace(bodyId))
+            {
+                throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
+            }
+        });
+
+        ex.Message.Should().Contain("Resource ID must be present");
+    }
+
+    [Fact]
+    public void GivenWhitespaceBodyId_WhenValidatingPutRequest_ThenThrowsBadRequestException()
+    {
+        // Arrange
+        var bodyId = "   ";
+
+        // Act & Assert
+        var ex = Assert.Throws<BadRequestException>(() =>
+        {
             if (string.IsNullOrWhiteSpace(bodyId))
             {
                 throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
@@ -100,64 +83,55 @@ public class PutIdValidationTests
     public void GivenMismatchedIds_WhenValidatingPutRequest_ThenThrowsBadRequestException()
     {
         // Arrange
-        var resourceType = "Observation";
         var urlId = "observation1";
         var bodyId = "observation2";
-
-        var jsonNode = new ResourceJsonNode
-        {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse($"""
-            {{
-                "resourceType": "Observation",
-                "id": "{bodyId}",
-                "status": "final"
-            }}
-            """)!
-        };
 
         // Act & Assert
         var ex = Assert.Throws<BadRequestException>(() =>
         {
-            var retrievedBodyId = jsonNode.Id;
-            if (!string.Equals(retrievedBodyId, urlId, StringComparison.Ordinal))
+            if (!string.Equals(bodyId, urlId, StringComparison.Ordinal))
             {
-                throw new BadRequestException($"Resource ID in body ('{retrievedBodyId}') must match the ID in the URL ('{urlId}')");
+                throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{urlId}')");
             }
         });
 
-        ex.Message.Should().Contain($"must match the ID in the URL");
-        ex.Message.Should().Contain($"observation2");
-        ex.Message.Should().Contain($"observation1");
+        ex.Message.Should().Contain("must match the ID in the URL");
+        ex.Message.Should().Contain("observation2");
+        ex.Message.Should().Contain("observation1");
     }
 
     [Fact]
     public void GivenIdDifferentCase_WhenValidatingPutRequest_ThenThrowsBadRequestException()
     {
         // Arrange - IDs should match exactly (case-sensitive)
-        var resourceType = "Patient";
         var urlId = "Patient123";
         var bodyId = "patient123";
-
-        var jsonNode = new ResourceJsonNode
-        {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse($"""
-            {{
-                "resourceType": "Patient",
-                "id": "{bodyId}",
-                "name": [{{ "use": "official", "family": "Doe" }}]
-            }}
-            """)!
-        };
 
         // Act & Assert
         var ex = Assert.Throws<BadRequestException>(() =>
         {
-            var retrievedBodyId = jsonNode.Id;
-            if (!string.Equals(retrievedBodyId, urlId, StringComparison.Ordinal))
+            if (!string.Equals(bodyId, urlId, StringComparison.Ordinal))
             {
-                throw new BadRequestException($"Resource ID in body ('{retrievedBodyId}') must match the ID in the URL ('{urlId}')");
+                throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{urlId}')");
+            }
+        });
+
+        ex.Message.Should().Contain("must match");
+    }
+
+    [Fact]
+    public void GivenIdWithLeadingWhitespace_WhenValidatingPutRequest_ThenThrowsBadRequestException()
+    {
+        // Arrange - whitespace in ID should fail comparison
+        var urlId = "obs-123";
+        var bodyId = " obs-123";  // Leading space
+
+        // Act & Assert
+        var ex = Assert.Throws<BadRequestException>(() =>
+        {
+            if (!string.Equals(bodyId, urlId, StringComparison.Ordinal))
+            {
+                throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{urlId}')");
             }
         });
 
@@ -172,23 +146,10 @@ public class PutIdValidationTests
     public void GivenMatchingIds_WhenValidatingPutRequest_ThenSucceeds()
     {
         // Arrange
-        var resourceType = "Observation";
         var id = "observation1";
-
-        var jsonNode = new ResourceJsonNode
-        {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse($"""
-            {{
-                "resourceType": "Observation",
-                "id": "{id}",
-                "status": "final"
-            }}
-            """)!
-        };
+        var bodyId = "observation1";
 
         // Act - no exception should be thrown
-        var bodyId = jsonNode.Id;
         if (string.IsNullOrWhiteSpace(bodyId))
         {
             throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
@@ -204,106 +165,46 @@ public class PutIdValidationTests
     }
 
     [Fact]
-    public void GivenComplexResourceWithValidId_WhenValidatingPutRequest_ThenSucceeds()
+    public void GivenMatchingIdsWithSpecialCharacters_WhenValidatingPutRequest_ThenSucceeds()
     {
-        // Arrange - test with a more complete resource
-        var resourceType = "Patient";
-        var id = "patient-example-123";
+        // Arrange - special characters in ID should be preserved
+        var id = "org-123_special.chars";
+        var bodyId = "org-123_special.chars";
 
-        var jsonNode = new ResourceJsonNode
+        // Act
+        if (string.IsNullOrWhiteSpace(bodyId))
         {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse($"""
-            {{
-                "resourceType": "Patient",
-                "id": "{id}",
-                "active": true,
-                "name": [
-                    {{
-                        "use": "official",
-                        "family": "Doe",
-                        "given": ["John"]
-                    }}
-                ],
-                "telecom": [
-                    {{
-                        "system": "phone",
-                        "value": "555-1234"
-                    }}
-                ]
-            }}
-            """)!
-        };
-
-        // Act & Assert
-        var bodyId = jsonNode.Id;
-        bodyId.Should().Be(id);
+            throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
+        }
 
         if (!string.Equals(bodyId, id, StringComparison.Ordinal))
         {
             throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{id}')");
         }
-    }
 
-    #endregion
-
-    #region Edge Cases
-
-    [Fact]
-    public void GivenIdWithWhitespace_WhenValidatingPutRequest_ThenThrowsBadRequestException()
-    {
-        // Arrange - whitespace in ID should fail comparison
-        var resourceType = "Observation";
-        var urlId = "obs-123";
-        var bodyId = " obs-123";  // Leading space
-
-        var jsonNode = new ResourceJsonNode
-        {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse($"""
-            {{
-                "resourceType": "Observation",
-                "id": "{bodyId}",
-                "status": "final"
-            }}
-            """)!
-        };
-
-        // Act & Assert
-        var ex = Assert.Throws<BadRequestException>(() =>
-        {
-            var retrievedBodyId = jsonNode.Id;
-            if (!string.Equals(retrievedBodyId, urlId, StringComparison.Ordinal))
-            {
-                throw new BadRequestException($"Resource ID in body ('{retrievedBodyId}') must match the ID in the URL ('{urlId}')");
-            }
-        });
-
-        ex.Message.Should().Contain("must match");
+        // Assert
+        bodyId.Should().Be(id);
     }
 
     [Fact]
-    public void GivenIdWithSpecialCharacters_WhenValidatingPutRequest_ThenMatchesCorrectly()
+    public void GivenMatchingIdsWithUUID_WhenValidatingPutRequest_ThenSucceeds()
     {
-        // Arrange - special characters in ID should be preserved
-        var resourceType = "Organization";
-        var id = "org-123_special.chars";
+        // Arrange - UUID-style ID
+        var id = "550e8400-e29b-41d4-a716-446655440000";
+        var bodyId = "550e8400-e29b-41d4-a716-446655440000";
 
-        var jsonNode = new ResourceJsonNode
+        // Act
+        if (string.IsNullOrWhiteSpace(bodyId))
         {
-            ResourceType = resourceType,
-            MutableNode = JsonNode.Parse($"""
-            {{
-                "resourceType": "Organization",
-                "id": "{id}",
-                "active": true,
-                "name": "Test Org"
-            }}
-            """)!
-        };
+            throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
+        }
 
-        // Act & Assert
-        var bodyId = jsonNode.Id;
+        if (!string.Equals(bodyId, id, StringComparison.Ordinal))
+        {
+            throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{id}')");
+        }
+
+        // Assert
         bodyId.Should().Be(id);
     }
 

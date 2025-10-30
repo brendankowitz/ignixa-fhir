@@ -159,7 +159,7 @@ public class SearchParameterQueryGenerator
     /// <summary>
     /// Processes _lastUpdated parameter expressions by querying the Resource table directly.
     /// The _lastUpdated parameter is stored as resourceSurrogateId, which encodes the DateTime via IdHelper.ToId().
-    /// Uses IdHelper.ToDate() to extract the DateTime from resourceSurrogateId for comparison.
+    /// Compares resourceSurrogateId directly against the value produced by IdHelper.ToId() for the target DateTime.
     /// </summary>
     private async Task<IQueryable<long>> ProcessResourceLastUpdatedExpressionAsync(
         short resourceTypeId,
@@ -445,13 +445,12 @@ public class SearchParameterQueryGenerator
 
         foreach (var resourceTypeName in expression.Values)
         {
-            // Try to get the resource type ID for this name
-            var typeEntity = await _context.ResourceTypes
-                .FirstOrDefaultAsync(rt => rt.Name == resourceTypeName, cancellationToken: ct);
+            // Try to get the resource type ID for this name using cache (consistent with ProcessResourceTypeMultiaryExpressionAsync)
+            var typeId = await _cache.GetResourceTypeIdAsync(resourceTypeName);
 
-            if (typeEntity != null)
+            if (typeId.HasValue)
             {
-                resourceTypeIds.Add(typeEntity.ResourceTypeId);
+                resourceTypeIds.Add(typeId.Value);
             }
         }
 

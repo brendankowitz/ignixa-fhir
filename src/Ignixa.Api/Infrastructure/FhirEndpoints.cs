@@ -425,13 +425,10 @@ public static class FhirEndpoints
             parsedIfMatch = ConditionalHeaderParser.ParseIfNoneMatch(ifMatchHeader);
 
             // Validate ETag format: must be numeric and >= 1
-            if (parsedIfMatch != null)
+            if (parsedIfMatch != null && (!int.TryParse(parsedIfMatch, out var versionId) || versionId < 1))
             {
-                if (!int.TryParse(parsedIfMatch, out var versionId) || versionId < 1)
-                {
-                    logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", ifMatchHeader);
-                    throw new BadRequestException($"Invalid ETag value: {ifMatchHeader}. ETag must be a positive integer.");
-                }
+                logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", ifMatchHeader);
+                throw new BadRequestException($"Invalid ETag value: {ifMatchHeader}. ETag must be a positive integer.");
             }
         }
 
