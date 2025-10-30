@@ -179,18 +179,6 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 "Expected: Authentication=Active Directory Managed Identity;");
         }
 
-        // Check if connection string explicitly uses Managed Identity
-        bool usesManagedIdentity = connectionString.Contains("Authentication=Active Directory Managed Identity", StringComparison.OrdinalIgnoreCase);
-
-        if (!usesManagedIdentity)
-        {
-            // Warning if auth method is not explicitly specified (might default to local auth)
-            logger.LogWarning(
-                "Tenant {TenantId} connection string does not explicitly specify ' Authentication=Active Directory Managed Identity'. " +
-                "Verify this is intentional and that local SQL authentication is disabled on the server.",
-                tenantId);
-        }
-
         logger.LogInformation("Tenant {TenantId} validated for Managed Identity authentication", tenantId);
     }
 
