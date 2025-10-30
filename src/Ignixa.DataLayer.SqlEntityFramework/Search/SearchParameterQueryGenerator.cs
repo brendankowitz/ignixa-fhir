@@ -6,6 +6,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 
@@ -53,8 +54,343 @@ public class SearchParameterQueryGenerator
 
         _logger.LogDebug("Generating query for search parameter: {Parameter}", expression.Parameter?.Name);
 
+        // Handle resource-level parameters that query Resource table directly
+        // instead of indexed search parameter tables
+        if (expression.Parameter?.Code == "_id")
+        {
+            return await ProcessResourceIdExpressionAsync(resourceTypeId, expression.Expression, ct);
+        }
+
+        if (expression.Parameter?.Code == "_lastUpdated")
+        {
+            return await ProcessResourceLastUpdatedExpressionAsync(resourceTypeId, expression.Expression, ct);
+        }
+
+        if (expression.Parameter?.Code == "_type")
+        {
+            return await ProcessResourceTypeExpressionAsync(resourceTypeId, expression.Expression, ct);
+        }
+
+        // TODO: other resource-level parameters like _profile, _security, _tag also need special handling
+
         // Process the inner expression based on its type
         return await ProcessExpressionAsync(resourceTypeId, expression.Expression, ct);
+    }
+
+    /// <summary>
+    /// Processes _id parameter expressions by querying the Resource table directly.
+    /// The _id parameter is a resource-level parameter that matches against Resource.ResourceId.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceIdExpressionAsync(
+        short resourceTypeId,
+        Expression expr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing _id parameter expression");
+
+        // The _id parameter is defined as TokenCode field, so we need to extract the resource ID value
+        if (expr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
+        {
+            // Query the Resource table: WHERE ResourceTypeId = ? AND ResourceId = ?
+            var query = _context.Resources
+                .Where(r => r.ResourceTypeId == resourceTypeId
+                    && r.ResourceId == stringExpr.Value
+                    && !r.IsHistory
+                    && !r.IsDeleted)
+                .Select(r => r.ResourceSurrogateId);
+
+            return await Task.FromResult(query);
+        }
+
+        // Handle other expression types for _id (e.g., MultiaryExpression for multiple IDs)
+        if (expr is MultiaryExpression multiaryExpr)
+        {
+            return await ProcessResourceIdMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
+        }
+
+        throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for _id parameter query generation");
+    }
+
+    /// <summary>
+    /// Processes multiary expressions (e.g., multiple _id values) for resource-level parameters.
+    /// </summary>
+    private Task<IQueryable<long>> ProcessResourceIdMultiaryExpressionAsync(
+        short resourceTypeId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        if (multiaryExpr.Expressions.Count == 0)
+        {
+            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+        }
+
+        var queries = new List<IQueryable<long>>();
+        foreach (var subExpr in multiaryExpr.Expressions)
+        {
+            if (subExpr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
+            {
+                var query = _context.Resources
+                    .Where(r => r.ResourceTypeId == resourceTypeId
+                        && r.ResourceId == stringExpr.Value
+                        && !r.IsHistory
+                        && !r.IsDeleted)
+                    .Select(r => r.ResourceSurrogateId);
+                queries.Add(query);
+            }
+        }
+
+        if (queries.Count == 0)
+        {
+            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+        }
+
+        // Combine based on operator
+        var result = queries[0];
+        for (int i = 1; i < queries.Count; i++)
+        {
+            result = multiaryExpr.MultiaryOperation == MultiaryOperator.Or
+                ? result.Union(queries[i])
+                : result.Intersect(queries[i]);
+        }
+
+        return Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// Processes _lastUpdated parameter expressions by querying the Resource table directly.
+    /// The _lastUpdated parameter is stored as resourceSurrogateId, which encodes the DateTime via IdHelper.ToId().
+    /// Uses IdHelper.ToDate() to extract the DateTime from resourceSurrogateId for comparison.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceLastUpdatedExpressionAsync(
+        short resourceTypeId,
+        Expression expr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing _lastUpdated parameter expression");
+
+        // The _lastUpdated parameter uses BinaryExpression for comparison operators (>, >=, <, <=, =, !=)
+        if (expr is BinaryExpression binaryExpr && binaryExpr.Value is DateTimeOffset dateTimeValue)
+        {
+            // Query the Resource table: WHERE ResourceTypeId = ? AND resourceSurrogateId [operator] ToId(dateTime)
+            var targetId = dateTimeValue.ToId();
+
+            var query = binaryExpr.BinaryOperator switch
+            {
+                BinaryOperator.Equal =>
+                    _context.Resources
+                        .Where(r => r.ResourceTypeId == resourceTypeId
+                            && r.ResourceSurrogateId == targetId
+                            && !r.IsHistory
+                            && !r.IsDeleted),
+                BinaryOperator.GreaterThan =>
+                    _context.Resources
+                        .Where(r => r.ResourceTypeId == resourceTypeId
+                            && r.ResourceSurrogateId > targetId
+                            && !r.IsHistory
+                            && !r.IsDeleted),
+                BinaryOperator.GreaterThanOrEqual =>
+                    _context.Resources
+                        .Where(r => r.ResourceTypeId == resourceTypeId
+                            && r.ResourceSurrogateId >= targetId
+                            && !r.IsHistory
+                            && !r.IsDeleted),
+                BinaryOperator.LessThan =>
+                    _context.Resources
+                        .Where(r => r.ResourceTypeId == resourceTypeId
+                            && r.ResourceSurrogateId < targetId
+                            && !r.IsHistory
+                            && !r.IsDeleted),
+                BinaryOperator.LessThanOrEqual =>
+                    _context.Resources
+                        .Where(r => r.ResourceTypeId == resourceTypeId
+                            && r.ResourceSurrogateId <= targetId
+                            && !r.IsHistory
+                            && !r.IsDeleted),
+                BinaryOperator.NotEqual =>
+                    _context.Resources
+                        .Where(r => r.ResourceTypeId == resourceTypeId
+                            && r.ResourceSurrogateId != targetId
+                            && !r.IsHistory
+                            && !r.IsDeleted),
+                _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _lastUpdated")
+            };
+
+            return await Task.FromResult(query.Select(r => r.ResourceSurrogateId));
+        }
+
+        // Handle other expression types for _lastUpdated (e.g., MultiaryExpression for multiple dates with OR/AND)
+        if (expr is MultiaryExpression multiaryExpr)
+        {
+            return await ProcessResourceLastUpdatedMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
+        }
+
+        throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for _lastUpdated parameter query generation");
+    }
+
+    /// <summary>
+    /// Processes multiary expressions (e.g., multiple _lastUpdated constraints) for resource-level parameters.
+    /// </summary>
+    private Task<IQueryable<long>> ProcessResourceLastUpdatedMultiaryExpressionAsync(
+        short resourceTypeId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        if (multiaryExpr.Expressions.Count == 0)
+        {
+            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+        }
+
+        var queries = new List<IQueryable<long>>();
+        foreach (var subExpr in multiaryExpr.Expressions)
+        {
+            if (subExpr is BinaryExpression binaryExpr && binaryExpr.Value is DateTimeOffset dateTimeValue)
+            {
+                var targetId = dateTimeValue.ToId();
+
+                var query = binaryExpr.BinaryOperator switch
+                {
+                    BinaryOperator.Equal =>
+                        _context.Resources
+                            .Where(r => r.ResourceTypeId == resourceTypeId
+                                && r.ResourceSurrogateId == targetId
+                                && !r.IsHistory
+                                && !r.IsDeleted),
+                    BinaryOperator.GreaterThan =>
+                        _context.Resources
+                            .Where(r => r.ResourceTypeId == resourceTypeId
+                                && r.ResourceSurrogateId > targetId
+                                && !r.IsHistory
+                                && !r.IsDeleted),
+                    BinaryOperator.GreaterThanOrEqual =>
+                        _context.Resources
+                            .Where(r => r.ResourceTypeId == resourceTypeId
+                                && r.ResourceSurrogateId >= targetId
+                                && !r.IsHistory
+                                && !r.IsDeleted),
+                    BinaryOperator.LessThan =>
+                        _context.Resources
+                            .Where(r => r.ResourceTypeId == resourceTypeId
+                                && r.ResourceSurrogateId < targetId
+                                && !r.IsHistory
+                                && !r.IsDeleted),
+                    BinaryOperator.LessThanOrEqual =>
+                        _context.Resources
+                            .Where(r => r.ResourceTypeId == resourceTypeId
+                                && r.ResourceSurrogateId <= targetId
+                                && !r.IsHistory
+                                && !r.IsDeleted),
+                    BinaryOperator.NotEqual =>
+                        _context.Resources
+                            .Where(r => r.ResourceTypeId == resourceTypeId
+                                && r.ResourceSurrogateId != targetId
+                                && !r.IsHistory
+                                && !r.IsDeleted),
+                    _ => throw new NotSupportedException($"Binary operator {binaryExpr.BinaryOperator} is not supported for _lastUpdated")
+                };
+
+                queries.Add(query.Select(r => r.ResourceSurrogateId));
+            }
+        }
+
+        if (queries.Count == 0)
+        {
+            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+        }
+
+        // Combine based on operator
+        var result = queries[0];
+        for (int i = 1; i < queries.Count; i++)
+        {
+            result = multiaryExpr.MultiaryOperation == MultiaryOperator.Or
+                ? result.Union(queries[i])
+                : result.Intersect(queries[i]);
+        }
+
+        return Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// Processes _type parameter expressions by querying the Resource table directly.
+    /// The _type parameter is a resource-level parameter that matches against Resource.ResourceTypeId.
+    /// Uses the SearchIndexReferenceDataCache to look up resource type IDs.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceTypeExpressionAsync(
+        short resourceTypeId,
+        Expression expr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing _type parameter expression");
+
+        // For _type parameter, extract resource type names from the expression
+        // Since _type is defined as Token type with no expression, we need to handle InExpression<string>
+        if (expr is InExpression<string> inExpr)
+        {
+            return await ProcessInTokenCodeExpressionAsync(resourceTypeId, inExpr, ct);
+        }
+
+        // Handle single value StringExpression
+        if (expr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
+        {
+            var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value);
+
+            if (typeId.HasValue)
+            {
+                var query = _context.Resources
+                    .Where(r => r.ResourceTypeId == typeId.Value
+                        && !r.IsHistory
+                        && !r.IsDeleted)
+                    .Select(r => r.ResourceSurrogateId);
+                return await Task.FromResult(query);
+            }
+
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Handle MultiaryExpression for multiple resource types with OR/AND
+        if (expr is MultiaryExpression multiaryExpr)
+        {
+            return await ProcessResourceTypeMultiaryExpressionAsync(multiaryExpr, ct);
+        }
+
+        throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for _type parameter query generation");
+    }
+
+    /// <summary>
+    /// Processes multiary expressions for _type parameter (multiple resource types with OR/AND).
+    /// Uses the SearchIndexReferenceDataCache to look up resource type IDs.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceTypeMultiaryExpressionAsync(
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        if (multiaryExpr.Expressions.Count == 0)
+        {
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        var resourceTypeIds = new List<short>();
+
+        foreach (var subExpr in multiaryExpr.Expressions)
+        {
+            if (subExpr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
+            {
+                var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value);
+                if (typeId.HasValue)
+                {
+                    resourceTypeIds.Add(typeId.Value);
+                }
+            }
+        }
+
+        if (resourceTypeIds.Count == 0)
+        {
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Return query: WHERE ResourceTypeId IN (...)
+        return _context.Resources
+            .Where(r => resourceTypeIds.Contains(r.ResourceTypeId) && !r.IsHistory && !r.IsDeleted)
+            .Select(r => r.ResourceSurrogateId);
     }
 
     private async Task<IQueryable<long>> ProcessExpressionAsync(
