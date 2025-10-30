@@ -72,9 +72,9 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
 
         foreach (SearchParameterInfo searchParameter in searchParameters)
         {
-            if (searchParameter.Code == SearchParameterNames.ResourceType)
-                // We don't index the resource type value. We just use the property on the root document.
-
+            // Skip resource-table parameters (those handled at database/query level)
+            // These are queried directly against the Resource table, not indexed in search parameter tables
+            if (searchParameter.Code is "_id" or "_lastUpdated" or "_type")
                 continue;
 
             if (searchParameter.Type == SearchParamType.Composite)
