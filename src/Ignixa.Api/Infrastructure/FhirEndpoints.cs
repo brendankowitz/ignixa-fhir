@@ -41,13 +41,6 @@ namespace Ignixa.Api.Infrastructure;
 /// </summary>
 public static class FhirEndpoints
 {
-    // Reusable JsonSerializerOptions for FHIR bundle serialization (CA1869 compliance)
-    private static readonly JsonSerializerOptions BundleJsonOptions = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    };
-
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
     ///
@@ -915,7 +908,7 @@ public static class FhirEndpoints
             string responseJson;
             try
             {
-                responseJson = JsonSerializer.Serialize(responseBundle, BundleJsonOptions);
+                responseJson = responseBundle.SerializeToString();
             }
             catch (Exception ex)
             {
@@ -928,7 +921,7 @@ public static class FhirEndpoints
             {
                 context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
             }
-
+                
             return Results.Content(responseJson, KnownContentTypes.ApplicationFhirJson);
         }
         else

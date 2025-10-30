@@ -158,17 +158,17 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
 
         Type targetType = typeof(T);
 
-        //downcast if needed
+        // Downcast if needed
         if (targetType == typeof(ResourceJsonNode))
         {
-            return (T)this;
+            return (T)(object)this;
         }
 
         // Try up-cast to derived type
         string targetResourceType = targetType.Name.Replace("JsonNode", string.Empty, StringComparison.Ordinal);
         if (validate && targetResourceType != ResourceType)
         {
-            throw new InvalidOperationException($"{ResourceType} cannot be cast to {targetType.Name}");
+            throw new InvalidCastException($"Cannot convert resource of type '{ResourceType}' to {targetType.Name}, expected '{targetResourceType}'");
         }
 
         T? instance;

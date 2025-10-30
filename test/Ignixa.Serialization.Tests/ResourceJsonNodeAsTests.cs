@@ -166,12 +166,12 @@ public class ResourceJsonNodeAsTests
 
         // Act
         var result1 = parametersNode.As<ParametersJsonNode>();
-        var result2 = parametersNode.As<ParametersJsonNode>();
+        var result2 = result1.As<ParametersJsonNode>(); // Cast the already-converted instance
 
-        // Assert - Both conversions create new instances
+        // Assert
         Assert.NotNull(result1);
         Assert.NotNull(result2);
-        Assert.NotSame(result1, result2); // Different instances
-        Assert.Same(result1.MutableNode, result2.MutableNode); // But same underlying JsonObject
+        Assert.Same(result1, result2); // Same instance when already correct type (casting optimization)
+        Assert.Same(result1.MutableNode, result2.MutableNode); // Same underlying JsonObject
     }
 }
