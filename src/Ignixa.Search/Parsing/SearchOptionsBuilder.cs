@@ -89,6 +89,12 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
                     case ParameterCategory.Summary:
                         options.Summary = ParseSummaryType(param.Value);
+                        // Per FHIR spec, _summary=count implies the total count should be returned
+                        // Auto-set Total to Accurate when Summary=count (unless explicitly overridden)
+                        if (options.Summary == SummaryType.Count && options.Total == TotalType.None)
+                        {
+                            options.Total = TotalType.Accurate;
+                        }
                         break;
 
                     case ParameterCategory.Sort:
