@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
-using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
@@ -23,7 +22,6 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 {
     private readonly FhirDbContext _context;
     private readonly GzipResourceCompressor _compressor;
-    private readonly SearchIndexWriter _searchIndexWriter;
     private readonly SqlMergeRepository _sqlMergeRepository;
     private readonly ILogger<SqlEntityFrameworkRepository> _logger;
 
@@ -32,19 +30,16 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// </summary>
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="compressor">The Gzip compressor for RawResource storage.</param>
-    /// <param name="searchIndexWriter">The search index writer for indexing resources.</param>
     /// <param name="sqlMergeRepository">The SQL merge repository for high-performance batch operations.</param>
     /// <param name="logger">Logger instance.</param>
     public SqlEntityFrameworkRepository(
         FhirDbContext context,
         GzipResourceCompressor compressor,
-        SearchIndexWriter searchIndexWriter,
         SqlMergeRepository sqlMergeRepository,
         ILogger<SqlEntityFrameworkRepository> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
-        _searchIndexWriter = searchIndexWriter ?? throw new ArgumentNullException(nameof(searchIndexWriter));
         _sqlMergeRepository = sqlMergeRepository ?? throw new ArgumentNullException(nameof(sqlMergeRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -126,24 +121,48 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
         _logger.LogDebug("Creating/updating resource {ResourceType}/{ResourceId}", resource.ResourceType, resource.ResourceId);
 
-        // Use shared helper to create resource entity
-        var (entity, newVersion) = await CreateResourceEntityAsync(
-            resource.ResourceType,
-            resource.ResourceId,
-            resource.Resource,
-            resource.SearchIndices ?? Array.Empty<object>(),
-            resource.Request.Method,
-            transactionId: (await GetNextTransactionIdAsync(ct)).Value,
+        // Phase 1 PoC: Use merge repository for single resource operations
+        // This provides atomic writes and aligns single resource path with batch operations
+        var transactionId = await GetNextTransactionIdAsync(ct);
+
+        // Determine new version
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, ct);
+        var currentEntity = await _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId
+                && r.ResourceId == resource.ResourceId
+                && !r.IsHistory)
+            .OrderByDescending(r => r.ResourceSurrogateId)
+            .FirstOrDefaultAsync(ct);
+
+        int newVersion = currentEntity?.Version + 1 ?? 1;
+
+        // Update resource metadata with version and lastUpdated
+        resource.Resource.Meta.VersionId = newVersion.ToString();
+        resource.Resource.Meta.LastUpdated = transactionId.Value.ToDate();
+
+        // Use merge repository for atomic write
+        // Wrap single resource in a list with entry index 0
+        var resourceList = new[] { resource };
+        var entryIndices = new[] { 0 };
+
+        await _sqlMergeRepository.MergeResourcesAsync(
+            transactionId.Value,
+            singleTransaction: true,
+            resourceList,
+            entryIndices,
             ct);
 
-        // Save changes immediately (standalone operation)
-        await _context.SaveChangesAsync(ct);
+        // Commit the transaction
+        await _sqlMergeRepository.CommitTransactionAsync(
+            transactionId: transactionId.Value,
+            failureReason: null,
+            cancellationToken: ct);
 
-        _logger.LogInformation("Created resource {ResourceType}/{ResourceId} version {Version}", resource.ResourceType, resource.ResourceId, newVersion);
+        _logger.LogInformation("Created/updated resource {ResourceType}/{ResourceId} version {Version} via merge", resource.ResourceType, resource.ResourceId, newVersion);
 
-        // Return UpdateResult with ResourceKey + raw bytes (only deserialize if needed)
-        var compressedData = entity.RawResource;
-        var lastModified = entity.Transaction?.CreateDate ?? resource.Resource.Meta.LastUpdated ?? DateTimeOffset.UtcNow;
+        // Return UpdateResult
+        var compressedData = _compressor.SerializeAndCompress(resource.Resource);
+        var lastModified = resource.Resource.Meta.LastUpdated ?? DateTimeOffset.UtcNow;
 
         var key = new ResourceKey(
             ResourceType: resource.ResourceType,
@@ -575,88 +594,6 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     }
 
     // Helper methods
-
-    /// <summary>
-    /// Creates a new ResourceEntity for a resource, handling versioning, compression, and search indexing.
-    /// This method consolidates the shared logic between CreateOrUpdateAsync and BatchWriteAsync.
-    /// Does NOT call SaveChangesAsync - caller is responsible for persisting changes.
-    /// </summary>
-    /// <returns>Tuple of (created entity, new version number)</returns>
-    private async Task<(ResourceEntity entity, int newVersion)> CreateResourceEntityAsync(
-        string resourceType,
-        string resourceId,
-        ResourceJsonNode resource,
-        IReadOnlyList<object> searchIndexes,
-        string requestMethod,
-        long? transactionId,
-        CancellationToken ct)
-    {
-        // Get ResourceTypeId
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
-
-        // Get current version (if exists)
-        var currentEntity = await _context.Resources
-            .Where(r => r.ResourceTypeId == resourceTypeId
-                && r.ResourceId == resourceId
-                && !r.IsHistory)
-            .OrderByDescending(r => r.ResourceSurrogateId)
-            .FirstOrDefaultAsync(ct);
-
-        int newVersion = currentEntity?.Version + 1 ?? 1;
-
-        // Mark old version as history (if exists)
-        if (currentEntity != null)
-        {
-            currentEntity.IsHistory = true;
-            currentEntity.HistoryTransactionId = transactionId;
-        }
-
-        // Update resource metadata with version and lastUpdated
-        // This ensures the stored JSON has the correct meta.versionId and meta.lastUpdated
-        resource.Meta.VersionId = newVersion.ToString();
-        if (transactionId.HasValue)
-        {
-            resource.Meta.LastUpdated = transactionId.Value.ToDate();
-        }
-        else
-        {
-            resource.Meta.LastUpdated = DateTimeOffset.UtcNow;
-        }
-
-        // Compress JSON
-        var compressedData = _compressor.SerializeAndCompress(resource);
-
-        // Create new version
-        var newEntity = new ResourceEntity
-        {
-            ResourceTypeId = resourceTypeId,
-            ResourceId = resourceId,
-            Version = newVersion,
-            IsHistory = false,
-            ResourceSurrogateId = await GetNextSurrogateIdAsync(ct),
-            IsDeleted = false,
-            RequestMethod = requestMethod,
-            RawResource = compressedData,
-            IsRawResourceMetaSet = false, // TODO: Parse JSON to check if meta is set
-            SearchParamHash = null, // TODO: Calculate search param hash
-            TransactionId = transactionId,
-            HistoryTransactionId = null,
-        };
-
-        _context.Resources.Add(newEntity);
-
-        // Write search indices
-        if (searchIndexes.Count > 0)
-        {
-            await _searchIndexWriter.WriteSearchIndicesAsync(
-                resourceTypeId,
-                newEntity.ResourceSurrogateId,
-                searchIndexes,
-                isHistory: false);
-        }
-
-        return (newEntity, newVersion);
-    }
 
     private async ValueTask<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken ct)
     {

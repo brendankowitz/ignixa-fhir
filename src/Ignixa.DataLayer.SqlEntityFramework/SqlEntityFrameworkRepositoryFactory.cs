@@ -286,13 +286,6 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
-            var searchIndexCache = new SearchIndexReferenceDataCache(
-                dbContext,
-                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
-            var searchIndexWriter = new SearchIndexWriter(
-                dbContext,
-                searchIndexCache,
-                _loggerFactory.CreateLogger<SearchIndexWriter>());
 
             var sqlMergeRepository = new SqlMergeRepository(
                 dbContext,
@@ -302,7 +295,6 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             return new SqlEntityFrameworkRepository(
                 dbContext,
                 compressor,
-                searchIndexWriter,
                 sqlMergeRepository,
                 _loggerFactory.CreateLogger<SqlEntityFrameworkRepository>());
         };
