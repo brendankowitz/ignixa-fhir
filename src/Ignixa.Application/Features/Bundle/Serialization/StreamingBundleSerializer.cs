@@ -154,19 +154,27 @@ public static class StreamingBundleSerializer
         WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
 
         // Write buffered entries
+        // Note: Entries stream in phases: Match results (pageSize+1), then Include, then RevInclude
+        // The +1 Match result is used to detect if there are more pages (hasMore flag)
         await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
         {
+            // For Match entries: check if we've reached the pageSize limit
+            // The database returns pageSize+1 results to detect pagination
             if (resource.SearchMode == SearchEntryMode.Match)
             {
+                if (entryCount >= pageSize)
+                {
+                    // We've found the +1 indicator: set hasMore flag but skip rendering
+                    // Continue processing Include/RevInclude results that follow
+                    hasMore = true;
+                    continue;
+                }
+
+                // Within limit: we'll render this Match entry
                 entryCount++;
             }
 
-            if (entryCount >= pageSize)
-            {
-                hasMore = true;
-                break;
-            }
-
+            // Write entry (all Include/RevInclude entries and Match entries within pageSize)
             writer.WriteStartObject();
 
             // Write fullUrl
