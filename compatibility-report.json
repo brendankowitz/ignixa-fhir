@@ -1,0 +1,231 @@
+{
+  "ServerUrl": "http://localhost:5000",
+  "TestRunDate": "2025-10-30T04:45:04.3675045Z",
+  "TotalTests": 22,
+  "Passed": 15,
+  "Failed": 7,
+  "Skipped": 0,
+  "Results": [
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenACombinationOfChainingReverseChainSearchExpressionOverASimpleParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.3933704,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAChainedSearchExpressionWithAPredicateOnSurrogateId_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.2623657,
+      "ErrorMessage": "Assert.True() Failure\r\nExpected: True\r\nActual:   False",
+      "StackTrace": "   at Xunit.Assert.True(Nullable\u00601 condition, String userMessage) in /_/src/xunit.assert/Asserts/BooleanAsserts.cs:line 141\r\n   at Xunit.Assert.True(Boolean condition) in /_/src/xunit.assert/Asserts/BooleanAsserts.cs:line 95\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenAChainedSearchExpressionWithAPredicateOnSurrogateId_WhenSearched_ThenCorrectBundleShouldBeReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 186\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAChainedSearchExpressionOverASimpleParameterWithNoResults_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.3898349,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenANestedChainedSearchExpressionWithAnOrFinalCondition_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.4034021,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenCountOnlyReverseChainSearchWithDeletedResource_WhenSearched_ThenCorrectCountIsReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.0910614,
+      "ErrorMessage": "Assert.Equal() Failure: Values differ\r\nExpected: 1\r\nActual:   null",
+      "StackTrace": "   at Xunit.Assert.Equal[T](T expected, T actual, IEqualityComparer\u00601 comparer) in /_/src/xunit.assert/Asserts/EqualityAsserts.cs:line 154\r\n   at Xunit.Assert.Equal[T](T expected, T actual) in /_/src/xunit.assert/Asserts/EqualityAsserts.cs:line 89\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenCountOnlyReverseChainSearchWithDeletedResource_WhenSearched_ThenCorrectCountIsReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 358\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAReverseChainSearchExpressionWithMultipleTargetTypes_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.0027227,
+      "ErrorMessage": "MethodNotAllowed (NO_FHIR_ACTIVITY_ID_FOR_THIS_TRANSACTION)\r\n==============================================\r\nRequest ID: NO_FHIR_ACTIVITY_ID_FOR_THIS_TRANSACTION\r\nUrl: (GET) http://localhost:5000/?_tag=2c66c523-8703-4bd9-9b78-4a529a625794\u0026_type=Patient,Device\u0026_has:Observation:subject:code=550ac403-b41f-4452-a4f8-60758852bb1e\r\nResponse code: MethodNotAllowed(405)\r\nReason phrase: Method Not Allowed\r\nTimestamp: 2025-10-30T04:45:08.0538987Z\r\nHealth Check Result: InternalServerError(500)\r\nRequest Info: NO_REQUESTINFO\r\n==============================================\r\n",
+      "StackTrace": "   at Microsoft.Health.Fhir.Client.FhirClient.EnsureSuccessStatusCodeAsync(HttpResponseMessage response) in /_/src/Microsoft.Health.Fhir.Shared.Client/FhirClient.cs:line 679\r\n   at Microsoft.Health.Fhir.Client.FhirClient.SearchAsync(String url, Tuple\u00602 customHeader, CancellationToken cancellationToken) in /_/src/Microsoft.Health.Fhir.Shared.Client/FhirClient.cs:line 360\r\n   at Microsoft.Health.Fhir.Client.FhirClient.SearchAsync(String url, CancellationToken cancellationToken) in /_/src/Microsoft.Health.Fhir.Shared.Client/FhirClient.cs:line 345\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenAReverseChainSearchExpressionWithMultipleTargetTypes_WhenSearched_ThenCorrectBundleShouldBeReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 141\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenACombinationOfChainingReverseChainSearchExpressionOverASimpleParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.0148807,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenANestedReverseChainSearchExpressionOverTheTypeResourceParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.1802043,
+      "ErrorMessage": "Assert.NotEmpty() Failure: Collection was empty",
+      "StackTrace": "   at Xunit.Assert.NotEmpty(IEnumerable collection) in /_/src/xunit.assert/Asserts/CollectionAsserts.cs:line 539\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenANestedReverseChainSearchExpressionOverTheTypeResourceParameter_WhenSearched_ThenCorrectBundleShouldBeReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 172\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAReverseChainSearchExpressionOverASimpleParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.230754,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.0193156,
+      "ErrorMessage": "Expected count to be 1 but was 0 .\r\nActual collection as below -\r\nExpected Collection as below -\r\n{\u0022resourceType\u0022:\u0022DiagnosticReport\u0022,\u0022id\u0022:\u002236857d29e49e4e7b8855062519a32f31\u0022,\u0022meta\u0022:{\u0022versionId\u0022:\u00221\u0022,\u0022lastUpdated\u0022:\u00222025-10-30T04:45:06.18\u002B00:00\u0022,\u0022tag\u0022:[{\u0022system\u0022:\u0022testTag\u0022,\u0022code\u0022:\u00222c66c523-8703-4bd9-9b78-4a529a625794\u0022}]},\u0022status\u0022:\u0022final\u0022,\u0022code\u0022:{\u0022coding\u0022:[{\u0022system\u0022:\u0022http://snomed.info/sct\u0022,\u0022code\u0022:\u0022550ac403-b41f-4452-a4f8-60758852bb1e\u0022}]},\u0022subject\u0022:{\u0022reference\u0022:\u0022Patient/6a1b9d4ec4564b3f84e7696a35c6b244\u0022},\u0022result\u0022:[{\u0022reference\u0022:\u0022Observation/9034cfb00d40419fb652dd82abd634d5\u0022}]}\r\n",
+      "StackTrace": "   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ThrowInvalidBundleResultXunitException(IReadOnlyList\u00601 expectedResources, IReadOnlyList\u00601 actualResources, IDictionary\u00602 pagingStatistics) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 343\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ValidateBundle(Bundle bundle, Boolean sort, Boolean invalidSortParameter, Resource[] expectedResources) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 308\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ValidateBundle(Bundle bundle, Resource[] expectedResources) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 269\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 261\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAChainedSearchExpressionOverASimpleParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.0297715,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.0214195,
+      "ErrorMessage": "Expected count to be 2 but was 0 .\r\nActual collection as below -\r\nExpected Collection as below -\r\n{\u0022resourceType\u0022:\u0022DiagnosticReport\u0022,\u0022id\u0022:\u002236857d29e49e4e7b8855062519a32f31\u0022,\u0022meta\u0022:{\u0022versionId\u0022:\u00221\u0022,\u0022lastUpdated\u0022:\u00222025-10-30T04:45:06.18\u002B00:00\u0022,\u0022tag\u0022:[{\u0022system\u0022:\u0022testTag\u0022,\u0022code\u0022:\u00222c66c523-8703-4bd9-9b78-4a529a625794\u0022}]},\u0022status\u0022:\u0022final\u0022,\u0022code\u0022:{\u0022coding\u0022:[{\u0022system\u0022:\u0022http://snomed.info/sct\u0022,\u0022code\u0022:\u0022550ac403-b41f-4452-a4f8-60758852bb1e\u0022}]},\u0022subject\u0022:{\u0022reference\u0022:\u0022Patient/6a1b9d4ec4564b3f84e7696a35c6b244\u0022},\u0022result\u0022:[{\u0022reference\u0022:\u0022Observation/9034cfb00d40419fb652dd82abd634d5\u0022}]}\r\n{\u0022resourceType\u0022:\u0022DiagnosticReport\u0022,\u0022id\u0022:\u0022b86b24821ced46dc9b9f7e891a3acf3f\u0022,\u0022meta\u0022:{\u0022versionId\u0022:\u00221\u0022,\u0022lastUpdated\u0022:\u00222025-10-30T04:45:06.206\u002B00:00\u0022,\u0022tag\u0022:[{\u0022system\u0022:\u0022testTag\u0022,\u0022code\u0022:\u00222c66c523-8703-4bd9-9b78-4a529a625794\u0022}]},\u0022status\u0022:\u0022final\u0022,\u0022code\u0022:{\u0022coding\u0022:[{\u0022system\u0022:\u0022http://snomed.info/sct\u0022,\u0022code\u0022:\u0022550ac403-b41f-4452-a4f8-60758852bb1e\u0022}]},\u0022subject\u0022:{\u0022reference\u0022:\u0022Patient/5031114e34834aad92ddfa912bd8a92c\u0022},\u0022result\u0022:[{\u0022reference\u0022:\u0022Observation/80f880ee78274776a486636b71bb56d0\u0022}]}\r\n",
+      "StackTrace": "   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ThrowInvalidBundleResultXunitException(IReadOnlyList\u00601 expectedResources, IReadOnlyList\u00601 actualResources, IDictionary\u00602 pagingStatistics) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 343\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ValidateBundle(Bundle bundle, Boolean sort, Boolean invalidSortParameter, Resource[] expectedResources) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 308\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ValidateBundle(Bundle bundle, Resource[] expectedResources) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 269\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearched_ThenCorrectBundleShouldBeReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 251\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAMultiNestedChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.5826356,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAChainedSearchExpressionOverASimpleParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.0189682,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAChainedSearchExpressionWithNotProvider_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.3885399,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenTwoChainedSearchExpressionsAndInclude_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.8303637,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenANestedChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.3665033,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAReverseChainedSearchExpressionWithAPredicateOnSurrogateId_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.1745439,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenANestedReverseChainSearchExpressionOverASimpleParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.2016797,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.3761628,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenAReverseChainSearchExpressionOverASimpleParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Passed",
+      "Duration": 0.0080313,
+      "ErrorMessage": "",
+      "StackTrace": "",
+      "Output": ""
+    },
+    {
+      "TestName": "Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests(SqlServer, Json).GivenANestedReverseChainSearchExpressionOverTheIdResourceParameter_WhenSearched_ThenCorrectBundleShouldBeReturned",
+      "Category": "ChainingSearchTests(SqlServer, Json)",
+      "Trait": "ChainingSearchTests(SqlServer, Json)",
+      "Status": "Failed",
+      "Duration": 0.0066854,
+      "ErrorMessage": "Expected count to be 3 but was 0 .\r\nActual collection as below -\r\nExpected Collection as below -\r\n{\u0022resourceType\u0022:\u0022Patient\u0022,\u0022id\u0022:\u00221ed28d66cbdc44999c5bf76c719c6ffb\u0022,\u0022meta\u0022:{\u0022versionId\u0022:\u00221\u0022,\u0022lastUpdated\u0022:\u00222025-10-30T04:45:05.835\u002B00:00\u0022,\u0022tag\u0022:[{\u0022system\u0022:\u0022testTag\u0022,\u0022code\u0022:\u00222c66c523-8703-4bd9-9b78-4a529a625794\u0022}]},\u0022name\u0022:[{\u0022family\u0022:\u0022Adams\u0022}],\u0022gender\u0022:\u0022female\u0022}\r\n{\u0022resourceType\u0022:\u0022Patient\u0022,\u0022id\u0022:\u00225031114e34834aad92ddfa912bd8a92c\u0022,\u0022meta\u0022:{\u0022versionId\u0022:\u00221\u0022,\u0022lastUpdated\u0022:\u00222025-10-30T04:45:05.907\u002B00:00\u0022,\u0022tag\u0022:[{\u0022system\u0022:\u0022testTag\u0022,\u0022code\u0022:\u00222c66c523-8703-4bd9-9b78-4a529a625794\u0022}]},\u0022name\u0022:[{\u0022family\u0022:\u0022Truman\u0022,\u0022given\u0022:[\u0022146d86c1-d670-4603-a46e-5e9495ff4c95\u0022]}],\u0022gender\u0022:\u0022male\u0022}\r\n{\u0022resourceType\u0022:\u0022Patient\u0022,\u0022id\u0022:\u00226a1b9d4ec4564b3f84e7696a35c6b244\u0022,\u0022meta\u0022:{\u0022versionId\u0022:\u00221\u0022,\u0022lastUpdated\u0022:\u00222025-10-30T04:45:05.869\u002B00:00\u0022,\u0022tag\u0022:[{\u0022system\u0022:\u0022testTag\u0022,\u0022code\u0022:\u00222c66c523-8703-4bd9-9b78-4a529a625794\u0022}]},\u0022name\u0022:[{\u0022family\u0022:\u0022Smith\u0022,\u0022given\u0022:[\u002290bb260e-fd6a-4756-a033-b5a1a034e888\u0022]}],\u0022gender\u0022:\u0022male\u0022,\u0022managingOrganization\u0022:{\u0022reference\u0022:\u0022Organization/198449f50c774069b2992df21c2e7cf5\u0022}}\r\n",
+      "StackTrace": "   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ThrowInvalidBundleResultXunitException(IReadOnlyList\u00601 expectedResources, IReadOnlyList\u00601 actualResources, IDictionary\u00602 pagingStatistics) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 343\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ValidateBundle(Bundle bundle, Boolean sort, Boolean invalidSortParameter, Resource[] expectedResources) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 308\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.SearchTestsBase\u00601.ValidateBundle(Bundle bundle, Resource[] expectedResources) in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/SearchTestsBase.cs:line 269\r\n   at Microsoft.Health.Fhir.Tests.E2E.Rest.Search.ChainingSearchTests.GivenANestedReverseChainSearchExpressionOverTheIdResourceParameter_WhenSearched_ThenCorrectBundleShouldBeReturned() in /_/test/Microsoft.Health.Fhir.Shared.Tests.E2E/Rest/Search/ChainingSearchTests.cs:line 163\r\n   at Xunit.Sdk.TestInvoker\u00601.\u003C\u003Ec__DisplayClass47_0.\u003C\u003CInvokeTestMethodAsync\u003Eb__1\u003Ed.MoveNext() in /_/src/xunit.execution/Sdk/Frameworks/Runners/TestInvoker.cs:line 259\r\n--- End of stack trace from previous location ---\r\n   at Xunit.Sdk.ExecutionTimer.AggregateAsync(Func\u00601 asyncAction) in /_/src/xunit.execution/Sdk/Frameworks/ExecutionTimer.cs:line 48\r\n   at Xunit.Sdk.ExceptionAggregator.RunAsync(Func\u00601 code) in /_/src/xunit.core/Sdk/ExceptionAggregator.cs:line 90",
+      "Output": ""
+    }
+  ],
+  "PassRate": 0.6818181818181818
+}

@@ -397,8 +397,8 @@ public class SqlEntityFrameworkSearchService : ISearchService
     {
         if (sortOptions == null || sortOptions.Count == 0)
         {
-            // Default sort: by ResourceSurrogateId descending (newest first)
-            return query.OrderByDescending(r => r.ResourceSurrogateId);
+            // Default sort: by ResourceSurrogateId ascending (oldest first)
+            return query.OrderBy(r => r.ResourceSurrogateId);
         }
 
         // Apply primary sort

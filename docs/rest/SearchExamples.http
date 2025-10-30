@@ -1,4 +1,4 @@
-@hostname = localhost:5026
+@hostname = https://localhost:7057
 
 ### Setup test data
 # @name batch
@@ -52,7 +52,7 @@ GET {{hostname}}/Patient?_sort=name&_total=accurate&_count=10000
 GET {{hostname}}/Patient?_sort=birthDate
 
 ### Include
-GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient
+GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient&_count=1
 
 ###
 POST {{hostname}}/Encounter
@@ -293,3 +293,50 @@ GET {{hostname}}/Observation/f8adc129-3d07-44fe-b505-9dd75bef6876/_history?_coun
 
 GET {{hostname}}/Observation
 If-Match: _id=f8adc129-3d07-44fe-b505-9dd75bef6876
+
+###
+
+### Batch2
+POST http://{{hostname}}
+Prefer: validation=minimum
+Content-Type: application/json
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        {
+            "resource": {
+                "resourceType": "AuditEvent",
+                "type": {
+                    "system": "system",
+                    "code": "code"
+                },
+                "recorded": "2021-05-28T00:00:00.000",
+                "agent": [
+                    {
+                        "who": {
+                            "reference": "Practitioner/searchpractitioner3"
+                        }
+                    }
+                ],
+                "source": {
+                    "observer": {
+                        "reference": "Patient/searchpatient2"
+                    }
+                },
+                "entity": [
+                    {
+                        "what": {
+                            "reference": "Observation/searchobservation2"
+                        }
+                    }
+                ]
+            },
+            "request": {
+                "method": "POST",
+                "url": "AuditEvent"
+            }
+        }
+    ]
+}
