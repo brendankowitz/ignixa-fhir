@@ -204,6 +204,12 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
 
+        // Log if we're extracting a reference and got no results
+        if (searchParameterType == SearchParamType.Reference && !extractedValues.Any())
+        {
+            Log.NoValuesExtractedForReference(_logger, fhirPathExpression, element.InstanceType);
+        }
+
         // If there is target set, then filter the extracted values to only those types.
         if (searchParameterType == SearchParamType.Reference &&
             allowedReferenceResourceTypes?.Count > 0)
@@ -224,7 +230,11 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
             // the values ourselves.
             extractedValues = extractedValues.Where(ev =>
             {
-                if (ev.InstanceType != null && ev.InstanceType.Equals("ResourceReference", StringComparison.OrdinalIgnoreCase)) return ev.Scalar("reference") is string rr && targetResourceTypes.Any(trt => rr.Contains(trt, StringComparison.Ordinal));
+                if (ev.InstanceType != null &&
+                    ev.InstanceType.Equals("ResourceReference", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ev.Scalar("reference") is string rr && targetResourceTypes.Any(trt => rr.Contains(trt, StringComparison.Ordinal));
+                }
 
                 return true;
             });
@@ -316,5 +326,8 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "No values extracted for reference search parameter using expression '{Expression}' on resource type '{ResourceType}'.")]
+        public static partial void NoValuesExtractedForReference(ILogger logger, string expression, string resourceType);
     }
 }

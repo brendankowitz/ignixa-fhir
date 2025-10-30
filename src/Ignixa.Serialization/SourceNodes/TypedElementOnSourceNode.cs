@@ -17,21 +17,48 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
     private readonly ISourceNode _source;
     private readonly IStructureDefinitionSummaryProvider _provider;
     private readonly IElementDefinitionSummary? _definition;
+    private readonly string? _parentPath; // Track parent path for BackboneElement lookups
 
     // OPTIMIZATION: Cache structure definition (immutable, safe to cache per-instance)
     private readonly Lazy<IStructureDefinitionSummary?> _structureDefinition;
 
-    public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null)
+    public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null, string? parentPath = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _definition = definition;
+        _parentPath = parentPath;
 
         // Lazy initialization - only fetch structure definition if needed
         _structureDefinition = new Lazy<IStructureDefinitionSummary?>(() =>
         {
             var currentType = InstanceType;
-            return currentType != null ? _provider.Provide(currentType) : null;
+            if (currentType == null) return null;
+
+            // Try to get structure definition by type name first
+            var structureDef = _provider.Provide(currentType);
+
+            // If the type is BackboneElement and we have a parent path, try the fully qualified path
+            if (structureDef != null && structureDef.TypeName == "BackboneElement" && !string.IsNullOrEmpty(_parentPath))
+            {
+                // Try fully qualified name like "AuditEvent.Agent"
+                var fullyQualifiedName = $"{_parentPath}.{char.ToUpperInvariant(_source.Name[0])}{_source.Name.Substring(1)}";
+                var specificDef = _provider.Provide(fullyQualifiedName);
+                if (specificDef != null)
+                {
+                    return specificDef;
+                }
+
+                // Also try lowercase version like "AuditEvent.agent"
+                fullyQualifiedName = $"{_parentPath}.{_source.Name}";
+                specificDef = _provider.Provide(fullyQualifiedName);
+                if (specificDef != null)
+                {
+                    return specificDef;
+                }
+            }
+
+            return structureDef;
         });
     }
 
@@ -42,9 +69,10 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
         get
         {
             // If we have a definition with a single type, use that
-            if (_definition?.Type?.Length == 1 && _definition.Type[0] is IStructureDefinitionSummary sds)
+            if (_definition?.Type?.Length == 1)
             {
-                return sds.TypeName;
+                // Use GetTypeName extension method to handle both IStructureDefinitionSummary and IStructureDefinitionReference
+                return _definition.Type[0].GetTypeName();
             }
 
             // For resources, check for resourceType element
@@ -132,7 +160,27 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
                 }
             }
 
-            yield return new TypedElementOnSourceNode(child, _provider, childDef);
+            // Build parent path for BackboneElement children
+            // For resource root, use resource type name (e.g., "AuditEvent")
+            // For nested elements, append element name (e.g., "AuditEvent.agent")
+            string? childParentPath = null;
+            if (cachedStructureDef != null && cachedStructureDef.IsResource)
+            {
+                // Root resource element
+                childParentPath = cachedStructureDef.TypeName;
+            }
+            else if (!string.IsNullOrEmpty(_parentPath))
+            {
+                // Nested element
+                childParentPath = $"{_parentPath}.{_source.Name}";
+            }
+            else if (InstanceType != null && char.IsUpper(InstanceType[0]))
+            {
+                // Current element is likely a resource or type name
+                childParentPath = InstanceType;
+            }
+
+            yield return new TypedElementOnSourceNode(child, _provider, childDef, childParentPath);
         }
     }
 
