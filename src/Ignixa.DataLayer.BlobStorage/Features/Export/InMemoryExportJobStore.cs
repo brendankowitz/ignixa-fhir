@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 
-namespace Ignixa.DataLayer.BlobStorage;
+namespace Ignixa.DataLayer.BlobStorage.Features.Export;
 
 /// <summary>
 /// In-memory implementation of <see cref="IExportJobStore"/>.

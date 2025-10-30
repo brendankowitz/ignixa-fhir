@@ -20,6 +20,7 @@
     <PackageReference Include="Autofac" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.AzureStorage" />
   </ItemGroup>
 
   <ItemGroup>

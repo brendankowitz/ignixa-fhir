@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Ignixa.Domain.Abstractions;
 
-namespace Ignixa.DataLayer.BlobStorage;
+namespace Ignixa.DataLayer.BlobStorage.Infrastructure;
 
 /// <summary>
 /// Local filesystem implementation of <see cref="IBlobStorageClient"/>.

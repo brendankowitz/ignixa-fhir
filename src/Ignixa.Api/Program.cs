@@ -47,7 +47,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<RecyclableMemoryStreamManager>();
 
 // Configure blob storage options
-builder.Services.Configure<Ignixa.DataLayer.BlobStorage.LocalFileBlobStorageOptions>(
+builder.Services.Configure<Ignixa.DataLayer.BlobStorage.Infrastructure.LocalFileBlobStorageOptions>(
     builder.Configuration.GetSection("LocalFileBlobStorage"));
 
 // Register IHttpContextFactory and IHttpContextAccessor for bundle entry pipeline routing
@@ -174,18 +174,28 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // BULK EXPORT INFRASTRUCTURE (Phase 13 - ADR-2516)
 
-    // Register blob storage client (local filesystem for prototype, Azure Blob for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.LocalFileBlobClient>()
-        .As<IBlobStorageClient>()
-        .SingleInstance();
+    // Register blob storage client factory
+    // Supports provider-based selection: Local (filesystem) or Azure (Blob Storage)
+    // Provider chosen via configuration: BlobStorage:Provider = "Local" | "Azure"
+    containerBuilder.Register(c =>
+    {
+        var configuration = c.Resolve<IConfiguration>();
+        var factory = new Ignixa.DataLayer.BlobStorage.Infrastructure.BlobClientFactory(
+            configuration,
+            c.Resolve<IComponentContext>().Resolve<IServiceProvider>(),
+            c.Resolve<ILogger<Ignixa.DataLayer.BlobStorage.Infrastructure.BlobClientFactory>>());
+        return factory.CreateClient();
+    })
+    .As<IBlobStorageClient>()
+    .SingleInstance();
 
     // Register export job store (in-memory for prototype, SQL Server for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.InMemoryExportJobStore>()
+    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.Features.Export.InMemoryExportJobStore>()
         .As<IExportJobStore>()
         .SingleInstance();
 
     // Register import job store (in-memory for prototype, SQL Server for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.InMemoryImportJobStore>()
+    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.Features.Import.InMemoryImportJobStore>()
         .As<IImportJobStore>()
         .SingleInstance();
 

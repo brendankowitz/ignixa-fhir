@@ -8,7 +8,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.DataLayer.BlobStorage;
+namespace Ignixa.DataLayer.BlobStorage.Features.Import;
 
 /// <summary>
 /// In-memory implementation of <see cref="IImportJobStore"/>.

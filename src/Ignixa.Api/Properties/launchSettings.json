@@ -1,21 +1,29 @@
 ﻿{
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "https": {
+    "http": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
       "applicationUrl": "https://localhost:7057;http://localhost:5026",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "BlobStorage__Provider": "Azure",
+        "AzureBlobStorage__UseManagedIdentity": "false",
+        "AzureBlobStorage__ConnectionString": "UseDevelopmentStorage=true",
+        "AzureBlobStorage__ContainerName": "fhir-storage",
+        "DurableTask__Provider": "AzureStorage",
+        "DurableTask__AzureStorage__UseManagedIdentity": "false",
+        "DurableTask__AzureStorage__ConnectionString": "UseDevelopmentStorage=true",
+        "DurableTask__AzureStorage__TaskHubName": "ignixa",
         "Tenants__Mode": "Isolated",
         "Tenants__Configurations__0__TenantId": "0",
         "Tenants__Configurations__0__DisplayName": "System Partition (Reserved)",
         "Tenants__Configurations__0__FhirVersion": "4.0",
-        "Tenants__Configurations__0__IsActive": "true",
+        "Tenants__Configurations__0__IsActive": "false",
         "Tenants__Configurations__0__IsSystemPartition": "true",
-        "Tenants__Configurations__0__Storage__Type": "FileSystem",
-        "Tenants__Configurations__0__Storage__BaseDirectory": "system",
+        "Tenants__Configurations__0__Storage__Type": "SqlEntityFramework",
+        "Tenants__Configurations__0__Storage__ConnectionString": "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true",
         "Tenants__Configurations__1__TenantId": "1",
         "Tenants__Configurations__1__DisplayName": "MS Health SQL Server Clinic",
         "Tenants__Configurations__1__FhirVersion": "4.0",

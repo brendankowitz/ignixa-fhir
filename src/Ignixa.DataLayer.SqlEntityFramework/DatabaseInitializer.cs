@@ -64,19 +64,6 @@ public class DatabaseInitializer
                 await CreateDatabaseSchemaAsync(cancellationToken);
             }
 
-            // Ensure TVP types exist and create any missing ones
-            await EnsureTvpTypesExistAsync(cancellationToken);
-
-            // Setup Managed Identity user if provided
-            if (!string.IsNullOrEmpty(managedIdentityName))
-            {
-                await SetupManagedIdentityAsync(managedIdentityName, cancellationToken);
-            }
-            else
-            {
-                _logger.LogDebug("Managed Identity name not provided; skipping MI user setup");
-            }
-
             _logger.LogInformation("Database initialization completed successfully");
         }
         catch (Exception ex)
@@ -85,101 +72,6 @@ public class DatabaseInitializer
                 ex,
                 "Failed to initialize database. Error: {Message}",
                 ex.Message);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Ensures all required TVP types exist in the database.
-    /// Creates missing types with exact column definitions matching row generators.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    private async Task EnsureTvpTypesExistAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            _logger.LogInformation("Validating TVP type schemas in database...");
-
-            var connection = _context.Database.GetDbConnection();
-            await connection.OpenAsync(cancellationToken);
-
-            try
-            {
-                // Query all TVP types and their columns
-                var sql = @"
-                    SELECT
-                        t.name AS TypeName,
-                        c.name AS ColumnName,
-                        ty.name AS DataType,
-                        c.max_length,
-                        c.is_nullable,
-                        c.column_id
-                    FROM sys.types t
-                    INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-                    INNER JOIN sys.table_types tt ON t.user_type_id = tt.user_type_id
-                    INNER JOIN sys.columns c ON tt.type_table_object_id = c.object_id
-                    INNER JOIN sys.types ty ON c.user_type_id = ty.user_type_id
-                    WHERE s.name = 'dbo' AND t.is_table_type = 1
-                    ORDER BY t.name, c.column_id";
-
-                using var command = connection.CreateCommand();
-#pragma warning disable CA2100
-                command.CommandText = sql;
-#pragma warning restore CA2100
-                using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-                var tvpSchemas = new Dictionary<string, List<(string ColumnName, string DataType, int? MaxLength, bool IsNullable)>>();
-
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    var typeName = reader.GetString(0);
-                    var columnName = reader.GetString(1);
-                    var dataType = reader.GetString(2);
-#pragma warning disable CA1849 // IsDBNull is safe in reader loop context
-                    var maxLength = reader.IsDBNull(3) ? null : (int?)reader.GetInt16(3);
-#pragma warning restore CA1849
-                    var isNullable = reader.GetBoolean(4);
-
-                    if (!tvpSchemas.ContainsKey(typeName))
-                        tvpSchemas[typeName] = new List<(string, string, int?, bool)>();
-
-                    tvpSchemas[typeName].Add((columnName, dataType, maxLength, isNullable));
-                }
-
-                if (tvpSchemas.Count == 0)
-                {
-                    _logger.LogError("No TVP types found in database. SqlMergeRepository will not work.");
-                    throw new InvalidOperationException("Required TVP types not found in database.");
-                }
-
-                _logger.LogInformation("Found {Count} TVP types in database", tvpSchemas.Count);
-
-                // Log each TVP schema for debugging
-                foreach (var (typeName, columns) in tvpSchemas.OrderBy(x => x.Key))
-                {
-                    var columnStr = string.Join(", ", columns.Select(c =>
-                        $"{c.ColumnName} {c.DataType}" + (c.MaxLength.HasValue ? $"({c.MaxLength})" : "") +
-                        (c.IsNullable ? " NULL" : " NOT NULL")));
-                    _logger.LogDebug("TVP {TypeName}: [{ColumnList}]", typeName, columnStr);
-                }
-
-                if (tvpSchemas.Count < 17)
-                {
-                    _logger.LogWarning("Expected 17 TVP types but found {Count}. Check if schema is complete.", tvpSchemas.Count);
-                }
-                else
-                {
-                    _logger.LogInformation("All 17 TVP types verified with correct column definitions");
-                }
-            }
-            finally
-            {
-                await connection.CloseAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to validate TVP schemas. Error: {Message}", ex.Message);
             throw;
         }
     }
@@ -290,73 +182,6 @@ public class DatabaseInitializer
                 "Failed to create database schema. Error: {Message}",
                 ex.Message);
             throw;
-        }
-    }
-
-    /// <summary>
-    /// Sets up the Managed Identity database user by executing embedded SQL script.
-    /// This is idempotent - running multiple times is safe.
-    /// </summary>
-    /// <param name="managedIdentityName">The App Service name (Managed Identity principal name).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    private async Task SetupManagedIdentityAsync(string managedIdentityName, CancellationToken cancellationToken)
-    {
-        try
-        {
-            _logger.LogInformation("Setting up Managed Identity database user: {ManagedIdentityName}", managedIdentityName);
-
-            // Load embedded SQL script
-            var sqlScript = LoadEmbeddedResource("Resources.SetupManagedIdentity.sql");
-            if (string.IsNullOrEmpty(sqlScript))
-            {
-                _logger.LogWarning("Managed Identity setup script not found in embedded resources");
-                return;
-            }
-
-            // Execute the SQL script with the MI name parameter
-            var connection = _context.Database.GetDbConnection();
-            await connection.OpenAsync(cancellationToken);
-
-            try
-            {
-                using var command = connection.CreateCommand();
-#pragma warning disable CA2100 // SQL is from embedded resource, not user input. MI name is passed as parameter.
-                command.CommandText = sqlScript;
-#pragma warning restore CA2100
-
-                // Add parameter for Managed Identity name
-                var parameter = command.CreateParameter();
-                parameter.ParameterName = "@ManagedIdentityName";
-                parameter.Value = managedIdentityName;
-                command.Parameters.Add(parameter);
-
-                // Execute the script (will print status messages via SQL PRINT)
-                using var reader = await command.ExecuteReaderAsync(System.Data.CommandBehavior.Default, cancellationToken);
-
-                // Read and log any output
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    // Script execution completed
-                }
-
-                _logger.LogInformation("Managed Identity setup completed successfully for user: {ManagedIdentityName}", managedIdentityName);
-            }
-            finally
-            {
-                await connection.CloseAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to set up Managed Identity database user. Error: {Message}",
-                ex.Message);
-            // Don't throw - this is non-critical for development scenarios
-            // In production with MI, this should have been set up beforehand
-            _logger.LogWarning(
-                "Continuing despite MI setup failure. Ensure MI user is configured on production deployments: {User}",
-                managedIdentityName);
         }
     }
 
