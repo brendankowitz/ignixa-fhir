@@ -396,8 +396,27 @@ public static class FhirEndpoints
         // Extract return preference from Prefer header (RFC 7240)
         var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
 
+        // Extract and validate If-Match header for optimistic concurrency control (ETag validation)
+        string? parsedIfMatch = null;
+        var ifMatchHeader = context.Request.Headers["If-Match"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(ifMatchHeader))
+        {
+            // Parse the If-Match header value (e.g., W/"5" or "5")
+            parsedIfMatch = ConditionalHeaderParser.ParseIfNoneMatch(ifMatchHeader);
+
+            // Validate ETag format: must be numeric and >= 1
+            if (parsedIfMatch != null)
+            {
+                if (!int.TryParse(parsedIfMatch, out var versionId) || versionId < 1)
+                {
+                    logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", ifMatchHeader);
+                    throw new BadRequestException($"Invalid ETag value: {ifMatchHeader}. ETag must be a positive integer.");
+                }
+            }
+        }
+
         // Send generic command with optional coordinator and validation override
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, null, validationOverride);
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, parsedIfMatch, validationOverride);
         UpdateResult result = await mediator.SendAsync(command, ct);
 
         // Add ETag, Last-Modified, and Preference-Applied headers
