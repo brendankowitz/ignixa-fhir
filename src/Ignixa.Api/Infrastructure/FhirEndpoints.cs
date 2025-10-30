@@ -378,6 +378,26 @@ public static class FhirEndpoints
             throw new BadRequestException($"Resource type must be '{resourceType}', got '{jsonNode.ResourceType}'");
         }
 
+        // Validate resource ID matches (FHIR Spec: For PUT, the resource ID in the body must match the ID in the URL)
+        var bodyId = jsonNode.Id;
+        if (string.IsNullOrWhiteSpace(bodyId))
+        {
+            logger.LogWarning(
+                "Resource ID missing in body for PUT request to {ResourceType}/{Id}",
+                resourceType,
+                id);
+            throw new BadRequestException($"Resource ID must be present in the body for PUT requests");
+        }
+
+        if (!string.Equals(bodyId, id, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Resource ID mismatch: URL has '{UrlId}', body has '{BodyId}'",
+                id,
+                bodyId);
+            throw new BadRequestException($"Resource ID in body ('{bodyId}') must match the ID in the URL ('{id}')");
+        }
+
         // Extract deferred write coordinator from HttpContext if in bundle context
         var coordinator = context.Items.TryGetValue("DeferredWriteCoordinator", out var coordinatorObj)
             ? coordinatorObj as DeferredWriteCoordinator
