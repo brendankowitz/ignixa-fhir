@@ -585,7 +585,6 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (direct and conditional)
