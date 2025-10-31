@@ -36,13 +36,15 @@ public class BlobClientFactory
     /// </summary>
     /// <returns>An implementation of <see cref="IBlobStorageClient"/>.</returns>
     /// <exception cref="InvalidOperationException">Thrown when provider is not configured or unsupported.</exception>
-    public IBlobStorageClient CreateClient()
+    public async Task<IBlobStorageClient> CreateClientAsync()
     {
         var provider = _configuration["BlobStorage:Provider"] ?? "Local";
 
-        return provider.Equals("local", StringComparison.OrdinalIgnoreCase) ? CreateLocalClient()
-            : provider.Equals("azure", StringComparison.OrdinalIgnoreCase) ? CreateAzureClient()
-            : throw new InvalidOperationException($"Unknown blob storage provider: {provider}. Supported providers: 'Local', 'Azure'");
+        return provider.Equals("local", StringComparison.OrdinalIgnoreCase)
+            ? CreateLocalClient()
+            : provider.Equals("azure", StringComparison.OrdinalIgnoreCase)
+                ? await CreateAzureClientAsync()
+                : throw new InvalidOperationException($"Unknown blob storage provider: {provider}. Supported providers: 'Local', 'Azure'");
     }
 
     /// <summary>
@@ -60,9 +62,9 @@ public class BlobClientFactory
     }
 
     /// <summary>
-    /// Creates an Azure Blob Storage client.
+    /// Creates an Azure Blob Storage client with container auto-initialization.
     /// </summary>
-    private IBlobStorageClient CreateAzureClient()
+    private async Task<IBlobStorageClient> CreateAzureClientAsync()
     {
         _logger.LogInformation("Creating Azure Blob Storage client");
 
@@ -76,6 +78,12 @@ public class BlobClientFactory
 
         BlobServiceClient blobServiceClient;
 
+        // Retry policy: exponential backoff for transient failures
+        var clientOptions = new BlobClientOptions();
+        clientOptions.Retry.Mode = RetryMode.Exponential;
+        clientOptions.Retry.MaxRetries = 5;
+        clientOptions.Retry.Delay = TimeSpan.FromSeconds(1);
+
         if (options.UseManagedIdentity)
         {
             if (string.IsNullOrEmpty(options.StorageAccountUri))
@@ -85,14 +93,30 @@ public class BlobClientFactory
 
             _logger.LogDebug("Using Managed Identity for Azure Blob Storage authentication");
 
-            // Use ManagedIdentityCredential for production (secure, MI-only)
-            // Use DefaultAzureCredential only for local development (flexible: MI > CLI > VS > Env)
-            var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-            var credential = isDevelopment
-                ? new DefaultAzureCredential() as TokenCredential
-                : new ManagedIdentityCredential();
+            try
+            {
+                // Use ManagedIdentityCredential for production (secure, MI-only)
+                // Use DefaultAzureCredential only for local development (flexible: MI > CLI > VS > Env)
+                var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+                var credential = isDevelopment
+                    ? new DefaultAzureCredential() as TokenCredential
+                    : new ManagedIdentityCredential();
 
-            blobServiceClient = new BlobServiceClient(new Uri(options.StorageAccountUri), credential);
+                blobServiceClient = new BlobServiceClient(new Uri(options.StorageAccountUri), credential, clientOptions);
+                _logger.LogInformation("Successfully created Azure Blob Storage client with Managed Identity");
+            }
+            catch (Azure.Identity.AuthenticationFailedException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to authenticate with Azure Blob Storage using Managed Identity. " +
+                    $"Ensure the application has Managed Identity enabled and proper RBAC permissions. " +
+                    $"StorageAccountUri: {options.StorageAccountUri}", ex);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid StorageAccountUri for Azure Blob Storage: {options.StorageAccountUri}", ex);
+            }
         }
         else
         {
@@ -102,7 +126,20 @@ public class BlobClientFactory
             }
 
             _logger.LogDebug("Using connection string for Azure Blob Storage authentication");
-            blobServiceClient = new BlobServiceClient(options.ConnectionString);
+            blobServiceClient = new BlobServiceClient(options.ConnectionString, clientOptions);
+        }
+
+        // Ensure container exists (idempotent operation)
+        var containerClient = blobServiceClient.GetBlobContainerClient(options.ContainerName);
+        try
+        {
+            _logger.LogInformation("Ensuring container '{ContainerName}' exists", options.ContainerName);
+            await containerClient.CreateIfNotExistsAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            _logger.LogInformation("Container '{ContainerName}' is ready", options.ContainerName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create container '{ContainerName}'. It may already exist or you may lack permissions", options.ContainerName);
         }
 
         var logger = _serviceProvider.GetRequiredService<ILogger<AzureBlobStorageClient>>();
@@ -133,11 +170,12 @@ public class BlobClientFactory
         // Register factory
         services.AddSingleton<BlobClientFactory>();
 
-        // Register blob storage client as a singleton created by factory
+        // Register blob storage client as a singleton created by async factory
         services.AddSingleton<IBlobStorageClient>(sp =>
         {
             var factory = sp.GetRequiredService<BlobClientFactory>();
-            return factory.CreateClient();
+            // Use GetAwaiter().GetResult() to make async factory work in sync DI context
+            return factory.CreateClientAsync().GetAwaiter().GetResult();
         });
 
         return services;

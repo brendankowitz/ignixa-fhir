@@ -184,7 +184,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
             configuration,
             c.Resolve<IComponentContext>().Resolve<IServiceProvider>(),
             c.Resolve<ILogger<Ignixa.DataLayer.BlobStorage.Infrastructure.BlobClientFactory>>());
-        return factory.CreateClient();
+        // Use GetAwaiter().GetResult() to make async factory work in sync Autofac context
+        return factory.CreateClientAsync().GetAwaiter().GetResult();
     })
     .As<IBlobStorageClient>()
     .SingleInstance();

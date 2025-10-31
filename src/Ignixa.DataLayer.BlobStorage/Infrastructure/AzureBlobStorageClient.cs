@@ -171,7 +171,7 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     }
 
     /// <inheritdoc/>
-    public async Task<string> GetBlobUrlAsync(string path, TimeSpan? expiresIn = null, CancellationToken cancellationToken = default)
+    public Task<string> GetBlobUrlAsync(string path, TimeSpan? expiresIn = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
@@ -180,15 +180,15 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         // If expiration is specified, generate a SAS URL
         if (expiresIn.HasValue)
         {
-            var permissions = new BlobSasPermissions();
-            var sasUri = blobClient.GenerateSasUri(permissions, DateTime.UtcNow.Add(expiresIn.Value));
+            // Default BlobSasPermissions allows read access
+            var sasUri = blobClient.GenerateSasUri(BlobSasPermissions.Read, DateTime.UtcNow.Add(expiresIn.Value));
             Log.GeneratedBlobUrl(_logger, path);
-            return sasUri.ToString();
+            return Task.FromResult(sasUri.ToString());
         }
 
         // Otherwise return the direct blob URI
         Log.GeneratedBlobUrl(_logger, path);
-        return blobClient.Uri.ToString();
+        return Task.FromResult(blobClient.Uri.ToString());
     }
 }
 
