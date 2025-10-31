@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Ignixa FHIR Server
 # Stage 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-azurelinux3.0 AS build
 WORKDIR /src
 
 # Copy root-level configuration files for centralized package management and code style
@@ -40,32 +40,30 @@ RUN dotnet publish Ignixa.Api.csproj \
     /p:UseAppHost=false
 
 # Stage 2: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
-WORKDIR /app
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-azurelinux3.0 AS runtime
 
-# Create non-root user for security
-RUN groupadd -r ignixa && useradd -r -g ignixa ignixa
+# tdnf clean all - cleans all the repos used to obtain packages and reduces the size of our image.
+RUN tdnf clean all && tdnf repolist --refresh && tdnf update -y && tdnf clean all
+
+# See https://github.com/dotnet/SqlClient/issues/220
+RUN tdnf install icu -y && \
+  tdnf clean all
+
+WORKDIR /app
 
 # Copy published output from build stage
 COPY --from=build /app/publish .
 
-# Create data directories
-RUN mkdir -p /app/fhir-data/tenants && \
-    chown -R ignixa:ignixa /app/fhir-data
-
-# Switch to non-root user
-USER ignixa
-
-# Expose port (default ASP.NET Core port)
-EXPOSE 8080
-
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+#HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+#    CMD curl -f http://localhost:8080/health || exit 1
 
 # Set environment variables
-ENV ASPNETCORE_URLS=http://+:8080
-ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    ASPNETCORE_URLS=http://+:8080
+
+USER nonroot
+EXPOSE 8080
 
 # Entry point
 ENTRYPOINT ["dotnet", "Ignixa.Api.dll"]
