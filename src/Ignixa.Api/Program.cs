@@ -7,6 +7,7 @@ using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Medino;
 using Microsoft.IO;
+using Microsoft.AspNetCore.HttpOverrides;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Middleware;
 using Ignixa.Api.Services;
@@ -45,6 +46,22 @@ builder.Services.AddMemoryCache();
 
 // Register RecyclableMemoryStreamManager as singleton
 builder.Services.AddSingleton<RecyclableMemoryStreamManager>();
+
+// Configure ForwardedHeaders for Docker/container deployments (supports reverse proxies like Azure App Service)
+// Enables X-Forwarded-Host and X-Forwarded-Prefix headers for correct URL generation behind proxies
+if (string.Equals(builder.Configuration["ASPNETCORE_FORWARDEDHEADERS_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        // Default value for options.ForwardedHeaders is ForwardedHeaders.None.
+        options.ForwardedHeaders |= ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedPrefix;
+
+        // Only loopback proxies are allowed by default.
+        // Clear that restriction because forwarders are enabled by explicit configuration.
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
 
 // Configure blob storage options
 builder.Services.Configure<Ignixa.DataLayer.BlobStorage.Infrastructure.LocalFileBlobStorageOptions>(
@@ -545,6 +562,13 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline
 app.UseFhirExceptionHandler();
+
+// Use ForwardedHeaders middleware early in the pipeline for Docker/container deployments
+// Processes X-Forwarded-Host and X-Forwarded-Prefix headers if ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+if (string.Equals(builder.Configuration["ASPNETCORE_FORWARDEDHEADERS_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
+{
+    app.UseForwardedHeaders();
+}
 
 // MULTI-TENANCY MIDDLEWARE (Phase 20 - ADR-2523)
 // Extracts tenantId from route, validates tenant exists and is active

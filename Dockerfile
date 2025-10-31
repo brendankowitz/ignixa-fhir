@@ -60,7 +60,8 @@ COPY --from=build /app/publish .
 
 # Set environment variables
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
-    ASPNETCORE_URLS=http://+:8080
+    ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 
 USER nonroot
 EXPOSE 8080
