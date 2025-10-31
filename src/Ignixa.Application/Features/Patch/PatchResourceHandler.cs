@@ -112,6 +112,11 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             operations,
             cancellationToken);
 
+        // OPTIMIZATION: Invalidate caches after mutations to ensure fresh views on next access
+        // This is defensive programming - guards against future code that might reuse cached wrappers
+        // and ensures validation/indexing gets fresh TypedElement with updated state
+        patchedResource.InvalidateCaches();
+
         // 8. Validate immutable properties have not changed
         try
         {

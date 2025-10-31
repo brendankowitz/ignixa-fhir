@@ -22,6 +22,10 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
     // OPTIMIZATION: Cache structure definition (immutable, safe to cache per-instance)
     private readonly Lazy<IStructureDefinitionSummary?> _structureDefinition;
 
+    // OPTIMIZATION: Cache for child element definitions (avoid repeated lookups)
+    // Key: element name, Value: IElementDefinitionSummary (can be null)
+    private Dictionary<string, IElementDefinitionSummary?>? _childDefinitionCache;
+
     public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null, string? parentPath = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
@@ -140,24 +144,14 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
         // Wrap source children in ITypedElement
         foreach (var child in sourceChildren)
         {
-            // OPTIMIZATION: Cache structure definition lookup (immutable per instance)
-            IElementDefinitionSummary? childDef = null;
+            // OPTIMIZATION: Use cached structure definition lookup (immutable per instance)
             var cachedStructureDef = _structureDefinition.Value;
+            IElementDefinitionSummary? childDef = null;
+
             if (cachedStructureDef != null)
             {
-                childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == child.Name);
-
-                // If no exact match, check if this is a choice type variant (e.g., valueString for value[x])
-                if (childDef == null)
-                {
-                    var choiceElement = cachedStructureDef.GetElements()
-                        .FirstOrDefault(e => e.ElementName.EndsWith("[x]", StringComparison.Ordinal) &&
-                                              child.Name.StartsWith(e.ElementName.TrimEnd("[x]".ToCharArray()), StringComparison.Ordinal));
-                    if (choiceElement != null)
-                    {
-                        childDef = choiceElement;
-                    }
-                }
+                // Use child definition cache to avoid repeated lookups
+                childDef = GetCachedChildDefinition(child.Name, cachedStructureDef);
             }
 
             // Build parent path for BackboneElement children
@@ -182,6 +176,44 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
 
             yield return new TypedElementOnSourceNode(child, _provider, childDef, childParentPath);
         }
+    }
+
+    /// <summary>
+    /// Gets or creates a cache of child element definitions.
+    /// Avoids repeated lookups of the same child name across multiple navigations.
+    /// Returns null if no definition found (valid - not all elements have definitions).
+    /// </summary>
+    private IElementDefinitionSummary? GetCachedChildDefinition(string childName, IStructureDefinitionSummary? cachedStructureDef)
+    {
+        // No structure definition? Can't cache anything
+        if (cachedStructureDef == null)
+            return null;
+
+        // Lazy-initialize cache
+        _childDefinitionCache ??= new Dictionary<string, IElementDefinitionSummary?>();
+
+        // Return from cache if found (even if value is null, which is valid)
+        if (_childDefinitionCache.TryGetValue(childName, out var cachedDef))
+            return cachedDef;
+
+        // Cache miss: Look up definition
+        var childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == childName);
+
+        // If no exact match, check if this is a choice type variant (e.g., valueString for value[x])
+        if (childDef == null)
+        {
+            var choiceElement = cachedStructureDef.GetElements()
+                .FirstOrDefault(e => e.ElementName.EndsWith("[x]", StringComparison.Ordinal) &&
+                                      childName.StartsWith(e.ElementName.TrimEnd("[x]".ToCharArray()), StringComparison.Ordinal));
+            if (choiceElement != null)
+            {
+                childDef = choiceElement;
+            }
+        }
+
+        // Cache the result (including null)
+        _childDefinitionCache[childName] = childDef;
+        return childDef;
     }
 
     public IEnumerable<object> Annotations(Type type)

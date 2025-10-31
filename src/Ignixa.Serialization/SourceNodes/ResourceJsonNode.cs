@@ -132,6 +132,31 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     }
 
     /// <summary>
+    /// Invalidates cached views after in-place mutations.
+    /// Called after PATCH operations to ensure subsequent accesses create fresh cached wrappers.
+    /// Safe to call multiple times (idempotent).
+    ///
+    /// CACHE LIFECYCLE:
+    /// - SourceNode and TypedElement caches are created lazily on first access
+    /// - Mutations via MutableNode operations (e.g., PATCH) invalidate cached views
+    /// - This method ensures next access to ToSourceNode() or ToTypedElement() creates fresh wrappers
+    /// - Request-scoped: Each HTTP request gets fresh ResourceJsonNode with empty cache
+    ///
+    /// SAFE FOR PATCH OPERATIONS:
+    /// - PATCH creates fresh ResourceJsonNode instances from repository (caches empty)
+    /// - After mutations applied via ApplyPatchAsync(), this method is called
+    /// - Subsequent validation/indexing creates fresh cached wrapper with updated state
+    /// - No inter-request cache sharing - each request completely isolated
+    /// </summary>
+    public void InvalidateCaches()
+    {
+        _cachedSourceNode = null;
+        _cachedTypedElement = null;
+        _cachedProvider = null;
+        // Note: _cachedMeta is NOT invalidated here - it has its own invalidation via Meta setter
+    }
+
+    /// <summary>
     /// Uses System.Text.Json to parse a JSON string into a ResourceJsonNode.
     /// </summary>
     public static ResourceJsonNode Parse(string json)
