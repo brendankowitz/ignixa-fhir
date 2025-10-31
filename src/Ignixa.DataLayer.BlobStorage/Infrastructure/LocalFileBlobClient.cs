@@ -205,14 +205,3 @@ public partial class LocalFileBlobClient : IBlobStorageClient
     }
 }
 
-/// <summary>
-/// Configuration options for <see cref="LocalFileBlobClient"/>.
-/// </summary>
-public class LocalFileBlobStorageOptions
-{
-    /// <summary>
-    /// Root directory where blobs are stored.
-    /// Example: "C:/FhirData/exports" or "/var/fhir/exports"
-    /// </summary>
-    public string? RootDirectory { get; set; }
-}

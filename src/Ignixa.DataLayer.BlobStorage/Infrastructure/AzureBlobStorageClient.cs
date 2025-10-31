@@ -192,34 +192,3 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     }
 }
 
-/// <summary>
-/// Configuration options for <see cref="AzureBlobStorageClient"/>.
-/// </summary>
-public class AzureBlobStorageOptions
-{
-    /// <summary>
-    /// Connection string for Azure Blob Storage.
-    /// Can use "UseDevelopmentStorage=true" for Azurite emulator locally.
-    /// Example: "UseDevelopmentStorage=true" or "DefaultEndpointsProtocol=https;AccountName=xxx;AccountKey=xxx;EndpointSuffix=core.windows.net"
-    /// </summary>
-    public string? ConnectionString { get; set; }
-
-    /// <summary>
-    /// Azure Blob Storage container name where resources are stored.
-    /// Example: "fhir-storage" or "fhir-exports"
-    /// </summary>
-    public string? ContainerName { get; set; }
-
-    /// <summary>
-    /// Whether to use Managed Identity for authentication (Azure AD).
-    /// If true, ConnectionString is ignored and Managed Identity is used.
-    /// Default: false (uses ConnectionString)
-    /// </summary>
-    public bool UseManagedIdentity { get; set; }
-
-    /// <summary>
-    /// Azure storage account URI for Managed Identity auth.
-    /// Example: "https://myaccount.blob.core.windows.net"
-    /// </summary>
-    public string? StorageAccountUri { get; set; }
-}

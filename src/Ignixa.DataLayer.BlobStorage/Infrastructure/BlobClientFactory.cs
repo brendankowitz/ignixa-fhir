@@ -55,7 +55,7 @@ public class BlobClientFactory
         _logger.LogInformation("Creating local file-based blob storage client");
 
         var options = new LocalFileBlobStorageOptions();
-        _configuration.GetSection("LocalFileBlobStorage").Bind(options);
+        _configuration.GetSection("BlobStorage").Bind(options);
 
         var logger = _serviceProvider.GetRequiredService<ILogger<LocalFileBlobClient>>();
         return new LocalFileBlobClient(Microsoft.Extensions.Options.Options.Create(options), logger);
@@ -69,11 +69,11 @@ public class BlobClientFactory
         _logger.LogInformation("Creating Azure Blob Storage client");
 
         var options = new AzureBlobStorageOptions();
-        _configuration.GetSection("AzureBlobStorage").Bind(options);
+        _configuration.GetSection("BlobStorage").Bind(options);
 
         if (string.IsNullOrEmpty(options.ContainerName))
         {
-            throw new InvalidOperationException("AzureBlobStorage:ContainerName is required when using Azure provider");
+            throw new InvalidOperationException("BlobStorage:ContainerName is required when using Azure provider");
         }
 
         BlobServiceClient blobServiceClient;
@@ -88,7 +88,7 @@ public class BlobClientFactory
         {
             if (string.IsNullOrEmpty(options.StorageAccountUri))
             {
-                throw new InvalidOperationException("AzureBlobStorage:StorageAccountUri is required when using Managed Identity");
+                throw new InvalidOperationException("BlobStorage:StorageAccountUri is required when using Managed Identity");
             }
 
             _logger.LogDebug("Using Managed Identity for Azure Blob Storage authentication");
@@ -122,7 +122,7 @@ public class BlobClientFactory
         {
             if (string.IsNullOrEmpty(options.ConnectionString))
             {
-                throw new InvalidOperationException("AzureBlobStorage:ConnectionString is required when UseManagedIdentity is false");
+                throw new InvalidOperationException("BlobStorage:ConnectionString is required when UseManagedIdentity is false");
             }
 
             _logger.LogDebug("Using connection string for Azure Blob Storage authentication");
@@ -157,14 +157,14 @@ public class BlobClientFactory
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // Register configuration options
+        // Register configuration options from unified BlobStorage section
         services.Configure<LocalFileBlobStorageOptions>(options =>
         {
-            configuration.GetSection("LocalFileBlobStorage").Bind(options);
+            configuration.GetSection("BlobStorage").Bind(options);
         });
         services.Configure<AzureBlobStorageOptions>(options =>
         {
-            configuration.GetSection("AzureBlobStorage").Bind(options);
+            configuration.GetSection("BlobStorage").Bind(options);
         });
 
         // Register factory
@@ -180,4 +180,69 @@ public class BlobClientFactory
 
         return services;
     }
+}
+
+/// <summary>
+/// Configuration options for Azure Blob Storage client.
+/// Supports both connection string and Managed Identity authentication.
+/// </summary>
+public class AzureBlobStorageOptions
+{
+    /// <summary>
+    /// Connection string for Azure Blob Storage.
+    /// Can use "UseDevelopmentStorage=true" for Azurite emulator locally.
+    /// Example: "UseDevelopmentStorage=true" or "DefaultEndpointsProtocol=https;AccountName=xxx;AccountKey=xxx;EndpointSuffix=core.windows.net"
+    /// </summary>
+    public string? ConnectionString { get; set; }
+
+    /// <summary>
+    /// Azure Blob Storage container name where resources are stored.
+    /// Example: "fhir-storage" or "fhir-exports"
+    /// </summary>
+    public string? ContainerName { get; set; }
+
+    /// <summary>
+    /// Whether to use Managed Identity for authentication (Azure AD).
+    /// If true, ConnectionString is ignored and Managed Identity is used.
+    /// Default: false (uses ConnectionString)
+    /// </summary>
+    public bool UseManagedIdentity { get; set; }
+
+    /// <summary>
+    /// Azure storage account URI for Managed Identity auth.
+    /// Example: "https://myaccount.blob.core.windows.net"
+    /// </summary>
+    public string? StorageAccountUri { get; set; }
+}
+
+/// <summary>
+/// Configuration options for local file-based blob storage client.
+/// </summary>
+public class LocalFileBlobStorageOptions
+{
+    /// <summary>
+    /// Root directory where blobs are stored.
+    /// Example: "C:/FhirData/exports" or "/var/fhir/exports"
+    /// </summary>
+    public string? RootDirectory { get; set; }
+
+    /// <summary>
+    /// Azure Blob Storage container name (unused for local storage, kept for compatibility with unified BlobStorage config).
+    /// </summary>
+    public string? ContainerName { get; set; }
+
+    /// <summary>
+    /// Whether to use Managed Identity (unused for local storage, kept for compatibility with unified BlobStorage config).
+    /// </summary>
+    public bool UseManagedIdentity { get; set; }
+
+    /// <summary>
+    /// Storage account URI (unused for local storage, kept for compatibility with unified BlobStorage config).
+    /// </summary>
+    public string? StorageAccountUri { get; set; }
+
+    /// <summary>
+    /// Connection string (unused for local storage, kept for compatibility with unified BlobStorage config).
+    /// </summary>
+    public string? ConnectionString { get; set; }
 }
