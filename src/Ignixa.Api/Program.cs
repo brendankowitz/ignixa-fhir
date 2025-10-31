@@ -7,6 +7,7 @@ using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Medino;
 using Microsoft.IO;
+using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.HttpOverrides;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Middleware;
@@ -62,6 +63,17 @@ if (string.Equals(builder.Configuration["ASPNETCORE_FORWARDEDHEADERS_ENABLED"], 
         options.KnownProxies.Clear();
     });
 }
+
+// Configure Host Filtering for Azure App Service and container deployments
+// App Service sends requests via internal hostnames which would be rejected without this configuration
+builder.Services.Configure<HostFilteringOptions>(options =>
+{
+    var allowedHosts = builder.Configuration["AllowedHosts"]?.Split(";") ?? ["*"];
+    foreach (var host in allowedHosts)
+    {
+        options.AllowedHosts.Add(host);
+    }
+});
 
 // Configure blob storage options
 builder.Services.Configure<Ignixa.DataLayer.BlobStorage.Infrastructure.LocalFileBlobStorageOptions>(
