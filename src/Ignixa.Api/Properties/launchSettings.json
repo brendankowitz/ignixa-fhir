@@ -8,11 +8,11 @@
       "applicationUrl": "https://localhost:7057;http://localhost:5026",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "BlobStorage__Provider": "Azure",
+        "BlobStorage__Provider": "Local",
         "AzureBlobStorage__UseManagedIdentity": "false",
         "AzureBlobStorage__ConnectionString": "UseDevelopmentStorage=true",
         "AzureBlobStorage__ContainerName": "fhir-storage",
-        "DurableTask__Provider": "AzureStorage",
+        "DurableTask__Provider": "Local",
         "DurableTask__AzureStorage__UseManagedIdentity": "false",
         "DurableTask__AzureStorage__ConnectionString": "UseDevelopmentStorage=true",
         "DurableTask__AzureStorage__TaskHubName": "ignixa",
