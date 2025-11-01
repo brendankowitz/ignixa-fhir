@@ -273,4 +273,59 @@ public class FileBasedSearchService : ISearchService
 
         return count;
     }
+
+    public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
+        string resourceType,
+        int numberOfRanges,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "Getting export ranges: ResourceType={ResourceType}, NumberOfRanges={NumberOfRanges}",
+            resourceType,
+            numberOfRanges);
+
+        // Load metadata for resource type
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+
+        if (allMetadata.Count == 0)
+        {
+            _logger.LogInformation("No resources found for ResourceType={ResourceType}", resourceType);
+            return Array.Empty<(long, long)>();
+        }
+
+        _logger.LogInformation(
+            "Found {Count} resources for ResourceType={ResourceType}",
+            allMetadata.Count,
+            resourceType);
+
+        // For file-based storage, we use the index position as the "surrogate ID"
+        // Partition based on count, not actual ID values
+        long totalCount = allMetadata.Count;
+        long rangeSize = (long)Math.Ceiling((double)totalCount / numberOfRanges);
+
+        var ranges = new List<(long, long)>();
+        long currentStart = 0;
+
+        for (int i = 0; i < numberOfRanges; i++)
+        {
+            long currentEnd = (i == numberOfRanges - 1)
+                ? totalCount - 1  // Last range includes all remaining items
+                : currentStart + rangeSize - 1;
+
+            // Only add range if there's data in it
+            if (currentStart < totalCount)
+            {
+                ranges.Add((currentStart, Math.Min(currentEnd, totalCount - 1)));
+                _logger.LogDebug("Range {Index}: [{StartId}..{EndId}]", i + 1, currentStart, Math.Min(currentEnd, totalCount - 1));
+                currentStart = currentEnd + 1;
+            }
+        }
+
+        _logger.LogInformation(
+            "Generated {RangeCount} export ranges for ResourceType={ResourceType}",
+            ranges.Count,
+            resourceType);
+
+        return ranges.AsReadOnly();
+    }
 }

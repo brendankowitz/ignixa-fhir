@@ -242,6 +242,90 @@ public class SqlEntityFrameworkSearchService : ISearchService
         return await baseQuery.CountAsync(ct);
     }
 
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
+        string resourceType,
+        int numberOfRanges,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "Getting export ranges: ResourceType={ResourceType}, NumberOfRanges={NumberOfRanges}",
+            resourceType,
+            numberOfRanges);
+
+        // Get ResourceTypeId
+        var resourceTypeId = await GetResourceTypeIdAsync(resourceType, ct);
+        if (!resourceTypeId.HasValue)
+        {
+            _logger.LogWarning("ResourceType not found: {ResourceType}", resourceType);
+            return Array.Empty<(long, long)>();
+        }
+
+        // Query for min/max surrogate IDs for this resource type
+        var minMaxQuery = await _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId.Value
+                && !r.IsHistory
+                && !r.IsDeleted)
+            .AsNoTracking()
+            .Select(r => new
+            {
+                MinId = _context.Resources
+                    .Where(x => x.ResourceTypeId == resourceTypeId.Value && !x.IsHistory && !x.IsDeleted)
+                    .Min(x => x.ResourceSurrogateId),
+                MaxId = _context.Resources
+                    .Where(x => x.ResourceTypeId == resourceTypeId.Value && !x.IsHistory && !x.IsDeleted)
+                    .Max(x => x.ResourceSurrogateId),
+                Count = _context.Resources
+                    .Where(x => x.ResourceTypeId == resourceTypeId.Value && !x.IsHistory && !x.IsDeleted)
+                    .Count()
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (minMaxQuery == null || minMaxQuery.Count == 0)
+        {
+            _logger.LogInformation("No resources found for ResourceType={ResourceType}", resourceType);
+            return Array.Empty<(long, long)>();
+        }
+
+        long minId = minMaxQuery.MinId;
+        long maxId = minMaxQuery.MaxId;
+        long count = minMaxQuery.Count;
+        long rangeSize = (long)Math.Ceiling((double)(maxId - minId + 1) / numberOfRanges);
+
+        _logger.LogInformation(
+            "Calculated export ranges: Min={MinId}, Max={MaxId}, Count={Count}, RangeSize={RangeSize}",
+            minId,
+            maxId,
+            count,
+            rangeSize);
+
+        // Generate non-overlapping, exhaustive ranges
+        var ranges = new List<(long, long)>();
+        long currentStart = minId;
+
+        for (int i = 0; i < numberOfRanges; i++)
+        {
+            long currentEnd = (i == numberOfRanges - 1)
+                ? maxId  // Last range includes all remaining IDs
+                : currentStart + rangeSize - 1;
+
+            // Only add range if there's data in it
+            if (currentStart <= maxId)
+            {
+                ranges.Add((currentStart, Math.Min(currentEnd, maxId)));
+                _logger.LogDebug("Range {Index}: [{StartId}..{EndId}]", i + 1, currentStart, Math.Min(currentEnd, maxId));
+                currentStart = currentEnd + 1;
+            }
+        }
+
+        _logger.LogInformation(
+            "Generated {RangeCount} export ranges for ResourceType={ResourceType}",
+            ranges.Count,
+            resourceType);
+
+        return ranges.AsReadOnly();
+    }
+
     /// <summary>
     /// Maps a ResourceEntity to a SearchEntryResult by decompressing the raw bytes.
     /// Eliminates N+1 query problem by using ResourceEntity data directly instead of repository fetch.
