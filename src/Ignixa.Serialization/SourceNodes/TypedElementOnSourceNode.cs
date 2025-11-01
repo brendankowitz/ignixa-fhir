@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Serialization.SourceNodes;
@@ -24,7 +25,9 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
 
     // OPTIMIZATION: Cache for child element definitions (avoid repeated lookups)
     // Key: element name, Value: IElementDefinitionSummary (can be null)
-    private Dictionary<string, IElementDefinitionSummary?>? _childDefinitionCache;
+    // Using ConcurrentDictionary for thread-safe concurrent access
+    private readonly Lazy<ConcurrentDictionary<string, IElementDefinitionSummary?>> _childDefinitionCache =
+        new(() => new ConcurrentDictionary<string, IElementDefinitionSummary?>());
 
     public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null, string? parentPath = null)
     {
@@ -182,6 +185,7 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
     /// Gets or creates a cache of child element definitions.
     /// Avoids repeated lookups of the same child name across multiple navigations.
     /// Returns null if no definition found (valid - not all elements have definitions).
+    /// Thread-safe: uses ConcurrentDictionary for atomic get-or-add semantics.
     /// </summary>
     private IElementDefinitionSummary? GetCachedChildDefinition(string childName, IStructureDefinitionSummary? cachedStructureDef)
     {
@@ -189,11 +193,10 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
         if (cachedStructureDef == null)
             return null;
 
-        // Lazy-initialize cache
-        _childDefinitionCache ??= new Dictionary<string, IElementDefinitionSummary?>();
+        var cache = _childDefinitionCache.Value;
 
         // Return from cache if found (even if value is null, which is valid)
-        if (_childDefinitionCache.TryGetValue(childName, out var cachedDef))
+        if (cache.TryGetValue(childName, out var cachedDef))
             return cachedDef;
 
         // Cache miss: Look up definition
@@ -211,8 +214,8 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
             }
         }
 
-        // Cache the result (including null)
-        _childDefinitionCache[childName] = childDef;
+        // Cache the result (including null) - ConcurrentDictionary makes this thread-safe
+        cache.TryAdd(childName, childDef);
         return childDef;
     }
 
