@@ -7,6 +7,7 @@
 
 using EnsureThat;
 using Ignixa.Domain.Constants;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
@@ -24,15 +25,21 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
     private const int MaxAllowedItemCount = 1000;
 
     private readonly IExpressionParser _expressionParser;
+    private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SearchOptionsBuilder"/> class.
     /// </summary>
     /// <param name="expressionParser">The expression parser for building search expressions.</param>
-    public SearchOptionsBuilder(IExpressionParser expressionParser)
+    /// <param name="searchParameterDefinitionManager">The search parameter definition manager for looking up parameter metadata.</param>
+    public SearchOptionsBuilder(
+        IExpressionParser expressionParser,
+        ISearchParameterDefinitionManager searchParameterDefinitionManager)
     {
         EnsureArg.IsNotNull(expressionParser, nameof(expressionParser));
+        EnsureArg.IsNotNull(searchParameterDefinitionManager, nameof(searchParameterDefinitionManager));
         _expressionParser = expressionParser;
+        _searchParameterDefinitionManager = searchParameterDefinitionManager;
     }
 
     /// <summary>
@@ -148,7 +155,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 3: Parse sorting
         if (sortParameters.Count > 0)
         {
-            options.Sort = ParseSortParameters(resourceTypes, sortParameters);
+            options.Sort = ParseSortParameters(resourceTypes, sortParameters, unsupportedParameters);
         }
 
         // STEP 4: Parse includes
@@ -226,7 +233,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         };
     }
 
-    private IReadOnlyList<SortExpression> ParseSortParameters(string[] resourceTypes, List<string> sortParameters)
+    private IReadOnlyList<SortExpression> ParseSortParameters(
+        string[] resourceTypes,
+        List<string> sortParameters,
+        List<string> unsupportedParameters)
     {
         var sortExpressions = new List<SortExpression>();
 
@@ -251,22 +261,30 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
                 try
                 {
-                    // Parse the field as a search parameter to get the SearchParameterInfo
-                    Expression fieldExpression = _expressionParser.Parse(resourceTypes, fieldName, "dummy");
-
-                    if (fieldExpression is SearchParameterExpression searchParamExpr)
+                    // Look up the search parameter directly (no need to parse a value for sorting)
+                    // For sorting, we only need the SearchParameterInfo metadata, not a parsed value expression
+                    if (!_searchParameterDefinitionManager.TryGetSearchParameter(resourceTypes[0], fieldName, out SearchParameterInfo searchParameter))
                     {
-                        sortExpressions.Add(new SortExpression(searchParamExpr.Parameter, sortOrder));
+                        // Field is not a valid search parameter - record the unsupported field
+                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not supported for resource type: {resourceTypes[0]}");
+                        unsupportedParameters.Add($"_sort={fieldName}");
+                        continue;
                     }
+
+                    sortExpressions.Add(new SortExpression(searchParameter, sortOrder));
+                    System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {searchParameter.Code} ({searchParameter.Type}) {sortOrder}");
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip invalid sort parameters
+                    // Log other exceptions for debugging, add to unsupported, then skip
+                    System.Diagnostics.Debug.WriteLine($"Failed to parse sort field '{fieldName}': {ex.GetType().Name} - {ex.Message}");
+                    unsupportedParameters.Add($"_sort={fieldName}");
                     continue;
                 }
             }
         }
 
+        System.Diagnostics.Debug.WriteLine($"ParseSortParameters returning {sortExpressions.Count} sort expression(s)");
         return sortExpressions;
     }
 

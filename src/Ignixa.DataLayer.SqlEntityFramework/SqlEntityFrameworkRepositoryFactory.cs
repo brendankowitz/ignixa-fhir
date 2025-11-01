@@ -343,6 +343,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 revIncludeProcessor,
                 iterateProcessor,
                 compressor,
+                searchIndexCache,
                 _loggerFactory.CreateLogger<Search.SqlEntityFrameworkSearchService>());
         };
 

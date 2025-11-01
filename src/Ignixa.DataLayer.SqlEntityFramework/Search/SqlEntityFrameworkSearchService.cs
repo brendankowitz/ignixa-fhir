@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
+using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
@@ -29,6 +30,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     private readonly IterateProcessor _iterateProcessor;
     private readonly GzipResourceCompressor _compressor;
     private readonly ILogger<SqlEntityFrameworkSearchService> _logger;
+    private readonly SearchIndexReferenceDataCache _cache;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SqlEntityFrameworkSearchService"/> class.
@@ -40,6 +42,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     /// <param name="revIncludeProcessor">The revinclude processor for _revinclude.</param>
     /// <param name="iterateProcessor">The iterate processor for :iterate modifier.</param>
     /// <param name="compressor">The resource compressor for decompressing RawResource bytes.</param>
+    /// <param name="cache">The search index reference data cache for looking up SearchParamIds.</param>
     /// <param name="logger">Logger instance.</param>
     public SqlEntityFrameworkSearchService(
         FhirDbContext context,
@@ -49,6 +52,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
         RevIncludeProcessor revIncludeProcessor,
         IterateProcessor iterateProcessor,
         GzipResourceCompressor compressor,
+        SearchIndexReferenceDataCache cache,
         ILogger<SqlEntityFrameworkSearchService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -58,6 +62,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
         _revIncludeProcessor = revIncludeProcessor ?? throw new ArgumentNullException(nameof(revIncludeProcessor));
         _iterateProcessor = iterateProcessor ?? throw new ArgumentNullException(nameof(iterateProcessor));
         _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -398,8 +403,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
         if (sortOptions == null || sortOptions.Count == 0)
         {
             // Default sort: by ResourceSurrogateId ascending (oldest first)
+            _logger.LogDebug("No sort options provided, using default sort by ResourceSurrogateId");
             return query.OrderBy(r => r.ResourceSurrogateId);
         }
+
+        _logger.LogDebug("Applying {Count} sort expression(s): {Sorts}",
+            sortOptions.Count,
+            string.Join(", ", sortOptions.Select(s => $"{s.Parameter.Code} ({s.SortOrder})")));
 
         // Apply primary sort
         var firstSort = sortOptions[0];
@@ -410,6 +420,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
         {
             orderedQuery = ApplyThenBy(orderedQuery, sortOptions[i]);
         }
+
+        // CRITICAL: Always add final sort by ResourceSurrogateId for deterministic ordering
+        // This ensures:
+        // 1. Resources with NULL values for the sort parameter have consistent positioning
+        // 2. Pagination with continuation tokens is stable (same query = same order)
+        // 3. Multiple resources with identical sort values are ordered predictably
+        orderedQuery = orderedQuery.ThenBy(r => r.ResourceSurrogateId);
 
         return orderedQuery;
     }
@@ -444,7 +461,9 @@ public class SqlEntityFrameworkSearchService : ISearchService
         {
             case SearchParamType.String:
                 // LEFT JOIN with StringSearchParam, use MIN/MAX aggregation for multi-value parameters
-                // Nulls (resources without this parameter) sort last
+                // NOTE: SQL Server default behavior - NULLs sort FIRST in ascending, LAST in descending
+                // Resources without this parameter will appear at beginning (ASC) or end (DESC)
+                // Final ThenBy(ResourceSurrogateId) ensures deterministic ordering for NULL values
                 return isDescending
                     ? query.OrderByDescending(r =>
                         _context.StringSearchParams
@@ -840,5 +859,30 @@ public class SqlEntityFrameworkSearchService : ISearchService
             .FirstOrDefaultAsync(rt => rt.Name == resourceType, ct);
 
         return entity?.ResourceTypeId;
+    }
+
+    /// <summary>
+    /// Gets the SearchParamId for a given search parameter URL.
+    /// This is a synchronous wrapper around the async cache lookup.
+    /// IMPORTANT: This method is called inside EF Core LINQ expressions, which means we CANNOT use async/await
+    /// (LINQ to SQL requires synchronous expressions). We use .GetAwaiter().GetResult() to block synchronously.
+    /// The cache has an in-memory dictionary, so this is typically fast (only first call may hit database).
+    /// </summary>
+    /// <param name="url">The search parameter URL (e.g., "http://hl7.org/fhir/SearchParameter/Patient-birthdate").</param>
+    /// <returns>The SearchParamId (short).</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the search parameter is not found in the database.</exception>
+#pragma warning disable CA2012 // Use ValueTasks correctly - Must block synchronously in EF LINQ expression context
+    private short GetSearchParamIdFromUrl(string url)
+    {
+        var result = _cache.GetSearchParamIdAsync(url).GetAwaiter().GetResult();
+#pragma warning restore CA2012
+
+        if (result == null)
+        {
+            _logger.LogError("Search parameter not found for URL: {Url}. Ensure search parameters are loaded in database.", url);
+            throw new InvalidOperationException($"Search parameter not found for URL: {url}");
+        }
+
+        return result.Value;
     }
 }

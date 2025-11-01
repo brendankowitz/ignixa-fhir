@@ -67,7 +67,7 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
                 {
                     continue;
                 }
-                
+
                 var applicableTypes = ExpandBaseResourceTypes(param.BaseResourceTypes, resourceTypes);
                 foreach (var resourceType in applicableTypes)
                 {

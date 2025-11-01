@@ -753,9 +753,34 @@ public static class StreamingBundleSerializer
         // Parse query string
         var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(queryWithoutPrefix);
 
+        // Build set of unsupported parameter keys (including special handling for _sort=fieldName)
+        var unsupportedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unsupportedSortFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var unsupported in unsupportedParams)
+        {
+            if (unsupported.StartsWith("_sort=", StringComparison.OrdinalIgnoreCase))
+            {
+                // Track unsupported sort fields (e.g., "invalidField" from "_sort=invalidField")
+                string fieldName = unsupported.Substring("_sort=".Length);
+                unsupportedSortFields.Add(fieldName);
+            }
+            else
+            {
+                // Regular unsupported parameter key (e.g., "_sort" or "name")
+                unsupportedKeys.Add(unsupported);
+            }
+        }
+
+        // If any sort field is unsupported, the entire _sort parameter is unsupported
+        if (unsupportedSortFields.Count > 0)
+        {
+            unsupportedKeys.Add("_sort");
+        }
+
         // Filter out unsupported parameters
         var filteredQuery = parsedQuery
-            .Where(kvp => !unsupportedParams.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase))
+            .Where(kvp => !unsupportedKeys.Contains(kvp.Key))
             .SelectMany(kvp => kvp.Value.Select(v => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(v ?? string.Empty)}"));
 
         string result = string.Join("&", filteredQuery);

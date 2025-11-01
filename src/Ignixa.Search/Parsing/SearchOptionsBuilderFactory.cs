@@ -92,7 +92,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
                 schemaProvider);
 
             // Create version-specific SearchOptionsBuilder
-            var builder = new SearchOptionsBuilder(expressionParser);
+            var builder = new SearchOptionsBuilder(expressionParser, searchParamDefinitionManager);
 
             // Cache and return
             // Phase 2+: This cache will hold separate builders for (tenant, version) pairs
