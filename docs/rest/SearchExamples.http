@@ -340,3 +340,129 @@ Content-Type: application/json
         }
     ]
 }
+
+### ============================
+### $validate Operation Examples
+### ============================
+
+### Validate Patient - Direct Resource (Resource-level)
+POST {{hostname}}/Patient/$validate
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "example-validate",
+  "name": [
+    {
+      "use": "official",
+      "family": "Doe",
+      "given": ["John"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-01-01"
+}
+
+### Validate Patient - Using Parameters Resource with mode
+POST {{hostname}}/Patient/$validate
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "mode",
+      "valueCode": "create"
+    },
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "123",
+        "name": [
+          {
+            "family": "Smith",
+            "given": ["Jane"]
+          }
+        ],
+        "birthDate": "1990-05-15"
+      }
+    }
+  ]
+}
+
+### Validate Patient - Using Parameters with profile
+POST {{hostname}}/Patient/$validate
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "mode",
+      "valueCode": "update"
+    },
+    {
+      "name": "profile",
+      "valueUri": "http://hl7.org/fhir/StructureDefinition/Patient"
+    },
+    {
+      "name": "resource",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "validate-profile-test",
+        "active": true,
+        "name": [
+          {
+            "family": "Johnson",
+            "given": ["Robert"]
+          }
+        ]
+      }
+    }
+  ]
+}
+
+### Validate Observation - Direct Resource
+POST {{hostname}}/Observation/$validate
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "status": "final",
+  "code": {
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "29463-7",
+        "display": "Body Weight"
+      }
+    ]
+  },
+  "subject": {
+    "reference": "Patient/example"
+  },
+  "valueQuantity": {
+    "value": 67,
+    "unit": "kg",
+    "system": "http://unitsofmeasure.org",
+    "code": "kg"
+  }
+}
+
+### Validate System-level - Any Resource Type
+POST {{hostname}}/$validate
+Content-Type: application/fhir+json
+Prefer: validation=minimum
+
+{
+  "resourceType": "Encounter",
+  "status": "planned",
+  "class": {
+    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    "code": "AMB"
+  },
+  "subject": {
+    "reference": "Patient/example"
+  }
+}

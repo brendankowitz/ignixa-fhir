@@ -94,11 +94,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Setup", "Setup", "{4E79045F
 		deploy\azure\README.md = deploy\azure\README.md
 	EndProjectSection
 EndProject
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Compatibility", "Compatibility", "{46974937-533F-4386-A813-2C69018FCE31}"
 	ProjectSection(SolutionItems) = preProject
 		run-compat-tests.ps1 = run-compat-tests.ps1
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.Operations", "src\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj", "{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -338,6 +339,18 @@ Global
 		{F450B9BC-9675-4940-A8F0-C8C75241091F}.Release|x64.Build.0 = Release|Any CPU
 		{F450B9BC-9675-4940-A8F0-C8C75241091F}.Release|x86.ActiveCfg = Release|Any CPU
 		{F450B9BC-9675-4940-A8F0-C8C75241091F}.Release|x86.Build.0 = Release|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Debug|x64.Build.0 = Debug|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Debug|x86.Build.0 = Debug|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Release|x64.ActiveCfg = Release|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Release|x64.Build.0 = Release|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Release|x86.ActiveCfg = Release|Any CPU
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -369,5 +382,6 @@ Global
 		{F450B9BC-9675-4940-A8F0-C8C75241091F} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 		{4E79045F-F848-4683-88EE-9AF17228E267} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
 		{46974937-533F-4386-A813-2C69018FCE31} = {AD2040B0-EAE8-450D-A625-57E825C7F297}
+		{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 	EndGlobalSection
 EndGlobal

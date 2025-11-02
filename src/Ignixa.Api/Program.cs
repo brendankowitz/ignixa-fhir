@@ -300,6 +300,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IRequestHandler<Ignixa.Application.Features.History.GetSystemHistoryQuery, Ignixa.Application.Features.History.HistoryResult>>()
         .InstancePerDependency();
 
+    // Validation operations ($validate - Phase 24: FHIR Operations)
+    containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Validate.ValidateResourceHandler>()
+        .As<IRequestHandler<Ignixa.Application.Operations.Features.Validate.ValidateResourceCommand, Ignixa.Application.Operations.Features.Validate.ValidateResourceResult>>()
+        .InstancePerDependency();
+
     // Patch handlers (Phase 17 - ADR-2520: FHIR Patch operations)
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.PatchResourceHandler>()
         .As<IRequestHandler<Ignixa.Application.Features.Patch.PatchResourceCommand, ResourceWrapper?>>()
@@ -605,6 +610,7 @@ app.MapHealthCheckEndpoints();
 
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
+app.MapOperationEndpoints(); // FHIR operation endpoints ($validate, etc.)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (direct and conditional)
 app.MapCompartmentEndpoints(); // FHIR compartment search endpoints (GET /Patient/123/Observation)
 app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)
