@@ -5,6 +5,24 @@
     "appName": {
       "value": "ignixa-fhir-demo"
     },
+    "dockerRegistryUrl": {
+      "value": "https://ignixa.azurecr.io"
+    },
+    "dockerImage": {
+      "value": "ignixa-fhir"
+    },
+    "dockerImageTag": {
+      "value": "latest"
+    },
+    "dockerRegistryUsername": {
+      "value": ""
+    },
+    "dockerRegistryPassword": {
+      "value": ""
+    },
+    "useAcrManagedIdentity": {
+      "value": true
+    },
     "environment": {
       "value": "production"
     },

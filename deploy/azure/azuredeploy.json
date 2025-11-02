@@ -14,6 +14,48 @@
         "description": "Name of the Ignixa FHIR server application (must be globally unique for App Service)"
       }
     },
+    "dockerRegistryUrl": {
+      "type": "string",
+      "defaultValue": "https://ignixa.azurecr.io",
+      "metadata": {
+        "description": "Docker registry URL (e.g., https://ignixa.azurecr.io or https://index.docker.io for Docker Hub)"
+      }
+    },
+    "dockerImage": {
+      "type": "string",
+      "defaultValue": "ignixa-fhir",
+      "metadata": {
+        "description": "Docker image name (e.g., ignixa-fhir)"
+      }
+    },
+    "dockerImageTag": {
+      "type": "string",
+      "defaultValue": "latest",
+      "metadata": {
+        "description": "Docker image tag (e.g., latest, v1.0.0, main)"
+      }
+    },
+    "dockerRegistryUsername": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Docker registry username (leave empty to use Managed Identity for ACR)"
+      }
+    },
+    "dockerRegistryPassword": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Docker registry password (leave empty to use Managed Identity for ACR)"
+      }
+    },
+    "useAcrManagedIdentity": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Use Managed Identity to authenticate with Azure Container Registry (recommended)"
+      }
+    },
     "environment": {
       "type": "string",
       "defaultValue": "production",
@@ -189,16 +231,16 @@
     "sqlDatabaseName": "FhirDatabase",
     "storageAccountName": "[take(replace(concat(parameters('appName'), 'storage'), '-', ''), 24)]",
     "durableTaskStorageAccountName": "[take(replace(concat(parameters('appName'), 'tasks'), '-', ''), 24)]",
-    "keyVaultName": "[concat(parameters('appName'), '-kv')]",
     "appInsightsName": "[concat(parameters('appName'), '-insights')]",
     "logAnalyticsName": "[concat(parameters('appName'), '-logs')]",
     "tenantId": "[subscription().tenantId]",
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
-    "keyVaultSecretsUserRoleId": "4633458b-17de-408a-b874-0445c86b69e6",
-    "keyVaultCertificateUserRoleId": "db79e9a7-68ee-4b58-9aeb-b90e7c24fcba",
+    "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
     "sqlServerFqdn": "[concat(variables('sqlServerName'), '.database.windows.net')]",
     "blobEndpoint": "[concat('https://', variables('storageAccountName'), '.blob.core.windows.net')]",
-    "durableTaskBlobEndpoint": "[concat('https://', variables('durableTaskStorageAccountName'), '.blob.core.windows.net')]"
+    "durableTaskBlobEndpoint": "[concat('https://', variables('durableTaskStorageAccountName'), '.blob.core.windows.net')]",
+    "dockerImageFull": "[concat(parameters('dockerRegistryUrl'), '/', parameters('dockerImage'), ':', parameters('dockerImageTag'))]",
+    "useDockerAuth": "[and(not(empty(parameters('dockerRegistryUsername'))), not(empty(parameters('dockerRegistryPassword'))))]"
   },
   "resources": [
     {
@@ -206,12 +248,13 @@
       "apiVersion": "2023-12-01",
       "name": "[variables('appServicePlanName')]",
       "location": "[parameters('location')]",
+      "kind": "linux",
       "sku": {
         "name": "[parameters('appServicePlanSku')]",
         "tier": "[parameters('appServicePlanTier')]"
       },
       "properties": {
-        "reserved": false
+        "reserved": true
       },
       "tags": {
         "environment": "[parameters('environment')]",
@@ -223,7 +266,7 @@
       "apiVersion": "2023-12-01",
       "name": "[parameters('appName')]",
       "location": "[parameters('location')]",
-      "kind": "app",
+      "kind": "app,linux,container",
       "identity": {
         "type": "SystemAssigned"
       },
@@ -236,11 +279,32 @@
         "httpsOnly": true,
         "clientAffinityEnabled": false,
         "siteConfig": {
-          "netFrameworkVersion": "v9.0",
+          "linuxFxVersion": "[concat('DOCKER|', variables('dockerImageFull'))]",
+          "alwaysOn": true,
           "http20Enabled": true,
           "minTlsVersion": "1.2",
-          "alwaysOn": true,
+          "acrUseManagedIdentityCreds": "[parameters('useAcrManagedIdentity')]",
           "appSettings": [
+            {
+              "name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE",
+              "value": "false"
+            },
+            {
+              "name": "WEBSITES_PORT",
+              "value": "80"
+            },
+            {
+              "name": "DOCKER_REGISTRY_SERVER_URL",
+              "value": "[parameters('dockerRegistryUrl')]"
+            },
+            {
+              "name": "DOCKER_REGISTRY_SERVER_USERNAME",
+              "value": "[if(variables('useDockerAuth'), parameters('dockerRegistryUsername'), '')]"
+            },
+            {
+              "name": "DOCKER_REGISTRY_SERVER_PASSWORD",
+              "value": "[if(variables('useDockerAuth'), parameters('dockerRegistryPassword'), '')]"
+            },
             {
               "name": "ASPNETCORE_ENVIRONMENT",
               "value": "[parameters('environment')]"
@@ -324,10 +388,6 @@
             {
               "name": "SqlConnectionString",
               "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
-            },
-            {
-              "name": "KeyVault__VaultUri",
-              "value": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]"
             }
           ]
         }
@@ -553,63 +613,6 @@
       }
     },
     {
-      "type": "Microsoft.KeyVault/vaults",
-      "apiVersion": "2023-07-01",
-      "name": "[variables('keyVaultName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "tenantId": "[variables('tenantId')]",
-        "sku": {
-          "family": "A",
-          "name": "standard"
-        },
-        "accessPolicies": [],
-        "enableRbacAuthorization": true,
-        "softDeleteRetentionInDays": 90,
-        "enablePurgeProtection": true,
-        "enableSoftDelete": true,
-        "publicNetworkAccess": "Enabled",
-        "networkAcls": {
-          "bypass": "AzureServices",
-          "defaultAction": "Allow"
-        }
-      },
-      "tags": {
-        "environment": "[parameters('environment')]",
-        "purpose": "FHIR Server Secrets"
-      }
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId, variables('keyVaultSecretsUserRoleId'))]",
-      "scope": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-      "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-        "[resourceId('Microsoft.Web/sites', parameters('appName'))]"
-      ],
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUserRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      }
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId, variables('keyVaultCertificateUserRoleId'))]",
-      "scope": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-      "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-        "[resourceId('Microsoft.Web/sites', parameters('appName'))]"
-      ],
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultCertificateUserRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      }
-    },
-    {
       "type": "Microsoft.OperationalInsights/workspaces",
       "apiVersion": "2023-09-01",
       "name": "[variables('logAnalyticsName')]",
@@ -671,7 +674,7 @@
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
       "metadata": {
-        "description": "The Managed Identity Principal ID of the App Service"
+        "description": "The Managed Identity Principal ID of the App Service (use this for ACR role assignment)"
       }
     },
     "sqlServerFqdn": {
@@ -709,13 +712,6 @@
         "description": "The name of the Storage Account for DurableTask orchestration"
       }
     },
-    "keyVaultUri": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri]",
-      "metadata": {
-        "description": "The URI of the Key Vault"
-      }
-    },
     "appInsightsInstrumentationKey": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]",
@@ -735,6 +731,13 @@
       "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]",
       "metadata": {
         "description": "SQL Connection String template (uses Managed Identity authentication)"
+      }
+    },
+    "dockerImageDeployed": {
+      "type": "string",
+      "value": "[variables('dockerImageFull')]",
+      "metadata": {
+        "description": "The full Docker image name deployed to App Service"
       }
     }
   }

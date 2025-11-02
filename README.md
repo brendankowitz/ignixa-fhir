@@ -17,14 +17,17 @@ Deploy the complete Ignixa FHIR Server infrastructure to Azure with one click:
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
 
 **What gets deployed:**
-- ✅ App Service with .NET 9.0 runtime
+- ✅ App Service (Linux) configured for Docker containers
 - ✅ Azure SQL Database with encryption
 - ✅ Azure Storage (FHIR data + DurableTask orchestration)
-- ✅ Key Vault for secrets management
 - ✅ Application Insights for monitoring
 - ✅ All configured with Managed Identity (no passwords)
+- ✅ Docker/ACR integration with optional Managed Identity
 
-**Note:** After deployment, you'll need to publish the application code to the App Service. See [deployment guide](deploy/azure/README.md) for details.
+**Requirements:**
+- Docker image must be built and pushed to Azure Container Registry (ACR)
+- Grant App Service Managed Identity the `AcrPull` role on your ACR
+- See [deployment guide](deploy/azure/README.md) for complete instructions
 
 ## Overview
 

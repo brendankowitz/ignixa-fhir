@@ -6,12 +6,12 @@ This directory contains Azure Infrastructure as Code (IaC) templates for deployi
 
 The deployment uses **Bicep templates** or **ARM JSON templates** with **Managed Identity** for secure, passwordless authentication across all Azure services:
 
-- **App Service**: Runs the FHIR Server application with System-Assigned Managed Identity
+- **App Service (Linux)**: Runs the FHIR Server Docker container with System-Assigned Managed Identity
 - **Azure SQL Database**: FHIR data storage with Azure AD-only authentication (no SQL passwords)
 - **Blob Storage (2 accounts)**: FHIR data storage + DurableTask orchestration backend
-- **Key Vault**: Secrets management using RBAC (no access policies)
 - **Application Insights**: Application monitoring and logging
 - **Log Analytics**: Centralized logging workspace
+- **Docker/ACR Support**: Configured to pull Docker images from Azure Container Registry or any Docker registry
 
 ## Deployment Options
 
@@ -119,17 +119,23 @@ Edit `azuredeploy.parameters.json` with your values:
     "appName": {
       "value": "ignixa-fhir-demo"  // Must be globally unique (3-24 chars)
     },
+    "dockerRegistryUrl": {
+      "value": "https://ignixa.azurecr.io"  // Your ACR URL
+    },
+    "dockerImage": {
+      "value": "ignixa-fhir"  // Docker image name
+    },
+    "dockerImageTag": {
+      "value": "latest"  // Image tag (e.g., latest, v1.0.0, main)
+    },
+    "useAcrManagedIdentity": {
+      "value": true  // Use Managed Identity for ACR (recommended)
+    },
     "environment": {
       "value": "production"  // development, staging, or production
     },
     "fhirVersion": {
       "value": "4.3"  // 3.0.2 (STU3), 4.0 (R4), 4.3 (R4B), 5.0 (R5), 6.0 (R6)
-    },
-    "sqlAdminObjectId": {
-      "value": ""  // Optional: your Azure AD object ID
-    },
-    "sqlAdminDisplayName": {
-      "value": ""  // Optional: your Azure AD display name
     }
   }
 }
@@ -178,7 +184,72 @@ cd scripts
 
 Deployment takes approximately **5-10 minutes**.
 
-### 5. Deploy Application (Auto-Initializes Everything)
+### 5. Grant ACR Pull Permission (Required for Managed Identity)
+
+If using `useAcrManagedIdentity: true` (recommended), grant the App Service Managed Identity permission to pull from your Azure Container Registry:
+
+```bash
+# Get the App Service Managed Identity Principal ID
+APP_PRINCIPAL_ID=$(az deployment group show \
+  --resource-group ignixa-fhir-rg \
+  --name <deployment-name> \
+  --query properties.outputs.appServiceManagedIdentityPrincipalId.value \
+  --output tsv)
+
+# Grant AcrPull role to the Managed Identity
+az role assignment create \
+  --assignee $APP_PRINCIPAL_ID \
+  --role "AcrPull" \
+  --scope /subscriptions/<subscription-id>/resourceGroups/<acr-resource-group>/providers/Microsoft.ContainerRegistry/registries/ignixa
+```
+
+**Alternative: Using Docker Registry Credentials**
+
+If you prefer username/password authentication, update the parameters:
+
+```json
+"dockerRegistryUsername": {
+  "value": "ignixa"
+},
+"dockerRegistryPassword": {
+  "value": "your-acr-admin-password"
+},
+"useAcrManagedIdentity": {
+  "value": false
+}
+```
+
+**Note:** Admin credentials must be enabled on your ACR:
+```bash
+az acr update --name ignixa --admin-enabled true
+```
+
+### 6. Build and Push Docker Image
+
+Build your Docker image and push to ACR:
+
+```bash
+# Build the Docker image
+docker build -t ignixa.azurecr.io/ignixa-fhir:latest .
+
+# Login to ACR
+az acr login --name ignixa
+
+# Push the image
+docker push ignixa.azurecr.io/ignixa-fhir:latest
+```
+
+### 7. Restart App Service (to pull new image)
+
+After pushing a new Docker image, restart the App Service to pull and run it:
+
+```bash
+az webapp restart \
+  --resource-group ignixa-fhir-rg \
+  --name ignixa-fhir-demo
+```
+
+### 8. Application Auto-Initialization
 
 The FHIR Server **automatically initializes the entire database** on first run. No manual SQL scripts needed!
 
@@ -199,21 +270,7 @@ The FHIR Server **automatically initializes the entire database** on first run. 
    - ✅ Grants EXECUTE on schema (for stored procedures/functions)
    - ✅ Grants CREATE TABLE (for schema evolution)
 
-**Build and Deploy Application**:
-
-```bash
-# Build Docker image (if using containers)
-docker build -t fhir-server:latest .
-
-# Or publish .NET application
-dotnet publish -c Release -o publish
-
-# Deploy to App Service
-az webapp deployment source config-zip \
-  --resource-group fhir-dev-rg \
-  --name fhir-dev-yourorg \
-  --src publish.zip
-```
+**No manual deployment needed** - The App Service automatically pulls and runs your Docker image from ACR!
 
 **Verify Setup** (Optional - Check logs or database after deployment):
 ```sql
@@ -229,7 +286,7 @@ LEFT OUTER JOIN sys.database_principals as DP2 on DRM.role_principal_id = DP2.pr
 WHERE DP1.name = 'fhir-dev-yourorg';
 ```
 
-### 6. Configure Application Settings (Optional)
+### 9. Configure Application Settings (Optional)
 
 Add application configuration to the deployed App Service. The connection string includes the App Service name (`User ID` parameter) for automatic MI setup:
 
@@ -246,7 +303,7 @@ az webapp config appsettings set \
 
 The `User ID=fhir-dev-yourorg` parameter tells the application to automatically create and configure the Managed Identity database user on first run.
 
-### 7. Test Deployment
+### 10. Test Deployment
 
 ```bash
 # Get App Service URL from deployment outputs
@@ -272,8 +329,8 @@ The deployment produces the following outputs:
 | `sqlServerName` | SQL Server name |
 | `databaseName` | Database name |
 | `storageAccountName` | Storage account name |
-| `keyVaultUri` | Key Vault URI for secret references |
 | `appInsightsConnectionString` | Application Insights connection string |
+| `dockerImageDeployed` | Full Docker image name deployed to App Service |
 
 ## Managed Identity Configuration
 
@@ -285,6 +342,38 @@ The deployment produces the following outputs:
    - Storage: "Storage Blob Data Contributor" role
    - Key Vault: "Key Vault Secrets User" role
    - SQL Server: "SQL Server Contributor" role (server-level)
+
+### Docker Container Registry Authentication
+
+**Option 1: Managed Identity (Recommended)**
+
+Set `useAcrManagedIdentity: true` and grant AcrPull role:
+
+```bash
+az role assignment create \
+  --assignee <app-service-principal-id> \
+  --role AcrPull \
+  --scope /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.ContainerRegistry/registries/<acr-name>
+```
+
+**Option 2: Admin Credentials**
+
+Set `useAcrManagedIdentity: false` and provide username/password:
+
+```bash
+# Enable admin account on ACR
+az acr update --name ignixa --admin-enabled true
+
+# Get credentials
+az acr credential show --name ignixa
+```
+
+Then update parameters:
+```json
+"dockerRegistryUsername": { "value": "ignixa" },
+"dockerRegistryPassword": { "value": "password-from-above" },
+"useAcrManagedIdentity": { "value": false }
+```
 
 ### Connection Strings
 
@@ -326,13 +415,6 @@ var blobClient = new BlobContainerClient(
     credential);
 ```
 
-**Key Vault** (uses Managed Identity at runtime):
-```csharp
-var credential = new DefaultAzureCredential();
-var client = new SecretClient(
-    new Uri("https://fhir-dev-yourorg-kv.vault.azure.net/"),
-    credential);
-```
 
 ## Security Considerations
 
@@ -401,13 +483,13 @@ Pre-configured alerts trigger when:
 
 | Resource | SKU | Monthly Cost |
 |----------|-----|--------------|
-| App Service | Basic B2 | ~$50 |
+| App Service (Linux) | Basic B2 | ~$50 |
 | SQL Database | Basic (5 DTU) | ~$5 |
-| Storage Account | Standard LRS | ~$1-5 |
-| Key Vault | Standard | ~$0.60 |
+| Storage Accounts (2) | Standard LRS | ~$2-10 |
 | Application Insights | PAYG | ~$5-20 |
 | Log Analytics | PAYG (1GB) | ~$5-10 |
-| **Total** | | **~$70-90** |
+| ACR (optional) | Basic | ~$5 |
+| **Total** | | **~$70-100** |
 
 ### Cost Optimization
 
@@ -451,13 +533,26 @@ az role assignment list \
   --output table
 ```
 
-### Key Vault "Access Denied" Error
+### Docker Image Pull Failed
 
-**Solution**: Verify Key Vault RBAC assignment:
+**Solution**: Verify ACR permissions or credentials:
+
+For Managed Identity:
 ```bash
+# Check role assignment
 az role assignment list \
-  --scope /subscriptions/<subscription-id>/resourceGroups/fhir-dev-rg/providers/Microsoft.KeyVault/vaults/fhir-dev-yourorg-kv \
+  --assignee <managed-identity-principal-id> \
+  --scope /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.ContainerRegistry/registries/<acr> \
   --output table
+```
+
+For Admin Credentials:
+```bash
+# Verify credentials are set
+az webapp config appsettings list \
+  --resource-group ignixa-fhir-rg \
+  --name ignixa-fhir-demo \
+  --query "[?name=='DOCKER_REGISTRY_SERVER_USERNAME' || name=='DOCKER_REGISTRY_SERVER_PASSWORD']"
 ```
 
 ## Cleanup
