@@ -22,11 +22,11 @@ namespace Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, ExportCoordinatorInput>
 {
     /// <summary>
-    /// Number of surrogate ID ranges per resource type.
-    /// 4-8 ranges per type enables parallelism while keeping total jobs manageable for DurableTask.
-    /// Example: 6 types × 6 ranges = 36 concurrent worker activities.
+    /// Valid range for NumberOfRangesPerType configuration.
+    /// Minimum: 1 (no parallelism per type), Maximum: 16 (high parallelism but DurableTask overhead).
     /// </summary>
-    private const int NumberOfRangesPerType = 6;
+    private const int MinRangesPerType = 1;
+    private const int MaxRangesPerType = 16;
 
     public override async Task<ExportCoordinatorOutput> RunTask(
         OrchestrationContext context,
@@ -38,6 +38,19 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
 
         try
         {
+            // Validate NumberOfRangesPerType - fail fast if out of range
+            if (input.NumberOfRangesPerType < MinRangesPerType || input.NumberOfRangesPerType > MaxRangesPerType)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(input),
+                    input.NumberOfRangesPerType,
+                    $"NumberOfRangesPerType must be between {MinRangesPerType} and {MaxRangesPerType}. " +
+                    $"Lower values reduce parallelism but decrease DurableTask overhead. " +
+                    $"Higher values increase parallelism but may overwhelm the task queue.");
+            }
+
+            var rangesPerType = input.NumberOfRangesPerType;
+
             // Determine which resource types to export
             var resourceTypes = input.ResourceTypes.Any()
                 ? input.ResourceTypes.ToList()
@@ -46,45 +59,74 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
             // Phase 1: For EACH resource type, get its surrogate ID ranges
             var allWorkerTasks = new List<Task<ExportWorkerOutput>>();
 
-            foreach (var resourceType in resourceTypes)
+            try
             {
-                // Step 1: Determine partitions (surrogate ID ranges) for this resource type
-                var getRangesInput = new GetExportRangesInput(
-                    TenantId: input.TenantId,
-                    ResourceType: resourceType,
-                    NumberOfRanges: NumberOfRangesPerType);
-
-                var rangesOutput = await context.ScheduleTask<GetExportRangesOutput>(
-                    typeof(GetExportRangesActivity),
-                    getRangesInput);
-
-                // Step 2: For EACH range, queue a worker activity (all in parallel)
-                foreach (var (startId, endId) in rangesOutput.Ranges)
+                foreach (var resourceType in resourceTypes)
                 {
-                    var outputPath = $"tenant/{input.TenantId}/export/{input.JobId}/{resourceType}-{startId}-{endId}.ndjson";
-
-                    var workerInput = new ExportWorkerInput(
-                        JobId: input.JobId,
+                    // Step 1: Determine partitions (surrogate ID ranges) for this resource type
+                    var getRangesInput = new GetExportRangesInput(
                         TenantId: input.TenantId,
                         ResourceType: resourceType,
-                        StartSurrogateId: startId,
-                        EndSurrogateId: endId,
-                        OutputPath: outputPath,
-                        Since: input.Since,
-                        TypeFilters: input.TypeFilters);
+                        NumberOfRanges: rangesPerType);
 
-                    // Schedule worker task (doesn't wait - queues for parallel execution)
-                    var workerTask = context.ScheduleTask<ExportWorkerOutput>(
-                        typeof(ExportWorkerActivity),
-                        workerInput);
+                    var rangesOutput = await context.ScheduleTask<GetExportRangesOutput>(
+                        typeof(GetExportRangesActivity),
+                        getRangesInput);
 
-                    allWorkerTasks.Add(workerTask);
+                    // Step 2: For EACH range, queue a worker activity (all in parallel)
+                    foreach (var (startId, endId) in rangesOutput.Ranges)
+                    {
+                        var outputPath = $"tenant/{input.TenantId}/export/{input.JobId}/{resourceType}-{startId}-{endId}.ndjson";
+
+                        var workerInput = new ExportWorkerInput(
+                            JobId: input.JobId,
+                            TenantId: input.TenantId,
+                            ResourceType: resourceType,
+                            StartSurrogateId: startId,
+                            EndSurrogateId: endId,
+                            OutputPath: outputPath,
+                            Since: input.Since,
+                            TypeFilters: input.TypeFilters);
+
+                        // Schedule worker task (doesn't wait - queues for parallel execution)
+                        var workerTask = context.ScheduleTask<ExportWorkerOutput>(
+                            typeof(ExportWorkerActivity),
+                            workerInput);
+
+                        allWorkerTasks.Add(workerTask);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                // Failure during initialization (GetExportRangesActivity or scheduling)
+                return new ExportCoordinatorOutput(
+                    Success: false,
+                    TotalResourcesExported: 0,
+                    TotalBytesWritten: 0,
+                    WorkerResults: null,
+                    ErrorMessage: $"Export initialization failed: {ex.Message}",
+                    FailurePhase: "Initialization");
             }
 
             // Phase 2: Wait for ALL worker activities to complete in parallel
             // This is where we achieve high throughput - 24-48 workers running simultaneously
-            var completedWorkers = await Task.WhenAll(allWorkerTasks);
+            ExportWorkerOutput[] completedWorkers;
+            try
+            {
+                completedWorkers = await Task.WhenAll(allWorkerTasks);
+            }
+            catch (Exception ex)
+            {
+                // Failure during worker execution (one or more workers failed)
+                return new ExportCoordinatorOutput(
+                    Success: false,
+                    TotalResourcesExported: totalResourcesExported,
+                    TotalBytesWritten: totalBytesWritten,
+                    WorkerResults: workerResults.AsReadOnly(),
+                    ErrorMessage: $"Worker execution failed: {ex.Message}",
+                    FailurePhase: "WorkerExecution");
+            }
 
             // Phase 3: Aggregate results from all workers
             foreach (var workerOutput in completedWorkers)
@@ -100,17 +142,20 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                 TotalResourcesExported: totalResourcesExported,
                 TotalBytesWritten: totalBytesWritten,
                 WorkerResults: workerResults.AsReadOnly(),
-                ErrorMessage: null);
+                ErrorMessage: null,
+                FailurePhase: null);
         }
         catch (Exception ex)
         {
-            // Return failure result with partial progress
+            // Unexpected failure during aggregation or final processing
+            // This should be rare - most failures are caught in the specific phases above
             return new ExportCoordinatorOutput(
                 Success: false,
                 TotalResourcesExported: totalResourcesExported,
                 TotalBytesWritten: totalBytesWritten,
                 WorkerResults: workerResults.AsReadOnly(),
-                ErrorMessage: ex.Message);
+                ErrorMessage: $"Unexpected failure during export: {ex.Message}",
+                FailurePhase: "Aggregation");
         }
     }
 

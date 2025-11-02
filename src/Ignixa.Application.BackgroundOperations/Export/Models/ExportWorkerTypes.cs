@@ -151,7 +151,15 @@ public record ExportCoordinatorInput(
     /// Key is resource type, value is query string of search parameters.
     /// If null, no filters are applied.
     /// </summary>
-    IReadOnlyDictionary<string, string>? TypeFilters = null);
+    IReadOnlyDictionary<string, string>? TypeFilters = null,
+
+    /// <summary>
+    /// Optional: Number of surrogate ID ranges per resource type for parallel processing.
+    /// Default is 6. Valid range: 1-16.
+    /// More ranges = more parallelism but higher DurableTask overhead.
+    /// Example: 6 types × 6 ranges = 36 concurrent workers.
+    /// </summary>
+    int NumberOfRangesPerType = 6);
 
 /// <summary>
 /// Coordinator orchestration output.
@@ -183,4 +191,11 @@ public record ExportCoordinatorOutput(
     /// Error message if export failed.
     /// Null if successful.
     /// </summary>
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+
+    /// <summary>
+    /// Phase where failure occurred (if applicable).
+    /// Helps distinguish between initialization failures vs worker failures.
+    /// Null if successful or phase unknown.
+    /// </summary>
+    string? FailurePhase = null);

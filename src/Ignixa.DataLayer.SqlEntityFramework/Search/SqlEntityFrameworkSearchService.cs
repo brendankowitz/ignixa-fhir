@@ -261,35 +261,30 @@ public class SqlEntityFrameworkSearchService : ISearchService
             return Array.Empty<(long, long)>();
         }
 
-        // Query for min/max surrogate IDs for this resource type
-        var minMaxQuery = await _context.Resources
+        // Query for min/max/count in a single aggregation query (optimized to avoid 3 separate subqueries)
+        var stats = await _context.Resources
             .Where(r => r.ResourceTypeId == resourceTypeId.Value
                 && !r.IsHistory
                 && !r.IsDeleted)
             .AsNoTracking()
-            .Select(r => new
+            .GroupBy(r => 1)
+            .Select(g => new
             {
-                MinId = _context.Resources
-                    .Where(x => x.ResourceTypeId == resourceTypeId.Value && !x.IsHistory && !x.IsDeleted)
-                    .Min(x => x.ResourceSurrogateId),
-                MaxId = _context.Resources
-                    .Where(x => x.ResourceTypeId == resourceTypeId.Value && !x.IsHistory && !x.IsDeleted)
-                    .Max(x => x.ResourceSurrogateId),
-                Count = _context.Resources
-                    .Where(x => x.ResourceTypeId == resourceTypeId.Value && !x.IsHistory && !x.IsDeleted)
-                    .Count()
+                MinId = g.Min(x => x.ResourceSurrogateId),
+                MaxId = g.Max(x => x.ResourceSurrogateId),
+                Count = g.Count()
             })
             .FirstOrDefaultAsync(ct);
 
-        if (minMaxQuery == null || minMaxQuery.Count == 0)
+        if (stats == null || stats.Count == 0)
         {
             _logger.LogInformation("No resources found for ResourceType={ResourceType}", resourceType);
             return Array.Empty<(long, long)>();
         }
 
-        long minId = minMaxQuery.MinId;
-        long maxId = minMaxQuery.MaxId;
-        long count = minMaxQuery.Count;
+        long minId = stats.MinId;
+        long maxId = stats.MaxId;
+        long count = stats.Count;
         long rangeSize = (long)Math.Ceiling((double)(maxId - minId + 1) / numberOfRanges);
 
         _logger.LogInformation(
@@ -451,6 +446,19 @@ public class SqlEntityFrameworkSearchService : ISearchService
         else
         {
             filteredQuery = baseQuery;
+        }
+
+        // Apply surrogate ID range filtering for export partitioning
+        if (options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue)
+        {
+            filteredQuery = filteredQuery.Where(r =>
+                r.ResourceSurrogateId >= options.StartSurrogateId.Value &&
+                r.ResourceSurrogateId <= options.EndSurrogateId.Value);
+
+            _logger.LogDebug(
+                "Applied surrogate ID range filter: [{StartId}..{EndId}]",
+                options.StartSurrogateId.Value,
+                options.EndSurrogateId.Value);
         }
 
         // Apply sorting

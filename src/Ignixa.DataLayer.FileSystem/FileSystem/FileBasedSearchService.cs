@@ -88,6 +88,21 @@ public class FileBasedSearchService : ISearchService
                 filteredMetadata.Count());
         }
 
+        // Step 2.5: Apply surrogate ID range filtering for export partitioning
+        // For file-based storage, we use index position as the "surrogate ID"
+        if (options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue)
+        {
+            var filteredList = filteredMetadata.ToList();
+            filteredMetadata = filteredList
+                .Skip((int)options.StartSurrogateId.Value)
+                .Take((int)(options.EndSurrogateId.Value - options.StartSurrogateId.Value + 1));
+
+            _logger.LogDebug(
+                "Applied surrogate ID range filter (index positions): [{StartId}..{EndId}]",
+                options.StartSurrogateId.Value,
+                options.EndSurrogateId.Value);
+        }
+
         // Step 3: Apply pagination
         int skip = 0; // TODO: Parse continuation token
         int take = options.MaxItemCount;
@@ -172,6 +187,21 @@ public class FileBasedSearchService : ISearchService
                 "Search expression filtered {Original} resources to {Filtered} results",
                 allMetadata.Count,
                 filteredMetadata.Count());
+        }
+
+        // Step 2.5: Apply surrogate ID range filtering for export partitioning
+        // For file-based storage, we use index position as the "surrogate ID"
+        if (options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue)
+        {
+            var filteredList = filteredMetadata.ToList();
+            filteredMetadata = filteredList
+                .Skip((int)options.StartSurrogateId.Value)
+                .Take((int)(options.EndSurrogateId.Value - options.StartSurrogateId.Value + 1));
+
+            _logger.LogDebug(
+                "Applied surrogate ID range filter (index positions): [{StartId}..{EndId}]",
+                options.StartSurrogateId.Value,
+                options.EndSurrogateId.Value);
         }
 
         // Step 3: Apply pagination
