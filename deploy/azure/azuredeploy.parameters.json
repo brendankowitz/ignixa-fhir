@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appName": {
+      "value": "ignixa-fhir-demo"
+    },
+    "environment": {
+      "value": "production"
+    },
+    "appServicePlanSku": {
+      "value": "B2"
+    },
+    "appServicePlanTier": {
+      "value": "Basic"
+    },
+    "sqlDatabaseSku": {
+      "value": "Basic"
+    },
+    "sqlDatabaseMaxSizeGB": {
+      "value": 2
+    },
+    "sqlAdminObjectId": {
+      "value": ""
+    },
+    "sqlAdminDisplayName": {
+      "value": ""
+    },
+    "enableManagedIdentityAuth": {
+      "value": true
+    },
+    "storageAccountType": {
+      "value": "Standard_LRS"
+    },
+    "logRetentionDays": {
+      "value": 30
+    },
+    "fhirVersion": {
+      "value": "4.3"
+    },
+    "tenantMode": {
+      "value": "Isolated"
+    },
+    "enableTransactionWatcher": {
+      "value": true
+    },
+    "durableTaskStorageType": {
+      "value": "AzureStorage"
+    }
+  }
+}

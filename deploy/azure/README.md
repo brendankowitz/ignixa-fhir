@@ -4,20 +4,50 @@ This directory contains Azure Infrastructure as Code (IaC) templates for deployi
 
 ## Overview
 
-The deployment uses **Bicep** templates with **Managed Identity** for secure, passwordless authentication across all Azure services:
+The deployment uses **Bicep templates** or **ARM JSON templates** with **Managed Identity** for secure, passwordless authentication across all Azure services:
 
 - **App Service**: Runs the FHIR Server application with System-Assigned Managed Identity
 - **Azure SQL Database**: FHIR data storage with Azure AD-only authentication (no SQL passwords)
-- **Blob Storage**: Document and export storage with Managed Identity access
+- **Blob Storage (2 accounts)**: FHIR data storage + DurableTask orchestration backend
 - **Key Vault**: Secrets management using RBAC (no access policies)
 - **Application Insights**: Application monitoring and logging
 - **Log Analytics**: Centralized logging workspace
+
+## Deployment Options
+
+### Option 1: ARM Template (Single JSON File) ⚡ Quickest
+
+Use the consolidated `azuredeploy.json` template for one-click deployment:
+
+```bash
+az deployment group create \
+  --resource-group fhir-dev-rg \
+  --template-file azuredeploy.json \
+  --parameters azuredeploy.parameters.json
+```
+
+**Best for**: Quick deployments, CI/CD pipelines, users familiar with ARM templates
+
+### Option 2: Bicep Modules (Modular IaC) 🔧 Most Flexible
+
+Use the modular Bicep templates for advanced customization:
+
+```bash
+az deployment group create \
+  --resource-group fhir-dev-rg \
+  --template-file main.bicep \
+  --parameters parameters/dev.bicepparam
+```
+
+**Best for**: Advanced scenarios, incremental deployments, easier to maintain and customize
 
 ## Directory Structure
 
 ```
 deploy/azure/
-├── main.bicep                          # Main orchestration template
+├── azuredeploy.json                    # ⚡ ARM template (consolidated, single-file)
+├── azuredeploy.parameters.json         # ARM template parameters
+├── main.bicep                          # Main Bicep orchestration template
 ├── modules/
 │   ├── app-service.bicep              # App Service + Plan + MI
 │   ├── sql-database.bicep             # Azure SQL Server + Database
@@ -65,7 +95,7 @@ deploy/azure/
 - **SQL Server Admin**: Must be an Azure AD user or service principal
 - Provide the object ID during deployment (optional but recommended)
 
-## Quick Start
+## Quick Start (ARM Template)
 
 ### 1. Login to Azure
 
@@ -79,58 +109,76 @@ az account set --subscription "My Subscription Name"
 
 ### 2. Update Parameter File
 
-Edit the appropriate parameter file with your values:
+Edit `azuredeploy.parameters.json` with your values:
 
-**Development**:
+```json
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appName": {
+      "value": "ignixa-fhir-demo"  // Must be globally unique (3-24 chars)
+    },
+    "environment": {
+      "value": "production"  // development, staging, or production
+    },
+    "fhirVersion": {
+      "value": "4.3"  // 3.0.2 (STU3), 4.0 (R4), 4.3 (R4B), 5.0 (R5), 6.0 (R6)
+    },
+    "sqlAdminObjectId": {
+      "value": ""  // Optional: your Azure AD object ID
+    },
+    "sqlAdminDisplayName": {
+      "value": ""  // Optional: your Azure AD display name
+    }
+  }
+}
+```
+
+**Get your Azure AD Object ID** (optional, for SQL admin):
 ```bash
-vi parameters/dev.bicepparam
+az ad signed-in-user show --query id -o tsv
 ```
 
-Update:
-```bicep
-param appName = 'fhir-dev-yourorg'  # Must be globally unique
-param sqlAdminEmail = ''             # Optional: your Azure AD email
-```
+### 3. Create Resource Group
 
-**Production**:
 ```bash
-vi parameters/production.bicepparam
+az group create \
+  --name ignixa-fhir-rg \
+  --location eastus
 ```
 
-Update:
-```bicep
-param appName = 'fhir-prod-yourorg' # Must be globally unique
-param sqlAdminEmail = 'admin@yourorg.com'  # Recommended: service principal or admin
+### 4. Deploy Infrastructure
+
+**Using ARM Template** (recommended for quick start):
+
+```bash
+az deployment group create \
+  --resource-group ignixa-fhir-rg \
+  --template-file azuredeploy.json \
+  --parameters azuredeploy.parameters.json
 ```
 
-### 3. Run Deployment Script
+**OR using Bicep Modules** (for advanced scenarios):
 
-**PowerShell** (Windows):
+```bash
+az deployment group create \
+  --resource-group ignixa-fhir-rg \
+  --template-file main.bicep \
+  --parameters appName=ignixa-fhir-demo
+```
+
+**OR using PowerShell script**:
 ```powershell
 cd scripts
-.\deploy.ps1 -Environment dev `
-    -ResourceGroup fhir-dev-rg `
+.\deploy.ps1 -Environment production `
+    -ResourceGroup ignixa-fhir-rg `
     -Location eastus
 ```
 
-**Bash** (Linux/macOS):
-```bash
-cd scripts
-bash deploy.sh --environment dev \
-    --resource-group fhir-dev-rg \
-    --location eastus
-```
+Deployment takes approximately **5-10 minutes**.
 
-**Directly with Azure CLI**:
-```bash
-az deployment group create \
-  --name fhir-deployment \
-  --resource-group fhir-dev-rg \
-  --template-file main.bicep \
-  --parameters parameters/dev.bicepparam
-```
-
-### 4. Deploy Application (Auto-Initializes Everything)
+### 5. Deploy Application (Auto-Initializes Everything)
 
 The FHIR Server **automatically initializes the entire database** on first run. No manual SQL scripts needed!
 
@@ -181,7 +229,7 @@ LEFT OUTER JOIN sys.database_principals as DP2 on DRM.role_principal_id = DP2.pr
 WHERE DP1.name = 'fhir-dev-yourorg';
 ```
 
-### 5. Configure Application Settings
+### 6. Configure Application Settings (Optional)
 
 Add application configuration to the deployed App Service. The connection string includes the App Service name (`User ID` parameter) for automatic MI setup:
 
@@ -198,7 +246,7 @@ az webapp config appsettings set \
 
 The `User ID=fhir-dev-yourorg` parameter tells the application to automatically create and configure the Managed Identity database user on first run.
 
-### 6. Test Deployment
+### 7. Test Deployment
 
 ```bash
 # Get App Service URL from deployment outputs
