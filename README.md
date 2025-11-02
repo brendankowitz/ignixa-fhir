@@ -24,6 +24,12 @@ Deploy the complete Ignixa FHIR Server infrastructure to Azure with one click:
 - ✅ All configured with Managed Identity (no passwords)
 - ✅ Docker/ACR integration with optional Managed Identity
 
+**Auto-configured on first run:**
+- ✅ Tenant 1 connected to Azure SQL Database
+- ✅ Database schema auto-initialized
+- ✅ DurableTask backend connected to Azure Storage
+- ✅ Export/Import connected to Azure Blob Storage
+
 **Requirements:**
 - Docker image must be built and pushed to Azure Container Registry (ACR)
 - Grant App Service Managed Identity the `AcrPull` role on your ACR

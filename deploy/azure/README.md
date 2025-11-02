@@ -253,6 +253,13 @@ az webapp restart \
 
 The FHIR Server **automatically initializes the entire database** on first run. No manual SQL scripts needed!
 
+**What Gets Configured:**
+- ✅ **Tenant 1** (Default Production Tenant) - Configured to use the SQL database
+- ✅ **Database Schema** - Auto-created with all tables, indexes, and stored procedures
+- ✅ **Managed Identity** - Database user auto-created with permissions
+- ✅ **DurableTask Backend** - Connected to Azure Storage with Managed Identity
+- ✅ **Export/Import Storage** - Connected to Azure Blob Storage with Managed Identity
+
 **Automatic Full Initialization** (On First Run):
 
 1. **Schema Creation** (if database is empty)
@@ -307,14 +314,36 @@ The `User ID=fhir-dev-yourorg` parameter tells the application to automatically 
 
 ```bash
 # Get App Service URL from deployment outputs
-APP_URL="https://fhir-dev-yourorg.azurewebsites.net"
+APP_URL=$(az deployment group show \
+  --resource-group ignixa-fhir-rg \
+  --name <deployment-name> \
+  --query properties.outputs.appServiceUrl.value \
+  --output tsv)
 
 # Test capability statement
 curl "$APP_URL/metadata"
 
-# Test health check (if implemented)
-curl "$APP_URL/health"
+# Create a test Patient resource (Tenant 1)
+curl -X PUT "$APP_URL/Patient/test-123" \
+  -H "Content-Type: application/fhir+json" \
+  -d '{
+    "resourceType": "Patient",
+    "id": "test-123",
+    "name": [{"family": "Doe", "given": ["John"]}]
+  }'
+
+# Retrieve the Patient
+curl "$APP_URL/Patient/test-123"
+
+# Search for Patients
+curl "$APP_URL/Patient?name=Doe"
 ```
+
+**Expected Results:**
+- `/metadata` returns CapabilityStatement (FHIR conformance)
+- `/Patient/test-123` creates and returns the Patient resource
+- Data is stored in Azure SQL Database (Tenant 1)
+- All operations use Managed Identity (no credentials exposed)
 
 ## Deployment Outputs
 
@@ -327,10 +356,36 @@ The deployment produces the following outputs:
 | `appServiceManagedIdentityPrincipalId` | Managed Identity principal ID for RBAC |
 | `sqlServerFqdn` | SQL Server fully qualified domain name |
 | `sqlServerName` | SQL Server name |
-| `databaseName` | Database name |
-| `storageAccountName` | Storage account name |
+| `databaseName` | Database name (used by Tenant 1) |
+| `storageAccountName` | Storage account name (export/import) |
+| `durableTaskStorageAccountName` | Storage account name (DurableTask backend) |
 | `appInsightsConnectionString` | Application Insights connection string |
 | `dockerImageDeployed` | Full Docker image name deployed to App Service |
+
+## Default Configuration
+
+After deployment, the FHIR server is configured with:
+
+### Tenant Configuration
+
+- **Tenant 0** (System Partition) - FileSystem storage, used for transaction ID allocation
+- **Tenant 1** (Production) - **Azure SQL Database** (auto-configured)
+  - Storage Type: `SqlEntityFramework`
+  - FHIR Version: Configurable via `fhirVersion` parameter (default: 4.3/R4B)
+  - Connection: Uses Managed Identity authentication
+  - Database: Auto-initialized on first startup
+
+### Storage Configuration
+
+- **FHIR Data Storage** (exports/imports) - Azure Blob Storage
+  - Account: `{appName}storage`
+  - Containers: `fhir-exports`, `fhir-imports`, `fhirstorage`
+  - Authentication: Managed Identity
+
+- **DurableTask Backend** - Azure Storage
+  - Account: `{appName}tasks`
+  - Authentication: Managed Identity
+  - Task Hub: `ignixa`
 
 ## Managed Identity Configuration
 

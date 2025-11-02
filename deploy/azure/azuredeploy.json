@@ -388,6 +388,30 @@
             {
               "name": "SqlConnectionString",
               "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
+            },
+            {
+              "name": "Tenants__Configurations__1__TenantId",
+              "value": "1"
+            },
+            {
+              "name": "Tenants__Configurations__1__DisplayName",
+              "value": "Production Database"
+            },
+            {
+              "name": "Tenants__Configurations__1__FhirVersion",
+              "value": "[parameters('fhirVersion')]"
+            },
+            {
+              "name": "Tenants__Configurations__1__IsActive",
+              "value": "true"
+            },
+            {
+              "name": "Tenants__Configurations__1__Storage__Type",
+              "value": "SqlEntityFramework"
+            },
+            {
+              "name": "Tenants__Configurations__1__Storage__ConnectionString",
+              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', parameters('appName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
             }
           ]
         }
