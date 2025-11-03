@@ -50,8 +50,7 @@ public static class DurableTaskConfiguration
 
             // Register Import activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<ImportActivities.ValidateFileActivity>(sp);
-            worker.AddTaskActivitiesFromInterface<ImportActivities.DownloadAndParseActivity>(sp);
-            worker.AddTaskActivitiesFromInterface<ImportActivities.ImportBatchActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ImportActivities.StreamingImportFileActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ImportActivities.UpdateProgressActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ImportActivities.CompleteJobActivity>(sp);
 
