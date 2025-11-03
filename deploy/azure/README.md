@@ -143,7 +143,7 @@ Edit `azuredeploy.parameters.json` with your values:
 
 **Get your Azure AD Object ID** (optional, for SQL admin):
 ```bash
-az ad signed-in-user show --query id -o tsv
+az ad signed-in-user show --query objectId -o tsv
 ```
 
 ### 3. Create Resource Group
