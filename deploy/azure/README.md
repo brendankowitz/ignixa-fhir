@@ -200,7 +200,7 @@ APP_PRINCIPAL_ID=$(az deployment group show \
 az role assignment create \
   --assignee $APP_PRINCIPAL_ID \
   --role "AcrPull" \
-  --scope /subscriptions/<subscription-id>/resourceGroups/<acr-resource-group>/providers/Microsoft.ContainerRegistry/registries/ignixa
+  --scope /subscriptions/<subscription-id>/resourceGroups/<acr-resource-group>/providers/Microsoft.ContainerRegistry/registries/<acr-name>
 ```
 
 **Alternative: Using Docker Registry Credentials**
