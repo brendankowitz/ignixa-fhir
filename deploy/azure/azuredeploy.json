@@ -46,14 +46,7 @@
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "Docker registry password (leave empty to use Managed Identity for ACR)"
-      }
-    },
-    "useAcrManagedIdentity": {
-      "type": "bool",
-      "defaultValue": true,
-      "metadata": {
-        "description": "Use Managed Identity to authenticate with Azure Container Registry (recommended)"
+        "description": "Docker registry password (leave empty for anonymous/public registries)"
       }
     },
     "environment": {
@@ -285,7 +278,6 @@
           "alwaysOn": true,
           "http20Enabled": true,
           "minTlsVersion": "1.2",
-          "acrUseManagedIdentityCreds": "[parameters('useAcrManagedIdentity')]",
           "healthCheckPath": "/health/check",
           "appSettings": [
             {

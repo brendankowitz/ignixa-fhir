@@ -128,9 +128,6 @@ Edit `azuredeploy.parameters.json` with your values:
     "dockerImageTag": {
       "value": "latest"  // Image tag (e.g., latest, v1.0.0, main)
     },
-    "useAcrManagedIdentity": {
-      "value": true  // Use Managed Identity for ACR (recommended)
-    },
     "environment": {
       "value": "production"  // development, staging, or production
     },
@@ -184,44 +181,40 @@ cd scripts
 
 Deployment takes approximately **5-10 minutes**.
 
-### 5. Grant ACR Pull Permission (Required for Managed Identity)
+### 5. Configure ACR Authentication
 
-If using `useAcrManagedIdentity: true` (recommended), grant the App Service Managed Identity permission to pull from your Azure Container Registry:
+Choose one of the authentication methods:
+
+**Option 1: Public ACR with Anonymous Pull (Recommended)**
+
+Enable anonymous pull on your ACR - no credentials needed:
 
 ```bash
-# Get the App Service Managed Identity Principal ID
-APP_PRINCIPAL_ID=$(az deployment group show \
-  --resource-group ignixa-fhir-rg \
-  --name <deployment-name> \
-  --query properties.outputs.appServiceManagedIdentityPrincipalId.value \
-  --output tsv)
-
-# Grant AcrPull role to the Managed Identity
-az role assignment create \
-  --assignee $APP_PRINCIPAL_ID \
-  --role "AcrPull" \
-  --scope /subscriptions/<subscription-id>/resourceGroups/<acr-resource-group>/providers/Microsoft.ContainerRegistry/registries/<acr-name>
+az acr update --name ignixa --anonymous-pull-enabled true
 ```
 
-**Alternative: Using Docker Registry Credentials**
+Leave `dockerRegistryUsername` and `dockerRegistryPassword` empty in parameters.
 
-If you prefer username/password authentication, update the parameters:
+**Option 2: Username/Password for Private Registries**
 
+Enable admin credentials and provide them in the parameters file:
+
+```bash
+# Enable admin account on ACR
+az acr update --name ignixa --admin-enabled true
+
+# Get credentials
+az acr credential show --name ignixa
+```
+
+Then update `azuredeploy.parameters.json`:
 ```json
 "dockerRegistryUsername": {
   "value": "ignixa"
 },
 "dockerRegistryPassword": {
   "value": "your-acr-admin-password"
-},
-"useAcrManagedIdentity": {
-  "value": false
 }
-```
-
-**Note:** Admin credentials must be enabled on your ACR:
-```bash
-az acr update --name ignixa --admin-enabled true
 ```
 
 ### 6. Build and Push Docker Image
@@ -353,7 +346,8 @@ The deployment produces the following outputs:
 |--------|---------|
 | `appServiceUrl` | URL of the deployed FHIR Server |
 | `appServiceName` | App Service resource name |
-| `appServiceManagedIdentityPrincipalId` | Managed Identity principal ID for RBAC |
+| `userAssignedIdentityPrincipalId` | User-Assigned Managed Identity principal ID (for SQL) |
+| `userAssignedIdentityClientId` | User-Assigned Managed Identity client ID |
 | `sqlServerFqdn` | SQL Server fully qualified domain name |
 | `sqlServerName` | SQL Server name |
 | `databaseName` | Database name (used by Tenant 1) |
@@ -391,29 +385,35 @@ After deployment, the FHIR server is configured with:
 
 ### How Managed Identity Works
 
-1. **App Service** has System-Assigned Managed Identity automatically created
-2. **Azure AD** grants credentials to the App Service
-3. **RBAC Role Assignments** grant permissions to specific resources:
-   - Storage: "Storage Blob Data Contributor" role
-   - Key Vault: "Key Vault Secrets User" role
-   - SQL Server: "SQL Server Contributor" role (server-level)
+The deployment creates **two Managed Identities** with different purposes:
+
+1. **User-Assigned Managed Identity (UAMI)** - Dedicated identity for SQL authentication
+   - Created as a standalone Azure resource
+   - Assigned as SQL Server administrator with Entra ID-only authentication
+   - Client ID embedded in connection strings for SQL authentication
+   - Outputs: `userAssignedIdentityPrincipalId`, `userAssignedIdentityClientId`
+
+2. **System-Assigned Managed Identity (SAMI)** - Automatic identity for Azure resources
+   - Automatically created with the App Service
+   - Used for Storage and other Azure resource authentication
+   - Granted RBAC roles: "Storage Blob Data Contributor"
+   - Authenticates using `DefaultAzureCredential` in application code
 
 ### Docker Container Registry Authentication
 
-**Option 1: Managed Identity (Recommended)**
+**Option 1: Public ACR with Anonymous Pull (Recommended)**
 
-Set `useAcrManagedIdentity: true` and grant AcrPull role:
+Enable anonymous pull on your ACR:
 
 ```bash
-az role assignment create \
-  --assignee <app-service-principal-id> \
-  --role AcrPull \
-  --scope /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.ContainerRegistry/registries/<acr-name>
+az acr update --name ignixa --anonymous-pull-enabled true
 ```
 
-**Option 2: Admin Credentials**
+No authentication parameters needed - leave username/password empty.
 
-Set `useAcrManagedIdentity: false` and provide username/password:
+**Option 2: Username/Password for Private Registries**
+
+Enable admin credentials and provide username/password in parameters:
 
 ```bash
 # Enable admin account on ACR
@@ -426,8 +426,7 @@ az acr credential show --name ignixa
 Then update parameters:
 ```json
 "dockerRegistryUsername": { "value": "ignixa" },
-"dockerRegistryPassword": { "value": "password-from-above" },
-"useAcrManagedIdentity": { "value": false }
+"dockerRegistryPassword": { "value": "password-from-above" }
 ```
 
 ### Connection Strings
@@ -590,20 +589,17 @@ az role assignment list \
 
 ### Docker Image Pull Failed
 
-**Solution**: Verify ACR permissions or credentials:
+**Solution**: Verify ACR access or credentials:
 
-For Managed Identity:
+For Public ACR:
 ```bash
-# Check role assignment
-az role assignment list \
-  --assignee <managed-identity-principal-id> \
-  --scope /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.ContainerRegistry/registries/<acr> \
-  --output table
+# Verify anonymous pull is enabled
+az acr show --name ignixa --query anonymousPullEnabled
 ```
 
-For Admin Credentials:
+For Private ACR:
 ```bash
-# Verify credentials are set
+# Verify credentials are set correctly
 az webapp config appsettings list \
   --resource-group ignixa-fhir-rg \
   --name ignixa-fhir-demo \

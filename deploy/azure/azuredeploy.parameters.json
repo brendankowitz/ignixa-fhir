@@ -20,9 +20,6 @@
     "dockerRegistryPassword": {
       "value": ""
     },
-    "useAcrManagedIdentity": {
-      "value": true
-    },
     "environment": {
       "value": "production"
     },
