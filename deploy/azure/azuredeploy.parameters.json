@@ -38,12 +38,6 @@
     "sqlDatabaseMaxSizeGB": {
       "value": 2
     },
-    "sqlAdminObjectId": {
-      "value": ""
-    },
-    "sqlAdminDisplayName": {
-      "value": ""
-    },
     "enableManagedIdentityAuth": {
       "value": true
     },

@@ -137,20 +137,6 @@
         "description": "Maximum size of SQL Database in GB"
       }
     },
-    "sqlAdminObjectId": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Azure AD admin object ID for SQL Server (optional - leave empty to skip AAD admin setup)"
-      }
-    },
-    "sqlAdminDisplayName": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Azure AD admin display name for SQL Server"
-      }
-    },
     "enableManagedIdentityAuth": {
       "type": "bool",
       "defaultValue": true,
@@ -227,6 +213,7 @@
   },
   "variables": {
     "appServicePlanName": "[concat(parameters('appName'), '-plan')]",
+    "managedIdentityName": "[concat(parameters('appName'), '-identity')]",
     "sqlServerName": "[concat(parameters('appName'), '-sql')]",
     "sqlDatabaseName": "FhirDatabase",
     "storageAccountName": "[take(replace(concat(parameters('appName'), 'storage'), '-', ''), 24)]",
@@ -243,6 +230,16 @@
     "useDockerAuth": "[and(not(empty(parameters('dockerRegistryUsername'))), not(empty(parameters('dockerRegistryPassword'))))]"
   },
   "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('managedIdentityName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environment')]",
+        "purpose": "FHIR Server Identity"
+      }
+    },
     {
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2023-12-01",
@@ -268,11 +265,15 @@
       "location": "[parameters('location')]",
       "kind": "app,linux,container",
       "identity": {
-        "type": "SystemAssigned"
+        "type": "SystemAssigned, UserAssigned",
+        "userAssignedIdentities": {
+          "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]": {}
+        }
       },
       "dependsOn": [
         "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
-        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]"
       ],
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
@@ -284,6 +285,7 @@
           "http20Enabled": true,
           "minTlsVersion": "1.2",
           "acrUseManagedIdentityCreds": "[parameters('useAcrManagedIdentity')]",
+          "healthCheckPath": "/health/check",
           "appSettings": [
             {
               "name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE",
@@ -387,7 +389,7 @@
             },
             {
               "name": "SqlConnectionString",
-              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
+              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId, ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
             },
             {
               "name": "Tenants__Configurations__1__TenantId",
@@ -411,7 +413,7 @@
             },
             {
               "name": "Tenants__Configurations__1__Storage__ConnectionString",
-              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', parameters('appName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
+              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId, ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
             }
           ]
         }
@@ -426,16 +428,21 @@
       "apiVersion": "2023-08-01-preview",
       "name": "[variables('sqlServerName')]",
       "location": "[parameters('location')]",
-      "identity": {
-        "type": "SystemAssigned"
-      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]"
+      ],
       "properties": {
-        "administratorLogin": "sqladmin",
-        "administratorLoginPassword": "[uniqueString(resourceGroup().id, deployment().name, 'sql')]",
         "version": "12.0",
         "publicNetworkAccess": "Enabled",
         "minimalTlsVersion": "1.2",
-        "administrators": "[if(empty(parameters('sqlAdminObjectId')), json('null'), json(concat('{\"administratorType\":\"ActiveDirectory\",\"login\":\"', parameters('sqlAdminDisplayName'), '\",\"sid\":\"', parameters('sqlAdminObjectId'), '\",\"tenantId\":\"', variables('tenantId'), '\",\"principalType\":\"User\",\"azureADOnlyAuthentication\":false}')))]"
+        "administrators": {
+          "administratorType": "ActiveDirectory",
+          "login": "[variables('managedIdentityName')]",
+          "sid": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]",
+          "tenantId": "[variables('tenantId')]",
+          "principalType": "Application",
+          "azureADOnlyAuthentication": true
+        }
       },
       "tags": {
         "environment": "[parameters('environment')]",
@@ -698,7 +705,21 @@
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
       "metadata": {
-        "description": "The Managed Identity Principal ID of the App Service (use this for ACR role assignment)"
+        "description": "The System-Assigned Managed Identity Principal ID of the App Service"
+      }
+    },
+    "userAssignedIdentityClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId]",
+      "metadata": {
+        "description": "The User-Assigned Managed Identity Client ID (used for SQL authentication)"
+      }
+    },
+    "userAssignedIdentityPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]",
+      "metadata": {
+        "description": "The User-Assigned Managed Identity Principal ID (SQL admin)"
       }
     },
     "sqlServerFqdn": {
@@ -752,9 +773,9 @@
     },
     "sqlConnectionString": {
       "type": "string",
-      "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]",
+      "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId, ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]",
       "metadata": {
-        "description": "SQL Connection String template (uses Managed Identity authentication)"
+        "description": "SQL Connection String with User-Assigned Managed Identity (Entra ID authentication only)"
       }
     },
     "dockerImageDeployed": {
