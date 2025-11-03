@@ -21,15 +21,16 @@ public class BlobStorageExportStreamWriter : IExportStreamWriter
     private readonly string _outputPath;
     private readonly ILogger<BlobStorageExportStreamWriter> _logger;
     private readonly RecyclableMemoryStreamManager _memoryManager;
+    private readonly int _bufferSizeBytes;
     private MemoryStream _buffer;
     private long _bytesWritten;
     private bool _disposed;
 
     /// <summary>
-    /// Buffer size: 1MB chunks before flushing to blob storage.
+    /// Default buffer size: 1MB chunks before flushing to blob storage.
     /// Balances throughput (larger buffers) with memory usage and pool efficiency.
     /// </summary>
-    private const int BufferSizeBytes = 1024 * 1024;  // 1MB
+    public const int DefaultBufferSizeBytes = 1024 * 1024;  // 1MB
 
     public long BytesWritten => _bytesWritten;
 
@@ -37,12 +38,20 @@ public class BlobStorageExportStreamWriter : IExportStreamWriter
         IBlobStorageClient blobStorage,
         string outputPath,
         RecyclableMemoryStreamManager memoryManager,
-        ILogger<BlobStorageExportStreamWriter> logger)
+        ILogger<BlobStorageExportStreamWriter> logger,
+        int bufferSizeBytes = DefaultBufferSizeBytes)
     {
         _blobStorage = blobStorage ?? throw new ArgumentNullException(nameof(blobStorage));
         _outputPath = outputPath ?? throw new ArgumentNullException(nameof(outputPath));
         _memoryManager = memoryManager ?? throw new ArgumentNullException(nameof(memoryManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        if (bufferSizeBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bufferSizeBytes), "Buffer size must be greater than zero");
+        }
+
+        _bufferSizeBytes = bufferSizeBytes;
         _buffer = _memoryManager.GetStream("export-writer");  // Named for diagnostic tracing
         _bytesWritten = 0;
     }
@@ -63,7 +72,7 @@ public class BlobStorageExportStreamWriter : IExportStreamWriter
         _bytesWritten += resourceBytes.Length + 1;  // +1 for newline
 
         // Flush if buffer is getting large
-        if (_buffer.Length >= BufferSizeBytes)
+        if (_buffer.Length >= _bufferSizeBytes)
         {
             await FlushAsync(cancellationToken);
         }
@@ -127,13 +136,22 @@ public class BlobStorageExportStreamWriterFactory : IExportStreamWriterFactory
     private readonly IBlobStorageClient _blobStorage;
     private readonly ILoggerFactory _loggerFactory;
     private readonly RecyclableMemoryStreamManager _memoryManager;
+    private readonly int _bufferSizeBytes;
 
     public BlobStorageExportStreamWriterFactory(
         IBlobStorageClient blobStorage,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        int bufferSizeBytes = BlobStorageExportStreamWriter.DefaultBufferSizeBytes)
     {
         _blobStorage = blobStorage ?? throw new ArgumentNullException(nameof(blobStorage));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+
+        if (bufferSizeBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bufferSizeBytes), "Buffer size must be greater than zero");
+        }
+
+        _bufferSizeBytes = bufferSizeBytes;
 
         // Initialize shared memory manager with sensible defaults:
         // - Default pool-based memory reuse across all export writers
@@ -151,7 +169,8 @@ public class BlobStorageExportStreamWriterFactory : IExportStreamWriterFactory
             _blobStorage,
             outputPath,
             _memoryManager,
-            logger);
+            logger,
+            _bufferSizeBytes);
         return Task.FromResult(writer);
     }
 }
