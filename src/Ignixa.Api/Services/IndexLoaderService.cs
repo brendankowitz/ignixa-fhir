@@ -16,8 +16,11 @@ namespace Ignixa.Api.Services;
 /// Background service that loads resource metadata on startup to populate the in-memory index.
 /// Ensures that resources persisted to disk are available after server restart (F5 developer experience).
 /// Multi-Tenancy: Loads metadata from all active tenants (including system partition).
+///
+/// IMPORTANT: Uses BackgroundService to avoid blocking web server startup.
+/// The web server starts immediately while metadata loading happens in the background.
 /// </summary>
-public class IndexLoaderService : IHostedService
+public class IndexLoaderService : BackgroundService
 {
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly ITenantConfigurationStore _tenantStore;
@@ -39,8 +42,9 @@ public class IndexLoaderService : IHostedService
     /// <summary>
     /// Scans all metadata files from all tenants and populates the resource location index.
     /// Multi-Tenancy: Iterates over all configured tenants (including system partition).
+    /// Runs in the background without blocking web server startup.
     /// </summary>
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("IndexLoaderService starting - scanning metadata files from all tenants...");
 
@@ -52,10 +56,10 @@ public class IndexLoaderService : IHostedService
         try
         {
             // Get all tenant configurations (includes system partition and all active tenants)
-            var allTenants = await _tenantStore.GetAllTenantsAsync(cancellationToken);
+            var allTenants = await _tenantStore.GetAllTenantsAsync(stoppingToken);
 
             // Also load system partition (Partition 0) even though it's filtered from GetAllTenantsAsync
-            var systemPartition = await _tenantStore.GetTenantConfigurationAsync(0, cancellationToken);
+            var systemPartition = await _tenantStore.GetTenantConfigurationAsync(0, stoppingToken);
             var allConfigs = systemPartition != null
                 ? new[] { systemPartition }.Concat(allTenants).ToList()
                 : allTenants.ToList();
@@ -64,7 +68,7 @@ public class IndexLoaderService : IHostedService
 
             foreach (var tenantConfig in allConfigs)
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (stoppingToken.IsCancellationRequested)
                 {
                     break;
                 }
@@ -83,7 +87,7 @@ public class IndexLoaderService : IHostedService
                     // Get repository for this tenant
                     var repository = await _repositoryFactory.GetRepositoryAsync(
                         tenantConfig.TenantId,
-                        cancellationToken);
+                        stoppingToken);
 
                     // Cast to FileBasedFhirRepository to access GetAllMetadataFiles
                     if (repository is not FileBasedFhirRepository fileRepository)
@@ -100,7 +104,7 @@ public class IndexLoaderService : IHostedService
 
                     foreach (var metadataFile in metadataFiles)
                     {
-                        if (cancellationToken.IsCancellationRequested)
+                        if (stoppingToken.IsCancellationRequested)
                         {
                             break;
                         }
@@ -108,14 +112,14 @@ public class IndexLoaderService : IHostedService
                         try
                         {
                             // Read and parse metadata
-                            string metadataJson = await File.ReadAllTextAsync(metadataFile, cancellationToken).ConfigureAwait(false);
+                            string metadataJson = await File.ReadAllTextAsync(metadataFile, stoppingToken).ConfigureAwait(false);
                             var metadata = JsonSerializer.Deserialize<ResourceMetadataDto>(metadataJson);
 
                             if (metadata != null && !string.IsNullOrEmpty(metadata.ResourceType) && !string.IsNullOrEmpty(metadata.ResourceId))
                             {
                                 // Add to index
                                 var key = new ResourceKey(metadata.ResourceType, metadata.ResourceId, metadata.VersionId);
-                                await _index.AddAsync(key, FileBasedFhirRepository.DataLayerName, cancellationToken).ConfigureAwait(false);
+                                await _index.AddAsync(key, FileBasedFhirRepository.DataLayerName, stoppingToken).ConfigureAwait(false);
 
                                 tenantResourceCount++;
                                 totalResourceCount++;
@@ -175,17 +179,9 @@ public class IndexLoaderService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "IndexLoaderService failed during startup");
-            throw;
+            // Don't throw - allow web server to continue running even if index loading fails
+            // This ensures the FHIR server remains available for SQL-based tenants
         }
-    }
-
-    /// <summary>
-    /// No-op for shutdown.
-    /// </summary>
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("IndexLoaderService stopping");
-        return Task.CompletedTask;
     }
 
     /// <summary>
