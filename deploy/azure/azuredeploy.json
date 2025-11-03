@@ -226,7 +226,8 @@
     "sqlServerFqdn": "[concat(variables('sqlServerName'), '.database.windows.net')]",
     "blobEndpoint": "[concat('https://', variables('storageAccountName'), '.blob.core.windows.net')]",
     "durableTaskBlobEndpoint": "[concat('https://', variables('durableTaskStorageAccountName'), '.blob.core.windows.net')]",
-    "dockerImageFull": "[concat(parameters('dockerRegistryUrl'), '/', parameters('dockerImage'), ':', parameters('dockerImageTag'))]",
+    "dockerRegistryServer": "[replace(parameters('dockerRegistryUrl'), 'https://', '')]",
+    "dockerImageFull": "[concat(replace(parameters('dockerRegistryUrl'), 'https://', ''), '/', parameters('dockerImage'), ':', parameters('dockerImageTag'))]",
     "useDockerAuth": "[and(not(empty(parameters('dockerRegistryUsername'))), not(empty(parameters('dockerRegistryPassword'))))]"
   },
   "resources": [
