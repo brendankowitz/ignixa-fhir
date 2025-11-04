@@ -8,21 +8,18 @@ using System.Text.Json.Nodes;
 namespace Ignixa.Domain.Models;
 
 /// <summary>
-/// Generic background job metadata for DurableTask orchestrations.
+/// Generic background job metadata for DurableTask orchestrations (system-wide, partition 0).
 /// Supports multiple job types (import, export, validate, etc.) with a unified schema.
+/// TenantId is now stored in the Definition/payload, not as a model property.
 /// </summary>
 /// <typeparam name="T">The strongly-typed job definition/input parameters.</typeparam>
 public class BackgroundJob<T> where T : class
 {
     /// <summary>
     /// Unique job identifier (UUID).
+    /// System-wide unique identifier across all tenants.
     /// </summary>
     public required string JobId { get; set; }
-
-    /// <summary>
-    /// Tenant ID for multi-tenancy isolation.
-    /// </summary>
-    public required int TenantId { get; set; }
 
     /// <summary>
     /// Job type discriminator (1=Export, 2=Import, 3=Validate, etc.).

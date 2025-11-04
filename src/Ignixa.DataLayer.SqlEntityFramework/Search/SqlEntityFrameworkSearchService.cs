@@ -185,11 +185,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     .AsAsyncEnumerable().WithCancellation(ct))
                 {
                     // Determine resource type from entity
-                    var resourceTypeName = revIncludeExpr.SourceResourceType ?? _context.ResourceTypes
-                        .AsNoTracking()
-                        .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
-                        .Select(rt => rt.Name)
-                        .First();
+                    // First try using the provided SourceResourceType, then fall back to cache lookup of the ID
+                    var resourceTypeName = revIncludeExpr.SourceResourceType
+                        ?? _cache.TryGetResourceTypeNameFromCache(entity.ResourceTypeId)
+                        ?? throw new InvalidOperationException($"ResourceType ID {entity.ResourceTypeId} not found in cache or database");
 
                     var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
                     searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
@@ -677,9 +676,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
     }
 
     /// <summary>
-    /// Helper method to get search parameter ID from URL.
-    /// Uses synchronous cache lookup. Parameter IDs are pre-cached during startup by IndexLoaderService.
-    /// For missing parameters, returns 0 (no matches - lenient fallback).
+    /// Helper method to get search parameter ID from URL using in-memory cache only.
+    /// Uses synchronous cache lookup - returns 0 if not found in cache (lenient fallback).
+    /// Parameter IDs must be pre-cached during startup by calling PreloadSearchParamsAsync().
+    /// This method is called from within LINQ expressions, so it must be synchronous and fast.
     /// </summary>
     private short GetSearchParamIdFromUrl(Uri url)
     {
@@ -689,22 +689,16 @@ public class SqlEntityFrameworkSearchService : ISearchService
             return 0;
         }
 
-        // Convert Uri to string for database query
+        // Convert Uri to string and use cache-only lookup
         string urlString = url.ToString();
+        short searchParamId = _cache.TryGetSearchParamIdFromCache(urlString);
 
-        // Query SearchParam table synchronously (EF Core handles this efficiently with caching)
-        // Note: This executes once per sort parameter, cached at SQL Server level
-        var searchParam = _context.SearchParams
-            .AsNoTracking()
-            .FirstOrDefault(sp => sp.Uri == urlString);
-
-        if (searchParam == null)
+        if (searchParamId == 0)
         {
-            _logger.LogWarning("SearchParam not found for URL: {Url}, sort will have no effect", urlString);
-            return 0; // Return 0 - no matches (lenient behavior)
+            _logger.LogWarning("SearchParam not found in cache for URL: {Url}, sort will have no effect", urlString);
         }
 
-        return searchParam.SearchParamId;
+        return searchParamId;
     }
 
     private IOrderedQueryable<ResourceEntity> ApplyThenBy(

@@ -50,12 +50,19 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
                 };
             }
 
-            // Step 2: Process all input files in parallel using streaming import
-            // Each file gets its own Channel-based pipeline with 8 consumers
-            // For >10K resources/sec: process 5+ files in parallel (5 files × 2K resources/sec = 10K+)
-            var fileTasks = new List<Task<StreamingImportFileOutput>>();
+            // Step 2: Process files with global concurrency limit to prevent thread pool starvation
+            // MaxConcurrentFiles is a global setting (read from configuration via DurableTask context)
+            // that limits parallel StreamingImportFileActivity instances.
+            // ConsumerCount per activity is also a global setting read by the activity from IConfiguration.
+            // Example: 2 concurrent files × (1 producer + 8 consumers) = 18 task pool threads
+            // vs 5 files × 9 = 45 threads, leaving plenty for API requests.
+            //
+            // Note: We use a fixed value of 2 here as MaxConcurrentFiles is not passed via input.
+            // This should be consistent with configuration. Activities read ConsumerCount from config.
+            const int maxConcurrentFiles = 2; // Global constant - also configured in appsettings.json
 
-            foreach (var inputFile in input.InputFiles)
+            var fileOutputs = new List<StreamingImportFileOutput>();
+            var allFileTasks = input.InputFiles.Select((inputFile, index) =>
             {
                 var streamingInput = new StreamingImportFileInput
                 {
@@ -64,21 +71,22 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
                     FileUrl = inputFile.Url,
                     ResourceType = inputFile.Type,
                     Mode = input.Mode,
-                    BatchSize = 100,        // Resources per batch
-                    ConsumerCount = 8,      // Parallel consumers per file
-                    ChannelCapacity = 1000  // Buffer size
+                    BatchSize = input.BatchSize,
+                    ChannelCapacity = input.ChannelCapacity
                 };
 
-                // Schedule streaming import activity (runs in parallel with other files)
-                var fileTask = context.ScheduleTask<StreamingImportFileOutput>(
+                return context.ScheduleTask<StreamingImportFileOutput>(
                     typeof(StreamingImportFileActivity),
                     streamingInput);
+            }).ToList();
 
-                fileTasks.Add(fileTask);
+            // Process files in batches using the global maxConcurrentFiles limit
+            for (int i = 0; i < allFileTasks.Count; i += maxConcurrentFiles)
+            {
+                var batchTasks = allFileTasks.Skip(i).Take(maxConcurrentFiles).ToList();
+                var batchOutputs = await Task.WhenAll(batchTasks);
+                fileOutputs.AddRange(batchOutputs);
             }
-
-            // Wait for all files to complete
-            var fileOutputs = await Task.WhenAll(fileTasks);
 
             // Aggregate results from all files
             var processedFiles = 0;

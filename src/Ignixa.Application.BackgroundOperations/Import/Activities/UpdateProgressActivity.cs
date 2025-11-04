@@ -36,11 +36,11 @@ public class UpdateProgressActivity : AsyncTaskActivity<UpdateProgressInput, boo
     {
         try
         {
-            var job = await _jobRepository.GetAsync(input.TenantId, input.JobId, CancellationToken.None);
+            var job = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None);
 
             if (job == null)
             {
-                _logger.LogWarning("Job {JobId} not found for progress update", input.JobId);
+                _logger.LogWarning("Job {JobId} not found for progress update (tenant {TenantId})", input.JobId, input.TenantId);
                 return false;
             }
 
@@ -68,7 +68,7 @@ public class UpdateProgressActivity : AsyncTaskActivity<UpdateProgressInput, boo
                 job.StartDate = DateTimeOffset.UtcNow;
             }
 
-            await _jobRepository.UpdateAsync(job, CancellationToken.None);
+            await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
 
             _logger.LogDebug(
                 "Updated progress for job {JobId}: {ProcessedFiles}/{TotalFiles} files ({Percentage}%)",

@@ -17,6 +17,7 @@ using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;
@@ -40,6 +41,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IBlobStorageClient _blobStorageClient;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<StreamingImportFileActivity> _logger;
 
     public StreamingImportFileActivity(
@@ -47,12 +49,14 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         IFhirVersionContext fhirVersionContext,
         ITenantConfigurationStore tenantConfigurationStore,
         IBlobStorageClient blobStorageClient,
+        IConfiguration configuration,
         ILogger<StreamingImportFileActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
         _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -63,11 +67,10 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         var stopwatch = Stopwatch.StartNew();
 
         _logger.LogInformation(
-            "Starting streaming import: Job={JobId}, File={FileUrl}, Type={ResourceType}, Consumers={ConsumerCount}",
+            "Starting streaming import: Job={JobId}, File={FileUrl}, Type={ResourceType}",
             input.JobId,
             input.FileUrl,
-            input.ResourceType,
-            input.ConsumerCount);
+            input.ResourceType);
 
         // Validate import mode
         if (input.Mode != "InitialLoad" && input.Mode != "IncrementalLoad")
@@ -111,6 +114,10 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
             var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion);
 
+            // Read global configuration for consumer count
+            var consumerCount = _configuration.GetValue<int>("Import:ConsumerCount", 8);
+            if (consumerCount < 1) consumerCount = 1;
+
             // Create bounded channel for streaming resources from producer to consumers
             var channel = Channel.CreateBounded<ImportEntry>(
                 new BoundedChannelOptions(input.ChannelCapacity)
@@ -145,8 +152,9 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             }, CancellationToken.None);
 
             // Consumer tasks: Read from channel, batch, and write to database
+            // ConsumerCount is a global setting read from configuration
             // Each consumer gets its own repository instance (DbContext is not thread-safe)
-            var consumerTasks = Enumerable.Range(0, input.ConsumerCount)
+            var consumerTasks = Enumerable.Range(0, consumerCount)
                 .Select(consumerId => Task.Run(async () =>
                 {
                     var localSuccessCount = 0;

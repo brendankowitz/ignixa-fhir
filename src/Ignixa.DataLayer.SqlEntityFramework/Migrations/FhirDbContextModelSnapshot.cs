@@ -24,9 +24,6 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
 
             modelBuilder.Entity("Ignixa.DataLayer.SqlEntityFramework.Entities.BackgroundJobEntity", b =>
                 {
-                    b.Property<int>("TenantId")
-                        .HasColumnType("int");
-
                     b.Property<string>("JobId")
                         .HasMaxLength(36)
                         .HasColumnType("nvarchar(36)");
@@ -76,7 +73,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.HasKey("TenantId", "JobId")
+                    b.HasKey("JobId")
                         .HasName("PK_BackgroundJobs");
 
                     b.HasIndex("CreateDate")
@@ -85,15 +82,15 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                     b.HasIndex("HeartbeatDate")
                         .HasDatabaseName("IX_BackgroundJobs_HeartbeatDate");
 
+                    b.HasIndex("JobType")
+                        .HasDatabaseName("IX_BackgroundJobs_JobType");
+
                     b.HasIndex("OrchestrationInstanceId")
                         .HasDatabaseName("IX_BackgroundJobs_OrchestrationInstanceId")
                         .HasFilter("[OrchestrationInstanceId] IS NOT NULL");
 
-                    b.HasIndex("TenantId", "JobType")
-                        .HasDatabaseName("IX_BackgroundJobs_TenantId_JobType");
-
-                    b.HasIndex("TenantId", "Status")
-                        .HasDatabaseName("IX_BackgroundJobs_TenantId_Status");
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_BackgroundJobs_Status");
 
                     b.ToTable("BackgroundJobs");
                 });

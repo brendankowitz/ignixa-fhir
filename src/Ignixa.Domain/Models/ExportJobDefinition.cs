@@ -3,14 +3,22 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Domain.Abstractions;
+
 namespace Ignixa.Domain.Models;
 
 /// <summary>
 /// Immutable export job definition (input parameters) for use with BackgroundJob<ExportJobDefinition>.
 /// Represents the configuration of a FHIR bulk export operation.
+/// TenantId is stored here (in the payload), not as a BackgroundJob property.
 /// </summary>
-public class ExportJobDefinition
+public class ExportJobDefinition : IJobDefinition
 {
+    /// <summary>
+    /// Tenant ID for multi-tenancy isolation (stored in definition payload, not schema).
+    /// </summary>
+    public required int TenantId { get; init; }
+
     /// <summary>
     /// Resource types to export. If empty, exports all types.
     /// </summary>

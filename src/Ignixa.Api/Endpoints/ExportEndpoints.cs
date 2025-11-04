@@ -79,14 +79,15 @@ public static class ExportEndpoints
         var jobId = Guid.NewGuid().ToString();
 
         // Create job metadata in unified repository
+        // TenantId is stored in the Definition (payload), not as a BackgroundJob property
         var job = new BackgroundJob<ExportJobDefinition>
         {
             JobId = jobId,
-            TenantId = tenantId,
             JobType = (int)BackgroundJobType.Export,
             Status = "Queued",
             Definition = new ExportJobDefinition
             {
+                TenantId = tenantId,
                 ResourceTypes = types,
                 Since = since,
                 TypeFilters = typeFilters,
@@ -114,7 +115,7 @@ public static class ExportEndpoints
 
         // Update job with orchestration instance ID
         job.OrchestrationInstanceId = instance.InstanceId;
-        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
 
         // Return 202 Accepted with Content-Location header
         var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_export/{jobId}";
@@ -136,8 +137,8 @@ public static class ExportEndpoints
         [FromServices] IBlobStorageClient blobStorage,
         HttpContext httpContext)
     {
-        // Get job metadata
-        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
+        // Get job metadata (with tenant validation)
+        var job = await jobRepository.GetAsync(jobId, tenantId, httpContext.RequestAborted);
         if (job == null)
         {
             return Results.NotFound(new { error = "Export job not found" });
@@ -177,7 +178,7 @@ public static class ExportEndpoints
                     break;
             }
 
-            await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
+            await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
         }
 
         // Return response based on status
@@ -228,7 +229,7 @@ public static class ExportEndpoints
         [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
-        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
+        var job = await jobRepository.GetAsync(jobId, tenantId, httpContext.RequestAborted);
         if (job == null)
         {
             return Results.NotFound(new { error = "Export job not found" });
@@ -240,7 +241,7 @@ public static class ExportEndpoints
 
         job.Status = "Cancelled";
         job.EndDate = DateTimeOffset.UtcNow;
-        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
 
         return Results.NoContent();
     }

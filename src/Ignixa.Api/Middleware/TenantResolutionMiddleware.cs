@@ -222,8 +222,11 @@ public class TenantResolutionMiddleware : IDisposable
             return _cachedSingleTenantId == -1 ? null : _cachedSingleTenantId;
         }
 
-        // Acquire lock to prevent multiple threads from querying simultaneously
-        await _cacheLock.WaitAsync(cancellationToken);
+        // Acquire lock to prevent multiple threads from querying simultaneously.
+        // NOTE: Do NOT pass cancellationToken to WaitAsync() - infrastructure locks should never
+        // respect request cancellation. Request timeouts can cause thundering herd when lock acquisition
+        // is cancelled. Only the actual async work (GetAllTenantsAsync) respects the cancellation token.
+        await _cacheLock.WaitAsync(CancellationToken.None);
         try
         {
             // Double-check after acquiring lock

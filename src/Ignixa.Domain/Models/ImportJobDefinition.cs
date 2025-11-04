@@ -3,14 +3,22 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Domain.Abstractions;
+
 namespace Ignixa.Domain.Models;
 
 /// <summary>
 /// Immutable import job definition (input parameters) for use with BackgroundJob<ImportJobDefinition>.
 /// Represents the configuration of a FHIR bulk import operation.
+/// TenantId is stored here (in the payload), not as a BackgroundJob property.
 /// </summary>
-public class ImportJobDefinition
+public class ImportJobDefinition : IJobDefinition
 {
+    /// <summary>
+    /// Tenant ID for multi-tenancy isolation (stored in definition payload, not schema).
+    /// </summary>
+    public required int TenantId { get; init; }
+
     /// <summary>
     /// Input format (must be "application/fhir+ndjson").
     /// </summary>

@@ -6,19 +6,16 @@
 namespace Ignixa.DataLayer.SqlEntityFramework.Entities;
 
 /// <summary>
-/// Entity Framework entity for background job storage.
+/// Entity Framework entity for background job storage (system-wide, partition 0).
 /// Supports multiple job types (import, export, validate, etc.) with a unified schema.
-/// Maps to the [dbo].[BackgroundJobs] table.
+/// Maps to the [dbo].[BackgroundJobs] table in system partition.
+/// TenantId is now stored in the Definition/payload, not as a schema column.
 /// </summary>
 public class BackgroundJobEntity
 {
     /// <summary>
-    /// Primary key: composite of (TenantId, JobId).
-    /// </summary>
-    public int TenantId { get; set; }
-
-    /// <summary>
-    /// Unique job identifier (UUID).
+    /// Primary key: JobId (UUID).
+    /// System-wide unique identifier across all tenants.
     /// </summary>
     public string JobId { get; set; } = null!;
 

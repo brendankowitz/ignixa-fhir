@@ -75,8 +75,18 @@ public record TenantStorageConfiguration
 
     /// <summary>
     /// Connection string for database storage (SqlServer, CosmosDb).
+    /// If null/empty for system partition (partition 0), the connection string will be inherited
+    /// from the tenant specified by InheritConnectionStringFromTenant (default: tenant 1).
+    /// This allows single-tenant deployments to avoid extra database infrastructure.
     /// </summary>
     public string? ConnectionString { get; init; }
+
+    /// <summary>
+    /// For system partition (partition 0) with null ConnectionString:
+    /// Specifies which tenant's connection string to inherit (default: 1).
+    /// Only used when ConnectionString is null/empty and this is a system partition.
+    /// </summary>
+    public int InheritConnectionStringFromTenant { get; init; } = 1;
 }
 
 /// <summary>

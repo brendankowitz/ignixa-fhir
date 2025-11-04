@@ -41,6 +41,7 @@ public class SearchIndexReferenceDataCache
     /// <summary>
     /// Gets the SearchParamId for a given search parameter URI.
     /// Returns null if the search parameter is not registered in the database.
+    /// Caches both positive results (found) and negative results (not found) to avoid repeated database queries.
     /// </summary>
     /// <param name="uri">The search parameter URI (e.g., "http://hl7.org/fhir/SearchParameter/Patient-name").</param>
     /// <returns>The SearchParamId, or null if not found.</returns>
@@ -51,10 +52,11 @@ public class SearchIndexReferenceDataCache
             return null;
         }
 
-        // Check cache first
+        // Check cache first (handles both found and not-found cases)
         if (_searchParamCache.TryGetValue(uri, out var cachedId))
         {
-            return cachedId;
+            // Sentinel value -1 means "not found" - return null without querying database
+            return cachedId == -1 ? null : cachedId;
         }
 
         // Query database
@@ -65,10 +67,12 @@ public class SearchIndexReferenceDataCache
         if (entity == null)
         {
             _logger.LogWarning("SearchParam not found for URI: {Uri}", uri);
+            // Cache the negative result using sentinel value -1 to avoid repeated database queries
+            _searchParamCache.TryAdd(uri, -1);
             return null;
         }
 
-        // Cache and return
+        // Cache positive result and return
         _searchParamCache.TryAdd(uri, entity.SearchParamId);
         return entity.SearchParamId;
     }
@@ -168,6 +172,7 @@ public class SearchIndexReferenceDataCache
     /// <summary>
     /// Gets the ResourceTypeId for a given resource type name.
     /// Returns null if the resource type is not registered.
+    /// Caches both positive results (found) and negative results (not found) to avoid repeated database queries.
     /// </summary>
     /// <param name="resourceTypeName">The resource type name (e.g., "Patient").</param>
     /// <returns>The ResourceTypeId, or null if not found.</returns>
@@ -178,10 +183,11 @@ public class SearchIndexReferenceDataCache
             return null;
         }
 
-        // Check cache first
+        // Check cache first (handles both found and not-found cases)
         if (_resourceTypeCache.TryGetValue(resourceTypeName, out var cachedId))
         {
-            return cachedId;
+            // Sentinel value -1 means "not found" - return null without querying database
+            return cachedId == -1 ? null : cachedId;
         }
 
         // Query database
@@ -192,10 +198,12 @@ public class SearchIndexReferenceDataCache
         if (entity == null)
         {
             _logger.LogWarning("ResourceType not found: {ResourceTypeName}", resourceTypeName);
+            // Cache the negative result using sentinel value -1 to avoid repeated database queries
+            _resourceTypeCache.TryAdd(resourceTypeName, -1);
             return null;
         }
 
-        // Cache and return
+        // Cache positive result and return
         _resourceTypeCache.TryAdd(resourceTypeName, entity.ResourceTypeId);
         return entity.ResourceTypeId;
     }
@@ -234,5 +242,85 @@ public class SearchIndexReferenceDataCache
         }
 
         _logger.LogInformation("Preloaded {Count} resource types into cache", resourceTypes.Count);
+    }
+
+    /// <summary>
+    /// Synchronous lookup of SearchParamId from URI using in-memory cache only.
+    /// Does NOT query the database. Returns 0 if not found in cache.
+    /// Requires PreloadSearchParamsAsync to be called during initialization.
+    /// </summary>
+    /// <param name="uri">The search parameter URI.</param>
+    /// <returns>The SearchParamId if found in cache, otherwise 0.</returns>
+    public short TryGetSearchParamIdFromCache(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+        {
+            return 0;
+        }
+
+        // Check cache - only memory access, no database query
+        if (_searchParamCache.TryGetValue(uri, out var cachedId))
+        {
+            // Sentinel value -1 means "not found" - return 0 (matches FHIR lenient behavior)
+            return cachedId == -1 ? (short)0 : cachedId;
+        }
+
+        // Not in cache - return 0 (caller will handle lenient fallback)
+        return 0;
+    }
+
+    /// <summary>
+    /// Synchronous lookup of ResourceTypeId from name using in-memory cache only.
+    /// Does NOT query the database. Returns null if not found in cache.
+    /// Requires PreloadResourceTypesAsync to be called during initialization.
+    /// </summary>
+    /// <param name="resourceTypeName">The resource type name (e.g., "Patient").</param>
+    /// <returns>The ResourceTypeId if found in cache, otherwise null.</returns>
+    public short? TryGetResourceTypeIdFromCache(string? resourceTypeName)
+    {
+        if (string.IsNullOrEmpty(resourceTypeName))
+        {
+            return null;
+        }
+
+        // Check cache - only memory access, no database query
+        if (_resourceTypeCache.TryGetValue(resourceTypeName, out var cachedId))
+        {
+            // Sentinel value -1 means "not found" - return null
+            return cachedId == -1 ? null : cachedId;
+        }
+
+        // Not in cache - return null
+        return null;
+    }
+
+    /// <summary>
+    /// Synchronous reverse lookup of resource type name from ID using in-memory cache only.
+    /// Does NOT query the database. Returns null if not found in cache.
+    /// Requires PreloadResourceTypesAsync to be called during initialization.
+    /// </summary>
+    /// <param name="resourceTypeId">The resource type ID.</param>
+    /// <returns>The resource type name if found in cache, otherwise null.</returns>
+    public string? TryGetResourceTypeNameFromCache(short? resourceTypeId)
+    {
+        if (!resourceTypeId.HasValue || resourceTypeId.Value <= 0)
+        {
+            return null;
+        }
+
+        // Reverse lookup: iterate through cache to find the entry with this ID
+        // This is O(n) but n is small (number of resource types is typically < 100)
+        // and this is only called for RevInclude processing (not in main search path)
+        foreach (var kvp in _resourceTypeCache)
+        {
+            // Skip sentinel values (negative IDs)
+            if (kvp.Value == resourceTypeId.Value)
+            {
+                return kvp.Key;
+            }
+        }
+
+        // Not in cache - return null
+        return null;
     }
 }

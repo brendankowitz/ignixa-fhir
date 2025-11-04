@@ -295,17 +295,17 @@ public class FhirDbContext : DbContext
     {
         var entity = modelBuilder.Entity<BackgroundJobEntity>();
 
-        // Composite primary key: (TenantId, JobId)
-        entity.HasKey(b => new { b.TenantId, b.JobId })
+        // Primary key: JobId (system-wide, unique across all tenants)
+        entity.HasKey(b => b.JobId)
             .HasName("PK_BackgroundJobs");
 
-        // Index on Status for querying active jobs
-        entity.HasIndex(b => new { b.TenantId, b.Status })
-            .HasDatabaseName("IX_BackgroundJobs_TenantId_Status");
+        // Index on Status for querying active jobs (system-wide)
+        entity.HasIndex(b => b.Status)
+            .HasDatabaseName("IX_BackgroundJobs_Status");
 
-        // Index on JobType for filtering by job type
-        entity.HasIndex(b => new { b.TenantId, b.JobType })
-            .HasDatabaseName("IX_BackgroundJobs_TenantId_JobType");
+        // Index on JobType for filtering by job type (system-wide)
+        entity.HasIndex(b => b.JobType)
+            .HasDatabaseName("IX_BackgroundJobs_JobType");
 
         // Index on CreateDate for time-based queries
         entity.HasIndex(b => b.CreateDate)

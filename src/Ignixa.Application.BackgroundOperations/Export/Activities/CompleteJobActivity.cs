@@ -26,15 +26,11 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
 
     protected override async Task<bool> ExecuteAsync(TaskContext context, CompleteJobInput input)
     {
-        // Note: We need tenantId but it's not in the input. For now, use a default of 1.
-        // This activity is currently not called by the export orchestration,
-        // but is kept here for future use when direct activity calling is needed.
-        var tenantId = 1; // TODO: Pass tenantId from orchestration input
-
-        var job = await _jobRepository.GetAsync(tenantId, input.JobId, CancellationToken.None);
+        // Retrieve job with tenant validation
+        var job = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None);
         if (job == null)
         {
-            _logger.LogWarning("Job {JobId} not found", input.JobId);
+            _logger.LogWarning("Job {JobId} not found (tenant {TenantId})", input.JobId, input.TenantId);
             return false;
         }
 
@@ -65,7 +61,7 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
             _logger.LogError("Job {JobId} failed: {Error}", input.JobId, input.ErrorMessage);
         }
 
-        await _jobRepository.UpdateAsync(job, CancellationToken.None);
+        await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
         return true;
     }
 }
@@ -75,6 +71,7 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
 /// </summary>
 public record CompleteJobInput(
     string JobId,
+    int TenantId,
     bool Success,
     Dictionary<string, string> ExportedFiles,
     int TotalResourcesExported,

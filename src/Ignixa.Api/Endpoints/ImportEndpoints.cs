@@ -52,6 +52,7 @@ public static class ImportEndpoints
         [FromRoute] int tenantId,
         [FromServices] TaskHubClient taskHubClient,
         [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
+        [FromServices] IConfiguration configuration,
         HttpContext httpContext)
     {
         // Read request body as Parameters resource
@@ -146,14 +147,15 @@ public static class ImportEndpoints
         var jobId = Guid.NewGuid().ToString("N");
 
         // Create job metadata using generic BackgroundJob<T>
+        // TenantId is stored in the Definition (payload), not as a BackgroundJob property
         var job = new BackgroundJob<ImportJobDefinition>
         {
             JobId = jobId,
-            TenantId = tenantId,
             JobType = (int)BackgroundJobType.Import,
             Status = "Queued",
             Definition = new ImportJobDefinition
             {
+                TenantId = tenantId,
                 InputFormat = inputFormat,
                 InputSource = inputSource ?? "",
                 Mode = mode,
@@ -175,13 +177,24 @@ public static class ImportEndpoints
             storageDetail = System.Text.Json.JsonSerializer.Deserialize<ParametersJsonNode>(storageJson);
         }
 
+        // Read per-import performance tuning settings from configuration
+        // Global settings (MaxConcurrentFiles, ConsumerCount) are read directly by the orchestration/activities from IConfiguration
+        var batchSize = configuration.GetValue<int>("Import:BatchSize", 100);
+        var channelCapacity = configuration.GetValue<int>("Import:ChannelCapacity", 1000);
+
+        // Validate per-import configuration values
+        if (batchSize < 1) batchSize = 1;
+        if (channelCapacity < 1) channelCapacity = 1;
+
         var orchestrationInput = new ImportOrchestrationInput
         {
             JobId = jobId,
             TenantId = tenantId,
             InputFiles = inputFiles,
             Mode = mode,
-            StorageDetail = storageDetail
+            StorageDetail = storageDetail,
+            BatchSize = batchSize,
+            ChannelCapacity = channelCapacity
         };
 
         var instance = await taskHubClient.CreateOrchestrationInstanceAsync(
@@ -191,7 +204,7 @@ public static class ImportEndpoints
 
         // Update job with orchestration instance ID
         job.OrchestrationInstanceId = instance.InstanceId;
-        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
 
         // Return 202 Accepted with Content-Location header
         var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_import/{jobId}";
@@ -212,8 +225,8 @@ public static class ImportEndpoints
         [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
-        // Get job metadata
-        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
+        // Get job metadata (with tenant validation)
+        var job = await jobRepository.GetAsync(jobId, tenantId, httpContext.RequestAborted);
         if (job == null)
         {
             return Results.NotFound(new { error = "Import job not found" });
@@ -269,7 +282,7 @@ public static class ImportEndpoints
                     break;
             }
 
-            await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
+            await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
         }
 
         // Deserialize progress and result from JSON to POCO classes
@@ -373,7 +386,7 @@ public static class ImportEndpoints
         [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
-        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
+        var job = await jobRepository.GetAsync(jobId, tenantId, httpContext.RequestAborted);
         if (job == null)
         {
             return Results.NotFound(new { error = "Import job not found" });
@@ -385,7 +398,7 @@ public static class ImportEndpoints
 
         job.Status = "Cancelled";
         job.EndDate = DateTimeOffset.UtcNow;
-        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
 
         return Results.NoContent();
     }
