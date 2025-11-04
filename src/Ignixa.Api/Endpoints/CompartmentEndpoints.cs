@@ -14,7 +14,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 
-namespace Ignixa.Api.Features.Compartment;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Minimal API endpoints for FHIR compartment search.

@@ -91,14 +91,15 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
             }
 
-            // Get tenant repository for writes
-            var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
+            // Get first repository instance to allocate transaction ID
+            // (All threads will share the same transaction ID, but use separate DbContext instances for writes)
+            var allocatorRepository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
 
             // Allocate transaction ID from tenant's repository (Isolated mode)
             // In isolated mode: Each tenant has its own database, so tenant repository = tenant database
             // In distributed mode: Must use system repository (Partition 0) for transaction allocation
             //                      TODO: Repository factory should handle this logic based on mode
-            var transactionId = await repository.GetNextTransactionIdAsync(CancellationToken.None);
+            var transactionId = await allocatorRepository.GetNextTransactionIdAsync(CancellationToken.None);
 
             _logger.LogDebug(
                 "Allocated transaction ID {TransactionId} for import (Tenant {TenantId})",
@@ -144,11 +145,15 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             }, CancellationToken.None);
 
             // Consumer tasks: Read from channel, batch, and write to database
+            // Each consumer gets its own repository instance (DbContext is not thread-safe)
             var consumerTasks = Enumerable.Range(0, input.ConsumerCount)
                 .Select(consumerId => Task.Run(async () =>
                 {
                     var localSuccessCount = 0;
                     var localErrors = new List<ImportErrorLogEntry>();
+
+                    // Each consumer thread gets its own repository instance
+                    var consumerRepository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
 
                     try
                     {
@@ -190,7 +195,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                         consumerId,
                                         validOperations.Count);
 
-                                    var keys = await repository.BatchWriteAsync(
+                                    var keys = await consumerRepository.BatchWriteAsync(
                                         transactionId,
                                         validOperations,
                                         CancellationToken.None);
@@ -263,8 +268,8 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             await producerTask;
             await Task.WhenAll(consumerTasks);
 
-            // Commit transaction
-            await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
+            // Commit transaction (use allocator repository for consistency)
+            await allocatorRepository.CommitTransactionAsync(transactionId, CancellationToken.None);
 
             stopwatch.Stop();
 

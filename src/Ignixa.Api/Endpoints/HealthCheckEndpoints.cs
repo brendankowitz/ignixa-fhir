@@ -5,7 +5,7 @@
 
 using Microsoft.AspNetCore.Mvc;
 
-namespace Ignixa.Api.Features.Health;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Minimal API endpoints for health checks.

@@ -158,7 +158,7 @@ public class PostSearchPaginationTests
     /// </summary>
     private static string BuildQueryStringFromParametersViaReflection(IReadOnlyList<QueryParameter>? parameters)
     {
-        var fhirEndpointsType = typeof(Ignixa.Api.Infrastructure.FhirEndpoints);
+        var fhirEndpointsType = typeof(Ignixa.Api.Endpoints.FhirEndpoints);
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
 
         var method = fhirEndpointsType.GetMethod(

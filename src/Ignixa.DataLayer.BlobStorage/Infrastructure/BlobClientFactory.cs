@@ -57,7 +57,8 @@ public class BlobClientFactory
         var options = new LocalFileBlobStorageOptions();
         _configuration.GetSection("BlobStorage").Bind(options);
 
-        var logger = _serviceProvider.GetRequiredService<ILogger<LocalFileBlobClient>>();
+        var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger<LocalFileBlobClient>();
         return new LocalFileBlobClient(Microsoft.Extensions.Options.Options.Create(options), logger);
     }
 
@@ -142,7 +143,8 @@ public class BlobClientFactory
             _logger.LogWarning(ex, "Failed to create container '{ContainerName}'. It may already exist or you may lack permissions", options.ContainerName);
         }
 
-        var logger = _serviceProvider.GetRequiredService<ILogger<AzureBlobStorageClient>>();
+        var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger<AzureBlobStorageClient>();
         return new AzureBlobStorageClient(blobServiceClient, Microsoft.Extensions.Options.Options.Create(options), logger);
     }
 

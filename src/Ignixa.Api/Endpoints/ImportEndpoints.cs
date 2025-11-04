@@ -15,7 +15,7 @@ using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Ignixa.Api.Features.Import.Api;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// API endpoints for FHIR bulk import operations ($import).

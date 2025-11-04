@@ -12,7 +12,7 @@ using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Ignixa.Api.Infrastructure;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Registers FHIR _history endpoints for version history retrieval.

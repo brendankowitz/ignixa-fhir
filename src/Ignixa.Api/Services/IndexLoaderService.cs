@@ -54,19 +54,23 @@ public class IndexLoaderService : IHostedService
             // Get all tenant configurations (includes system partition and all active tenants)
             var allTenants = await _tenantStore.GetAllTenantsAsync(cancellationToken);
 
-            // Also load system partition (Partition 0) even though it's filtered from GetAllTenantsAsync
-            var systemPartition = await _tenantStore.GetTenantConfigurationAsync(0, cancellationToken);
-            var allConfigs = systemPartition != null
-                ? new[] { systemPartition }.Concat(allTenants).ToList()
-                : allTenants.ToList();
+            _logger.LogInformation("Loading metadata from {TenantCount} tenant configuration(s)", allTenants.Count);
 
-            _logger.LogInformation("Loading metadata from {TenantCount} partition(s)", allConfigs.Count);
-
-            foreach (var tenantConfig in allConfigs)
+            foreach (var tenantConfig in allTenants)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
+                }
+
+                // Skip system partition (Tenant 0) - it cannot be accessed directly
+                if (tenantConfig.IsSystemPartition)
+                {
+                    _logger.LogDebug(
+                        "Skipping Tenant {TenantId} ({DisplayName}) - system partition cannot be accessed directly",
+                        tenantConfig.TenantId,
+                        tenantConfig.DisplayName);
+                    continue;
                 }
 
                 tenantCount++;

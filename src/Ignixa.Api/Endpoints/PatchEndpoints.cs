@@ -15,7 +15,7 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
 
-namespace Ignixa.Api.Infrastructure;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Registers FHIR PATCH endpoints using FHIRPath Patch (Parameters resource).

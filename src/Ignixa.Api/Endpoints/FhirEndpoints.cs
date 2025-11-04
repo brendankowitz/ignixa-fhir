@@ -10,6 +10,7 @@ using Azure;
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
+using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
@@ -33,7 +34,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IO;
 using DeferredWriteCoordinator = Ignixa.Application.Features.Bundle.DeferredWriteCoordinator;
 
-namespace Ignixa.Api.Infrastructure;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Registers FHIR RESTful endpoints for all resource types.

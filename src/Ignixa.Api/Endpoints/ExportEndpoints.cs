@@ -5,7 +5,7 @@ using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 
-namespace Ignixa.Api.Features.Export.Api;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// API endpoints for FHIR bulk export operations ($export).

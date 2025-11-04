@@ -14,7 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
 using System.Text.Json.Nodes;
 
-namespace Ignixa.Api.Infrastructure;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Registers FHIR operation endpoints ($validate, $expand, etc.)

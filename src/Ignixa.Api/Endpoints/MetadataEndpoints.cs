@@ -10,7 +10,7 @@ using Ignixa.Application.Features.Metadata;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Serialization;
 
-namespace Ignixa.Api.Features.Metadata.Api;
+namespace Ignixa.Api.Endpoints;
 
 /// <summary>
 /// Minimal API endpoints for FHIR metadata (CapabilityStatement).
