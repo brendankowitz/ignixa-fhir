@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
@@ -44,7 +45,7 @@ public static class ExportEndpoints
         [FromQuery(Name = "_typeFilter")] string? typeFilter,
         [FromQuery(Name = "_outputFormat")] string? outputFormat,
         [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IExportJobStore jobStore,
+        [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
         // Validate _outputFormat (only application/fhir+ndjson supported for now)
@@ -77,20 +78,26 @@ public static class ExportEndpoints
         // Generate job ID
         var jobId = Guid.NewGuid().ToString();
 
-        // Create job metadata
-        var job = new BulkExportJob
+        // Create job metadata in unified repository
+        var job = new BackgroundJob<ExportJobDefinition>
         {
             JobId = jobId,
             TenantId = tenantId,
-            Status = ExportJobStatus.Queued,
-            ResourceTypes = types,
-            Since = since,
-            TypeFilters = typeFilters,
-            OutputFormat = outputFormat ?? "application/fhir+ndjson",
-            OutputPath = $"tenant/{tenantId}/export/{jobId}",
+            JobType = (int)BackgroundJobType.Export,
+            Status = "Queued",
+            Definition = new ExportJobDefinition
+            {
+                ResourceTypes = types,
+                Since = since,
+                TypeFilters = typeFilters,
+                OutputFormat = outputFormat ?? "application/fhir+ndjson",
+                OutputPath = $"tenant/{tenantId}/export/{jobId}"
+            },
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
         };
 
-        await jobStore.CreateJobAsync(job, httpContext.RequestAborted);
+        await jobRepository.CreateAsync(job, httpContext.RequestAborted);
 
         // Start the orchestration
         var orchestrationInput = new ExportOrchestrationInput(
@@ -104,6 +111,10 @@ public static class ExportEndpoints
             typeof(ExportOrchestration),
             jobId, // Use jobId as instance ID for easy lookup
             orchestrationInput);
+
+        // Update job with orchestration instance ID
+        job.OrchestrationInstanceId = instance.InstanceId;
+        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
 
         // Return 202 Accepted with Content-Location header
         var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_export/{jobId}";
@@ -121,13 +132,13 @@ public static class ExportEndpoints
         [FromRoute] int tenantId,
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IExportJobStore jobStore,
+        [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
         [FromServices] IBlobStorageClient blobStorage,
         HttpContext httpContext)
     {
         // Get job metadata
-        var job = await jobStore.GetJobAsync(jobId, httpContext.RequestAborted);
-        if (job == null || job.TenantId != tenantId)
+        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
+        if (job == null)
         {
             return Results.NotFound(new { error = "Export job not found" });
         }
@@ -142,49 +153,56 @@ public static class ExportEndpoints
             {
                 case OrchestrationStatus.Running:
                 case OrchestrationStatus.Pending:
-                    job.Status = ExportJobStatus.InProgress;
+                    job.Status = "Running";
+                    if (job.StartDate == null)
+                    {
+                        job.StartDate = DateTimeOffset.UtcNow;
+                    }
                     break;
 
                 case OrchestrationStatus.Completed:
-                    job.Status = ExportJobStatus.Completed;
+                    job.Status = "Completed";
+                    job.EndDate = DateTimeOffset.UtcNow;
                     break;
 
                 case OrchestrationStatus.Failed:
-                    job.Status = ExportJobStatus.Failed;
+                    job.Status = "Failed";
+                    job.EndDate = DateTimeOffset.UtcNow;
                     job.ErrorMessage = "Orchestration failed";
                     break;
 
                 case OrchestrationStatus.Terminated:
-                    job.Status = ExportJobStatus.Cancelled;
+                    job.Status = "Cancelled";
+                    job.EndDate = DateTimeOffset.UtcNow;
                     break;
             }
 
-            await jobStore.UpdateJobAsync(job, httpContext.RequestAborted);
+            await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
         }
 
         // Return response based on status
         return job.Status switch
         {
-            ExportJobStatus.Queued or ExportJobStatus.InProgress => Results.Accepted(
+            "Queued" or "Running" => Results.Accepted(
                 value: new
                 {
                     jobId = job.JobId,
-                    status = job.Status.ToString(),
-                    progress = job.ProgressPercentage,
+                    status = job.Status,
+                    progress = job.Progress,
                 }),
 
-            ExportJobStatus.Completed => Results.Ok(new
+            "Completed" => Results.Ok(new
             {
-                transactionTime = job.CompletedAt,
+                transactionTime = job.EndDate ?? job.CreateDate,
                 request = $"/tenant/{tenantId}/$export",
                 requiresAccessToken = false,
                 output = await BuildOutputManifestAsync(job, blobStorage, httpContext.RequestAborted),
                 error = Array.Empty<object>(),
             }),
 
-            ExportJobStatus.Failed => Results.Ok(new
+            "Failed" => Results.Ok(new
             {
-                transactionTime = job.CompletedAt,
+                transactionTime = job.EndDate ?? job.CreateDate,
                 request = $"/tenant/{tenantId}/$export",
                 error = new[]
                 {
@@ -207,11 +225,11 @@ public static class ExportEndpoints
         [FromRoute] int tenantId,
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IExportJobStore jobStore,
+        [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
-        var job = await jobStore.GetJobAsync(jobId, httpContext.RequestAborted);
-        if (job == null || job.TenantId != tenantId)
+        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
+        if (job == null)
         {
             return Results.NotFound(new { error = "Export job not found" });
         }
@@ -220,8 +238,9 @@ public static class ExportEndpoints
         var instance = new OrchestrationInstance { InstanceId = jobId };
         await taskHubClient.TerminateInstanceAsync(instance, "Cancelled by user");
 
-        job.MarkAsCancelled();
-        await jobStore.UpdateJobAsync(job, httpContext.RequestAborted);
+        job.Status = "Cancelled";
+        job.EndDate = DateTimeOffset.UtcNow;
+        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
 
         return Results.NoContent();
     }
@@ -230,24 +249,30 @@ public static class ExportEndpoints
     /// Builds the FHIR Bulk Data output manifest.
     /// </summary>
     private static async Task<List<object>> BuildOutputManifestAsync(
-        BulkExportJob job,
+        BackgroundJob<ExportJobDefinition> job,
         IBlobStorageClient blobStorage,
         CancellationToken cancellationToken)
     {
         var outputManifest = new List<object>();
 
-        foreach (var (resourceType, fileNames) in job.OutputFiles)
+        // Extract exported files from Result JSON if available
+        if (job.Result != null)
         {
-            foreach (var fileName in fileNames)
+            var exportedFilesNode = job.Result["exportedFiles"];
+            if (exportedFilesNode != null && exportedFilesNode is JsonObject filesObj)
             {
-                var filePath = $"{job.OutputPath}/{fileName}";
-                var url = await blobStorage.GetBlobUrlAsync(filePath, TimeSpan.FromHours(24), cancellationToken);
-
-                outputManifest.Add(new
+                foreach (var (resourceType, filePath) in filesObj)
                 {
-                    type = resourceType,
-                    url,
-                });
+                    if (filePath is JsonValue pathValue && pathValue.TryGetValue(out string? path))
+                    {
+                        var url = await blobStorage.GetBlobUrlAsync(path, TimeSpan.FromHours(24), cancellationToken);
+                        outputManifest.Add(new
+                        {
+                            type = resourceType,
+                            url,
+                        });
+                    }
+                }
             }
         }
 

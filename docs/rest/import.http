@@ -1,0 +1,49 @@
+@hostname = http://127.0.0.1:5000
+@tenantId = 1
+@storageUrl = http://127.0.0.1:10000/devstoreaccount1/fhir-storage
+
+###
+# Bulk Import - CarePlan NDJSON
+# Starts an asynchronous import job for CarePlan resources from Blob Storage
+# Returns: 202 Accepted with Content-Location header pointing to status endpoint
+POST http://{{hostname}}/tenant/{{tenantId}}/$import
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "inputFormat",
+      "valueString": "application/fhir+ndjson"
+    },
+    {
+      "name": "inputSource",
+      "valueString": "CarePlan"
+    },
+    {
+      "name": "mode",
+      "valueString": "InitialLoad"
+    },
+    {
+      "name": "input",
+      "part": [
+        {
+          "name": "type",
+          "valueString": "CarePlan"
+        },
+        {
+          "name": "url",
+          "valueString": "{{storageUrl}}/CarePlan.ndjson"
+        }
+      ]
+    }
+  ]
+}
+
+### Get import job status
+# Replace {jobId} with the actual job ID returned from the import request
+GET http://{{hostname}}/tenant/{{tenantId}}/_import/{jobId}
+
+### Cancel import job
+# Replace {jobId} with the actual job ID returned from the import request
+DELETE http://{{hostname}}/tenant/{{tenantId}}/_import/{jobId}

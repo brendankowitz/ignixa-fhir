@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -49,7 +51,7 @@ public static class ImportEndpoints
     private static async Task<IResult> StartImportAsync(
         [FromRoute] int tenantId,
         [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IImportJobStore jobStore,
+        [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
         // Read request body as Parameters resource
@@ -143,21 +145,25 @@ public static class ImportEndpoints
         // Generate job ID
         var jobId = Guid.NewGuid().ToString("N");
 
-        // Create job metadata
-        var job = new BulkImportJob
+        // Create job metadata using generic BackgroundJob<T>
+        var job = new BackgroundJob<ImportJobDefinition>
         {
             JobId = jobId,
             TenantId = tenantId,
+            JobType = (int)BackgroundJobType.Import,
             Status = "Queued",
-            InputFormat = inputFormat,
-            InputSource = inputSource ?? "",
-            Mode = mode,
-            InputFiles = inputFiles,
+            Definition = new ImportJobDefinition
+            {
+                InputFormat = inputFormat,
+                InputSource = inputSource ?? "",
+                Mode = mode,
+                InputFiles = inputFiles
+            },
             CreateDate = DateTimeOffset.UtcNow,
-            QueuedDate = DateTimeOffset.UtcNow
+            HeartbeatDate = DateTimeOffset.UtcNow
         };
 
-        await jobStore.CreateJobAsync(job, httpContext.RequestAborted);
+        await jobRepository.CreateAsync(job, httpContext.RequestAborted);
 
         // Start the orchestration
         var storageDetailParam = parameters.FindParameter("storageDetail");
@@ -185,7 +191,7 @@ public static class ImportEndpoints
 
         // Update job with orchestration instance ID
         job.OrchestrationInstanceId = instance.InstanceId;
-        await jobStore.UpdateJobAsync(job, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
 
         // Return 202 Accepted with Content-Location header
         var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_import/{jobId}";
@@ -203,11 +209,11 @@ public static class ImportEndpoints
         [FromRoute] int tenantId,
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IImportJobStore jobStore,
+        [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
         // Get job metadata
-        var job = await jobStore.GetJobAsync(tenantId, jobId, httpContext.RequestAborted);
+        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
         if (job == null)
         {
             return Results.NotFound(new { error = "Import job not found" });
@@ -234,15 +240,19 @@ public static class ImportEndpoints
                     job.Status = "Completed";
                     job.EndDate = DateTimeOffset.UtcNow;
 
-                    // Extract output from orchestration
+                    // Extract output from orchestration and store using strongly-typed POCO
                     if (state.Output != null)
                     {
-                        var output = System.Text.Json.JsonSerializer.Deserialize<ImportOrchestrationOutput>(state.Output);
+                        var output = JsonSerializer.Deserialize<ImportOrchestrationOutput>(state.Output);
                         if (output != null)
                         {
-                            job.TotalResources = output.TotalResources;
-                            job.TotalErrors = output.TotalErrors;
-                            job.ErrorFileUrl = output.ErrorFileUrl;
+                            var jobResult = new ImportJobResult
+                            {
+                                TotalResources = output.TotalResources,
+                                TotalErrors = output.TotalErrors,
+                                ErrorFileUrl = output.ErrorFileUrl
+                            };
+                            job.Result = JsonNode.Parse(JsonSerializer.Serialize(jobResult));
                         }
                     }
                     break;
@@ -259,8 +269,17 @@ public static class ImportEndpoints
                     break;
             }
 
-            await jobStore.UpdateJobAsync(job, httpContext.RequestAborted);
+            await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
         }
+
+        // Deserialize progress and result from JSON to POCO classes
+        var progress = job.Progress != null
+            ? System.Text.Json.JsonSerializer.Deserialize<ImportJobProgress>(job.Progress.ToJsonString())
+            : null;
+
+        var result = job.Result != null
+            ? System.Text.Json.JsonSerializer.Deserialize<ImportJobResult>(job.Result.ToJsonString())
+            : null;
 
         // Return response based on status
         return job.Status switch
@@ -268,7 +287,7 @@ public static class ImportEndpoints
             "Queued" or "Running" => Results.Accepted(
                 value: new
                 {
-                    transactionTime = job.QueuedDate,
+                    transactionTime = job.CreateDate,
                     request = $"/tenant/{tenantId}/$import",
                     requiresAccessToken = false,
                     output = Array.Empty<object>(),
@@ -279,8 +298,8 @@ public static class ImportEndpoints
                         new
                         {
                             url = "http://hl7.org/fhir/StructureDefinition/import-progress",
-                            valueString = job.ProgressPercentage != null
-                                ? $"{job.ProgressPercentage:F2}% complete ({job.ProcessedFiles}/{job.InputFiles.Count} files, {job.ProcessedResources} resources)"
+                            valueString = progress != null
+                                ? $"{progress.ProgressPercentage:F2}% complete ({progress.ProcessedFiles}/{job.Definition.InputFiles.Count} files, {progress.ProcessedResources} resources)"
                                 : "Starting..."
                         }
                     }
@@ -288,7 +307,7 @@ public static class ImportEndpoints
 
             "Completed" => Results.Ok(new
             {
-                transactionTime = job.QueuedDate,
+                transactionTime = job.CreateDate,
                 request = $"/tenant/{tenantId}/$import",
                 requiresAccessToken = false,
                 output = new[]
@@ -296,17 +315,17 @@ public static class ImportEndpoints
                     new
                     {
                         type = "OperationOutcome",
-                        count = job.TotalResources,
-                        inputUrl = job.InputSource
+                        count = result?.TotalResources ?? 0,
+                        inputUrl = job.Definition.InputSource
                     }
                 },
-                error = job.ErrorFileUrl != null
+                error = result?.ErrorFileUrl != null
                     ? new[]
                     {
                         new
                         {
                             type = "OperationOutcome",
-                            url = job.ErrorFileUrl
+                            url = result.ErrorFileUrl
                         }
                     }
                     : Array.Empty<object>()
@@ -314,7 +333,7 @@ public static class ImportEndpoints
 
             "Failed" => Results.Ok(new
             {
-                transactionTime = job.QueuedDate,
+                transactionTime = job.CreateDate,
                 request = $"/tenant/{tenantId}/$import",
                 error = new[]
                 {
@@ -328,7 +347,7 @@ public static class ImportEndpoints
 
             "Cancelled" => Results.Ok(new
             {
-                transactionTime = job.QueuedDate,
+                transactionTime = job.CreateDate,
                 request = $"/tenant/{tenantId}/$import",
                 error = new[]
                 {
@@ -351,10 +370,10 @@ public static class ImportEndpoints
         [FromRoute] int tenantId,
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IImportJobStore jobStore,
+        [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         HttpContext httpContext)
     {
-        var job = await jobStore.GetJobAsync(tenantId, jobId, httpContext.RequestAborted);
+        var job = await jobRepository.GetAsync(tenantId, jobId, httpContext.RequestAborted);
         if (job == null)
         {
             return Results.NotFound(new { error = "Import job not found" });
@@ -366,7 +385,7 @@ public static class ImportEndpoints
 
         job.Status = "Cancelled";
         job.EndDate = DateTimeOffset.UtcNow;
-        await jobStore.UpdateJobAsync(job, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, httpContext.RequestAborted);
 
         return Results.NoContent();
     }

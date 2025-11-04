@@ -1,28 +1,37 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using DurableTask.Core;
-using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Export.Activities;
 
 /// <summary>
 /// DurableTask activity that updates the export job status to completed or failed.
+/// Uses the unified IBackgroundJobRepository<ExportJobDefinition> for storage.
 /// </summary>
 public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
 {
-    private readonly IExportJobStore _jobStore;
+    private readonly IBackgroundJobRepository<ExportJobDefinition> _jobRepository;
     private readonly ILogger<CompleteJobActivity> _logger;
 
     public CompleteJobActivity(
-        IExportJobStore jobStore,
+        IBackgroundJobRepository<ExportJobDefinition> jobRepository,
         ILogger<CompleteJobActivity> logger)
     {
-        _jobStore = jobStore ?? throw new ArgumentNullException(nameof(jobStore));
+        _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     protected override async Task<bool> ExecuteAsync(TaskContext context, CompleteJobInput input)
     {
-        var job = await _jobStore.GetJobAsync(input.JobId, CancellationToken.None);
+        // Note: We need tenantId but it's not in the input. For now, use a default of 1.
+        // This activity is currently not called by the export orchestration,
+        // but is kept here for future use when direct activity calling is needed.
+        var tenantId = 1; // TODO: Pass tenantId from orchestration input
+
+        var job = await _jobRepository.GetAsync(tenantId, input.JobId, CancellationToken.None);
         if (job == null)
         {
             _logger.LogWarning("Job {JobId} not found", input.JobId);
@@ -31,15 +40,17 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
 
         if (input.Success)
         {
-            job.TotalResourcesExported = input.TotalResourcesExported;
-
-            foreach (var (resourceType, filePath) in input.ExportedFiles)
+            // Update result with export completion information
+            job.Result = JsonNode.Parse(JsonSerializer.Serialize(new
             {
-                var fileName = Path.GetFileName(filePath);
-                job.AddOutputFile(resourceType, fileName);
-            }
+                totalResources = input.TotalResourcesExported,
+                exportedFiles = input.ExportedFiles,
+                completedAt = DateTimeOffset.UtcNow
+            }));
 
-            job.MarkAsCompleted();
+            job.Status = "Completed";
+            job.EndDate = DateTimeOffset.UtcNow;
+
             _logger.LogInformation(
                 "Job {JobId} completed successfully ({TotalResources} resources)",
                 input.JobId,
@@ -47,11 +58,14 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
         }
         else
         {
-            job.MarkAsFailed(input.ErrorMessage ?? "Unknown error");
+            job.Status = "Failed";
+            job.EndDate = DateTimeOffset.UtcNow;
+            job.ErrorMessage = input.ErrorMessage ?? "Unknown error";
+
             _logger.LogError("Job {JobId} failed: {Error}", input.JobId, input.ErrorMessage);
         }
 
-        await _jobStore.UpdateJobAsync(job, CancellationToken.None);
+        await _jobRepository.UpdateAsync(job, CancellationToken.None);
         return true;
     }
 }

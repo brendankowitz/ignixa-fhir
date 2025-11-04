@@ -220,15 +220,13 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     .As<IBlobStorageClient>()
     .SingleInstance();
 
-    // Register export job store (in-memory for prototype, SQL Server for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.Features.Export.InMemoryExportJobStore>()
-        .As<IExportJobStore>()
+    // Register open generic background job repository (in-memory for prototype, SQL Server for production)
+    // Supports both import and export with unified generic interface: IBackgroundJobRepository<T>
+    // This single registration handles all job types: ImportJobDefinition, ExportJobDefinition, etc.
+    containerBuilder.RegisterGeneric(typeof(Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs.InMemoryBackgroundJobRepository<>))
+        .As(typeof(IBackgroundJobRepository<>))
         .SingleInstance();
 
-    // Register import job store (in-memory for prototype, SQL Server for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.Features.Import.InMemoryImportJobStore>()
-        .As<IImportJobStore>()
-        .SingleInstance();
 
     // Register Medino service provider
     containerBuilder.Register<IMediatorServiceProvider>(c =>

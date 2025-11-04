@@ -60,6 +60,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Rest", "Rest", "{5DB93B3E-65B8-4C0A-A08E-633F2E159FE9}"
 	ProjectSection(SolutionItems) = preProject
 		docs\rest\SearchExamples.http = docs\rest\SearchExamples.http
+		docs\rest\import.http = docs\rest\import.http
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bench", "bench", "{760AB15A-8938-8D9B-BEDE-5CE1484B84C3}"

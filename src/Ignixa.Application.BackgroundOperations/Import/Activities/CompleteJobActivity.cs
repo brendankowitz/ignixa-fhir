@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;
@@ -43,9 +44,18 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, CompleteJ
 
         _logger.LogInformation("Import job {JobId} completed", input.JobId);
 
+        // Create result using strongly-typed POCO
+        var result = new ImportJobResult
+        {
+            TotalResources = input.TotalResources,
+            TotalErrors = input.TotalErrors,
+            ErrorFileUrl = errorFileUrl
+        };
+
         return new CompleteJobOutput
         {
-            ErrorFileUrl = errorFileUrl
+            ErrorFileUrl = errorFileUrl,
+            Result = result
         };
     }
 
