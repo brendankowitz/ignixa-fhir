@@ -163,20 +163,10 @@ public sealed partial class Stu3StructureDefinitionSummaryProvider : IStructureD
             typeName = canonical.Substring(canonical.LastIndexOf('/') + 1);
         }
 
-        // Try exact match first (most common case)
-        if (_types.TryGetValue(typeName, out var summary))
-            return summary;
-
-        // For choice elements, the SDK extracts suffixes like 'Code' from 'valueCode'
-        // and tries to lookup the type. We need case-insensitive fallback.
-        // Primitive types are lowercase ('code', 'dateTime'), complex types are PascalCase.
-        foreach (var kvp in _types)
-        {
-            if (string.Equals(kvp.Key, typeName, StringComparison.OrdinalIgnoreCase))
-                return kvp.Value;
-        }
-
-        return null;
+        // Dictionary initialized with StringComparer.OrdinalIgnoreCase
+        // This handles case-insensitive lookup for choice elements (e.g., 'Code' vs 'code')
+        _types.TryGetValue(typeName, out var summary);
+        return summary;
     }
 
     // Common constraints dictionary (frequency-optimized)
@@ -234,7 +224,7 @@ public sealed partial class Stu3StructureDefinitionSummaryProvider : IStructureD
     private static ConstraintDefinition C(string key, string resourceType) =>
         _commonConstraints[key] with { AppliesTo = new[] { resourceType } };
 
-    private static readonly Dictionary<string, IStructureDefinitionSummary> _types = new()
+    private static readonly Dictionary<string, IStructureDefinitionSummary> _types = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Account"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account",
