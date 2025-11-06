@@ -9,6 +9,7 @@ using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Lexer;
 using Ignixa.FhirMappingLanguage.Parser;
+using Ignixa.FhirMappingLanguage.TypeSystem;
 using Superpower;
 using Superpower.Model;
 
@@ -21,14 +22,17 @@ namespace Ignixa.FhirMappingLanguage;
 public class MappingCompiler
 {
     private readonly bool _preserveTrivia;
+    private readonly ITypeValidator? _typeValidator;
 
     /// <summary>
     /// Creates a new mapping compiler.
     /// </summary>
     /// <param name="preserveTrivia">Whether to preserve whitespace and comments for round-tripping</param>
-    public MappingCompiler(bool preserveTrivia = false)
+    /// <param name="typeValidator">Optional type validator for type checking</param>
+    public MappingCompiler(bool preserveTrivia = false, ITypeValidator? typeValidator = null)
     {
         _preserveTrivia = preserveTrivia;
+        _typeValidator = typeValidator;
     }
 
     /// <summary>
@@ -85,14 +89,42 @@ public class MappingCompiler
     }
 
     /// <summary>
+    /// Validates a parsed mapping for type errors.
+    /// </summary>
+    /// <param name="map">The parsed map expression</param>
+    /// <returns>Collection of validation errors, empty if valid</returns>
+    public IEnumerable<TypeValidationError> Validate(MapExpression map)
+    {
+        if (_typeValidator == null)
+        {
+            return Enumerable.Empty<TypeValidationError>();
+        }
+
+        return _typeValidator.ValidateMap(map);
+    }
+
+    /// <summary>
     /// Convenience method to parse and compile a mapping in one step.
     /// </summary>
     /// <param name="mappingText">The mapping language text</param>
     /// <param name="context">The evaluation context</param>
+    /// <param name="validateTypes">Whether to validate types (throws on type errors if true)</param>
     /// <returns>The compiled map that can be executed</returns>
-    public CompiledMapping Compile(string mappingText, MappingContext? context = null)
+    /// <exception cref="TypeValidationException">Thrown when type validation fails and validateTypes is true</exception>
+    public CompiledMapping Compile(string mappingText, MappingContext? context = null, bool validateTypes = false)
     {
         var map = Parse(mappingText);
+
+        // Validate types if requested
+        if (validateTypes && _typeValidator != null)
+        {
+            var errors = Validate(map).ToList();
+            if (errors.Any())
+            {
+                throw new TypeValidationException("Type validation failed", errors);
+            }
+        }
+
         var evaluator = CreateEvaluator();
         context ??= new MappingContext();
 
@@ -171,4 +203,30 @@ public class ParseException : Exception
     }
 
     public Position Position { get; }
+}
+
+/// <summary>
+/// Exception thrown when type validation fails.
+/// </summary>
+public class TypeValidationException : Exception
+{
+    public TypeValidationException(string message, IEnumerable<TypeValidationError> errors)
+        : base(FormatMessage(message, errors))
+    {
+        Errors = errors?.ToList() ?? new List<TypeValidationError>();
+    }
+
+    public IReadOnlyList<TypeValidationError> Errors { get; }
+
+    private static string FormatMessage(string message, IEnumerable<TypeValidationError> errors)
+    {
+        var errorList = errors?.ToList() ?? new List<TypeValidationError>();
+        if (!errorList.Any())
+        {
+            return message;
+        }
+
+        var formattedErrors = string.Join(Environment.NewLine, errorList.Select(e => $"  - {e}"));
+        return $"{message}:{Environment.NewLine}{formattedErrors}";
+    }
 }
