@@ -162,7 +162,6 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         // Skip indexing for search parameters with empty or whitespace expressions
         if (string.IsNullOrWhiteSpace(searchParameter.Expression))
         {
-            Log.SkippingSearchParameterEmptyExpression(_logger, searchParameter.Code);
             yield break;
         }
 
@@ -203,12 +202,6 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
-
-        // Log if we're extracting a reference and got no results
-        if (searchParameterType == SearchParamType.Reference && !extractedValues.Any())
-        {
-            Log.NoValuesExtractedForReference(_logger, fhirPathExpression, element.InstanceType);
-        }
 
         // If there is target set, then filter the extracted values to only those types.
         if (searchParameterType == SearchParamType.Reference &&
@@ -265,14 +258,20 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
                     // in this case it can only be of one type.
                     string singleAllowedResourceType = allowedReferenceResourceTypes[0];
                     foreach (ISearchValue searchValue in searchValues)
+                    {
+                        if (searchValue == null)
+                            continue;
+
                         if (searchValue is ReferenceSearchValue rsr && string.IsNullOrEmpty(rsr.ResourceType))
                             results.Add(new ReferenceSearchValue(rsr.Kind, rsr.BaseUri, singleAllowedResourceType, rsr.ResourceId));
                         else
                             results.Add(searchValue);
+                    }
                 }
                 else
                 {
-                    results.AddRange(searchValues);
+                    // Filter out any null values that converters might return
+                    results.AddRange(searchValues.Where(sv => sv != null));
                 }
             }
         }
@@ -315,9 +314,6 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.")]
         public static partial void ComponentNullOrEmptyExpression(ILogger logger, int componentIndex, string searchParameterCode);
 
-        [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping search parameter {Code} with empty expression")]
-        public static partial void SkippingSearchParameterEmptyExpression(ILogger logger, string code);
-
         [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}'.")]
         public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, Type elementType);
 
@@ -326,8 +322,5 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);
-
-        [LoggerMessage(Level = LogLevel.Warning, Message = "No values extracted for reference search parameter using expression '{Expression}' on resource type '{ResourceType}'.")]
-        public static partial void NoValuesExtractedForReference(ILogger logger, string expression, string resourceType);
     }
 }

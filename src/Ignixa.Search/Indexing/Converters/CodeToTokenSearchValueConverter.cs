@@ -42,7 +42,6 @@ public class CodeToTokenSearchValueConverter : FhirTypedElementToSearchValueConv
 
         if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(system))
         {
-            yield return null;
             yield break;
         }
 

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;
@@ -41,11 +42,42 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, CompleteJ
             errorFileUrl = await UploadErrorLogAsync(input);
         }
 
-        _logger.LogInformation("Import job {JobId} completed", input.JobId);
+        // Log throughput metrics if timing information is available
+        if (input.StartDate.HasValue)
+        {
+            var elapsed = (DateTimeOffset.UtcNow - input.StartDate.Value).TotalSeconds;
+            if (elapsed > 0)
+            {
+                var resourcesPerSec = input.TotalResources / elapsed;
+                _logger.LogInformation(
+                    "Import job {JobId} completed: {TotalResources} resources in {ElapsedSeconds:F2}s = {ThroughputPerSec:F2} resources/sec",
+                    input.JobId,
+                    input.TotalResources,
+                    elapsed,
+                    resourcesPerSec);
+            }
+            else
+            {
+                _logger.LogInformation("Import job {JobId} completed", input.JobId);
+            }
+        }
+        else
+        {
+            _logger.LogInformation("Import job {JobId} completed", input.JobId);
+        }
+
+        // Create result using strongly-typed POCO
+        var result = new ImportJobResult
+        {
+            TotalResources = input.TotalResources,
+            TotalErrors = input.TotalErrors,
+            ErrorFileUrl = errorFileUrl
+        };
 
         return new CompleteJobOutput
         {
-            ErrorFileUrl = errorFileUrl
+            ErrorFileUrl = errorFileUrl,
+            Result = result
         };
     }
 

@@ -95,6 +95,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             var multiTypeMainResults = new List<SearchEntryResult>();
             await foreach (var entity in multiTypeQuery
                 .Include(x => x.Transaction)
+                .Include(x => x.ResourceType)
                 .AsAsyncEnumerable().WithCancellation(ct))
             {
                 // For multi-type results, we need to determine the actual resource type from the entity
@@ -185,11 +186,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     .AsAsyncEnumerable().WithCancellation(ct))
                 {
                     // Determine resource type from entity
-                    var resourceTypeName = revIncludeExpr.SourceResourceType ?? _context.ResourceTypes
-                        .AsNoTracking()
-                        .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
-                        .Select(rt => rt.Name)
-                        .First();
+                    // First try using the provided SourceResourceType, then fall back to cache lookup of the ID
+                    var resourceTypeName = revIncludeExpr.SourceResourceType
+                        ?? _cache.TryGetResourceTypeNameFromCache(entity.ResourceTypeId)
+                        ?? throw new InvalidOperationException($"ResourceType ID {entity.ResourceTypeId} not found in cache or database");
 
                     var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
                     searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
@@ -240,6 +240,85 @@ public class SqlEntityFrameworkSearchService : ISearchService
         }
 
         return await baseQuery.CountAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
+        string resourceType,
+        int numberOfRanges,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "Getting export ranges: ResourceType={ResourceType}, NumberOfRanges={NumberOfRanges}",
+            resourceType,
+            numberOfRanges);
+
+        // Get ResourceTypeId
+        var resourceTypeId = await GetResourceTypeIdAsync(resourceType, ct);
+        if (!resourceTypeId.HasValue)
+        {
+            _logger.LogWarning("ResourceType not found: {ResourceType}", resourceType);
+            return Array.Empty<(long, long)>();
+        }
+
+        // Query for min/max/count in a single aggregation query (optimized to avoid 3 separate subqueries)
+        var stats = await _context.Resources
+            .Where(r => r.ResourceTypeId == resourceTypeId.Value
+                && !r.IsHistory
+                && !r.IsDeleted)
+            .AsNoTracking()
+            .GroupBy(r => 1)
+            .Select(g => new
+            {
+                MinId = g.Min(x => x.ResourceSurrogateId),
+                MaxId = g.Max(x => x.ResourceSurrogateId),
+                Count = g.Count()
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (stats == null || stats.Count == 0)
+        {
+            _logger.LogInformation("No resources found for ResourceType={ResourceType}", resourceType);
+            return Array.Empty<(long, long)>();
+        }
+
+        long minId = stats.MinId;
+        long maxId = stats.MaxId;
+        long count = stats.Count;
+        long rangeSize = (long)Math.Ceiling((double)(maxId - minId + 1) / numberOfRanges);
+
+        _logger.LogInformation(
+            "Calculated export ranges: Min={MinId}, Max={MaxId}, Count={Count}, RangeSize={RangeSize}",
+            minId,
+            maxId,
+            count,
+            rangeSize);
+
+        // Generate non-overlapping, exhaustive ranges
+        var ranges = new List<(long, long)>();
+        long currentStart = minId;
+
+        for (int i = 0; i < numberOfRanges; i++)
+        {
+            long currentEnd = (i == numberOfRanges - 1)
+                ? maxId  // Last range includes all remaining IDs
+                : currentStart + rangeSize - 1;
+
+            // Only add range if there's data in it
+            if (currentStart <= maxId)
+            {
+                ranges.Add((currentStart, Math.Min(currentEnd, maxId)));
+                _logger.LogDebug("Range {Index}: [{StartId}..{EndId}]", i + 1, currentStart, Math.Min(currentEnd, maxId));
+                currentStart = currentEnd + 1;
+            }
+        }
+
+        _logger.LogInformation(
+            "Generated {RangeCount} export ranges for ResourceType={ResourceType}",
+            ranges.Count,
+            resourceType);
+
+        return ranges.AsReadOnly();
     }
 
     /// <summary>
@@ -367,6 +446,19 @@ public class SqlEntityFrameworkSearchService : ISearchService
         else
         {
             filteredQuery = baseQuery;
+        }
+
+        // Apply surrogate ID range filtering for export partitioning
+        if (options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue)
+        {
+            filteredQuery = filteredQuery.Where(r =>
+                r.ResourceSurrogateId >= options.StartSurrogateId.Value &&
+                r.ResourceSurrogateId <= options.EndSurrogateId.Value);
+
+            _logger.LogDebug(
+                "Applied surrogate ID range filter: [{StartId}..{EndId}]",
+                options.StartSurrogateId.Value,
+                options.EndSurrogateId.Value);
         }
 
         // Apply sorting
@@ -585,9 +677,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
     }
 
     /// <summary>
-    /// Helper method to get search parameter ID from URL.
-    /// Uses synchronous cache lookup. Parameter IDs are pre-cached during startup by IndexLoaderService.
-    /// For missing parameters, returns 0 (no matches - lenient fallback).
+    /// Helper method to get search parameter ID from URL using in-memory cache only.
+    /// Uses synchronous cache lookup - returns 0 if not found in cache (lenient fallback).
+    /// Parameter IDs must be pre-cached during startup by calling PreloadSearchParamsAsync().
+    /// This method is called from within LINQ expressions, so it must be synchronous and fast.
     /// </summary>
     private short GetSearchParamIdFromUrl(Uri url)
     {
@@ -597,22 +690,16 @@ public class SqlEntityFrameworkSearchService : ISearchService
             return 0;
         }
 
-        // Convert Uri to string for database query
+        // Convert Uri to string and use cache-only lookup
         string urlString = url.ToString();
+        short searchParamId = _cache.TryGetSearchParamIdFromCache(urlString);
 
-        // Query SearchParam table synchronously (EF Core handles this efficiently with caching)
-        // Note: This executes once per sort parameter, cached at SQL Server level
-        var searchParam = _context.SearchParams
-            .AsNoTracking()
-            .FirstOrDefault(sp => sp.Uri == urlString);
-
-        if (searchParam == null)
+        if (searchParamId == 0)
         {
-            _logger.LogWarning("SearchParam not found for URL: {Url}, sort will have no effect", urlString);
-            return 0; // Return 0 - no matches (lenient behavior)
+            _logger.LogWarning("SearchParam not found in cache for URL: {Url}, sort will have no effect", urlString);
         }
 
-        return searchParam.SearchParamId;
+        return searchParamId;
     }
 
     private IOrderedQueryable<ResourceEntity> ApplyThenBy(

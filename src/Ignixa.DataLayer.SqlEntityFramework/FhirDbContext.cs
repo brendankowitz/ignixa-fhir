@@ -92,6 +92,13 @@ public class FhirDbContext : DbContext
     /// </summary>
     public DbSet<UriSearchParamEntity> UriSearchParams { get; set; } = null!;
 
+    // Background job tables
+
+    /// <summary>
+    /// Gets or sets the BackgroundJobs table (import, export, and other long-running operations).
+    /// </summary>
+    public DbSet<BackgroundJobEntity> BackgroundJobs { get; set; } = null!;
+
     /// <summary>
     /// Configures entity mappings, keys, indexes, and relationships.
     /// </summary>
@@ -107,6 +114,7 @@ public class FhirDbContext : DbContext
         ConfigureSystemEntity(modelBuilder);
         ConfigureQuantityCodeEntity(modelBuilder);
         ConfigureSearchParamEntities(modelBuilder);
+        ConfigureBackgroundJobEntity(modelBuilder);
     }
 
     private static void ConfigureResourceEntity(ModelBuilder modelBuilder)
@@ -281,5 +289,69 @@ public class FhirDbContext : DbContext
         // UriSearchParam
         var uriEntity = modelBuilder.Entity<UriSearchParamEntity>();
         uriEntity.HasKey(u => new { u.ResourceTypeId, u.ResourceSurrogateId, u.SearchParamId, u.Uri });
+    }
+
+    private static void ConfigureBackgroundJobEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<BackgroundJobEntity>();
+
+        // Primary key: JobId (system-wide, unique across all tenants)
+        entity.HasKey(b => b.JobId)
+            .HasName("PK_BackgroundJobs");
+
+        // Index on Status for querying active jobs (system-wide)
+        entity.HasIndex(b => b.Status)
+            .HasDatabaseName("IX_BackgroundJobs_Status");
+
+        // Index on JobType for filtering by job type (system-wide)
+        entity.HasIndex(b => b.JobType)
+            .HasDatabaseName("IX_BackgroundJobs_JobType");
+
+        // Index on CreateDate for time-based queries
+        entity.HasIndex(b => b.CreateDate)
+            .HasDatabaseName("IX_BackgroundJobs_CreateDate");
+
+        // Index on HeartbeatDate for finding stale jobs
+        entity.HasIndex(b => b.HeartbeatDate)
+            .HasDatabaseName("IX_BackgroundJobs_HeartbeatDate");
+
+        // Index on OrchestrationInstanceId for DurableTask correlation
+        entity.HasIndex(b => b.OrchestrationInstanceId)
+            .HasDatabaseName("IX_BackgroundJobs_OrchestrationInstanceId")
+            .IsUnique(false)
+            .HasFilter("[OrchestrationInstanceId] IS NOT NULL");
+
+        // Configure column properties
+        entity.Property(b => b.JobId)
+            .HasMaxLength(36)  // GUID string length
+            .IsRequired();
+
+        entity.Property(b => b.Status)
+            .HasMaxLength(20)  // Queued, Running, Completed, Failed, Cancelled
+            .IsRequired();
+
+        entity.Property(b => b.Definition)
+            .HasColumnType("nvarchar(max)")  // JSON payload, can be large
+            .IsRequired();
+
+        entity.Property(b => b.Progress)
+            .HasColumnType("nvarchar(max)")  // JSON progress updates
+            .IsRequired(false);
+
+        entity.Property(b => b.Result)
+            .HasColumnType("nvarchar(max)")  // JSON final results
+            .IsRequired(false);
+
+        entity.Property(b => b.ErrorMessage)
+            .HasMaxLength(1000)
+            .IsRequired(false);
+
+        entity.Property(b => b.Worker)
+            .HasMaxLength(256)
+            .IsRequired(false);
+
+        entity.Property(b => b.OrchestrationInstanceId)
+            .HasMaxLength(100)
+            .IsRequired(false);
     }
 }

@@ -36,15 +36,18 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
 {
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly ILogger<ImportBatchActivity> _logger;
 
     public ImportBatchActivity(
         IFhirRepositoryFactory repositoryFactory,
         IFhirVersionContext fhirVersionContext,
+        ITenantConfigurationStore tenantConfigurationStore,
         ILogger<ImportBatchActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+        _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -80,24 +83,34 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             input.ResourceType,
             input.Mode);
 
-        // 1. Get system repository to allocate transaction ID
-        var systemRepository = await _repositoryFactory.GetRepositoryAsync(
-            SystemConstants.SystemPartitionId,
+        // Get tenant configuration to determine FHIR version
+        var tenantConfig = await _tenantConfigurationStore.GetTenantConfigurationAsync(
+            input.TenantId,
             CancellationToken.None);
 
-        var transactionId = await systemRepository.GetNextTransactionIdAsync(CancellationToken.None);
+        if (tenantConfig == null)
+        {
+            throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
+        }
+
+        // Get tenant repository
+        var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
+
+        // Allocate transaction ID from tenant's repository (Isolated mode)
+        // In isolated mode: Each tenant has its own database, so tenant repository = tenant database
+        // In distributed mode: Must use system repository (Partition 0) for transaction allocation
+        //                      TODO: Repository factory should handle this logic based on mode
+        var transactionId = await repository.GetNextTransactionIdAsync(CancellationToken.None);
 
         _logger.LogDebug(
-            "Allocated transaction ID {TransactionId} for import batch",
-            transactionId);
-
-        // 2. Get tenant repository
-        var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
+            "Allocated transaction ID {TransactionId} for import batch (Tenant {TenantId})",
+            transactionId,
+            input.TenantId);
 
         // 3. Parse and validate resources, build batch operations
         var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
         var errors = new List<ImportErrorLogEntry>();
-        var fhirVersion = FhirSpecification.R4; // TODO: Extract from tenant config
+        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
 
         var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
         var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion);

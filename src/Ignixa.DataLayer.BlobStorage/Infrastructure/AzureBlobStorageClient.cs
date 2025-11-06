@@ -11,12 +11,18 @@ namespace Ignixa.DataLayer.BlobStorage.Infrastructure;
 /// <summary>
 /// Azure Blob Storage implementation of <see cref="IBlobStorageClient"/>.
 /// Uses Azure Blob Storage for cloud-based blob storage with SAS URL generation for access.
+/// Supports multiple containers within the same storage account (container-agnostic paths).
 /// </summary>
 public partial class AzureBlobStorageClient : IBlobStorageClient
 {
-    private readonly BlobContainerClient _containerClient;
+    private readonly BlobServiceClient _blobServiceClient;
+    private readonly BlobContainerClient _defaultContainerClient;
     private readonly ILogger<AzureBlobStorageClient> _logger;
     private readonly AzureBlobStorageOptions _options;
+
+    // Cache for container clients keyed by container name (supports multi-container scenarios)
+    private readonly Dictionary<string, BlobContainerClient> _containerClientCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _cacheSync = new();
 
     private static partial class Log
     {
@@ -52,20 +58,95 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     /// Initializes a new instance of the <see cref="AzureBlobStorageClient"/> class.
     /// </summary>
     /// <param name="blobServiceClient">Azure Blob Service client.</param>
-    /// <param name="options">Configuration options containing container name.</param>
+    /// <param name="options">Configuration options containing default container name.</param>
     /// <param name="logger">Logger instance.</param>
     public AzureBlobStorageClient(
         BlobServiceClient blobServiceClient,
         IOptions<AzureBlobStorageOptions> options,
         ILogger<AzureBlobStorageClient> logger)
     {
+        _blobServiceClient = blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         var containerName = _options.ContainerName
             ?? throw new ArgumentException("ContainerName must be specified in AzureBlobStorageOptions", nameof(options));
 
-        _containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+        _defaultContainerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+        // Pre-populate cache with default container
+        lock (_cacheSync)
+        {
+            _containerClientCache[containerName] = _defaultContainerClient;
+        }
+    }
+
+    /// <summary>
+    /// Gets or creates a BlobContainerClient for the specified container name.
+    /// Supports lazy-loading of container clients for multi-container scenarios.
+    /// </summary>
+    private BlobContainerClient GetContainerClient(string containerName)
+    {
+        if (string.IsNullOrEmpty(containerName))
+        {
+            return _defaultContainerClient;
+        }
+
+        lock (_cacheSync)
+        {
+            if (_containerClientCache.TryGetValue(containerName, out var client))
+            {
+                return client;
+            }
+
+            // Create new container client and cache it
+            var newClient = _blobServiceClient.GetBlobContainerClient(containerName);
+            _containerClientCache[containerName] = newClient;
+            _logger.LogDebug("Created container client for container: {ContainerName}", containerName);
+            return newClient;
+        }
+    }
+
+    /// <summary>
+    /// Parses a blob path to extract container name and blob name.
+    /// Supports both:
+    /// - Full blob URLs: https://account.blob.core.windows.net/container/blob/path
+    /// - Container-qualified paths: container/blob/path
+    /// - Blob-only paths (uses default container): blob/path
+    /// </summary>
+    private (string containerName, string blobName) ParseBlobPath(string path)
+    {
+        // Try to parse as a URL first
+        if ((path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+             path.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) &&
+            Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        {
+            try
+            {
+                // Use Azure SDK's BlobUriBuilder for proper URL parsing
+                var blobUri = new BlobUriBuilder(uri);
+                return (blobUri.BlobContainerName, blobUri.BlobName);
+            }
+            catch
+            {
+                // Fall through to path-based parsing
+            }
+        }
+
+        // Parse as container-qualified or blob-only path
+        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length < 2)
+        {
+            // No container specified, use default
+            return (_options.ContainerName ?? string.Empty, path);
+        }
+
+        // First part is container, rest is blob path
+        var container = parts[0];
+        var blob = string.Join("/", parts.Skip(1));
+
+        return (container, blob);
     }
 
     /// <inheritdoc/>
@@ -76,7 +157,9 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
         Log.WritingBlob(_logger, path);
 
-        var blobClient = _containerClient.GetBlobClient(path);
+        var (containerName, blobName) = ParseBlobPath(path);
+        var containerClient = GetContainerClient(containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
         await blobClient.UploadAsync(content, overwrite: true, cancellationToken).ConfigureAwait(false);
 
         Log.SuccessfullyWroteBlob(_logger, path);
@@ -90,7 +173,9 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
         Log.AppendingToBlob(_logger, path);
 
-        var appendBlobClient = _containerClient.GetAppendBlobClient(path);
+        var (containerName, blobName) = ParseBlobPath(path);
+        var containerClient = GetContainerClient(containerName);
+        var appendBlobClient = containerClient.GetAppendBlobClient(blobName);
 
         // Create append blob if it doesn't exist
         try
@@ -115,7 +200,9 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
         Log.ReadingBlob(_logger, path);
 
-        var blobClient = _containerClient.GetBlobClient(path);
+        var (containerName, blobName) = ParseBlobPath(path);
+        var containerClient = GetContainerClient(containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
         var download = await blobClient.DownloadAsync(cancellationToken).ConfigureAwait(false);
 
         return download.Value.Content;
@@ -126,7 +213,9 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
-        var blobClient = _containerClient.GetBlobClient(path);
+        var (containerName, blobName) = ParseBlobPath(path);
+        var containerClient = GetContainerClient(containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
 
         var response = await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -145,7 +234,10 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
-        var blobClient = _containerClient.GetBlobClient(path);
+        var (containerName, blobName) = ParseBlobPath(path);
+        var containerClient = GetContainerClient(containerName);
+
+        var blobClient = containerClient.GetBlobClient(blobName);
         var exists = await blobClient.ExistsAsync(cancellationToken).ConfigureAwait(false);
 
         return exists.Value;
@@ -158,8 +250,11 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
         var blobs = new List<string>();
 
-        await foreach (var blobItem in _containerClient.GetBlobsAsync(
-            prefix: pathPrefix,
+        var (containerName, blobPrefix) = ParseBlobPath(pathPrefix);
+        var containerClient = GetContainerClient(containerName);
+
+        await foreach (var blobItem in containerClient.GetBlobsAsync(
+            prefix: blobPrefix,
             cancellationToken: cancellationToken).ConfigureAwait(false))
         {
             blobs.Add(blobItem.Name);
@@ -175,7 +270,9 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
-        var blobClient = _containerClient.GetBlobClient(path);
+        var (containerName, blobName) = ParseBlobPath(path);
+        var containerClient = GetContainerClient(containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
 
         // If expiration is specified, generate a SAS URL
         if (expiresIn.HasValue)

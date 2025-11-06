@@ -3,27 +3,30 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 
 /// <summary>
-/// Updates import job progress in job store.
+/// Updates import job progress in job repository.
 /// Phase 6: Progress tracking for long-running imports.
 /// </summary>
 public class UpdateProgressActivity : AsyncTaskActivity<UpdateProgressInput, bool>
 {
-    private readonly IImportJobStore _jobStore;
+    private readonly IBackgroundJobRepository<ImportJobDefinition> _jobRepository;
     private readonly ILogger<UpdateProgressActivity> _logger;
 
     public UpdateProgressActivity(
-        IImportJobStore jobStore,
+        IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         ILogger<UpdateProgressActivity> logger)
     {
-        _jobStore = jobStore ?? throw new ArgumentNullException(nameof(jobStore));
+        _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -33,24 +36,30 @@ public class UpdateProgressActivity : AsyncTaskActivity<UpdateProgressInput, boo
     {
         try
         {
-            var job = await _jobStore.GetJobAsync(input.TenantId, input.JobId, CancellationToken.None);
+            var job = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None);
 
             if (job == null)
             {
-                _logger.LogWarning("Job {JobId} not found for progress update", input.JobId);
+                _logger.LogWarning("Job {JobId} not found for progress update (tenant {TenantId})", input.JobId, input.TenantId);
                 return false;
             }
 
-            // Update progress fields
-            job.ProcessedResources = input.ProcessedResources;
-            job.ProcessedFiles = input.ProcessedFiles;
-            job.CurrentFile = input.CurrentFile;
-
             // Calculate progress percentage
             // Use files as progress indicator (more accurate than resource count)
-            job.ProgressPercentage = input.TotalFiles > 0
+            var progressPercentage = input.TotalFiles > 0
                 ? Math.Round((double)input.ProcessedFiles / input.TotalFiles * 100, 2)
                 : 0;
+
+            // Update progress as JSON using strongly-typed POCO
+            var progress = new ImportJobProgress
+            {
+                ProcessedResources = input.ProcessedResources,
+                ProcessedFiles = input.ProcessedFiles,
+                CurrentFile = input.CurrentFile,
+                ProgressPercentage = progressPercentage
+            };
+
+            job.Progress = JsonNode.Parse(JsonSerializer.Serialize(progress));
 
             // Update status to Running if not already
             if (job.Status == "Queued")
@@ -59,14 +68,14 @@ public class UpdateProgressActivity : AsyncTaskActivity<UpdateProgressInput, boo
                 job.StartDate = DateTimeOffset.UtcNow;
             }
 
-            await _jobStore.UpdateJobAsync(job, CancellationToken.None);
+            await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
 
             _logger.LogDebug(
                 "Updated progress for job {JobId}: {ProcessedFiles}/{TotalFiles} files ({Percentage}%)",
                 input.JobId,
                 input.ProcessedFiles,
                 input.TotalFiles,
-                job.ProgressPercentage);
+                progressPercentage);
 
             return true;
         }

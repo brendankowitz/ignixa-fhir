@@ -118,11 +118,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             throw new InvalidOperationException($"Tenant {tenantId} is not active");
         }
 
-        // Prevent access to system partition (Partition 0)
-        if (tenantConfig.IsSystemPartition || tenantId == SystemConstants.SystemPartitionId)
-        {
-            throw new InvalidOperationException($"Tenant {tenantId} is a system partition and cannot be accessed directly");
-        }
+        // For non-system partitions: prevent direct access to system partition (Partition 0)
+        // For system partition: allow internal access
+        var isSystemPartitionAccess = tenantConfig.IsSystemPartition || tenantId == SystemConstants.SystemPartitionId;
 
         // Validate storage configuration
         if (tenantConfig.Storage.Type != "SqlEntityFramework" && tenantConfig.Storage.Type != "SqlServer")
@@ -130,16 +128,36 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             throw new InvalidOperationException($"Tenant {tenantId} storage type '{tenantConfig.Storage.Type}' is not supported by SqlEntityFrameworkRepositoryFactory. Expected 'SqlEntityFramework' or 'SqlServer'");
         }
 
-        if (string.IsNullOrEmpty(tenantConfig.Storage.ConnectionString))
+        // Handle connection string: system partition can inherit from another tenant (for single-tenant deployments)
+        var connectionString = tenantConfig.Storage.ConnectionString;
+
+        if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException($"Tenant {tenantId} is missing a connection string in Storage.ConnectionString");
+            if (!isSystemPartitionAccess)
+            {
+                // Regular tenants must have a connection string
+                throw new InvalidOperationException($"Tenant {tenantId} is missing a connection string in Storage.ConnectionString");
+            }
+
+            // System partition with null connection string: inherit from specified tenant
+            var inheritFromTenantId = tenantConfig.Storage.InheritConnectionStringFromTenant;
+            var inheritedConfig = await _tenantStore.GetTenantConfigurationAsync(inheritFromTenantId, ct);
+
+            if (inheritedConfig == null || string.IsNullOrEmpty(inheritedConfig.Storage.ConnectionString))
+            {
+                throw new InvalidOperationException(
+                    $"System partition (Tenant {tenantId}) has no ConnectionString and cannot inherit from Tenant {inheritFromTenantId} " +
+                    $"(tenant {(inheritedConfig == null ? "not found" : "has no ConnectionString")})");
+            }
+
+            connectionString = inheritedConfig.Storage.ConnectionString;
         }
 
         // SECURITY: Validate that connection string uses Managed Identity (Azure AD) authentication
-        ValidateManagedIdentityAuthentication(tenantConfig.Storage.ConnectionString, tenantId);
+        ValidateManagedIdentityAuthentication(connectionString, tenantId);
 
         // Create factory and cache it
-        var factory = _factoryCache.GetOrAdd(tenantId, _ => CreateServiceFactory(tenantId, tenantConfig));
+        var factory = _factoryCache.GetOrAdd(tenantId, _ => CreateServiceFactory(tenantId, tenantConfig, connectionString));
 
         return factory;
     }
@@ -200,7 +218,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         });
     }
 
-    private TenantServiceFactory CreateServiceFactory(int tenantId, Domain.Models.TenantConfiguration tenantConfig)
+    private TenantServiceFactory CreateServiceFactory(int tenantId, Domain.Models.TenantConfiguration tenantConfig, string connectionString)
     {
         var logger = _loggerFactory.CreateLogger<SqlEntityFrameworkRepositoryFactory>();
         logger.LogInformation("Creating service factory for tenant {TenantId} ({DisplayName})", tenantId, tenantConfig.DisplayName);
@@ -208,7 +226,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Create DbContext OPTIONS (thread-safe, can be cached)
         var optionsBuilder = new DbContextOptionsBuilder<FhirDbContext>();
         optionsBuilder.UseSqlServer(
-            tenantConfig.Storage.ConnectionString,
+            connectionString,
             sqlOptions =>
             {
                 sqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
@@ -234,7 +252,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             // Attempt to extract Managed Identity name from connection string (User ID parameter)
             // If specified in connection string, use that for MI setup
             // Otherwise, the running process identity is used (Managed Identity of App Service)
-            managedIdentityName = ExtractManagedIdentityNameFromConnectionString(tenantConfig.Storage.ConnectionString);
+            managedIdentityName = ExtractManagedIdentityNameFromConnectionString(connectionString);
 
             var initializer = new DatabaseInitializer(
                 initDbContext,
@@ -269,6 +287,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         var (compartmentManager, parameterManager) = GetOrCreateDefinitionManagers(fhirSpec, schemaProvider);
 
         // Create factory delegate for Repository (accepts DbContext parameter)
+        // Note: Repository and SearchService share the same SearchIndexReferenceDataCache instance per request
         Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
@@ -278,10 +297,15 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 compressor,
                 _loggerFactory.CreateLogger<SqlMergeRepository>());
 
+            var searchIndexCache = new SearchIndexReferenceDataCache(
+                dbContext,
+                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
+
             return new SqlEntityFrameworkRepository(
                 dbContext,
                 compressor,
                 sqlMergeRepository,
+                searchIndexCache,
                 _loggerFactory.CreateLogger<SqlEntityFrameworkRepository>());
         };
 

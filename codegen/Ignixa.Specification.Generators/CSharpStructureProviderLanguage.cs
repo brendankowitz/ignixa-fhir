@@ -133,7 +133,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // Provide method with case-insensitive fallback for choice type support
+        // Provide method with case-insensitive dictionary lookup for choice type support
         sb.AppendLine("    public IStructureDefinitionSummary? Provide(string canonical)");
         sb.AppendLine("    {");
         sb.AppendLine("        // Handle full canonical URLs like \"http://hl7.org/fhir/StructureDefinition/Patient\"");
@@ -144,20 +144,10 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("            typeName = canonical.Substring(canonical.LastIndexOf('/') + 1);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        // Try exact match first (most common case)");
-        sb.AppendLine("        if (_types.TryGetValue(typeName, out var summary))");
-        sb.AppendLine("            return summary;");
-        sb.AppendLine();
-        sb.AppendLine("        // For choice elements, the SDK extracts suffixes like 'Code' from 'valueCode'");
-        sb.AppendLine("        // and tries to lookup the type. We need case-insensitive fallback.");
-        sb.AppendLine("        // Primitive types are lowercase ('code', 'dateTime'), complex types are PascalCase.");
-        sb.AppendLine("        foreach (var kvp in _types)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (string.Equals(kvp.Key, typeName, StringComparison.OrdinalIgnoreCase))");
-        sb.AppendLine("                return kvp.Value;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        return null;");
+        sb.AppendLine("        // Dictionary initialized with StringComparer.OrdinalIgnoreCase");
+        sb.AppendLine("        // This handles case-insensitive lookup for choice elements (e.g., 'Code' vs 'code')");
+        sb.AppendLine("        _types.TryGetValue(typeName, out var summary);");
+        sb.AppendLine("        return summary;");
         sb.AppendLine("    }");
         sb.AppendLine();
 
@@ -180,7 +170,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
 
     private void GenerateTypesDictionary(StringBuilder sb, DefinitionCollection definitions)
     {
-        sb.AppendLine("    private static readonly Dictionary<string, IStructureDefinitionSummary> _types = new()");
+        sb.AppendLine("    private static readonly Dictionary<string, IStructureDefinitionSummary> _types = new(StringComparer.OrdinalIgnoreCase)");
         sb.AppendLine("    {");
 
         // Collect all types (primitives, complex types, resources, AND BackboneElements)
@@ -729,7 +719,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using Ignixa.Serialization.SourceNodes.Models;");
+        sb.AppendLine("using Ignixa.Serialization.Models;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();

@@ -12,6 +12,7 @@ COPY .editorconfig ./
 COPY src/Ignixa.Api/Ignixa.Api.csproj src/Ignixa.Api/
 COPY src/Ignixa.Application/Ignixa.Application.csproj src/Ignixa.Application/
 COPY src/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj src/Ignixa.Application.BackgroundOperations/
+COPY src/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj src/Ignixa.Application.Operations/
 COPY src/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj src/Ignixa.DataLayer.BlobStorage/
 COPY src/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj src/Ignixa.DataLayer.FileSystem/
 COPY src/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj src/Ignixa.DataLayer.InMemoryIndex/

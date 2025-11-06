@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
+using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
@@ -23,6 +24,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     private readonly FhirDbContext _context;
     private readonly GzipResourceCompressor _compressor;
     private readonly SqlMergeRepository _sqlMergeRepository;
+    private readonly SearchIndexReferenceDataCache _cache;
     private readonly ILogger<SqlEntityFrameworkRepository> _logger;
 
     /// <summary>
@@ -31,16 +33,19 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="compressor">The Gzip compressor for RawResource storage.</param>
     /// <param name="sqlMergeRepository">The SQL merge repository for high-performance batch operations.</param>
+    /// <param name="cache">The search index reference data cache for optimized lookups.</param>
     /// <param name="logger">Logger instance.</param>
     public SqlEntityFrameworkRepository(
         FhirDbContext context,
         GzipResourceCompressor compressor,
         SqlMergeRepository sqlMergeRepository,
+        SearchIndexReferenceDataCache cache,
         ILogger<SqlEntityFrameworkRepository> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _sqlMergeRepository = sqlMergeRepository ?? throw new ArgumentNullException(nameof(sqlMergeRepository));
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -319,16 +324,64 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
         // Phase 3.5: Optimized batch query - single database call instead of N queries
         // Step 1: Collect unique resource types and look up their IDs (batch)
+        // Use cache-first approach: try cache for common types, fall back to DB for new ones
         var uniqueResourceTypes = operations
             .Select(op => op.resourceType)
             .Distinct()
             .ToList();
 
         var resourceTypeMap = new Dictionary<string, short>();
+        var cacheMisses = new List<string>();
+
+        // Phase 1a: Check cache for all resource types (O(n) memory lookups, no DB queries)
         foreach (var resourceType in uniqueResourceTypes)
         {
-            var typeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
-            resourceTypeMap[resourceType] = typeId;
+            var cachedId = _cache.TryGetResourceTypeIdFromCache(resourceType);
+            if (cachedId.HasValue)
+            {
+                _logger.LogTrace("ResourceType '{ResourceType}' found in batch cache hit", resourceType);
+                resourceTypeMap[resourceType] = cachedId.Value;
+            }
+            else
+            {
+                cacheMisses.Add(resourceType);
+            }
+        }
+
+        // Phase 1b: Batch query database for cache misses (single IN clause instead of N individual queries)
+        if (cacheMisses.Count > 0)
+        {
+            _logger.LogDebug("BatchWrite: {CacheHits} cache hits, {CacheMisses} cache misses for resource types",
+                uniqueResourceTypes.Count - cacheMisses.Count,
+                cacheMisses.Count);
+
+            var dbLookup = await _context.ResourceTypes
+                .AsNoTracking()
+                .Where(rt => cacheMisses.Contains(rt.Name))
+                .ToListAsync(ct);
+
+            foreach (var entity in dbLookup)
+            {
+                resourceTypeMap[entity.Name] = entity.ResourceTypeId;
+                cacheMisses.Remove(entity.Name);
+            }
+
+            // Phase 1c: Create any remaining resource types (new FHIR resources - very rare)
+            if (cacheMisses.Count > 0)
+            {
+                _logger.LogWarning("BatchWrite: Creating {NewTypeCount} new ResourceTypes (unusual): {Types}",
+                    cacheMisses.Count,
+                    string.Join(", ", cacheMisses));
+
+                foreach (var resourceType in cacheMisses)
+                {
+                    var newEntity = new ResourceTypeEntity { Name = resourceType };
+                    _context.ResourceTypes.Add(newEntity);
+                    resourceTypeMap[resourceType] = newEntity.ResourceTypeId;
+                }
+
+                await _context.SaveChangesAsync(ct);
+            }
         }
 
         // Step 2: Create lookup keys for batch query
@@ -597,15 +650,27 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
     private async ValueTask<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken ct)
     {
+        // Phase 1: Check cache first (preloaded during startup for common resource types)
+        // This avoids database queries for typical operations (Patient, Observation, etc.)
+        var cachedId = _cache.TryGetResourceTypeIdFromCache(resourceType);
+        if (cachedId.HasValue)
+        {
+            _logger.LogTrace("ResourceType '{ResourceType}' found in cache: {ResourceTypeId}", resourceType, cachedId.Value);
+            return cachedId.Value;
+        }
+
+        // Phase 2: Query database if not in cache
         var entity = await _context.ResourceTypes
+            .AsNoTracking()
             .FirstOrDefaultAsync(rt => rt.Name == resourceType, ct);
 
         if (entity != null)
         {
+            _logger.LogDebug("ResourceType '{ResourceType}' found in database: {ResourceTypeId}", resourceType, entity.ResourceTypeId);
             return entity.ResourceTypeId;
         }
 
-        // Create new resource type
+        // Phase 3: Create new resource type (rare case - new FHIR resource introduced)
         var newEntity = new ResourceTypeEntity
         {
             Name = resourceType,
@@ -613,6 +678,8 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
         _context.ResourceTypes.Add(newEntity);
         await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Created new ResourceType '{ResourceType}': {ResourceTypeId}", resourceType, newEntity.ResourceTypeId);
 
         return newEntity.ResourceTypeId;
     }
@@ -777,14 +844,25 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                 // Decompress resource bytes
                 ReadOnlyMemory<byte> resourceBytes = _compressor.DecompressBytes(entity.RawResource);
 
-                // Determine the resource type name (may need to load ResourceType entity if not included)
+                // Determine the resource type name (optimized with cache lookup)
                 var resourceTypeName = entity.ResourceType?.Name;
                 if (string.IsNullOrEmpty(resourceTypeName))
                 {
-                    ResourceTypeEntity? resourceType = await _context.ResourceTypes
-                        .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
-                        .FirstOrDefaultAsync(ct);
-                    resourceTypeName = resourceType?.Name ?? "Unknown";
+                    // Try cache first (preloaded during startup)
+                    resourceTypeName = _cache.TryGetResourceTypeNameFromCache(entity.ResourceTypeId);
+
+                    // Fall back to database query only if cache misses (shouldn't happen with preloaded cache)
+                    if (string.IsNullOrEmpty(resourceTypeName))
+                    {
+                        _logger.LogDebug(
+                            "Cache miss for ResourceTypeId {ResourceTypeId} - querying database",
+                            entity.ResourceTypeId);
+
+                        var resourceType = await _context.ResourceTypes
+                            .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
+                            .FirstOrDefaultAsync(ct);
+                        resourceTypeName = resourceType?.Name ?? "Unknown";
+                    }
                 }
 
                 result = new SearchEntryResult(

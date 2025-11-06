@@ -5,24 +5,25 @@
 
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Domain.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 
 /// <summary>
-/// Validates import files (ETag checks, existence).
+/// Validates import files (existence checks) via the blob storage abstraction.
 /// Runs before download to fail fast if files are invalid.
 /// </summary>
 public class ValidateFileActivity : AsyncTaskActivity<ValidateFileInput, ValidateFileOutput>
 {
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlobStorageClient _blobStorageClient;
     private readonly ILogger<ValidateFileActivity> _logger;
 
     public ValidateFileActivity(
-        IHttpClientFactory httpClientFactory,
+        IBlobStorageClient blobStorageClient,
         ILogger<ValidateFileActivity> logger)
     {
-        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+        _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -35,60 +36,24 @@ public class ValidateFileActivity : AsyncTaskActivity<ValidateFileInput, Validat
             input.InputFiles.Count,
             input.JobId);
 
-#pragma warning disable CA2000 // HttpClient from factory should not be disposed - managed by factory
-        var httpClient = _httpClientFactory.CreateClient();
-#pragma warning restore CA2000
-
         foreach (var file in input.InputFiles)
         {
             try
             {
-                // Determine if URL is HTTP or local file path
-                var isHttpUrl = file.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                               file.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                // Extract blob name from URL (supports both full URLs and relative paths)
+                // All file operations go through blob abstraction
+                var exists = await _blobStorageClient.BlobExistsAsync(file.Url);
 
-                if (isHttpUrl)
+                if (!exists)
                 {
-                    // Send HEAD request to check file existence and ETag
-                    var uri = new Uri(file.Url);
-                    using var request = new HttpRequestMessage(HttpMethod.Head, uri);
-                    var response = await httpClient.SendAsync(request);
-
-                    if (!response.IsSuccessStatusCode)
+                    return new ValidateFileOutput
                     {
-                        return new ValidateFileOutput
-                        {
-                            IsValid = false,
-                            ErrorMessage = $"File not found or inaccessible: {file.Url} (status: {response.StatusCode})"
-                        };
-                    }
-
-                    // Check ETag if provided
-                    if (!string.IsNullOrEmpty(file.ETag))
-                    {
-                        var actualETag = response.Headers.ETag?.Tag?.Trim('"');
-                        if (actualETag != file.ETag)
-                        {
-                            return new ValidateFileOutput
-                            {
-                                IsValid = false,
-                                ErrorMessage = $"ETag mismatch for {file.Url}. Expected: {file.ETag}, Actual: {actualETag}"
-                            };
-                        }
-                    }
+                        IsValid = false,
+                        ErrorMessage = $"File not found in blob storage: {file.Url}"
+                    };
                 }
-                else
-                {
-                    // Local file - check existence
-                    if (!File.Exists(file.Url))
-                    {
-                        return new ValidateFileOutput
-                        {
-                            IsValid = false,
-                            ErrorMessage = $"Local file not found: {file.Url}"
-                        };
-                    }
-                }
+
+                _logger.LogDebug("File validated in blob storage: {BlobName}", file.Url);
             }
             catch (Exception ex)
             {
@@ -107,5 +72,43 @@ public class ValidateFileActivity : AsyncTaskActivity<ValidateFileInput, Validat
         {
             IsValid = true
         };
+    }
+
+    /// <summary>
+    /// Extracts the blob name from a URL or path.
+    /// Supports both:
+    /// - Full blob storage URLs: http://account.blob.core.windows.net/container/blob/name
+    /// - Relative paths: container/blob/name or just blob/name
+    /// </summary>
+    private static string ExtractBlobName(string urlOrPath)
+    {
+        try
+        {
+            // If it's a URL, extract the path component
+            if (urlOrPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                urlOrPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                var uri = new Uri(urlOrPath);
+                var pathWithLeadingSlash = uri.AbsolutePath;
+                // Format: /account/container/blobname or /container/blobname
+                var pathParts = pathWithLeadingSlash.TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+                if (pathParts.Length < 2)
+                {
+                    return string.Empty;
+                }
+
+                // Return everything after the first component (container name)
+                // This handles both: account/container/blob and container/blob cases
+                return string.Join("/", pathParts.Skip(1));
+            }
+
+            // It's already a relative path, return as-is
+            return urlOrPath;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 }

@@ -74,6 +74,19 @@ public class SearchOptions
     /// Gets or sets the resource type being searched.
     /// </summary>
     public string ResourceType { get; set; }
+
+    /// <summary>
+    /// Optional: When set, filters results to resources within this surrogate ID range.
+    /// Used for parallel export operations to partition work across multiple workers.
+    /// When both are set, filters to resources where: StartSurrogateId <= SurrogateId <= EndSurrogateId
+    /// </summary>
+    public long? StartSurrogateId { get; set; }
+
+    /// <summary>
+    /// Optional: The end of the surrogate ID range (inclusive).
+    /// Must be set together with StartSurrogateId to take effect.
+    /// </summary>
+    public long? EndSurrogateId { get; set; }
 }
 
 /// <summary>

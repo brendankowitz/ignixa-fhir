@@ -20,6 +20,7 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
         OrchestrationContext context,
         ImportOrchestrationInput input)
     {
+        var startDate = context.CurrentUtcDateTime;
         var totalResources = 0;
         var totalErrors = 0;
         var errorLogEntries = new List<ImportErrorLogEntry>();
@@ -50,51 +51,59 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
                 };
             }
 
-            // Step 2: Process each input file
-            var processedFiles = 0;
-            foreach (var inputFile in input.InputFiles)
+            // Step 2: Process files with global concurrency limit to prevent thread pool starvation
+            // MaxConcurrentFiles is a global setting (read from configuration via DurableTask context)
+            // that limits parallel StreamingImportFileActivity instances.
+            // ConsumerCount per activity is also a global setting read by the activity from IConfiguration.
+            // Example: 2 concurrent files × (1 producer + 8 consumers) = 18 task pool threads
+            // vs 5 files × 9 = 45 threads, leaving plenty for API requests.
+            //
+            // Note: We use a fixed value of 2 here as MaxConcurrentFiles is not passed via input.
+            // This should be consistent with configuration. Activities read ConsumerCount from config.
+            const int maxConcurrentFiles = 2; // Global constant - also configured in appsettings.json
+
+            var fileOutputs = new List<StreamingImportFileOutput>();
+            var allFileTasks = input.InputFiles.Select((inputFile, index) =>
             {
-                // Download and parse NDJSON file (streaming)
-                var parseInput = new DownloadAndParseInput
+                var streamingInput = new StreamingImportFileInput
                 {
                     JobId = input.JobId,
                     TenantId = input.TenantId,
                     FileUrl = inputFile.Url,
                     ResourceType = inputFile.Type,
-                    BatchSize = 100 // Import 100 resources at a time
+                    Mode = input.Mode,
+                    BatchSize = input.BatchSize,
+                    ChannelCapacity = input.ChannelCapacity
                 };
 
-                var parseOutput = await context.ScheduleTask<DownloadAndParseOutput>(
-                    typeof(DownloadAndParseActivity),
-                    parseInput);
+                return context.ScheduleTask<StreamingImportFileOutput>(
+                    typeof(StreamingImportFileActivity),
+                    streamingInput);
+            }).ToList();
 
-                // Import each batch of resources
-                foreach (var batch in parseOutput.Batches)
+            // Process files in batches using the global maxConcurrentFiles limit
+            for (int i = 0; i < allFileTasks.Count; i += maxConcurrentFiles)
+            {
+                var batchTasks = allFileTasks.Skip(i).Take(maxConcurrentFiles).ToList();
+                var batchOutputs = await Task.WhenAll(batchTasks);
+                fileOutputs.AddRange(batchOutputs);
+            }
+
+            // Aggregate results from all files
+            var processedFiles = 0;
+            foreach (var fileOutput in fileOutputs)
+            {
+                totalResources += fileOutput.SuccessCount;
+                totalErrors += fileOutput.ErrorCount;
+
+                if (fileOutput.Errors.Any())
                 {
-                    var batchInput = new ImportBatchInput
-                    {
-                        JobId = input.JobId,
-                        TenantId = input.TenantId,
-                        ResourceType = inputFile.Type,
-                        Resources = batch.Resources,
-                        Mode = input.Mode
-                    };
-
-                    var batchOutput = await context.ScheduleTask<ImportBatchOutput>(
-                        typeof(ImportBatchActivity),
-                        batchInput);
-
-                    totalResources += batchOutput.SuccessCount;
-                    totalErrors += batchOutput.ErrorCount;
-
-                    if (batchOutput.Errors.Any())
-                    {
-                        errorLogEntries.AddRange(batchOutput.Errors);
-                    }
+                    errorLogEntries.AddRange(fileOutput.Errors);
                 }
 
-                // Phase 6: Update progress after each file
                 processedFiles++;
+
+                // Update progress after each file completes
                 var progressInput = new UpdateProgressInput
                 {
                     JobId = input.JobId,
@@ -120,7 +129,8 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
                 TotalResources = totalResources,
                 TotalErrors = totalErrors,
                 ErrorLogEntries = errorLogEntries,
-                StorageDetail = input.StorageDetail
+                StorageDetail = input.StorageDetail,
+                StartDate = startDate
             };
 
             var completeOutput = await context.ScheduleTask<CompleteJobOutput>(

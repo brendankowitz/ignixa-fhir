@@ -5,6 +5,7 @@
 
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
+using DurableTask.Core;
 using Medino;
 using Microsoft.IO;
 using Microsoft.AspNetCore.HostFiltering;
@@ -12,9 +13,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Middleware;
 using Ignixa.Api.Services;
-using Ignixa.Api.Features.Compartment;
-using Ignixa.Api.Features.Health;
-using Ignixa.Api.Features.Metadata.Api;
+using Ignixa.Api.Endpoints;
 using Ignixa.Application.Features;
 using Ignixa.Domain.Abstractions;
 using Ignixa.DataLayer.FileSystem.FileSystem;
@@ -93,17 +92,6 @@ builder.Services.AddHttpClient();
 // Register DurableTask framework for background job processing ($export, $import)
 builder.Services.AddDurableTask();
 
-// Register Export activities for dependency injection
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Export.Activities.SearchAndWriteChunkActivity>();
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity>();
-
-// Register Import activities for dependency injection
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.ValidateFileActivity>();
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.DownloadAndParseActivity>();
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.ImportBatchActivity>();
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.UpdateProgressActivity>();
-builder.Services.AddTransient<Ignixa.Application.BackgroundOperations.Import.Activities.CompleteJobActivity>();
-
 // Configure Autofac container
 builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 {
@@ -111,6 +99,16 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     containerBuilder.RegisterType<InMemoryResourceLocationIndex>()
         .As<IResourceLocationIndex>()
         .SingleInstance();
+
+    // BACKGROUND OPERATIONS CONFIGURATION
+    // Auto-register all DurableTask activities from the BackgroundOperations assembly
+    // This scans for all classes inheriting from TaskActivity and registers them with DI
+    // New activities are automatically discovered without requiring manual registration updates
+    var backgroundOpsAssembly = typeof(Ignixa.Application.BackgroundOperations.Export.Activities.SearchAndWriteChunkActivity).Assembly;
+    containerBuilder.RegisterAssemblyTypes(backgroundOpsAssembly)
+        .Where(t => typeof(DurableTask.Core.TaskActivity).IsAssignableFrom(t) && !t.IsAbstract)
+        .AsSelf()
+        .InstancePerDependency();
 
     // MULTI-TENANCY CONFIGURATION (Phase 20 - ADR-2523)
 
@@ -220,15 +218,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     .As<IBlobStorageClient>()
     .SingleInstance();
 
-    // Register export job store (in-memory for prototype, SQL Server for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.Features.Export.InMemoryExportJobStore>()
-        .As<IExportJobStore>()
-        .SingleInstance();
+    // Register open generic background job repository (in-memory for dev, SQL Server for production)
+    // Supports both import and export with unified generic interface: IBackgroundJobRepository<T>
+    // This single registration handles all job types: ImportJobDefinition, ExportJobDefinition, etc.
+    containerBuilder.RegisterModule<BackgroundJobsModule>();
 
-    // Register import job store (in-memory for prototype, SQL Server for production)
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.Features.Import.InMemoryImportJobStore>()
-        .As<IImportJobStore>()
-        .SingleInstance();
 
     // Register Medino service provider
     containerBuilder.Register<IMediatorServiceProvider>(c =>
@@ -298,6 +292,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     containerBuilder.RegisterType<Ignixa.Application.Features.History.GetSystemHistoryHandler>()
         .As<IRequestHandler<Ignixa.Application.Features.History.GetSystemHistoryQuery, Ignixa.Application.Features.History.HistoryResult>>()
+        .InstancePerDependency();
+
+    // Validation operations ($validate - Phase 24: FHIR Operations)
+    containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Validate.ValidateResourceHandler>()
+        .As<IRequestHandler<Ignixa.Application.Operations.Features.Validate.ValidateResourceCommand, Ignixa.Application.Operations.Features.Validate.ValidateResourceResult>>()
         .InstancePerDependency();
 
     // Patch handlers (Phase 17 - ADR-2520: FHIR Patch operations)
@@ -603,12 +602,17 @@ app.UseHttpsRedirection();
 // Map health check endpoints (before FHIR endpoints, bypasses tenant resolution)
 app.MapHealthCheckEndpoints();
 
+// IMPORTANT: Register bulk operations BEFORE generic FHIR endpoints
+// This ensures /$import and /$export routes match before the generic /{resourceType} catch-all
+app.MapExportEndpoints(); // Bulk export endpoints (DurableTask)
+app.MapImportEndpoints(); // Bulk import endpoints (DurableTask)
+
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
+app.MapOperationEndpoints(); // FHIR operation endpoints ($validate, etc.)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (direct and conditional)
 app.MapCompartmentEndpoints(); // FHIR compartment search endpoints (GET /Patient/123/Observation)
 app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)
-Ignixa.Api.Features.Export.Api.ExportEndpoints.MapExportEndpoints(app); // Bulk export endpoints (DurableTask)
 
 app.Logger.LogInformation("Ignixa FHIR starting...");
 app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",

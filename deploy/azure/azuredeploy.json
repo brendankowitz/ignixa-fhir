@@ -410,7 +410,7 @@
             },
             {
               "name": "Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant",
-              "value": "1"
+              "value": "true"
             },
             {
               "name": "Tenants__Configurations__1__TenantId",

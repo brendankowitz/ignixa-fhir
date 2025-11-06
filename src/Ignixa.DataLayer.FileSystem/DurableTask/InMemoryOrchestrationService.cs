@@ -32,11 +32,11 @@ public class InMemoryOrchestrationService : IOrchestrationService, IOrchestratio
 
     public int TaskOrchestrationDispatcherCount => 1;
 
-    public int MaxConcurrentTaskOrchestrationWorkItems => 10;
+    public int MaxConcurrentTaskOrchestrationWorkItems => 1;
 
     public int TaskActivityDispatcherCount => 1;
 
-    public int MaxConcurrentTaskActivityWorkItems => 10;
+    public int MaxConcurrentTaskActivityWorkItems => 2;
 
     public BehaviorOnContinueAsNew EventBehaviourForContinueAsNew => BehaviorOnContinueAsNew.Carryover;
 
