@@ -52,9 +52,6 @@
     },
     "enableTransactionWatcher": {
       "value": true
-    },
-    "durableTaskStorageType": {
-      "value": "AzureStorage"
     }
   }
 }

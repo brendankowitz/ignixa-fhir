@@ -191,17 +191,6 @@
       "metadata": {
         "description": "Enable automatic transaction recovery and stall detection"
       }
-    },
-    "durableTaskStorageType": {
-      "type": "string",
-      "defaultValue": "AzureStorage",
-      "allowedValues": [
-        "AzureStorage",
-        "FileSystem"
-      ],
-      "metadata": {
-        "description": "DurableTask backend storage (AzureStorage recommended for production)"
-      }
     }
   },
   "variables": {
@@ -350,7 +339,7 @@
             },
             {
               "name": "DurableTask__Provider",
-              "value": "[parameters('durableTaskStorageType')]"
+              "value": "AzureStorage"
             },
             {
               "name": "DurableTask__AzureStorage__UseManagedIdentity",
