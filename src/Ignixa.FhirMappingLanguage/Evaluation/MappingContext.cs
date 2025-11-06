@@ -4,6 +4,7 @@
  * Evaluation context for FHIR Mapping Language.
  */
 
+using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.FhirMappingLanguage.Evaluation;
@@ -12,7 +13,7 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// Context for evaluating FHIR mapping expressions.
 /// Holds variables, source/target resources, and configuration.
 /// </summary>
-public class MappingContext
+public class MappingContext : ITransformContext
 {
     private readonly Dictionary<string, object> _variables = new();
     private readonly Dictionary<string, ITypedElement> _sources = new();
@@ -62,4 +63,9 @@ public class MappingContext
     /// Resource creator for creating new FHIR resources.
     /// </summary>
     public Func<string, ITypedElement>? ResourceCreator { get; set; }
+
+    /// <summary>
+    /// ConceptMap resolver for terminology translation.
+    /// </summary>
+    public Func<string, string, string, string?>? ConceptMapResolver { get; set; }
 }

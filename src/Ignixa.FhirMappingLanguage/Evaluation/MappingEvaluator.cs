@@ -6,6 +6,7 @@
  */
 
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.FhirMappingLanguage.Evaluation;
@@ -16,6 +17,16 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// </summary>
 public class MappingEvaluator
 {
+    private readonly FhirPathIntegration? _fhirPathIntegration;
+
+    /// <summary>
+    /// Creates a new MappingEvaluator instance.
+    /// </summary>
+    /// <param name="enableFhirPath">Whether to enable FhirPath integration</param>
+    public MappingEvaluator(bool enableFhirPath = true)
+    {
+        _fhirPathIntegration = enableFhirPath ? new FhirPathIntegration() : null;
+    }
     /// <summary>
     /// Executes a map expression to transform source resources to target resources.
     /// </summary>
@@ -23,6 +34,15 @@ public class MappingEvaluator
     /// <param name="context">The evaluation context with sources and targets</param>
     public void Execute(MapExpression map, MappingContext context)
     {
+        // Wire up standard transforms if not already configured
+        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name).Execute(args.ToList(), context);
+
+        // Wire up FhirPath evaluator if enabled and not already configured
+        if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
+        {
+            context.FhirPathEvaluator = (expression, element) => _fhirPathIntegration.Evaluate(expression, element);
+        }
+
         // Execute each group in the map
         foreach (var group in map.Groups)
         {
@@ -35,6 +55,15 @@ public class MappingEvaluator
     /// </summary>
     public void ExecuteGroup(MapExpression map, string groupName, MappingContext context)
     {
+        // Wire up standard transforms if not already configured
+        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name).Execute(args.ToList(), context);
+
+        // Wire up FhirPath evaluator if enabled and not already configured
+        if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
+        {
+            context.FhirPathEvaluator = (expression, element) => _fhirPathIntegration.Evaluate(expression, element);
+        }
+
         var group = map.Groups.FirstOrDefault(g => g.Name == groupName);
         if (group == null)
         {
