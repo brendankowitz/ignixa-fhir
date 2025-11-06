@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Superpower" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+  </ItemGroup>
+
+</Project>
