@@ -346,6 +346,7 @@ public class MappingEvaluator
         {
             IdentifierExpression id => VisitIdentifier(id, context),
             QualifiedIdentifierExpression qual => VisitQualifiedIdentifier(qual, context),
+            IndexExpression idx => VisitIndex(idx, context),
             LiteralExpression lit => new[] { CreatePrimitive(lit.Value) },
             FhirPathExpression fhirPath => VisitFhirPath(fhirPath, context),
             _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
@@ -391,6 +392,22 @@ public class MappingEvaluator
                 yield return child;
             }
         }
+    }
+
+    private IEnumerable<ITypedElement> VisitIndex(IndexExpression idx, MappingContext context)
+    {
+        // Visit the context first
+        var contextElements = VisitExpression(idx.Context, context).ToList();
+
+        // Check bounds
+        if (idx.Index < 0 || idx.Index >= contextElements.Count)
+        {
+            // Index out of bounds - return empty
+            yield break;
+        }
+
+        // Return the element at the specified index
+        yield return contextElements[idx.Index];
     }
 
     private IEnumerable<ITypedElement> VisitFhirPath(FhirPathExpression fhirPath, MappingContext context)
