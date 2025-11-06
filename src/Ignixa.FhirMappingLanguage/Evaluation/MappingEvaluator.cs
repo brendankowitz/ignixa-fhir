@@ -46,7 +46,7 @@ public class MappingEvaluator
         // Execute each group in the map
         foreach (var group in map.Groups)
         {
-            EvaluateGroup(group, map, context);
+            VisitGroup(group, map, context);
         }
     }
 
@@ -70,10 +70,10 @@ public class MappingEvaluator
             throw new InvalidOperationException($"Group '{groupName}' not found in map");
         }
 
-        EvaluateGroup(group, map, context);
+        VisitGroup(group, map, context);
     }
 
-    private void EvaluateGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<string>? visitedGroups = null)
+    private void VisitGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<string>? visitedGroups = null)
     {
         // Initialize visited groups set for circular inheritance detection
         visitedGroups ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -96,7 +96,7 @@ public class MappingEvaluator
             }
 
             // Execute base group first (recursive, handles transitive inheritance)
-            EvaluateGroup(baseGroup, map, context, visitedGroups);
+            VisitGroup(baseGroup, map, context, visitedGroups);
         }
 
         // Then execute this group's own rules
@@ -123,17 +123,17 @@ public class MappingEvaluator
         // Execute each rule in the group
         foreach (var rule in group.Rules)
         {
-            EvaluateRule(rule, context);
+            VisitRule(rule, context);
         }
     }
 
-    private void EvaluateRule(RuleExpression rule, MappingContext context)
+    private void VisitRule(RuleExpression rule, MappingContext context)
     {
-        // Evaluate sources
+        // Visit sources
         var sourceValues = new Dictionary<string, IEnumerable<ITypedElement>>();
         foreach (var source in rule.Sources)
         {
-            var values = EvaluateSource(source, context);
+            var values = VisitSource(source, context);
             if (source.Variable != null)
             {
                 sourceValues[source.Variable] = values;
@@ -146,23 +146,23 @@ public class MappingEvaluator
             return;
         }
 
-        // Evaluate targets
+        // Visit targets
         foreach (var target in rule.Targets)
         {
-            EvaluateTarget(target, context);
+            VisitTarget(target, context);
         }
 
-        // Evaluate dependent rules
+        // Visit dependent rules
         foreach (var dependentRule in rule.Dependent)
         {
-            EvaluateRule(dependentRule, context);
+            VisitRule(dependentRule, context);
         }
     }
 
-    private IEnumerable<ITypedElement> EvaluateSource(SourceExpression source, MappingContext context)
+    private IEnumerable<ITypedElement> VisitSource(SourceExpression source, MappingContext context)
     {
-        // Evaluate the source context expression
-        var contextValues = EvaluateExpression(source.Context, context);
+        // Visit the source context expression
+        var contextValues = VisitExpression(source.Context, context);
 
         // Apply where condition if present
         if (source.Condition != null && source.Condition is FhirPathExpression fhirPathCondition)
@@ -209,12 +209,12 @@ public class MappingEvaluator
         return contextValues;
     }
 
-    private void EvaluateTarget(TargetExpression target, MappingContext context)
+    private void VisitTarget(TargetExpression target, MappingContext context)
     {
-        // If there's a transform, evaluate it
+        // If there's a transform, visit it
         if (target.Transform != null)
         {
-            var transformResult = EvaluateTransform(target.Transform, context);
+            var transformResult = VisitTransform(target.Transform, context);
 
             // Set the result to the target context if specified
             if (target.Context != null && transformResult is ITypedElement element)
@@ -228,7 +228,7 @@ public class MappingEvaluator
         else if (target.Context != null)
         {
             // Simple assignment without transform
-            var contextValues = EvaluateExpression(target.Context, context);
+            var contextValues = VisitExpression(target.Context, context);
             if (target.Variable != null)
             {
                 context.SetVariable(target.Variable, contextValues.FirstOrDefault()!);
@@ -236,18 +236,18 @@ public class MappingEvaluator
         }
     }
 
-    private object? EvaluateTransform(TransformExpression transform, MappingContext context)
+    private object? VisitTransform(TransformExpression transform, MappingContext context)
     {
         if (context.TransformResolver == null)
         {
             throw new InvalidOperationException("TransformResolver not configured in context");
         }
 
-        // Evaluate arguments
+        // Visit arguments
         var args = new List<object>();
         foreach (var arg in transform.Arguments)
         {
-            var argValue = EvaluateExpression(arg, context).FirstOrDefault();
+            var argValue = VisitExpression(arg, context).FirstOrDefault();
             if (argValue != null)
             {
                 args.Add(argValue.Value ?? argValue);
@@ -258,19 +258,19 @@ public class MappingEvaluator
         return context.TransformResolver(transform.FunctionName, args);
     }
 
-    private IEnumerable<ITypedElement> EvaluateExpression(Expression expr, MappingContext context)
+    private IEnumerable<ITypedElement> VisitExpression(Expression expr, MappingContext context)
     {
         return expr switch
         {
-            IdentifierExpression id => EvaluateIdentifier(id, context),
-            QualifiedIdentifierExpression qual => EvaluateQualifiedIdentifier(qual, context),
+            IdentifierExpression id => VisitIdentifier(id, context),
+            QualifiedIdentifierExpression qual => VisitQualifiedIdentifier(qual, context),
             LiteralExpression lit => new[] { CreatePrimitive(lit.Value) },
-            FhirPathExpression fhirPath => EvaluateFhirPath(fhirPath, context),
+            FhirPathExpression fhirPath => VisitFhirPath(fhirPath, context),
             _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
         };
     }
 
-    private IEnumerable<ITypedElement> EvaluateIdentifier(IdentifierExpression id, MappingContext context)
+    private IEnumerable<ITypedElement> VisitIdentifier(IdentifierExpression id, MappingContext context)
     {
         // Check if it's a source
         var source = context.GetSource(id.Name);
@@ -296,10 +296,10 @@ public class MappingEvaluator
         return Enumerable.Empty<ITypedElement>();
     }
 
-    private IEnumerable<ITypedElement> EvaluateQualifiedIdentifier(QualifiedIdentifierExpression qual, MappingContext context)
+    private IEnumerable<ITypedElement> VisitQualifiedIdentifier(QualifiedIdentifierExpression qual, MappingContext context)
     {
-        // Evaluate the context first
-        var contextElements = EvaluateExpression(qual.Context, context);
+        // Visit the context first
+        var contextElements = VisitExpression(qual.Context, context);
 
         // Navigate to the property
         foreach (var element in contextElements)
@@ -311,7 +311,7 @@ public class MappingEvaluator
         }
     }
 
-    private IEnumerable<ITypedElement> EvaluateFhirPath(FhirPathExpression fhirPath, MappingContext context)
+    private IEnumerable<ITypedElement> VisitFhirPath(FhirPathExpression fhirPath, MappingContext context)
     {
         if (context.FhirPathEvaluator == null)
         {
