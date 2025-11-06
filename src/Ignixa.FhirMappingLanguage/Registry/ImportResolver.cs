@@ -85,6 +85,16 @@ public class ImportResolver
         return null;
     }
 
+    /// <summary>
+    /// Gets an imported map by its URL.
+    /// </summary>
+    /// <param name="url">The URL of the map</param>
+    /// <returns>The map expression, or null if not found</returns>
+    public MapExpression? GetImportedMap(string url)
+    {
+        return _registry.GetByUrl(url);
+    }
+
     private async Task ResolveImportsRecursiveAsync(MapExpression map, HashSet<string> visitedUrls)
     {
         // Check for circular imports
