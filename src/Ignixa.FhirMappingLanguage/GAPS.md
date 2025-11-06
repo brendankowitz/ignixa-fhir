@@ -280,19 +280,28 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 8. Import Resolution
 
-**Status**: Imports parsed but not resolved
+**Status**: ✅ **COMPLETE** - Full import resolution implemented
 
-**Missing**:
-- Import URL resolution
-- Imported map loading
-- Imported group invocation
-- Circular import detection
+**Implemented**:
+- ✅ IMapRegistry interface for map storage and lookup
+- ✅ MapRegistry implementation with thread-safe operations
+- ✅ IMapLoader interface for pluggable map loading
+- ✅ DictionaryMapLoader for in-memory scenarios
+- ✅ CompositeMapLoader for multiple loader chains
+- ✅ ImportResolver with recursive import resolution
+- ✅ Circular import detection
+- ✅ Transitive import support (A imports B, B imports C)
+- ✅ Cross-map group invocation via extends
+- ✅ Integration with MappingEvaluator
 
-**Required Work**:
-- Implement import resolver
-- Add map registry/cache
-- Support group calls across maps
-- Detect circular imports
+**Completed Work**:
+- ✅ Created IMapRegistry and MapRegistry
+- ✅ Created IMapLoader with Dictionary and Composite implementations
+- ✅ Created ImportResolver with ResolveImportsAsync
+- ✅ Updated MappingEvaluator to accept ImportResolver
+- ✅ FindGroup searches current map and imports
+- ✅ Created ImportResolutionTests.cs with 15+ test cases
+- ✅ Thread-safe registry operations
 
 ### 9. Queried and Produced Modes
 
@@ -402,6 +411,16 @@ This document identifies gaps in the current implementation compared to the full
    - ✅ Parser integration
    - ✅ 15+ test cases
 
+10. **Import Resolution Tests** (ImportResolutionTests.cs)
+   - ✅ Map registry operations
+   - ✅ Map loader implementations
+   - ✅ Simple import resolution
+   - ✅ Transitive imports
+   - ✅ Circular import detection
+   - ✅ Cross-map group invocation
+   - ✅ Integration with MappingEvaluator
+   - ✅ 15+ test cases
+
 ### ❌ Missing Tests
 
 1. **Performance Tests**
@@ -432,7 +451,7 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Type system enforcement (BasicTypeValidator) - **COMPLETE**
 - ✅ Group inheritance (extends with circular detection) - **COMPLETE**
 - ✅ List mode semantics (all 7 modes implemented) - **COMPLETE**
-- ❌ Import resolution (parsed but not loaded)
+- ✅ Import resolution (full support with circular detection) - **COMPLETE**
 - 🔶 ConceptMap integration (hook exists, requires ConceptMap resource loading)
 - 🔶 Where/check execution (FHIRPath integrated, working in evaluator)
 - ❌ Log execution (parsed but not evaluated)
@@ -450,9 +469,9 @@ This document identifies gaps in the current implementation compared to the full
 ### Phase 2: Advanced Features (Medium Priority) - In Progress
 
 1. ✅ ~~Implement list mode semantics~~ - **COMPLETE** (all 7 modes)
-2. Add import resolution
+2. ✅ ~~Add import resolution~~ - **COMPLETE** (with circular detection)
 3. Implement ConceptMap integration
-4. Add debugging and tracing
+4. Add debugging and tracing (log execution)
 5. Support where/check/log execution
 
 ### Phase 3: Production Readiness (Medium Priority)
@@ -516,4 +535,14 @@ When implementing missing features:
   - ✅ Validation for only_one mode
   - ✅ List mode tests (15+ test cases)
   - ✅ Visitor pattern naming (renamed Evaluate→Visit)
-  - ❌ Log statement execution (not implemented)
+
+- **v0.5.0** (2025-01-XX): Import resolution - **Phase 2 Priority 2 COMPLETE**
+  - ✅ IMapRegistry interface and MapRegistry implementation
+  - ✅ IMapLoader with DictionaryMapLoader and CompositeMapLoader
+  - ✅ ImportResolver with recursive resolution
+  - ✅ Circular import detection with HashSet tracking
+  - ✅ Transitive import support (A→B→C chains)
+  - ✅ Cross-map group invocation via extends
+  - ✅ Thread-safe registry operations
+  - ✅ Integration with MappingEvaluator
+  - ✅ Import resolution tests (15+ test cases)

@@ -6,6 +6,7 @@
  */
 
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Serialization.Abstractions;
 
@@ -18,14 +19,17 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 public class MappingEvaluator
 {
     private readonly FhirPathIntegration? _fhirPathIntegration;
+    private readonly ImportResolver? _importResolver;
 
     /// <summary>
     /// Creates a new MappingEvaluator instance.
     /// </summary>
     /// <param name="enableFhirPath">Whether to enable FhirPath integration</param>
-    public MappingEvaluator(bool enableFhirPath = true)
+    /// <param name="importResolver">Optional import resolver for cross-map group invocation</param>
+    public MappingEvaluator(bool enableFhirPath = true, ImportResolver? importResolver = null)
     {
         _fhirPathIntegration = enableFhirPath ? new FhirPathIntegration() : null;
+        _importResolver = importResolver;
     }
     /// <summary>
     /// Executes a map expression to transform source resources to target resources.
@@ -88,7 +92,15 @@ public class MappingEvaluator
         // Handle group inheritance (extends)
         if (!string.IsNullOrEmpty(group.Extends))
         {
+            // Try to find base group in current map first
             var baseGroup = map.Groups.FirstOrDefault(g => g.Name == group.Extends);
+
+            // If not found and import resolver is available, check imports
+            if (baseGroup == null && _importResolver != null)
+            {
+                baseGroup = _importResolver.FindGroup(map, group.Extends);
+            }
+
             if (baseGroup == null)
             {
                 throw new InvalidOperationException(
