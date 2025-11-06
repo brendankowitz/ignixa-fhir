@@ -68,4 +68,10 @@ public class MappingContext : ITransformContext
     /// ConceptMap resolver for terminology translation.
     /// </summary>
     public Func<string, string, string, string?>? ConceptMapResolver { get; set; }
+
+    /// <summary>
+    /// Logger for log statements in mapping execution.
+    /// Receives the log message from the FHIRPath expression evaluation.
+    /// </summary>
+    public Action<string>? Logger { get; set; }
 }
