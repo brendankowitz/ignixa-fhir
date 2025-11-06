@@ -385,6 +385,34 @@
               "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId, ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
             },
             {
+              "name": "Tenants__Configurations__0__TenantId",
+              "value": "0"
+            },
+            {
+              "name": "Tenants__Configurations__0__DisplayName",
+              "value": "System Partition (Reserved)"
+            },
+            {
+              "name": "Tenants__Configurations__0__FhirVersion",
+              "value": "4.0"
+            },
+            {
+              "name": "Tenants__Configurations__0__IsActive",
+              "value": "true"
+            },
+            {
+              "name": "Tenants__Configurations__0__IsSystemPartition",
+              "value": "true"
+            },
+            {
+              "name": "Tenants__Configurations__0__Storage__Type",
+              "value": "SqlEntityFramework"
+            },
+            {
+              "name": "Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant",
+              "value": "1"
+            },
+            {
               "name": "Tenants__Configurations__1__TenantId",
               "value": "1"
             },
