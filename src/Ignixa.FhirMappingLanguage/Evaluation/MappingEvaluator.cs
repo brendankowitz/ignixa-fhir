@@ -79,211 +79,297 @@ public class MappingEvaluator
 
     private void VisitGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<string>? visitedGroups = null)
     {
-        // Initialize visited groups set for circular inheritance detection
-        visitedGroups ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var location = $"Group: {group.Name}";
 
-        // Check for circular inheritance
-        if (!visitedGroups.Add(group.Name))
+        try
         {
-            throw new InvalidOperationException(
-                $"Circular group inheritance detected: group '{group.Name}' is part of an inheritance cycle");
-        }
+            // Initialize visited groups set for circular inheritance detection
+            visitedGroups ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Handle group inheritance (extends)
-        if (!string.IsNullOrEmpty(group.Extends))
-        {
-            // Try to find base group in current map first
-            var baseGroup = map.Groups.FirstOrDefault(g => g.Name == group.Extends);
-
-            // If not found and import resolver is available, check imports
-            if (baseGroup == null && _importResolver != null)
-            {
-                baseGroup = _importResolver.FindGroup(map, group.Extends);
-            }
-
-            if (baseGroup == null)
+            // Check for circular inheritance
+            if (!visitedGroups.Add(group.Name))
             {
                 throw new InvalidOperationException(
-                    $"Group '{group.Name}' extends '{group.Extends}', but base group not found");
+                    $"Circular group inheritance detected: group '{group.Name}' is part of an inheritance cycle");
             }
 
-            // Execute base group first (recursive, handles transitive inheritance)
-            VisitGroup(baseGroup, map, context, visitedGroups);
-        }
-
-        // Then execute this group's own rules
-
-        // Validate that all required parameters are provided
-        foreach (var param in group.Parameters)
-        {
-            if (param.Mode == ParameterMode.Source)
+            // Handle group inheritance (extends)
+            if (!string.IsNullOrEmpty(group.Extends))
             {
-                if (context.GetSource(param.Name) == null)
+                // Try to find base group in current map first
+                var baseGroup = map.Groups.FirstOrDefault(g => g.Name == group.Extends);
+
+                // If not found and import resolver is available, check imports
+                if (baseGroup == null && _importResolver != null)
                 {
-                    throw new InvalidOperationException($"Required source parameter '{param.Name}' not provided");
+                    baseGroup = _importResolver.FindGroup(map, group.Extends);
                 }
+
+                if (baseGroup == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Group '{group.Name}' extends '{group.Extends}', but base group not found");
+                }
+
+                // Execute base group first (recursive, handles transitive inheritance)
+                VisitGroup(baseGroup, map, context, visitedGroups);
             }
-            else if (param.Mode == ParameterMode.Target)
+
+            // Then execute this group's own rules
+
+            // Validate that all required parameters are provided
+            foreach (var param in group.Parameters)
             {
-                if (context.GetTarget(param.Name) == null)
+                if (param.Mode == ParameterMode.Source)
                 {
-                    throw new InvalidOperationException($"Required target parameter '{param.Name}' not provided");
-                }
-            }
-        }
-
-        // Execute each rule in the group
-        foreach (var rule in group.Rules)
-        {
-            VisitRule(rule, context);
-        }
-    }
-
-    private void VisitRule(RuleExpression rule, MappingContext context)
-    {
-        // Visit sources
-        var sourceValues = new Dictionary<string, IEnumerable<ITypedElement>>();
-        foreach (var source in rule.Sources)
-        {
-            var values = VisitSource(source, context);
-            if (source.Variable != null)
-            {
-                sourceValues[source.Variable] = values;
-            }
-        }
-
-        // If any source has no values and there's no condition allowing empty, skip this rule
-        if (sourceValues.Any(kvp => !kvp.Value.Any()))
-        {
-            return;
-        }
-
-        // Visit targets with list mode filtering
-        foreach (var target in rule.Targets)
-        {
-            VisitTarget(target, context, sourceValues);
-        }
-
-        // Visit dependent rules
-        foreach (var dependentRule in rule.Dependent)
-        {
-            VisitRule(dependentRule, context);
-        }
-    }
-
-    private IEnumerable<ITypedElement> VisitSource(SourceExpression source, MappingContext context)
-    {
-        // Visit the source context expression
-        var contextValues = VisitExpression(source.Context, context);
-
-        // Apply default value if source is empty and default is specified
-        if (!contextValues.Any() && source.Default != null)
-        {
-            // Evaluate the default expression
-            contextValues = VisitExpression(source.Default, context);
-        }
-
-        // Apply where condition if present
-        if (source.Condition != null && source.Condition is FhirPathExpression fhirPathCondition)
-        {
-            contextValues = contextValues.Where(element =>
-            {
-                if (context.FhirPathEvaluator == null)
-                {
-                    throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                }
-
-                var result = context.FhirPathEvaluator(fhirPathCondition.PathExpression, element);
-                return result.Any() && result.First().Value is bool b && b;
-            });
-        }
-
-        // Apply check condition if present
-        if (source.Check != null && source.Check is FhirPathExpression fhirPathCheck)
-        {
-            foreach (var element in contextValues)
-            {
-                if (context.FhirPathEvaluator == null)
-                {
-                    throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                }
-
-                var result = context.FhirPathEvaluator(fhirPathCheck.PathExpression, element);
-                if (!result.Any() || result.First().Value is not bool b || !b)
-                {
-                    throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
-                }
-            }
-        }
-
-        // Execute log statement if present
-        if (source.Log != null && source.Log is FhirPathExpression fhirPathLog)
-        {
-            foreach (var element in contextValues)
-            {
-                if (context.FhirPathEvaluator == null)
-                {
-                    throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                }
-
-                var result = context.FhirPathEvaluator(fhirPathLog.PathExpression, element);
-                var logMessage = FormatLogResult(result);
-
-                // Call logger if configured
-                if (context.Logger != null)
-                {
-                    context.Logger(logMessage);
-                }
-            }
-        }
-
-        // Set variable if specified
-        if (source.Variable != null)
-        {
-            foreach (var element in contextValues)
-            {
-                context.SetVariable(source.Variable, element);
-            }
-        }
-
-        return contextValues;
-    }
-
-    private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<ITypedElement>> sourceValues)
-    {
-        // Determine the collection to iterate over (typically comes from source values)
-        // For now, we use all source values combined as the basis for list mode filtering
-        var allSourceElements = sourceValues.Values.SelectMany(v => v).ToList();
-
-        // Apply list mode filtering
-        var filteredElements = ApplyListModeFiltering(allSourceElements, target.ListMode);
-
-        // Process each filtered element
-        foreach (var sourceElement in filteredElements)
-        {
-            // If there's a transform, visit it
-            if (target.Transform != null)
-            {
-                var transformResult = VisitTransform(target.Transform, context);
-
-                // Set the result to the target context if specified
-                if (target.Context != null && transformResult is ITypedElement element)
-                {
-                    if (target.Variable != null)
+                    if (context.GetSource(param.Name) == null)
                     {
-                        context.SetVariable(target.Variable, element);
+                        throw new InvalidOperationException($"Required source parameter '{param.Name}' not provided");
+                    }
+                }
+                else if (param.Mode == ParameterMode.Target)
+                {
+                    if (context.GetTarget(param.Name) == null)
+                    {
+                        throw new InvalidOperationException($"Required target parameter '{param.Name}' not provided");
                     }
                 }
             }
-            else if (target.Context != null)
+
+            // Execute each rule in the group
+            foreach (var rule in group.Rules)
             {
-                // Simple assignment without transform
-                var contextValues = VisitExpression(target.Context, context);
-                if (target.Variable != null)
+                VisitRule(rule, context, group.Name);
+            }
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error executing group: {ex.Message}", location, "GROUP_EXECUTION_ERROR", ex);
+        }
+    }
+
+    private void VisitRule(RuleExpression rule, MappingContext context, string? groupName = null)
+    {
+        var ruleName = !string.IsNullOrEmpty(rule.Name) ? rule.Name : "anonymous";
+        var location = groupName != null ? $"Group: {groupName}, Rule: {ruleName}" : $"Rule: {ruleName}";
+
+        try
+        {
+            // Visit sources
+            var sourceValues = new Dictionary<string, IEnumerable<ITypedElement>>();
+            foreach (var source in rule.Sources)
+            {
+                try
                 {
-                    context.SetVariable(target.Variable, contextValues.FirstOrDefault()!);
+                    var values = VisitSource(source, context, location);
+                    if (source.Variable != null)
+                    {
+                        sourceValues[source.Variable] = values;
+                    }
+                }
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                {
+                    context.AddError($"Error evaluating source: {ex.Message}", location, "SOURCE_ERROR", ex);
+                    // Continue with other sources
+                    if (source.Variable != null)
+                    {
+                        sourceValues[source.Variable] = Enumerable.Empty<ITypedElement>();
+                    }
                 }
             }
+
+            // If any source has no values and there's no condition allowing empty, skip this rule
+            if (sourceValues.Any(kvp => !kvp.Value.Any()))
+            {
+                return;
+            }
+
+            // Visit targets with list mode filtering
+            foreach (var target in rule.Targets)
+            {
+                try
+                {
+                    VisitTarget(target, context, sourceValues, location);
+                }
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                {
+                    context.AddError($"Error evaluating target: {ex.Message}", location, "TARGET_ERROR", ex);
+                    // Continue with other targets
+                }
+            }
+
+            // Visit dependent rules
+            foreach (var dependentRule in rule.Dependent)
+            {
+                VisitRule(dependentRule, context, groupName);
+            }
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error executing rule: {ex.Message}", location, "RULE_EXECUTION_ERROR", ex);
+        }
+    }
+
+    private IEnumerable<ITypedElement> VisitSource(SourceExpression source, MappingContext context, string? location = null)
+    {
+        try
+        {
+            // Visit the source context expression
+            var contextValues = VisitExpression(source.Context, context, location);
+
+            // Apply default value if source is empty and default is specified
+            if (!contextValues.Any() && source.Default != null)
+            {
+                // Evaluate the default expression
+                contextValues = VisitExpression(source.Default, context, location);
+            }
+
+            // Apply where condition if present
+            if (source.Condition != null && source.Condition is FhirPathExpression fhirPathCondition)
+            {
+                contextValues = contextValues.Where(element =>
+                {
+                    try
+                    {
+                        if (context.FhirPathEvaluator == null)
+                        {
+                            throw new InvalidOperationException("FhirPathEvaluator not configured in context");
+                        }
+
+                        var result = context.FhirPathEvaluator(fhirPathCondition.PathExpression, element);
+                        return result.Any() && result.First().Value is bool b && b;
+                    }
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                    {
+                        context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
+                        return false; // Exclude element on error
+                    }
+                });
+            }
+
+            // Apply check condition if present
+            if (source.Check != null && source.Check is FhirPathExpression fhirPathCheck)
+            {
+                foreach (var element in contextValues)
+                {
+                    try
+                    {
+                        if (context.FhirPathEvaluator == null)
+                        {
+                            throw new InvalidOperationException("FhirPathEvaluator not configured in context");
+                        }
+
+                        var result = context.FhirPathEvaluator(fhirPathCheck.PathExpression, element);
+                        if (!result.Any() || result.First().Value is not bool b || !b)
+                        {
+                            throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
+                        }
+                    }
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                    {
+                        context.AddError($"Check condition failed: {ex.Message}", location, "CHECK_ERROR", ex);
+                        // Continue processing other elements
+                    }
+                }
+            }
+
+            // Execute log statement if present
+            if (source.Log != null && source.Log is FhirPathExpression fhirPathLog)
+            {
+                foreach (var element in contextValues)
+                {
+                    try
+                    {
+                        if (context.FhirPathEvaluator == null)
+                        {
+                            throw new InvalidOperationException("FhirPathEvaluator not configured in context");
+                        }
+
+                        var result = context.FhirPathEvaluator(fhirPathLog.PathExpression, element);
+                        var logMessage = FormatLogResult(result);
+
+                        // Call logger if configured
+                        if (context.Logger != null)
+                        {
+                            context.Logger(logMessage);
+                        }
+                    }
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                    {
+                        context.AddError($"Error executing log statement: {ex.Message}", location, "LOG_ERROR", ex);
+                        // Continue processing
+                    }
+                }
+            }
+
+            // Set variable if specified
+            if (source.Variable != null)
+            {
+                foreach (var element in contextValues)
+                {
+                    context.SetVariable(source.Variable, element);
+                }
+            }
+
+            return contextValues;
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error visiting source: {ex.Message}", location, "SOURCE_VISIT_ERROR", ex);
+            return Enumerable.Empty<ITypedElement>();
+        }
+    }
+
+    private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<ITypedElement>> sourceValues, string? location = null)
+    {
+        try
+        {
+            // Determine the collection to iterate over (typically comes from source values)
+            // For now, we use all source values combined as the basis for list mode filtering
+            var allSourceElements = sourceValues.Values.SelectMany(v => v).ToList();
+
+            // Apply list mode filtering
+            var filteredElements = ApplyListModeFiltering(allSourceElements, target.ListMode);
+
+            // Process each filtered element
+            foreach (var sourceElement in filteredElements)
+            {
+                try
+                {
+                    // If there's a transform, visit it
+                    if (target.Transform != null)
+                    {
+                        var transformResult = VisitTransform(target.Transform, context, location);
+
+                        // Set the result to the target context if specified
+                        if (target.Context != null && transformResult is ITypedElement element)
+                        {
+                            if (target.Variable != null)
+                            {
+                                context.SetVariable(target.Variable, element);
+                            }
+                        }
+                    }
+                    else if (target.Context != null)
+                    {
+                        // Simple assignment without transform
+                        var contextValues = VisitExpression(target.Context, context, location);
+                        if (target.Variable != null)
+                        {
+                            context.SetVariable(target.Variable, contextValues.FirstOrDefault()!);
+                        }
+                    }
+                }
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                {
+                    context.AddError($"Error processing target element: {ex.Message}", location, "TARGET_ELEMENT_ERROR", ex);
+                    // Continue with next element
+                }
+            }
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error visiting target: {ex.Message}", location, "TARGET_VISIT_ERROR", ex);
         }
     }
 
@@ -318,39 +404,63 @@ public class MappingEvaluator
         return elements;
     }
 
-    private object? VisitTransform(TransformExpression transform, MappingContext context)
+    private object? VisitTransform(TransformExpression transform, MappingContext context, string? location = null)
     {
-        if (context.TransformResolver == null)
+        try
         {
-            throw new InvalidOperationException("TransformResolver not configured in context");
-        }
-
-        // Visit arguments
-        var args = new List<object>();
-        foreach (var arg in transform.Arguments)
-        {
-            var argValue = VisitExpression(arg, context).FirstOrDefault();
-            if (argValue != null)
+            if (context.TransformResolver == null)
             {
-                args.Add(argValue.Value ?? argValue);
+                throw new InvalidOperationException("TransformResolver not configured in context");
             }
-        }
 
-        // Call the transform function
-        return context.TransformResolver(transform.FunctionName, args);
+            // Visit arguments
+            var args = new List<object>();
+            foreach (var arg in transform.Arguments)
+            {
+                try
+                {
+                    var argValue = VisitExpression(arg, context, location).FirstOrDefault();
+                    if (argValue != null)
+                    {
+                        args.Add(argValue.Value ?? argValue);
+                    }
+                }
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                {
+                    context.AddError($"Error evaluating transform argument: {ex.Message}", location, "TRANSFORM_ARG_ERROR", ex);
+                    // Continue with other arguments
+                }
+            }
+
+            // Call the transform function
+            return context.TransformResolver(transform.FunctionName, args);
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error executing transform '{transform.FunctionName}': {ex.Message}", location, "TRANSFORM_ERROR", ex);
+            return null;
+        }
     }
 
-    private IEnumerable<ITypedElement> VisitExpression(Expression expr, MappingContext context)
+    private IEnumerable<ITypedElement> VisitExpression(Expression expr, MappingContext context, string? location = null)
     {
-        return expr switch
+        try
         {
-            IdentifierExpression id => VisitIdentifier(id, context),
-            QualifiedIdentifierExpression qual => VisitQualifiedIdentifier(qual, context),
-            IndexExpression idx => VisitIndex(idx, context),
-            LiteralExpression lit => new[] { CreatePrimitive(lit.Value) },
-            FhirPathExpression fhirPath => VisitFhirPath(fhirPath, context),
-            _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
-        };
+            return expr switch
+            {
+                IdentifierExpression id => VisitIdentifier(id, context),
+                QualifiedIdentifierExpression qual => VisitQualifiedIdentifier(qual, context),
+                IndexExpression idx => VisitIndex(idx, context),
+                LiteralExpression lit => new[] { CreatePrimitive(lit.Value) },
+                FhirPathExpression fhirPath => VisitFhirPath(fhirPath, context),
+                _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
+            };
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error evaluating expression: {ex.Message}", location, "EXPRESSION_ERROR", ex);
+            return Enumerable.Empty<ITypedElement>();
+        }
     }
 
     private IEnumerable<ITypedElement> VisitIdentifier(IdentifierExpression id, MappingContext context)

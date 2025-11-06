@@ -285,7 +285,7 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 6. Error Handling and Recovery
 
-**Status**: ✅ **VALIDATION MODE COMPLETE** - Validation-only mode implemented
+**Status**: ✅ **COMPLETE** - Both validation mode and runtime error handling implemented
 
 **Implemented**:
 - ✅ Validation-only mode (check without executing)
@@ -298,6 +298,11 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Transform function validation
 - ✅ Import validation
 - ✅ Detailed error context with location tracking
+- ✅ **Runtime error handling with Strict/Graceful modes**
+- ✅ **Graceful error recovery during execution**
+- ✅ **Partial transformation results on error**
+- ✅ **Runtime error collection (ExecutionError)**
+- ✅ **MappingExecutionException for Strict mode**
 
 **Completed Work**:
 - ✅ Created ValidationResult class with errors/warnings
@@ -309,11 +314,16 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Integration with ImportResolver for import checking
 - ✅ Created MappingValidatorTests.cs with 20+ test cases
 - ✅ Added GetImportedMap method to ImportResolver
-
-**Still Missing**:
-- ❌ Graceful error recovery during execution
-- ❌ Partial transformation results on error
-- ❌ Runtime error collection (non-validation)
+- ✅ Created ExecutionError and ErrorMode (Strict/Graceful)
+- ✅ Created ExecutionResult<T> wrapper class
+- ✅ Updated MappingContext with error collection
+- ✅ Implemented graceful error recovery in MappingEvaluator
+- ✅ Try-catch blocks around all key operations
+- ✅ Location tracking for error context
+- ✅ Continues execution after errors in Graceful mode
+- ✅ Created ErrorHandlingTests.cs with 25+ test cases
+- ✅ Tests for Strict mode (exceptions), Graceful mode (error collection)
+- ✅ Tests for partial results, error API, integration scenarios
 
 ### 7. Resource Creation and Management
 
@@ -605,7 +615,7 @@ This document identifies gaps in the current implementation compared to the full
 ### Phase 3: Production Readiness (Medium Priority) - In Progress
 
 1. ✅ ~~Add validation-only mode~~ - **COMPLETE**
-2. Improve error handling (runtime error recovery)
+2. ✅ ~~Improve error handling (runtime error recovery)~~ - **COMPLETE**
 3. Performance optimization
 4. Memory optimization
 5. Add benchmarks
@@ -739,3 +749,22 @@ When implementing missing features:
   - ✅ List indexing tests (15+ test cases)
   - ✅ Parser integration tests
   - ✅ Evaluation tests with edge cases
+
+- **v0.11.0** (2025-01-XX): Runtime error handling - **Phase 3 Priority 2 COMPLETE**
+  - ✅ ErrorMode enum (Strict/Graceful)
+  - ✅ ExecutionError class for runtime error tracking
+  - ✅ ExecutionResult<T> wrapper for results with errors
+  - ✅ MappingExecutionException for Strict mode failures
+  - ✅ MappingContext updated with error collection
+  - ✅ AddError method in MappingContext
+  - ✅ ClearErrors method for error management
+  - ✅ Graceful error recovery in MappingEvaluator
+  - ✅ Try-catch blocks around group/rule/source/target/transform execution
+  - ✅ Location tracking for all errors
+  - ✅ Error codes for categorization (GROUP_ERROR, SOURCE_ERROR, etc.)
+  - ✅ Partial result generation on errors
+  - ✅ Continues processing after non-fatal errors
+  - ✅ Error handling tests (25+ test cases)
+  - ✅ Tests for Strict vs Graceful modes
+  - ✅ Tests for partial results and error collection
+  - ✅ Integration tests with complex mappings
