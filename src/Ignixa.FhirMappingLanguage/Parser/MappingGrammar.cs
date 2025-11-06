@@ -181,7 +181,15 @@ public static class MappingGrammar
             .Or(Token.EqualTo(MappingTokenKind.Share).Value(ListMode.Share))
             .Or(Token.EqualTo(MappingTokenKind.Single).Value(ListMode.Single));
 
-    // Source: context [as variable] [: type] [default value] [where condition] [check condition] [log message]
+    // Cardinality: min..max or min..*
+    private static readonly TokenListParser<MappingTokenKind, Cardinality> CardinalityParser =
+        from min in Token.EqualTo(MappingTokenKind.Integer)
+        from range in Token.EqualTo(MappingTokenKind.Range)
+        from max in Token.EqualTo(MappingTokenKind.Integer).Select(i => (int?)int.Parse(i.ToStringValue()))
+                        .Or(Token.EqualTo(MappingTokenKind.Asterisk).Value((int?)null))
+        select new Cardinality(int.Parse(min.ToStringValue()), max);
+
+    // Source: context [as variable] [: type] [cardinality] [default value] [where condition] [check condition] [log message]
     private static readonly TokenListParser<MappingTokenKind, SourceExpression> Source =
         from context in QualifiedIdentifier
         from variable in (
@@ -194,6 +202,7 @@ public static class MappingGrammar
             from typeName in Identifier
             select typeName.Name
         ).Optional()
+        from cardinality in CardinalityParser.Optional()
         from defaultValue in (
             from defaultToken in Token.EqualTo(MappingTokenKind.Default)
             from expr in Parse.Ref(() => FhirPathExpression)
@@ -221,7 +230,8 @@ public static class MappingGrammar
             condition.HasValue ? condition.Value : null,
             check.HasValue ? check.Value : null,
             log.HasValue ? log.Value : null,
-            defaultValue.HasValue ? defaultValue.Value : null);
+            defaultValue.HasValue ? defaultValue.Value : null,
+            cardinality.HasValue ? cardinality.Value : null);
 
     // Target: [context] [as variable] [= transform] [list mode]
     private static readonly TokenListParser<MappingTokenKind, TargetExpression> Target =

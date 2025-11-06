@@ -247,6 +247,22 @@ public class MappingEvaluator
                 });
             }
 
+            // Check cardinality constraint if present
+            if (source.Cardinality != null)
+            {
+                var contextList = contextValues.ToList();
+                var count = contextList.Count;
+
+                if (!source.Cardinality.IsSatisfiedBy(count))
+                {
+                    var message = $"Cardinality constraint {source.Cardinality} not satisfied: found {count} element(s)";
+                    context.AddError(message, location, "CARDINALITY_ERROR");
+                }
+
+                // Use the materialized list for further processing
+                contextValues = contextList;
+            }
+
             // Apply check condition if present
             if (source.Check != null && source.Check is FhirPathExpression fhirPathCheck)
             {
