@@ -1,3 +1,7 @@
 [submodule "third-party/fhir-codegen"]
 	path = codegen/fhir-codegen
 	url = https://github.com/microsoft/fhir-codegen.git
+[submodule "test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests"]
+	path = test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests
+	url = https://github.com/FHIR/sql-on-fhir-v2.git
+	branch = master

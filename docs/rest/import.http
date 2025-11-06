@@ -1,6 +1,6 @@
 @hostname = https://127.0.0.1:7058
 @tenantId = 1
-@storageUrl = http://127.0.0.1:10000/devstoreaccount1/fhir-storage
+@storageUrl = http://127.0.0.1:10000/devstoreaccount1/import
 
 ###
 # Bulk Import - CarePlan NDJSON
@@ -18,7 +18,7 @@ Content-Type: application/fhir+json
     },
     {
       "name": "inputSource",
-      "valueString": "CarePlan"
+      "valueString": "Observation"
     },
     {
       "name": "mode",
@@ -29,11 +29,11 @@ Content-Type: application/fhir+json
       "part": [
         {
           "name": "type",
-          "valueString": "CarePlan"
+          "valueString": "Observation"
         },
         {
           "name": "url",
-          "valueString": "{{storageUrl}}/CarePlan.ndjson"
+          "valueString": "{{storageUrl}}/Observation.ndjson"
         }
       ]
     }

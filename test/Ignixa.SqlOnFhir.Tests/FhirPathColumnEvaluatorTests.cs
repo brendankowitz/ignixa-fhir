@@ -1,0 +1,449 @@
+/*
+ * Copyright (c) 2025, Ignixa Contributors
+ *
+ * Unit tests for SqlOnFhirEvaluator.
+ * Tests ViewDefinition evaluation with WHERE clauses, SELECT groups, and forEach semantics.
+ */
+
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Extensions;
+using Ignixa.SqlOnFhir.Evaluation;
+using Ignixa.SqlOnFhir.Models;
+
+namespace Ignixa.SqlOnFhir.Tests;
+
+/// <summary>
+/// Unit tests for SqlOnFhirEvaluator.
+/// Tests SQL on FHIR v2 ViewDefinition evaluation.
+/// </summary>
+public class SqlOnFhirEvaluatorTests
+{
+    private readonly SqlOnFhirEvaluator _evaluator = new();
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+    private static readonly IStructureDefinitionSummaryProvider _schemaProvider =
+        FhirSpecificationExtensions.FromVersionString("4.0.1").GetSchemaProvider();
+
+    #region Basic Column Evaluation Tests
+
+    [Fact]
+    public void Evaluate_SimpleColumnPath_ReturnsValue()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.Equal("P001", rows[0]["id"]);
+    }
+
+    [Fact]
+    public void Evaluate_MultipleColumns_ReturnsRowWithAllColumns()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "active", true }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" },
+                        new ViewColumnDefinition { Name = "active", Path = "active", Type = "boolean" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.Equal("P001", rows[0]["id"]);
+        Assert.Equal(true, rows[0]["active"]);
+    }
+
+    [Fact]
+    public void Evaluate_MissingColumn_ReturnsNull()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "birthDate", Path = "birthDate", Type = "date" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.Null(rows[0]["birthDate"]);
+    }
+
+    #endregion
+
+    #region Type Conversion Tests
+
+    [Fact]
+    public void Evaluate_BooleanColumn_ConvertsCorrectly()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "active", true }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "is_active", Path = "active", Type = "boolean" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.IsType<bool>(rows[0]["is_active"]);
+        Assert.Equal(true, rows[0]["is_active"]);
+    }
+
+    [Fact]
+    public void Evaluate_IntegerTypeConversion_Works()
+    {
+        // Arrange
+        var observationJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Observation" },
+            { "value", 42 }
+        };
+        var resource = CreateTypedElement(observationJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Observation",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "value", Path = "value", Type = "integer" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.IsType<int>(rows[0]["value"]);
+        Assert.Equal(42, rows[0]["value"]);
+    }
+
+    #endregion
+
+    #region WHERE Clause Tests
+
+    [Fact]
+    public void Evaluate_WithWhereClause_IncludesMatchingResource()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "active", true }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Where = new List<WhereClause>
+            {
+                new WhereClause { Path = "active = true" }
+            },
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.Equal("P001", rows[0]["id"]);
+    }
+
+    [Fact]
+    public void Evaluate_WithWhereClause_ExcludesNonMatchingResource()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "active", false }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Where = new List<WhereClause>
+            {
+                new WhereClause { Path = "active = true" }
+            },
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Empty(rows);
+    }
+
+    #endregion
+
+    #region ForEach Array Unnesting Tests
+
+    [Fact]
+    public void Evaluate_WithForEach_CreatesRowPerArrayElement()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "name", new object[]
+                {
+                    new Dictionary<string, object?> { { "family", "Smith" } },
+                    new Dictionary<string, object?> { { "family", "Doe" } }
+                }
+            }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                },
+                new SelectGroup
+                {
+                    ForEach = "name",
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "family", Path = "family", Type = "string" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("Smith", rows[0]["family"]);
+        Assert.Equal("Doe", rows[1]["family"]);
+    }
+
+    [Fact]
+    public void Evaluate_WithForEachEmpty_SkipsResource()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "name", Array.Empty<object>() }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    ForEach = "name",
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "family", Path = "family", Type = "string" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Empty(rows);
+    }
+
+    [Fact]
+    public void Evaluate_WithForEachOrNull_CreatesRowWhenEmpty()
+    {
+        // Arrange
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "P001" },
+            { "name", Array.Empty<object>() }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewDef = new ViewDefinition
+        {
+            Resource = "Patient",
+            Select = new List<SelectGroup>
+            {
+                new SelectGroup
+                {
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "id", Path = "id", Type = "id" }
+                    }
+                },
+                new SelectGroup
+                {
+                    ForEachOrNull = "name",
+                    Column = new List<ViewColumnDefinition>
+                    {
+                        new ViewColumnDefinition { Name = "family", Path = "family", Type = "string" }
+                    }
+                }
+            }
+        };
+
+        // Act
+        var rows = _evaluator.Evaluate(ConvertToSourceNode(viewDef), resource).ToList();
+
+        // Assert
+        Assert.Single(rows);
+        Assert.Null(rows[0]["family"]);
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private static ITypedElement CreateTypedElement(Dictionary<string, object?> data)
+    {
+        // Use real ResourceJsonNode instead of mocks for proper FHIR semantics
+        var json = JsonSerializer.Serialize(data, _jsonOptions);
+        var resourceNode = ResourceJsonNode.Parse(json);
+        return resourceNode.ToTypedElement(_schemaProvider);
+    }
+
+    private static ISourceNode ConvertToSourceNode(ViewDefinition viewDef)
+    {
+        // Convert ViewDefinition model to JSON and then to ISourceNode
+        // Use camelCase naming policy to match FHIR JSON conventions
+        var json = JsonSerializer.Serialize(viewDef, _jsonOptions);
+        var jsonNode = JsonNode.Parse(json)!;
+        return JsonNodeSourceNode.Create(jsonNode, "ViewDefinition");
+    }
+
+    #endregion
+}

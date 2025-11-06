@@ -93,7 +93,7 @@ public class FhirPathEvaluator
             "all" => EvaluateAll(focusElements, func.Arguments, context),
             "any" => EvaluateAny(focusElements, func.Arguments, context),
             "repeat" => EvaluateRepeat(focusElements, func.Arguments, context),
-            "oftype" => EvaluateOfType(focusElements, func.Arguments),
+            "oftype" => EvaluateOfType(focusElements, func.Arguments, context),
             "as" => EvaluateAs(focusElements, func.Arguments),
 
             // Subsetting functions
@@ -130,7 +130,7 @@ public class FhirPathEvaluator
             "totime" => EvaluateToTime(focusElements),
             "toquantity" => EvaluateToQuantity(focusElements, func.Arguments),
 
-            // Type checking functions
+            // Type checking and filtering functions
             "convertstointeger" => EvaluateConvertsToInteger(focusElements),
             "convertstodecimal" => EvaluateConvertsToDecimal(focusElements),
             "convertstostring" => EvaluateConvertsToString(focusElements),
@@ -155,6 +155,11 @@ public class FhirPathEvaluator
             "matches" => EvaluateMatches(focusElements, func.Arguments, context),
             "replacematches" => EvaluateReplaceMatches(focusElements, func.Arguments, context),
             "tochars" => EvaluateToChars(focusElements),
+            "join" => EvaluateJoin(focusElements, func.Arguments, context),
+
+            // Boundary functions
+            "lowboundary" => EvaluateLowBoundary(focusElements),
+            "highboundary" => EvaluateHighBoundary(focusElements),
 
             // Tree navigation functions
             "children" => EvaluateChildren(focusElements),
@@ -525,20 +530,37 @@ public class FhirPathEvaluator
         return result;
     }
 
-    private IEnumerable<ITypedElement> EvaluateOfType(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments)
+    private IEnumerable<ITypedElement> EvaluateOfType(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments, EvaluationContext context)
     {
         if (arguments.Count == 0)
             throw new ArgumentException("ofType() requires a type argument");
 
-        // Extract type name from identifier expression
-        if (arguments[0] is not IdentifierExpression idExpr)
+        // Extract type name from identifier expression or evaluate the expression
+        string? typeName = null;
+
+        if (arguments[0] is IdentifierExpression idExpr)
+        {
+            // Direct identifier like ofType(string)
+            typeName = idExpr.Name;
+        }
+        else
+        {
+            // Evaluate the expression to get the type name
+            var result = EvaluateExpression(focus, arguments[0], context).ToList();
+            if (result.Count > 0)
+            {
+                typeName = result[0].Value?.ToString();
+            }
+        }
+
+        if (string.IsNullOrEmpty(typeName))
             return Enumerable.Empty<ITypedElement>();
 
-        // FhirPath type names are lowercase, ToLowerInvariant is intentional
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        var typeName = idExpr.Name.ToLowerInvariant();
-        return focus.Where(e => e.InstanceType?.ToLowerInvariant() == typeName);
-#pragma warning restore CA1308 // Normalize strings to uppercase
+        // Case-insensitive type name comparison
+        var typeNameUpper = typeName.ToUpperInvariant();
+        return focus.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&
+                               e.InstanceType.Equals(typeName, System.StringComparison.OrdinalIgnoreCase) ||
+                               e.InstanceType?.ToUpperInvariant() == typeNameUpper);
     }
 
     private IEnumerable<ITypedElement> EvaluateAs(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments)
@@ -751,7 +773,7 @@ public class FhirPathEvaluator
         return list;
     }
 
-    // Type checking functions
+    // Type filtering and checking functions
     private IEnumerable<ITypedElement> EvaluateConvertsToInteger(IEnumerable<ITypedElement> focus)
     {
         var result = EvaluateToInteger(focus);
@@ -1015,6 +1037,226 @@ public class FhirPathEvaluator
             return Enumerable.Empty<ITypedElement>();
 
         return str.Select(c => CreateString(c.ToString()));
+    }
+
+    private IEnumerable<ITypedElement> EvaluateJoin(
+        IEnumerable<ITypedElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context)
+    {
+        // join() takes an optional separator parameter
+        // If provided, concatenates focus collection with separator
+        // If not provided, concatenates without separator
+        var focusElements = focus.ToList();
+
+        // Get the separator (default to empty string if not provided)
+        var separator = string.Empty;
+        if (arguments.Count > 0)
+        {
+            var sepResult = EvaluateExpression(focusElements, arguments[0], context).ToList();
+            if (sepResult.Count > 0 && sepResult[0].Value is string sepStr)
+            {
+                separator = sepStr;
+            }
+        }
+
+        // Concatenate all string values with the separator
+        var strings = focusElements
+            .Where(e => e.Value is string)
+            .Select(e => (string)e.Value!)
+            .ToList();
+
+        // join() always returns a string, even if empty
+        var result = string.Join(separator, strings);
+        return new[] { CreateString(result) };
+    }
+
+    private IEnumerable<ITypedElement> EvaluateLowBoundary(IEnumerable<ITypedElement> focus)
+    {
+        // lowBoundary() calculates the low boundary of a value
+        // For decimals: multiplies by 0.95 (5% lower)
+        // For dates/times: returns the start of the period with UTC+14:00 offset
+        foreach (var element in focus)
+        {
+            if (element.Value == null)
+            {
+                // Null values return no result (empty collection)
+                continue;
+            }
+
+            var result = element.Value switch
+            {
+                // Decimal boundary: 5% lower
+                decimal d => CreateDecimal(d * 0.95m),
+                double d => CreateDecimal((decimal)d * 0.95m),
+                int i => CreateDecimal(i * 0.95m),
+                long l => CreateDecimal(l * 0.95m),
+
+                // Date/DateTime boundary: start of period with UTC+14:00 offset
+                DateTime dt => CreateString(GetDateTimeLowBoundary(dt)),
+                DateTimeOffset dto => CreateString(GetDateTimeOffsetLowBoundary(dto)),
+
+                // String dates (partial dates)
+                string s when IsDateLike(s) => CreateString(GetStringDateLowBoundary(s)),
+
+                // Unsupported type: return no result
+                _ => null
+            };
+
+            if (result != null)
+            {
+                yield return result;
+            }
+        }
+    }
+
+    private IEnumerable<ITypedElement> EvaluateHighBoundary(IEnumerable<ITypedElement> focus)
+    {
+        // highBoundary() calculates the high boundary of a value
+        // For decimals: multiplies by 1.05 (5% higher)
+        // For dates/times: returns the end of the period with UTC-12:00 offset
+        foreach (var element in focus)
+        {
+            if (element.Value == null)
+            {
+                // Null values return no result (empty collection)
+                continue;
+            }
+
+            var result = element.Value switch
+            {
+                // Decimal boundary: 5% higher
+                decimal d => CreateDecimal(d * 1.05m),
+                double d => CreateDecimal((decimal)d * 1.05m),
+                int i => CreateDecimal(i * 1.05m),
+                long l => CreateDecimal(l * 1.05m),
+
+                // Date/DateTime boundary: end of period with UTC-12:00 offset
+                DateTime dt => CreateString(GetDateTimeHighBoundary(dt)),
+                DateTimeOffset dto => CreateString(GetDateTimeOffsetHighBoundary(dto)),
+
+                // String dates (partial dates)
+                string s when IsDateLike(s) => CreateString(GetStringDateHighBoundary(s)),
+
+                // Unsupported type: return no result
+                _ => null
+            };
+
+            if (result != null)
+            {
+                yield return result;
+            }
+        }
+    }
+
+    private static string GetDateTimeLowBoundary(DateTime dt)
+    {
+        // For a partial date like "1970-06", expand to start with UTC+14:00 timezone
+        // If the date is incomplete (day/time missing), use the first possible value
+        // Example: "1970-06" becomes "1970-06-01T00:00:00.000+14:00"
+        if (dt.Kind == DateTimeKind.Unspecified)
+        {
+            // Assume it's already the start of the period, just add UTC+14:00 offset
+            return dt.ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+        }
+
+        // For fully specified DateTime, add UTC+14:00 offset
+        return dt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+    }
+
+    private static string GetDateTimeHighBoundary(DateTime dt)
+    {
+        // For a partial date like "1970-06", expand to end with UTC-12:00 timezone
+        // If the date is incomplete (day/time missing), use the last possible value
+        // Example: "1970-06" becomes "1970-06-30T23:59:59.999-12:00"
+        if (dt.Kind == DateTimeKind.Unspecified)
+        {
+            // For unspecified datetime, shift to end of period
+            var endDate = new DateTime(dt.Year, dt.Month, DateTime.DaysInMonth(dt.Year, dt.Month), 23, 59, 59, 999);
+            return endDate.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+        }
+
+        // For fully specified DateTime, convert to end of period and add UTC-12:00 offset
+        var utcDt = dt.ToUniversalTime();
+        var endUtc = new DateTime(utcDt.Year, utcDt.Month, DateTime.DaysInMonth(utcDt.Year, utcDt.Month), 23, 59, 59, 999, DateTimeKind.Utc);
+        return endUtc.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+    }
+
+    private static string GetDateTimeOffsetLowBoundary(DateTimeOffset dto)
+    {
+        // Similar to DateTime low boundary, but accounts for the offset
+        return dto.DateTime.ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+    }
+
+    private static string GetDateTimeOffsetHighBoundary(DateTimeOffset dto)
+    {
+        // Similar to DateTime high boundary, but accounts for the offset
+        var endDate = new DateTime(dto.Year, dto.Month, DateTime.DaysInMonth(dto.Year, dto.Month), 23, 59, 59, 999, DateTimeKind.Unspecified);
+        return endDate.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+    }
+
+    private static string GetStringDateLowBoundary(string dateString)
+    {
+        // Parse partial date string and expand to the start of the period
+        // Examples:
+        // "1970" -> "1970-01-01T00:00:00.000+14:00"
+        // "1970-06" -> "1970-06-01T00:00:00.000+14:00"
+        // "1970-06-15" -> "1970-06-15T00:00:00.000+14:00"
+        var parts = dateString.Split('-');
+
+        if (parts.Length < 1)
+        {
+            return dateString;
+        }
+
+        int year = int.Parse(parts[0]);
+        int month = parts.Length > 1 ? int.Parse(parts[1]) : 1;
+        int day = parts.Length > 2 ? int.Parse(parts[2]) : 1;
+
+        var dt = new DateTime(year, month, day, 0, 0, 0, 0);
+        return dt.ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+    }
+
+    private static string GetStringDateHighBoundary(string dateString)
+    {
+        // Parse partial date string and expand to the end of the period
+        // Examples:
+        // "1970" -> "1970-12-31T23:59:59.999-12:00"
+        // "1970-06" -> "1970-06-30T23:59:59.999-12:00"
+        // "1970-06-15" -> "1970-06-15T23:59:59.999-12:00"
+        var parts = dateString.Split('-');
+
+        if (parts.Length < 1)
+        {
+            return dateString;
+        }
+
+        int year = int.Parse(parts[0]);
+        int month = parts.Length > 1 ? int.Parse(parts[1]) : 12;
+        int day = parts.Length > 2 ? int.Parse(parts[2]) : DateTime.DaysInMonth(year, month);
+
+        var dt = new DateTime(year, month, day, 23, 59, 59, 999);
+        return dt.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+    }
+
+    private static bool IsDateLike(string value)
+    {
+        // Check if string looks like a date (YYYY or YYYY-MM or YYYY-MM-DD)
+        var parts = value.Split('-');
+        if (parts.Length < 1 || parts.Length > 3)
+        {
+            return false;
+        }
+
+        foreach (var part in parts)
+        {
+            if (!int.TryParse(part, out _))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Tree navigation functions
@@ -1555,7 +1797,34 @@ public class FhirPathEvaluator
     private IEnumerable<ITypedElement> EvaluateVariable(VariableRefExpression var, EvaluationContext context)
     {
         var value = context.GetEnvironmentVariable(var.Name);
-        return value is ITypedElement element ? new[] { element } : Enumerable.Empty<ITypedElement>();
+
+        // Special handling for predefined variables that may not exist
+        if (var.Name is "this" or "index")
+        {
+            // These variables are optional and may not be defined
+            if (value == null)
+                return Enumerable.Empty<ITypedElement>();
+            if (value is ITypedElement element)
+                return new[] { element };
+            if (value is IEnumerable<ITypedElement> elements)
+                return elements;
+            return Enumerable.Empty<ITypedElement>();
+        }
+
+        // For named constants, the variable must exist
+        if (value == null)
+        {
+            throw new InvalidOperationException($"Undefined variable '{var.Name}'");
+        }
+
+        // Handle both single element and collection returns
+        if (value is ITypedElement element2)
+            return new[] { element2 };
+        if (value is IEnumerable<ITypedElement> elements2)
+            return elements2;
+
+        // If it's neither, return empty
+        return Enumerable.Empty<ITypedElement>();
     }
 
     private IEnumerable<ITypedElement> EvaluateConstant(ConstantExpression constant)
@@ -1673,10 +1942,24 @@ public class FhirPathEvaluator
     private ITypedElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
     private ITypedElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
     private ITypedElement CreateString(string value) => new PrimitiveElement(value, "string");
-    // FHIR type names are lowercase in FhirPath, ToLowerInvariant is intentional
-#pragma warning disable CA1308 // Normalize strings to uppercase
-    private ITypedElement CreateConstant(object value) => new PrimitiveElement(value, value.GetType().Name.ToLowerInvariant());
-#pragma warning restore CA1308 // Normalize strings to uppercase
+    private ITypedElement CreateConstant(object value) => new PrimitiveElement(value, GetFhirPathTypeName(value));
+
+    /// <summary>
+    /// Converts a .NET primitive value to its FHIRPath type name.
+    /// Centralized logic for type name conversion.
+    /// </summary>
+    internal static string GetFhirPathTypeName(object value)
+    {
+        return value switch
+        {
+            string => "string",
+            int or long => "integer",
+            decimal => "decimal",
+            bool => "boolean",
+            DateTime or DateTimeOffset => "dateTime",
+            _ => "string" // Default fallback
+        };
+    }
 
     /// <summary>
     /// Simple implementation of ITypedElement for primitive values.

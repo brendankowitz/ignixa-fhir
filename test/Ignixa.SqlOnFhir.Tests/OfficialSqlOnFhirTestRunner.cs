@@ -1,0 +1,259 @@
+/*
+ * Copyright (c) 2025, Ignixa Contributors
+ *
+ * Test runner for official SQL on FHIR v2 specification test suite.
+ * Loads test cases from official JSON files and validates evaluator output.
+ */
+
+using System.Text.Json;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Extensions;
+using Ignixa.SqlOnFhir.Evaluation;
+
+namespace Ignixa.SqlOnFhir.Tests;
+
+/// <summary>
+/// Test runner for official SQL on FHIR v2 test suite.
+/// Dynamically loads JSON test files and validates evaluator output against expected results.
+/// </summary>
+public class OfficialSqlOnFhirTestRunner
+{
+    private readonly SqlOnFhirEvaluator _evaluator = new();
+    private static readonly string TestFilesDirectory = Path.Combine(
+        Path.GetDirectoryName(typeof(OfficialSqlOnFhirTestRunner).Assembly.Location) ?? "",
+        "..", "..", "..", "sql-on-fhir-tests", "tests");
+
+    /// <summary>
+    /// Gets all official SQL on FHIR test files from the specification repository.
+    /// </summary>
+    public static IEnumerable<object[]> GetOfficialTestCases()
+    {
+        var testCases = new List<object[]>();
+
+        if (!Directory.Exists(TestFilesDirectory))
+        {
+            return testCases;
+        }
+
+        var testFiles = Directory.GetFiles(TestFilesDirectory, "*.json").OrderBy(f => f);
+
+        foreach (var testFile in testFiles)
+        {
+            SqlOnFhirTestFile? testData = null;
+            Exception? parseError = null;
+
+            try
+            {
+                testData = TestFileParser.ParseTestFile(testFile);
+            }
+            catch (Exception ex)
+            {
+                parseError = ex;
+            }
+
+            var fileName = Path.GetFileNameWithoutExtension(testFile);
+
+            if (parseError != null)
+            {
+                // Report parsing errors
+                testCases.Add(new object[] { $"{fileName}_ERROR", null!, new ErrorTestCase(parseError) });
+                continue;
+            }
+
+            if (testData != null)
+            {
+                foreach (var testCase in testData.Tests)
+                {
+                    testCases.Add(new object[] { fileName, testData, testCase });
+                }
+            }
+        }
+
+        return testCases;
+    }
+
+    /// <summary>
+    /// Runs a single official SQL on FHIR test case.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(GetOfficialTestCases))]
+    public void RunOfficialTestCase(string fileName, SqlOnFhirTestFile? testFile, object testCase)
+    {
+        // Handle parsing errors
+        if (testCase is ErrorTestCase errorCase)
+        {
+            Assert.Fail($"Failed to parse test file {fileName}: {errorCase.Exception.Message}");
+        }
+
+        var sqlTestCase = testCase as SqlOnFhirTestCase;
+        Assert.NotNull(sqlTestCase);
+        Assert.NotNull(testFile);
+
+        // Skip tests without a ViewDefinition
+        if (sqlTestCase.ViewNode == null)
+        {
+            return;
+        }
+
+        // Load test resources using the first supported FHIR version
+        var fhirVersion = testFile.FhirVersions.FirstOrDefault() ?? "4.0.1";
+        var resourceType = sqlTestCase.ViewNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
+        var resources = LoadResources(testFile.Resources, resourceType, fhirVersion);
+
+        if (sqlTestCase.ExpectError)
+        {
+            // Test expects an error - run evaluator and verify it throws
+            var exceptionThrown = false;
+            try
+            {
+                foreach (var resource in resources)
+                {
+                    _ = _evaluator.Evaluate(sqlTestCase.ViewNode, resource).ToList();
+                }
+            }
+            catch (Exception)
+            {
+                exceptionThrown = true;
+            }
+
+            Assert.True(exceptionThrown, $"Test '{sqlTestCase.Title}' expected an error but none was thrown");
+        }
+        else
+        {
+            // Run evaluator for each resource
+            var actualResults = new List<Dictionary<string, object?>>();
+            foreach (var resource in resources)
+            {
+                var rows = _evaluator.Evaluate(sqlTestCase.ViewNode, resource);
+                actualResults.AddRange(rows);
+            }
+
+            // Compare with expected results
+            AssertRowsEqual(sqlTestCase.ExpectedRows, actualResults, sqlTestCase.ExpectedColumns);
+        }
+    }
+
+    /// <summary>
+    /// Loads test resources from JSON elements and converts them to ITypedElement.
+    /// Uses proper ResourceJsonNode with version-specific StructureDefinitionSummaryProvider.
+    /// </summary>
+    private static List<ITypedElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
+    {
+        var resources = new List<ITypedElement>();
+        var provider = GetStructureDefinitionProvider(fhirVersion);
+
+        foreach (var jsonElement in jsonResources)
+        {
+            // Extract resourceType from JSON
+            if (!jsonElement.TryGetProperty("resourceType", out var rtElement))
+                continue;
+
+            var rt = rtElement.GetString();
+            if (rt != resourceType)
+                continue;
+
+            try
+            {
+                // Parse JsonElement text directly to ResourceJsonNode, then convert to ITypedElement
+                var resourceNode = ResourceJsonNode.Parse(jsonElement.GetRawText());
+                var typedElement = resourceNode.ToTypedElement(provider);
+                resources.Add(typedElement);
+            }
+            catch (Exception ex)
+            {
+                // Log conversion errors but continue processing
+                System.Diagnostics.Debug.WriteLine($"Failed to convert resource: {ex.Message}");
+            }
+        }
+
+        return resources;
+    }
+
+    /// <summary>
+    /// Gets the appropriate IStructureDefinitionSummaryProvider for a FHIR version string.
+    /// Uses existing FhirSpecification extensions to resolve the provider.
+    /// </summary>
+    private static IStructureDefinitionSummaryProvider GetStructureDefinitionProvider(string fhirVersion)
+    {
+        var spec = FhirSpecificationExtensions.FromVersionString(fhirVersion);
+        return spec.GetSchemaProvider();
+    }
+
+    /// <summary>
+    /// Compares actual results with expected results, accounting for row order variations.
+    /// Optionally validates column order if expectedColumns is specified.
+    /// </summary>
+    private static void AssertRowsEqual(
+        List<Dictionary<string, object?>> expected,
+        List<Dictionary<string, object?>> actual,
+        List<string> expectedColumns = null!)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+
+        // Validate column order if specified
+        if (expectedColumns != null && expectedColumns.Count > 0)
+        {
+            var actualKeys = actual.FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+            Assert.Equal(expectedColumns.Count, actualKeys.Count);
+            for (int i = 0; i < expectedColumns.Count; i++)
+            {
+                Assert.Equal(expectedColumns[i], actualKeys[i]);
+            }
+        }
+
+        for (int i = 0; i < expected.Count; i++)
+        {
+            var expectedRow = expected[i];
+            var actualRow = actual[i];
+
+            Assert.Equal(expectedRow.Count, actualRow.Count);
+
+            foreach (var key in expectedRow.Keys)
+            {
+                Assert.True(actualRow.ContainsKey(key), $"Missing column '{key}' in result row {i}");
+
+                var expectedValue = expectedRow[key];
+                var actualValue = actualRow[key];
+
+                if (expectedValue == null && actualValue == null)
+                {
+                    continue;
+                }
+
+                if (expectedValue == null || actualValue == null)
+                {
+                    Assert.Equal(expectedValue, actualValue);
+                    continue;
+                }
+
+                // Normalize numeric types for comparison
+                if (expectedValue is decimal || expectedValue is int || expectedValue is long || expectedValue is double)
+                {
+                    var expectedNum = Convert.ToDecimal(expectedValue);
+                    var actualNum = Convert.ToDecimal(actualValue);
+                    Assert.Equal(expectedNum, actualNum);
+                }
+                else
+                {
+                    Assert.Equal(expectedValue.ToString(), actualValue.ToString());
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Placeholder for test cases that failed to parse.
+    /// </summary>
+    private class ErrorTestCase
+    {
+        public Exception Exception { get; }
+
+        public ErrorTestCase(Exception exception)
+        {
+            Exception = exception;
+        }
+    }
+}

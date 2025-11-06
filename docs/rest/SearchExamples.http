@@ -1,4 +1,4 @@
-@hostname = https://localhost:7057
+@hostname = https://localhost:7058
 
 ### Setup test data
 # @name batch
@@ -49,14 +49,14 @@ GET {{hostname}}/Patient/example/*
 GET {{hostname}}/Patient?_sort=name&_total=accurate&_count=10000
 
 ### Sort Birthdate
-GET {{hostname}}/Patient?_sort=birthDate
+GET {{hostname}}/Patient?_sort=birthdate
 
 ### Include
 GET {{hostname}}/MedicationRequest?_include=MedicationRequest:patient&_count=1
 
 ###
 POST {{hostname}}/Encounter
-Prefer: validation=minimum
+Prefer: validation=full
 Content-Type: application/json
 
 {

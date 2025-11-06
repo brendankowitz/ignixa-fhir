@@ -436,6 +436,226 @@ public class FhirPathDelegateCompilerTests
     }
 
     #endregion
+
+    #region SQL on FHIR Edge Cases
+
+    /// <summary>
+    /// Tests for SQL on FHIR specific FHIRPath scenarios.
+    /// These cover the where() function with ofType() and comparison operators.
+    /// </summary>
+
+    [Fact]
+    public void GivenWhereWithOfTypeIntegerComparison_WhenEvaluated_ThenFiltersNumericValues()
+    {
+        // Simulates: Observation with valueInteger property
+        // WHERE: where(value.ofType(integer) > 11).exists()
+        var obs1 = new MockTypedElement("Observation")
+        {
+            ChildrenSetup = new()
+            {
+                { "id", new[] { new MockTypedElement("id") { Value = "o1" } } },
+                { "value", new[] { new MockTypedElement("integer") { Value = 12 } } }
+            }
+        };
+
+        var obs2 = new MockTypedElement("Observation")
+        {
+            ChildrenSetup = new()
+            {
+                { "id", new[] { new MockTypedElement("id") { Value = "o2" } } },
+                { "value", new[] { new MockTypedElement("integer") { Value = 10 } } }
+            }
+        };
+
+        // Test: value.ofType(integer) > 11
+        AssertEvaluationEquivalent(obs1, "value.ofType(integer) > 11");
+        AssertEvaluationEquivalent(obs2, "value.ofType(integer) > 11");
+    }
+
+    [Fact]
+    public void GivenWhereWithOfTypeLessThanComparison_WhenEvaluated_ThenFiltersCorrectly()
+    {
+        // Simulates: WHERE value.ofType(integer) < 11
+        var obs1 = new MockTypedElement("Observation")
+        {
+            ChildrenSetup = new()
+            {
+                { "value", new[] { new MockTypedElement("integer") { Value = 10 } } }
+            }
+        };
+
+        var obs2 = new MockTypedElement("Observation")
+        {
+            ChildrenSetup = new()
+            {
+                { "value", new[] { new MockTypedElement("integer") { Value = 12 } } }
+            }
+        };
+
+        AssertEvaluationEquivalent(obs1, "value.ofType(integer) < 11");
+        AssertEvaluationEquivalent(obs2, "value.ofType(integer) < 11");
+    }
+
+    [Fact]
+    public void GivenWhereWithOfTypeAndExists_WhenEvaluated_ThenChecksPresenceOfMatchingType()
+    {
+        // Simulates: where(value.ofType(integer) > 11).exists()
+        var obsMatch = new MockTypedElement("Observation")
+        {
+            ChildrenSetup = new()
+            {
+                { "value", new[] { new MockTypedElement("integer") { Value = 12 } } }
+            }
+        };
+
+        var obsNoMatch = new MockTypedElement("Observation")
+        {
+            ChildrenSetup = new()
+            {
+                { "value", new[] { new MockTypedElement("integer") { Value = 10 } } }
+            }
+        };
+
+        // Tests should be equivalent - checking if the where clause exists
+        AssertEvaluationEquivalent(obsMatch, "where(value.ofType(integer) > 11).exists()");
+        AssertEvaluationEquivalent(obsNoMatch, "where(value.ofType(integer) > 11).exists()");
+    }
+
+    [Fact]
+    public void GivenWhereWithPathAndExists_WhenEvaluated_ThenChecksPathPresence()
+    {
+        // Simulates: name.where(use = 'official').exists()
+        var patientWithOfficial = new MockTypedElement("Patient")
+        {
+            ChildrenSetup = new()
+            {
+                { "name", new[] {
+                    new MockTypedElement("HumanName")
+                    {
+                        ChildrenSetup = new()
+                        {
+                            { "use", new[] { new MockTypedElement("code") { Value = "official" } } }
+                        }
+                    }
+                } }
+            }
+        };
+
+        var patientWithoutOfficial = new MockTypedElement("Patient")
+        {
+            ChildrenSetup = new()
+            {
+                { "name", new[] {
+                    new MockTypedElement("HumanName")
+                    {
+                        ChildrenSetup = new()
+                        {
+                            { "use", new[] { new MockTypedElement("code") { Value = "nickname" } } }
+                        }
+                    }
+                } }
+            }
+        };
+
+        AssertEvaluationEquivalent(patientWithOfficial, "name.where(use = 'official').exists()");
+        AssertEvaluationEquivalent(patientWithoutOfficial, "name.where(use = 'official').exists()");
+    }
+
+    [Fact]
+    public void GivenWhereWithNonExistentPath_WhenEvaluated_ThenReturnsEmpty()
+    {
+        // Simulates: name.where(use = 'maiden').exists()
+        // Testing against Patient with no 'maiden' names
+        var patient = new MockTypedElement("Patient")
+        {
+            ChildrenSetup = new()
+            {
+                { "name", new[] {
+                    new MockTypedElement("HumanName")
+                    {
+                        ChildrenSetup = new()
+                        {
+                            { "use", new[] { new MockTypedElement("code") { Value = "official" } } }
+                        }
+                    }
+                } }
+            }
+        };
+
+        AssertEvaluationEquivalent(patient, "name.where(use = 'maiden').exists()");
+    }
+
+    [Fact]
+    public void GivenWhereClauseWithLogicalAnd_WhenEvaluated_ThenCombinesConditions()
+    {
+        // Test: where() with 'and' connector
+        var patient = new MockTypedElement("Patient")
+        {
+            ChildrenSetup = new()
+            {
+                { "name", new[] {
+                    new MockTypedElement("HumanName")
+                    {
+                        ChildrenSetup = new()
+                        {
+                            { "use", new[] { new MockTypedElement("code") { Value = "official" } } },
+                            { "family", new[] { new MockTypedElement("string") { Value = "Smith" } } }
+                        }
+                    }
+                } }
+            }
+        };
+
+        AssertEvaluationEquivalent(patient, "name.where(use = 'official' and family.exists())");
+    }
+
+    [Fact]
+    public void GivenWhereClauseWithLogicalOr_WhenEvaluated_ThenCombinesConditions()
+    {
+        // Test: where() with 'or' connector
+        var patient = new MockTypedElement("Patient")
+        {
+            ChildrenSetup = new()
+            {
+                { "name", new[] {
+                    new MockTypedElement("HumanName")
+                    {
+                        ChildrenSetup = new()
+                        {
+                            { "use", new[] { new MockTypedElement("code") { Value = "nickname" } } }
+                        }
+                    },
+                    new MockTypedElement("HumanName")
+                    {
+                        ChildrenSetup = new()
+                        {
+                            { "use", new[] { new MockTypedElement("code") { Value = "official" } } }
+                        }
+                    }
+                } }
+            }
+        };
+
+        AssertEvaluationEquivalent(patient, "name.where(use = 'official' or use = 'nickname')");
+    }
+
+    [Fact]
+    public void GivenWhereClauseThatEvaluatesToTrueWhenEmpty_WhenEvaluated_ThenHandlesEmptyArrays()
+    {
+        // Test: where() that should evaluate true when result set is empty
+        var patient = new MockTypedElement("Patient")
+        {
+            ChildrenSetup = new()
+            {
+                { "contact", Array.Empty<ITypedElement>() }  // Empty array
+            }
+        };
+
+        // This tests behavior when array is empty
+        AssertEvaluationEquivalent(patient, "contact.empty()");
+    }
+
+    #endregion
 }
 
 /// <summary>

@@ -7,15 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Superpower" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="Ignixa.SqlOnFhir" />
+    <ProjectReference Include="../Ignixa.FhirPath/Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="../Ignixa.Serialization/Ignixa.Serialization.csproj" />
   </ItemGroup>
 
 </Project>

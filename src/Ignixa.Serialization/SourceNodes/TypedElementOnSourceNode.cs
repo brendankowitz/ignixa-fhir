@@ -82,6 +82,24 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
                 return _definition.Type[0].GetTypeName();
             }
 
+            // Handle choice types (e.g., value[x] → valueQuantity means type is "Quantity")
+            // Check if this is a choice element with multiple types
+            if (_definition != null && (_definition.IsChoiceElement || _definition.ElementName?.EndsWith("[x]", StringComparison.Ordinal) == true))
+            {
+                // Extract type from property name suffix
+                // For "valueQuantity" with definition "value[x]", extract "Quantity"
+                var elementBaseName = _definition.ElementName?.TrimEnd("[x]".ToCharArray());
+                if (!string.IsNullOrEmpty(elementBaseName) && _source.Name.StartsWith(elementBaseName, StringComparison.Ordinal))
+                {
+                    var typeSuffix = _source.Name.Substring(elementBaseName.Length);
+                    if (!string.IsNullOrEmpty(typeSuffix))
+                    {
+                        // Return the extracted type (e.g., "Quantity", "String", "CodeableConcept")
+                        return typeSuffix;
+                    }
+                }
+            }
+
             // For resources, check for resourceType element
             var resourceType = _source.Children("resourceType").FirstOrDefault()?.Text;
             if (!string.IsNullOrEmpty(resourceType))
@@ -99,7 +117,24 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
         }
     }
 
-    public object? Value => _source.Text;
+    public object? Value
+    {
+        get
+        {
+            var text = _source.Text;
+            if (text == null) return null;
+
+            // Convert primitive FHIR types to their native C# types for proper FHIRPath evaluation
+            return InstanceType switch
+            {
+                "boolean" => bool.TryParse(text, out var b) ? b : text,
+                "integer" or "unsignedInt" or "positiveInt" => int.TryParse(text, out var i) ? i : text,
+                "decimal" => decimal.TryParse(text, out var d) ? d : text,
+                // All other types remain as strings (string, date, dateTime, code, id, uri, etc.)
+                _ => text
+            };
+        }
+    }
 
     public string Location => _source.Location;
 
@@ -200,17 +235,63 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
             return cachedDef;
 
         // Cache miss: Look up definition
+        // First try exact match (for unqualified names like "value")
         var childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == childName);
 
-        // If no exact match, check if this is a choice type variant (e.g., valueString for value[x])
+        // If no exact match, try qualified name (e.g., "Quantity.value")
+        if (childDef == null)
+        {
+            var qualifiedName = $"{cachedStructureDef.TypeName}.{childName}";
+            childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == qualifiedName);
+        }
+
+        // If still no match, check if this is a choice type variant (e.g., valueString for value[x])
         if (childDef == null)
         {
             var choiceElement = cachedStructureDef.GetElements()
-                .FirstOrDefault(e => e.ElementName.EndsWith("[x]", StringComparison.Ordinal) &&
-                                      childName.StartsWith(e.ElementName.TrimEnd("[x]".ToCharArray()), StringComparison.Ordinal));
+                .FirstOrDefault(e =>
+                {
+                    // Check if it's a choice element by flag OR by [x] suffix
+                    if (!e.IsChoiceElement && !e.ElementName.EndsWith("[x]", StringComparison.Ordinal))
+                        return false;
+
+                    // Extract base name: "value[x]" → "value" or just use "value" if IsChoiceElement
+                    var baseName = e.ElementName.EndsWith("[x]", StringComparison.Ordinal)
+                        ? e.ElementName.TrimEnd("[x]".ToCharArray())
+                        : e.ElementName;
+
+                    // Check if child name starts with base name (e.g., "valueQuantity" starts with "value")
+                    return childName.StartsWith(baseName, StringComparison.Ordinal) && childName.Length > baseName.Length;
+                });
             if (choiceElement != null)
             {
                 childDef = choiceElement;
+            }
+        }
+
+        // If still no match, try qualified choice type (e.g., "Observation.value[x]" for "valueQuantity")
+        if (childDef == null)
+        {
+            var typeName = cachedStructureDef.TypeName;
+            var qualifiedChoiceElement = cachedStructureDef.GetElements()
+                .FirstOrDefault(e =>
+                {
+                    // Extract base name from qualified choice element (e.g., "Observation.value[x]" → "value")
+                    var elementName = e.ElementName;
+                    if (elementName.EndsWith("[x]", StringComparison.Ordinal) && elementName.Contains('.', StringComparison.Ordinal))
+                    {
+                        var parts = elementName.Split('.');
+                        if (parts.Length == 2)
+                        {
+                            var baseName = parts[1].TrimEnd("[x]".ToCharArray());
+                            return childName.StartsWith(baseName, StringComparison.Ordinal);
+                        }
+                    }
+                    return false;
+                });
+            if (qualifiedChoiceElement != null)
+            {
+                childDef = qualifiedChoiceElement;
             }
         }
 
