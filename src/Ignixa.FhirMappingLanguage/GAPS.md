@@ -285,17 +285,35 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 6. Error Handling and Recovery
 
-**Missing**:
-- Graceful error recovery
-- Partial transformation results
-- Error collection and reporting
-- Validation mode (check without executing)
+**Status**: ✅ **VALIDATION MODE COMPLETE** - Validation-only mode implemented
 
-**Required Work**:
-- Improve error messages
-- Add error collection
-- Support validation-only mode
-- Provide detailed error context
+**Implemented**:
+- ✅ Validation-only mode (check without executing)
+- ✅ Error collection and reporting via ValidationResult
+- ✅ Structured validation errors with location and code
+- ✅ Validation warnings for non-critical issues
+- ✅ Map structure validation
+- ✅ Group validation (parameters, inheritance, circular detection)
+- ✅ Rule validation (sources, targets)
+- ✅ Transform function validation
+- ✅ Import validation
+- ✅ Detailed error context with location tracking
+
+**Completed Work**:
+- ✅ Created ValidationResult class with errors/warnings
+- ✅ Created ValidationError and ValidationWarning classes
+- ✅ Created MappingValidator with comprehensive validation logic
+- ✅ Validates map structure, groups, rules, transforms, imports
+- ✅ Checks for circular inheritance, duplicate groups, missing references
+- ✅ Validates transform function arguments
+- ✅ Integration with ImportResolver for import checking
+- ✅ Created MappingValidatorTests.cs with 20+ test cases
+- ✅ Added GetImportedMap method to ImportResolver
+
+**Still Missing**:
+- ❌ Graceful error recovery during execution
+- ❌ Partial transformation results on error
+- ❌ Runtime error collection (non-validation)
 
 ### 7. Resource Creation and Management
 
@@ -489,6 +507,23 @@ This document identifies gaps in the current implementation compared to the full
    - ✅ Complex mappings with defaults and conditions
    - ✅ 15+ test cases
 
+14. **Mapping Validator Tests** (MappingValidatorTests.cs)
+   - ✅ Valid mapping passes validation
+   - ✅ Missing URL/ID detection
+   - ✅ No groups detection
+   - ✅ Duplicate group names
+   - ✅ Group without parameters/rules warnings
+   - ✅ Missing base group detection
+   - ✅ Circular inheritance detection
+   - ✅ Rule without sources/targets
+   - ✅ Unknown transform function warnings
+   - ✅ Transform argument validation (create, translate, cast)
+   - ✅ Source with where and default warning
+   - ✅ Import validation (missing URL, unresolved imports)
+   - ✅ ValidationResult summary and formatting
+   - ✅ Complex validation scenarios
+   - ✅ 20+ test cases
+
 ### ❌ Missing Tests
 
 1. **Performance Tests**
@@ -541,13 +576,13 @@ This document identifies gaps in the current implementation compared to the full
 4. ✅ ~~Add debugging and tracing~~ - **COMPLETE** (log/check execution)
 5. ✅ ~~Support where/check/log execution~~ - **COMPLETE** (all three implemented)
 
-### Phase 3: Production Readiness (Medium Priority)
+### Phase 3: Production Readiness (Medium Priority) - In Progress
 
-1. Performance optimization
-2. Memory optimization
-3. Add benchmarks
-4. Improve error handling
-5. Add validation-only mode
+1. ✅ ~~Add validation-only mode~~ - **COMPLETE**
+2. Improve error handling (runtime error recovery)
+3. Performance optimization
+4. Memory optimization
+5. Add benchmarks
 
 ### Phase 4: Advanced Scenarios (Low Priority)
 
@@ -649,3 +684,19 @@ When implementing missing features:
   - ✅ Default value tests (15+ test cases)
   - ✅ Integration with existing clauses
   - ✅ Edge case handling
+
+- **v0.9.0** (2025-01-XX): Validation-only mode - **Phase 3 Priority 1 COMPLETE**
+  - ✅ ValidationResult class for error/warning collection
+  - ✅ ValidationError and ValidationWarning classes with location/code
+  - ✅ MappingValidator for comprehensive validation
+  - ✅ Map structure validation (URL, ID, groups, duplicates)
+  - ✅ Group validation (parameters, rules, inheritance)
+  - ✅ Circular inheritance detection
+  - ✅ Rule validation (sources, targets)
+  - ✅ Transform function validation (known functions, arguments)
+  - ✅ Import validation (URL, resolution)
+  - ✅ Source clause validation (where+default warning)
+  - ✅ Integration with ImportResolver
+  - ✅ GetImportedMap method added to ImportResolver
+  - ✅ Validation tests (20+ test cases)
+  - ✅ Summary formatting and result merging
