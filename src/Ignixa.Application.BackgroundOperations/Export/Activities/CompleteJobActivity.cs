@@ -47,10 +47,35 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
             job.Status = "Completed";
             job.EndDate = DateTimeOffset.UtcNow;
 
-            _logger.LogInformation(
-                "Job {JobId} completed successfully ({TotalResources} resources)",
-                input.JobId,
-                input.TotalResourcesExported);
+            // Log throughput metrics if timing information is available
+            if (job.StartDate.HasValue)
+            {
+                var elapsed = (job.EndDate.Value - job.StartDate.Value).TotalSeconds;
+                if (elapsed > 0)
+                {
+                    var resourcesPerSec = input.TotalResourcesExported / elapsed;
+                    _logger.LogInformation(
+                        "Export job {JobId} completed successfully: {TotalResources} resources in {ElapsedSeconds:F2}s = {ThroughputPerSec:F2} resources/sec",
+                        input.JobId,
+                        input.TotalResourcesExported,
+                        elapsed,
+                        resourcesPerSec);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Job {JobId} completed successfully ({TotalResources} resources)",
+                        input.JobId,
+                        input.TotalResourcesExported);
+                }
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Job {JobId} completed successfully ({TotalResources} resources)",
+                    input.JobId,
+                    input.TotalResourcesExported);
+            }
         }
         else
         {

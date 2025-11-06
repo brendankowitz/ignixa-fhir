@@ -20,6 +20,7 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
         OrchestrationContext context,
         ImportOrchestrationInput input)
     {
+        var startDate = context.CurrentUtcDateTime;
         var totalResources = 0;
         var totalErrors = 0;
         var errorLogEntries = new List<ImportErrorLogEntry>();
@@ -128,7 +129,8 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
                 TotalResources = totalResources,
                 TotalErrors = totalErrors,
                 ErrorLogEntries = errorLogEntries,
-                StorageDetail = input.StorageDetail
+                StorageDetail = input.StorageDetail,
+                StartDate = startDate
             };
 
             var completeOutput = await context.ScheduleTask<CompleteJobOutput>(

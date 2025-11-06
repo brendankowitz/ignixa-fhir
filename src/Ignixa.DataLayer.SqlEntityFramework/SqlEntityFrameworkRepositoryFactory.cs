@@ -287,6 +287,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         var (compartmentManager, parameterManager) = GetOrCreateDefinitionManagers(fhirSpec, schemaProvider);
 
         // Create factory delegate for Repository (accepts DbContext parameter)
+        // Note: Repository and SearchService share the same SearchIndexReferenceDataCache instance per request
         Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
@@ -296,10 +297,15 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 compressor,
                 _loggerFactory.CreateLogger<SqlMergeRepository>());
 
+            var searchIndexCache = new SearchIndexReferenceDataCache(
+                dbContext,
+                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
+
             return new SqlEntityFrameworkRepository(
                 dbContext,
                 compressor,
                 sqlMergeRepository,
+                searchIndexCache,
                 _loggerFactory.CreateLogger<SqlEntityFrameworkRepository>());
         };
 

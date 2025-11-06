@@ -95,6 +95,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             var multiTypeMainResults = new List<SearchEntryResult>();
             await foreach (var entity in multiTypeQuery
                 .Include(x => x.Transaction)
+                .Include(x => x.ResourceType)
                 .AsAsyncEnumerable().WithCancellation(ct))
             {
                 // For multi-type results, we need to determine the actual resource type from the entity
