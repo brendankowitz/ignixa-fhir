@@ -141,19 +141,26 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 5. ConceptMap Integration
 
-**Status**: Not implemented
+**Status**: ✅ **COMPLETE** - Full ConceptMap integration implemented
 
-**Missing**:
-- ConceptMap resource loading
-- ConceptMap URL resolution
-- Terminology translation using ConceptMaps
-- Fallback handling for unmapped codes
+**Implemented**:
+- ✅ IConceptMapLoader interface for loading ConceptMap resources
+- ✅ DictionaryConceptMapLoader for in-memory scenarios
+- ✅ CompositeConceptMapLoader for multiple loader chains
+- ✅ ConceptMapResolver with caching and translation logic
+- ✅ Support for ConceptMap groups and elements
+- ✅ Target system filtering
+- ✅ Fallback handling (returns null for unmapped codes)
+- ✅ Integration with translate() transform function
+- ✅ Thread-safe caching
 
-**Required Work**:
-- Implement ConceptMap loader
-- Add ConceptMap translation in transform functions
-- Support concept map groups and elements
-- Handle unmapped codes gracefully
+**Completed Work**:
+- ✅ Created IConceptMapLoader and implementations
+- ✅ Created ConceptMapResolver with translation algorithm
+- ✅ Navigation through ConceptMap JSON structure
+- ✅ Resolver function for MappingContext integration
+- ✅ Created ConceptMapTests.cs with 15+ test cases
+- ✅ Cache management with ClearCache()
 
 ### 6. Debugging and Tracing
 
@@ -421,6 +428,16 @@ This document identifies gaps in the current implementation compared to the full
    - ✅ Integration with MappingEvaluator
    - ✅ 15+ test cases
 
+11. **ConceptMap Integration Tests** (ConceptMapTests.cs)
+   - ✅ ConceptMap loader implementations
+   - ✅ Simple code translation
+   - ✅ Multiple groups and target system filtering
+   - ✅ Non-existent code/map handling
+   - ✅ Caching behavior
+   - ✅ Integration with translate() transform
+   - ✅ Resolver function creation
+   - ✅ 15+ test cases
+
 ### ❌ Missing Tests
 
 1. **Performance Tests**
@@ -452,7 +469,7 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Group inheritance (extends with circular detection) - **COMPLETE**
 - ✅ List mode semantics (all 7 modes implemented) - **COMPLETE**
 - ✅ Import resolution (full support with circular detection) - **COMPLETE**
-- 🔶 ConceptMap integration (hook exists, requires ConceptMap resource loading)
+- ✅ ConceptMap integration (full support with caching) - **COMPLETE**
 - 🔶 Where/check execution (FHIRPath integrated, working in evaluator)
 - ❌ Log execution (parsed but not evaluated)
 
@@ -470,7 +487,7 @@ This document identifies gaps in the current implementation compared to the full
 
 1. ✅ ~~Implement list mode semantics~~ - **COMPLETE** (all 7 modes)
 2. ✅ ~~Add import resolution~~ - **COMPLETE** (with circular detection)
-3. Implement ConceptMap integration
+3. ✅ ~~Implement ConceptMap integration~~ - **COMPLETE** (with caching)
 4. Add debugging and tracing (log execution)
 5. Support where/check/log execution
 
@@ -546,3 +563,15 @@ When implementing missing features:
   - ✅ Thread-safe registry operations
   - ✅ Integration with MappingEvaluator
   - ✅ Import resolution tests (15+ test cases)
+
+- **v0.6.0** (2025-01-XX): ConceptMap integration - **Phase 2 Priority 3 COMPLETE**
+  - ✅ IConceptMapLoader interface and implementations
+  - ✅ DictionaryConceptMapLoader for in-memory scenarios
+  - ✅ CompositeConceptMapLoader for loader chains
+  - ✅ ConceptMapResolver with translation algorithm
+  - ✅ Support for ConceptMap groups and elements
+  - ✅ Target system filtering
+  - ✅ Thread-safe caching with ClearCache()
+  - ✅ Integration with translate() transform function
+  - ✅ Resolver function for MappingContext
+  - ✅ ConceptMap tests (15+ test cases)
