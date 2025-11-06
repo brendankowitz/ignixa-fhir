@@ -1,0 +1,453 @@
+/*
+ * Copyright (c) 2025, Sparky Contributors
+ *
+ * Comprehensive unit tests for FHIR Mapping Language lexer/tokenizer.
+ */
+
+using FluentAssertions;
+using Ignixa.FhirMappingLanguage.Lexer;
+using Xunit;
+
+namespace Ignixa.FhirMappingLanguage.Tests.Lexer;
+
+public class MappingTokenizerTests
+{
+    #region Keyword Tests
+
+    [Theory]
+    [InlineData("map", MappingTokenKind.Map)]
+    [InlineData("uses", MappingTokenKind.Uses)]
+    [InlineData("as", MappingTokenKind.As)]
+    [InlineData("alias", MappingTokenKind.Alias)]
+    [InlineData("imports", MappingTokenKind.Imports)]
+    [InlineData("group", MappingTokenKind.Group)]
+    [InlineData("extends", MappingTokenKind.Extends)]
+    [InlineData("default", MappingTokenKind.Default)]
+    [InlineData("where", MappingTokenKind.Where)]
+    [InlineData("check", MappingTokenKind.Check)]
+    [InlineData("log", MappingTokenKind.Log)]
+    [InlineData("then", MappingTokenKind.Then)]
+    [InlineData("source", MappingTokenKind.Source)]
+    [InlineData("target", MappingTokenKind.Target)]
+    [InlineData("queried", MappingTokenKind.Queried)]
+    [InlineData("produced", MappingTokenKind.Produced)]
+    [InlineData("conceptMap", MappingTokenKind.ConceptMap)]
+    [InlineData("prefix", MappingTokenKind.Prefix)]
+    [InlineData("types", MappingTokenKind.Types)]
+    [InlineData("type", MappingTokenKind.Type)]
+    [InlineData("first", MappingTokenKind.First)]
+    [InlineData("not_first", MappingTokenKind.NotFirst)]
+    [InlineData("last", MappingTokenKind.Last)]
+    [InlineData("not_last", MappingTokenKind.NotLast)]
+    [InlineData("only_one", MappingTokenKind.OnlyOne)]
+    [InlineData("share", MappingTokenKind.Share)]
+    [InlineData("single", MappingTokenKind.Single)]
+    public void GivenKeyword_WhenTokenizing_ThenReturnsCorrectTokenKind(string keyword, MappingTokenKind expectedKind)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(keyword);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(expectedKind);
+    }
+
+    [Theory]
+    [InlineData("Map", MappingTokenKind.Identifier)] // Case sensitive
+    [InlineData("MAP", MappingTokenKind.Identifier)]
+    [InlineData("GROUP", MappingTokenKind.Identifier)]
+    public void GivenKeywordWithWrongCase_WhenTokenizing_ThenReturnsIdentifier(string input, MappingTokenKind expectedKind)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(expectedKind);
+    }
+
+    [Fact]
+    public void GivenKeywordAsPartOfIdentifier_WhenTokenizing_ThenReturnsIdentifier()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize("mapName");
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(MappingTokenKind.Identifier);
+        result.First().ToStringValue().Should().Be("mapName");
+    }
+
+    #endregion
+
+    #region Operator Tests
+
+    [Theory]
+    [InlineData("->", MappingTokenKind.Arrow)]
+    [InlineData("::", MappingTokenKind.DoubleColon)]
+    [InlineData("=", MappingTokenKind.Equals)]
+    [InlineData(".", MappingTokenKind.Dot)]
+    [InlineData(",", MappingTokenKind.Comma)]
+    [InlineData(";", MappingTokenKind.Semicolon)]
+    [InlineData("(", MappingTokenKind.LeftParen)]
+    [InlineData(")", MappingTokenKind.RightParen)]
+    [InlineData("{", MappingTokenKind.LeftBrace)]
+    [InlineData("}", MappingTokenKind.RightBrace)]
+    [InlineData("<", MappingTokenKind.LeftAngle)]
+    [InlineData(">", MappingTokenKind.RightAngle)]
+    [InlineData("[", MappingTokenKind.LeftBracket)]
+    [InlineData("]", MappingTokenKind.RightBracket)]
+    public void GivenOperator_WhenTokenizing_ThenReturnsCorrectToken(string op, MappingTokenKind expectedKind)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(op);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(expectedKind);
+    }
+
+    [Fact]
+    public void GivenMultiCharacterOperator_WhenTokenizing_ThenRecognizesLongestMatch()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize("::").ToList();
+
+        // Assert
+        result.Should().HaveCount(1);
+        result[0].Kind.Should().Be(MappingTokenKind.DoubleColon);
+    }
+
+    #endregion
+
+    #region Literal Tests
+
+    [Theory]
+    [InlineData("'hello'", "hello")]
+    [InlineData("'hello world'", "hello world")]
+    [InlineData("''", "")]
+    [InlineData("'don''t'", "don't")] // SQL-style escaping
+    public void GivenStringLiteral_WhenTokenizing_ThenReturnsStringToken(string input, string expected)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(MappingTokenKind.StringLiteral);
+        result.First().ToStringValue().Should().Be(input);
+    }
+
+    [Theory]
+    [InlineData("42", MappingTokenKind.IntegerLiteral)]
+    [InlineData("0", MappingTokenKind.IntegerLiteral)]
+    [InlineData("999999", MappingTokenKind.IntegerLiteral)]
+    public void GivenIntegerLiteral_WhenTokenizing_ThenReturnsIntegerToken(string input, MappingTokenKind expectedKind)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(expectedKind);
+        result.First().ToStringValue().Should().Be(input);
+    }
+
+    [Theory]
+    [InlineData("3.14", MappingTokenKind.DecimalLiteral)]
+    [InlineData("0.5", MappingTokenKind.DecimalLiteral)]
+    [InlineData("123.456", MappingTokenKind.DecimalLiteral)]
+    public void GivenDecimalLiteral_WhenTokenizing_ThenReturnsDecimalToken(string input, MappingTokenKind expectedKind)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(expectedKind);
+    }
+
+    [Theory]
+    [InlineData("true", MappingTokenKind.True)]
+    [InlineData("false", MappingTokenKind.False)]
+    public void GivenBooleanLiteral_WhenTokenizing_ThenReturnsBooleanToken(string input, MappingTokenKind expectedKind)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(expectedKind);
+    }
+
+    #endregion
+
+    #region Identifier Tests
+
+    [Theory]
+    [InlineData("patient")]
+    [InlineData("myVariable")]
+    [InlineData("_underscore")]
+    [InlineData("name123")]
+    [InlineData("camelCase")]
+    [InlineData("PascalCase")]
+    public void GivenValidIdentifier_WhenTokenizing_ThenReturnsIdentifierToken(string identifier)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(identifier);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(MappingTokenKind.Identifier);
+        result.First().ToStringValue().Should().Be(identifier);
+    }
+
+    [Theory]
+    [InlineData("`escaped identifier`")]
+    [InlineData("\"quoted identifier\"")]
+    public void GivenDelimitedIdentifier_WhenTokenizing_ThenReturnsDelimitedIdentifierToken(string identifier)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(identifier);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(MappingTokenKind.DelimitedIdentifier);
+    }
+
+    #endregion
+
+    #region URL Tests
+
+    [Theory]
+    [InlineData("http://example.org/fhir/StructureMap/Example")]
+    [InlineData("https://hl7.org/fhir/StructureDefinition/Patient")]
+    [InlineData("urn:uuid:12345678-1234-1234-1234-123456789abc")]
+    public void GivenURL_WhenTokenizing_ThenReturnsUrlToken(string url)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize(url);
+
+        // Assert
+        result.Should().HaveCount(1);
+        result.First().Kind.Should().Be(MappingTokenKind.Url);
+        result.First().ToStringValue().Should().Be(url);
+    }
+
+    #endregion
+
+    #region Comment Tests
+
+    [Fact]
+    public void GivenLineComment_WhenTokenizingWithTrivia_ThenReturnsCommentToken()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+        var input = "// this is a comment";
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().Contain(t => t.Kind == MappingTokenKind.LineComment);
+    }
+
+    [Fact]
+    public void GivenBlockComment_WhenTokenizingWithTrivia_ThenReturnsCommentToken()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+        var input = "/* block comment */";
+
+        // Act
+        var result = tokenizer.Tokenize(input);
+
+        // Assert
+        result.Should().Contain(t => t.Kind == MappingTokenKind.BlockComment);
+    }
+
+    [Fact]
+    public void GivenLineComment_WhenTokenizingWithoutTrivia_ThenIgnoresComment()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+        var input = "map // comment";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result.Should().HaveCount(1);
+        result[0].Kind.Should().Be(MappingTokenKind.Map);
+    }
+
+    #endregion
+
+    #region Whitespace Tests
+
+    [Fact]
+    public void GivenWhitespace_WhenTokenizingWithTrivia_ThenReturnsWhitespaceToken()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+        var input = "map   group";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result.Should().Contain(t => t.Kind == MappingTokenKind.Whitespace);
+    }
+
+    [Fact]
+    public void GivenWhitespace_WhenTokenizingWithoutTrivia_ThenIgnoresWhitespace()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+        var input = "map   group";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result.Should().HaveCount(2);
+        result.Should().NotContain(t => t.Kind == MappingTokenKind.Whitespace);
+    }
+
+    #endregion
+
+    #region Complex Expression Tests
+
+    [Fact]
+    public void GivenCompleteMapDeclaration_WhenTokenizing_ThenReturnsAllTokens()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+        var input = "map 'http://example.org' = 'ExampleMap'";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result.Should().HaveCount(5);
+        result[0].Kind.Should().Be(MappingTokenKind.Map);
+        result[1].Kind.Should().Be(MappingTokenKind.StringLiteral);
+        result[2].Kind.Should().Be(MappingTokenKind.Equals);
+        result[3].Kind.Should().Be(MappingTokenKind.StringLiteral);
+    }
+
+    [Fact]
+    public void GivenUsesDeclaration_WhenTokenizing_ThenReturnsAllTokens()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+        var input = "uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result[0].Kind.Should().Be(MappingTokenKind.Uses);
+        result[1].Kind.Should().Be(MappingTokenKind.StringLiteral);
+        result[2].Kind.Should().Be(MappingTokenKind.Alias);
+        result[3].Kind.Should().Be(MappingTokenKind.Identifier);
+        result[4].Kind.Should().Be(MappingTokenKind.As);
+        result[5].Kind.Should().Be(MappingTokenKind.Source);
+    }
+
+    [Fact]
+    public void GivenGroupDeclaration_WhenTokenizing_ThenReturnsAllTokens()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+        var input = "group PatientToBundle(source src : Patient, target tgt : Bundle)";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result[0].Kind.Should().Be(MappingTokenKind.Group);
+        result[1].Kind.Should().Be(MappingTokenKind.Identifier); // PatientToBundle
+        result[2].Kind.Should().Be(MappingTokenKind.LeftParen);
+        result[3].Kind.Should().Be(MappingTokenKind.Source);
+        result[4].Kind.Should().Be(MappingTokenKind.Identifier); // src
+        result[5].Kind.Should().Be(MappingTokenKind.DoubleColon);
+        result[6].Kind.Should().Be(MappingTokenKind.Identifier); // Patient
+        result[7].Kind.Should().Be(MappingTokenKind.Comma);
+    }
+
+    [Fact]
+    public void GivenRuleWithArrow_WhenTokenizing_ThenReturnsAllTokens()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+        var input = "src.name -> tgt.name";
+
+        // Act
+        var result = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        result[0].Kind.Should().Be(MappingTokenKind.Identifier); // src
+        result[1].Kind.Should().Be(MappingTokenKind.Dot);
+        result[2].Kind.Should().Be(MappingTokenKind.Identifier); // name
+        result[3].Kind.Should().Be(MappingTokenKind.Arrow);
+        result[4].Kind.Should().Be(MappingTokenKind.Identifier); // tgt
+        result[5].Kind.Should().Be(MappingTokenKind.Dot);
+        result[6].Kind.Should().Be(MappingTokenKind.Identifier); // name
+    }
+
+    #endregion
+
+    #region Error Handling Tests
+
+    [Theory]
+    [InlineData("'unterminated string")]
+    [InlineData("\"unterminated identifier")]
+    public void GivenUnterminatedString_WhenTokenizing_ThenThrowsException(string input)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act & Assert
+        var act = () => tokenizer.Tokenize(input).ToList();
+        act.Should().Throw<Exception>();
+    }
+
+    #endregion
+}
