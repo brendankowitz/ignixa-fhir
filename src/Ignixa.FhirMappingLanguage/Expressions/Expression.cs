@@ -397,3 +397,24 @@ public class QualifiedIdentifierExpression : Expression
 
     public override string ToString() => $"{Context}.{Property}";
 }
+
+/// <summary>
+/// Represents an indexed access expression.
+/// Example: src.name[0], src.identifier[1]
+/// </summary>
+public class IndexExpression : Expression
+{
+    public IndexExpression(
+        Expression context,
+        int index,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        Context = context ?? throw new ArgumentNullException(nameof(context));
+        Index = index;
+    }
+
+    public Expression Context { get; }
+    public int Index { get; }
+
+    public override string ToString() => $"{Context}[{Index}]";
+}

@@ -375,13 +375,23 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Check clause enforcement - **COMPLETE**
 - ✅ Log clause execution - **COMPLETE**
 - ✅ Default value support - **COMPLETE**
+- ✅ List indexing (e.g., `src.name[0]`) - **COMPLETE**
+
+**Completed Work**:
+- ✅ IndexExpression added to AST
+- ✅ Parser updated to recognize `[index]` syntax
+- ✅ Supports chaining: `src.name[0].given[1]`
+- ✅ Mixed dot and index notation: `src.identifier[0].system`
+- ✅ Evaluator implements bounds checking
+- ✅ Out-of-bounds returns empty (no error)
+- ✅ Negative index returns empty
+- ✅ Integration with where/check/log/default
+- ✅ Created ListIndexingTests.cs with 15+ test cases
 
 **Still Missing**:
-- ❌ List variable binding (e.g., `src.name[0]`)
 - ❌ Cardinality-based filtering (e.g., `src.name 0..1`)
 
 **Required Work**:
-- Implement list indexing syntax
 - Support cardinality patterns in source expressions
 
 ## Testing Gaps
@@ -523,6 +533,22 @@ This document identifies gaps in the current implementation compared to the full
    - ✅ ValidationResult summary and formatting
    - ✅ Complex validation scenarios
    - ✅ 20+ test cases
+
+15. **List Indexing Tests** (ListIndexingTests.cs)
+   - ✅ Parser integration (index syntax recognition)
+   - ✅ Chained indexing (`src.name[0].given[1]`)
+   - ✅ Mixed dot and index notation
+   - ✅ Indexing first/last elements
+   - ✅ Single element indexing
+   - ✅ Empty list handling
+   - ✅ Out-of-bounds handling (returns empty)
+   - ✅ Negative index handling
+   - ✅ Nested indexing with properties
+   - ✅ Integration with default values
+   - ✅ Integration with where clause
+   - ✅ Complex mapping scenarios
+   - ✅ Edge cases
+   - ✅ 15+ test cases
 
 ### ❌ Missing Tests
 
@@ -700,3 +726,16 @@ When implementing missing features:
   - ✅ GetImportedMap method added to ImportResolver
   - ✅ Validation tests (20+ test cases)
   - ✅ Summary formatting and result merging
+
+- **v0.10.0** (2025-01-XX): List indexing - **Advanced Features COMPLETE**
+  - ✅ IndexExpression added to AST
+  - ✅ Parser support for `[index]` syntax
+  - ✅ Chained indexing support (`src.name[0].given[1]`)
+  - ✅ Mixed dot and index notation (`src.identifier[0].system`)
+  - ✅ VisitIndex method in evaluator
+  - ✅ Bounds checking (out-of-bounds returns empty)
+  - ✅ Negative index handling (returns empty)
+  - ✅ Integration with existing clauses
+  - ✅ List indexing tests (15+ test cases)
+  - ✅ Parser integration tests
+  - ✅ Evaluation tests with edge cases

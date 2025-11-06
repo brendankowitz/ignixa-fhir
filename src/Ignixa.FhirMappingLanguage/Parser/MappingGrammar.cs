@@ -146,16 +146,21 @@ public static class MappingGrammar
             .Or(BooleanLiteral.Select(l => (Expression)l))
             .Or(Identifier.Select(i => (Expression)i));
 
-    // Qualified identifier: context.property or just identifier
+    // Qualified identifier: context.property[index] or just identifier
+    // Supports chaining: src.name[0].given[1]
     private static readonly TokenListParser<MappingTokenKind, Expression> QualifiedIdentifier =
         from first in Identifier
         from rest in (
-            from dot in Token.EqualTo(MappingTokenKind.Dot)
-            from prop in Identifier
-            select prop.Name
+            // Either .property or [index]
+            (from dot in Token.EqualTo(MappingTokenKind.Dot)
+             from prop in Identifier
+             select (Expression acc) => (Expression)new QualifiedIdentifierExpression(acc, prop.Name))
+            .Or(from lbracket in Token.EqualTo(MappingTokenKind.LeftBracket)
+                from index in Token.EqualTo(MappingTokenKind.Integer)
+                from rbracket in Token.EqualTo(MappingTokenKind.RightBracket)
+                select (Expression acc) => (Expression)new IndexExpression(acc, int.Parse(index.ToStringValue())))
         ).Many()
-        select rest.Aggregate((Expression)first, (acc, prop) =>
-            new QualifiedIdentifierExpression(acc, prop));
+        select rest.Aggregate((Expression)first, (acc, func) => func(acc));
 
     // Transform: functionName(arg1, arg2, ...)
     private static readonly TokenListParser<MappingTokenKind, TransformExpression> Transform =

@@ -1,0 +1,558 @@
+/*
+ * Copyright (c) 2025, Sparky Contributors
+ *
+ * Unit tests for list indexing functionality in FHIR Mapping Language.
+ */
+
+using FluentAssertions;
+using Ignixa.FhirMappingLanguage;
+using Ignixa.FhirMappingLanguage.Evaluation;
+using Ignixa.Serialization.Abstractions;
+using Xunit;
+
+namespace Ignixa.FhirMappingLanguage.Tests.Evaluation;
+
+public class ListIndexingTests
+{
+    #region Helper Classes
+
+    private class TestTypedElement : ITypedElement
+    {
+        private readonly Dictionary<string, List<ITypedElement>> _children = new();
+
+        public TestTypedElement(string name, object? value = null, string instanceType = "string")
+        {
+            Name = name;
+            Value = value;
+            InstanceType = instanceType;
+        }
+
+        public string Name { get; }
+        public string InstanceType { get; }
+        public object? Value { get; }
+        public string Location => string.Empty;
+        public IElementDefinitionSummary? Definition => null;
+
+        public void AddChild(ITypedElement child)
+        {
+            if (!_children.ContainsKey(child.Name))
+            {
+                _children[child.Name] = new List<ITypedElement>();
+            }
+            _children[child.Name].Add(child);
+        }
+
+        public IEnumerable<ITypedElement> Children(string? name = null)
+        {
+            if (name == null)
+            {
+                return _children.Values.SelectMany(list => list);
+            }
+
+            return _children.TryGetValue(name, out var children)
+                ? children
+                : Enumerable.Empty<ITypedElement>();
+        }
+    }
+
+    #endregion
+
+    #region Parser Tests
+
+    [Fact]
+    public void GivenMappingWithIndex_WhenParsing_ThenParsesCorrectly()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+
+        // Act
+        var map = compiler.Parse(mappingText);
+
+        // Assert
+        map.Groups.Should().HaveCount(1);
+        map.Groups[0].Rules.Should().HaveCount(1);
+        map.Groups[0].Rules[0].Sources.Should().HaveCount(1);
+
+        // Source should have IndexExpression
+        var source = map.Groups[0].Rules[0].Sources[0];
+        source.Context.Should().BeOfType<Expressions.IndexExpression>();
+    }
+
+    [Fact]
+    public void GivenMappingWithChainedIndex_WhenParsing_ThenParsesCorrectly()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0].given[1] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+
+        // Act
+        var map = compiler.Parse(mappingText);
+
+        // Assert
+        map.Groups.Should().HaveCount(1);
+        var source = map.Groups[0].Rules[0].Sources[0];
+
+        // Should be: Index(Qualified(Index(Qualified(Identifier("src"), "name"), 0), "given"), 1)
+        source.Context.Should().BeOfType<Expressions.IndexExpression>();
+    }
+
+    [Fact]
+    public void GivenMappingWithMixedDotAndIndex_WhenParsing_ThenParsesCorrectly()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.identifier[0].system -> tgt.id;
+}";
+
+        var compiler = new MappingCompiler();
+
+        // Act
+        var map = compiler.Parse(mappingText);
+
+        // Assert
+        var source = map.Groups[0].Rules[0].Sources[0];
+        // Should be: Qualified(Index(Qualified(Identifier("src"), "identifier"), 0), "system")
+        source.Context.Should().BeOfType<Expressions.QualifiedIdentifierExpression>();
+
+        var qualified = source.Context as Expressions.QualifiedIdentifierExpression;
+        qualified!.Context.Should().BeOfType<Expressions.IndexExpression>();
+    }
+
+    #endregion
+
+    #region Evaluation Tests
+
+    [Fact]
+    public void GivenListWithMultipleElements_WhenIndexingFirst_ThenReturnsFirstElement()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] log src.name[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John", "HumanName"));
+        source.AddChild(new TestTypedElement("name", "Johnny", "HumanName"));
+        source.AddChild(new TestTypedElement("name", "Jon", "HumanName"));
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("John");
+    }
+
+    [Fact]
+    public void GivenListWithMultipleElements_WhenIndexingLast_ThenReturnsLastElement()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[2] log src.name[2] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John", "HumanName"));
+        source.AddChild(new TestTypedElement("name", "Johnny", "HumanName"));
+        source.AddChild(new TestTypedElement("name", "Jon", "HumanName"));
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("Jon");
+    }
+
+    [Fact]
+    public void GivenListWithOneElement_WhenIndexingZero_ThenReturnsElement()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] log src.name[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John", "HumanName"));
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("John");
+    }
+
+    [Fact]
+    public void GivenEmptyList_WhenIndexing_ThenReturnsEmpty()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] log src.name[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        // No name elements
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert - Should not log anything (no elements)
+        logMessages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void GivenIndexOutOfBounds_WhenEvaluating_ThenReturnsEmpty()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[5] log src.name[5] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John", "HumanName"));
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert - Index out of bounds returns empty
+        logMessages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void GivenNestedIndexing_WhenEvaluating_ThenReturnsCorrectElement()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[1].given[0] log src.name[1].given[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+
+        var name1 = new TestTypedElement("name", null, "HumanName");
+        name1.AddChild(new TestTypedElement("given", "John", "string"));
+        name1.AddChild(new TestTypedElement("given", "Michael", "string"));
+        source.AddChild(name1);
+
+        var name2 = new TestTypedElement("name", null, "HumanName");
+        name2.AddChild(new TestTypedElement("given", "Jane", "string"));
+        name2.AddChild(new TestTypedElement("given", "Marie", "string"));
+        source.AddChild(name2);
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert - Should get second name's first given
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("Jane");
+    }
+
+    [Fact]
+    public void GivenIndexWithProperty_WhenEvaluating_ThenAccessesPropertyOfIndexedElement()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.identifier[0].system log src.identifier[0].system -> tgt.id;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+
+        var identifier1 = new TestTypedElement("identifier", null, "Identifier");
+        identifier1.AddChild(new TestTypedElement("system", "http://hospital.org", "uri"));
+        identifier1.AddChild(new TestTypedElement("value", "12345", "string"));
+        source.AddChild(identifier1);
+
+        var identifier2 = new TestTypedElement("identifier", null, "Identifier");
+        identifier2.AddChild(new TestTypedElement("system", "http://ssn.gov", "uri"));
+        identifier2.AddChild(new TestTypedElement("value", "987-65-4321", "string"));
+        source.AddChild(identifier2);
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("http://hospital.org");
+    }
+
+    #endregion
+
+    #region Integration Tests
+
+    [Fact]
+    public void GivenIndexingWithDefault_WhenListEmpty_ThenUsesDefault()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] default 'Unknown' log src.name[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        // No name elements
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("Unknown");
+    }
+
+    [Fact]
+    public void GivenIndexingWithWhere_WhenFiltering_ThenWorksCorrectly()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] where name.exists() log src.name[0] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John", "HumanName"));
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Be("John");
+    }
+
+    [Fact]
+    public void GivenComplexMapping_WhenUsingIndexing_ThenProcessesCorrectly()
+    {
+        // Arrange
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[0] as official -> tgt.entry;
+  src.name[1] as alternate where name.exists() -> tgt.total;
+  src.identifier[0].system -> tgt.id;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John Doe", "HumanName"));
+        source.AddChild(new TestTypedElement("name", "Johnny", "HumanName"));
+
+        var identifier = new TestTypedElement("identifier", null, "Identifier");
+        identifier.AddChild(new TestTypedElement("system", "http://hospital.org", "uri"));
+        source.AddChild(identifier);
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        var act = () => evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert - Should not throw
+        act.Should().NotThrow();
+    }
+
+    #endregion
+
+    #region Edge Cases
+
+    [Fact]
+    public void GivenNegativeIndex_WhenEvaluating_ThenReturnsEmpty()
+    {
+        // Arrange - Parser should accept any integer, evaluator handles bounds
+        var mappingText = @"
+map 'http://example.org/fhir/StructureMap/Test' = 'Test'
+
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name[-1] log src.name[-1] -> tgt.entry;
+}";
+
+        var compiler = new MappingCompiler();
+        var map = compiler.Parse(mappingText);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
+        var context = new MappingContext();
+
+        var logMessages = new List<string>();
+        context.Logger = message => logMessages.Add(message);
+
+        var source = new TestTypedElement("Patient");
+        source.AddChild(new TestTypedElement("name", "John", "HumanName"));
+
+        var target = new TestTypedElement("Bundle");
+
+        context.SetSource("src", source);
+        context.SetTarget("tgt", target);
+
+        // Act
+        var act = () => evaluator.ExecuteGroup(map, "Transform", context);
+
+        // Assert - Negative index returns empty (no error)
+        act.Should().NotThrow();
+        logMessages.Should().BeEmpty();
+    }
+
+    #endregion
+}
