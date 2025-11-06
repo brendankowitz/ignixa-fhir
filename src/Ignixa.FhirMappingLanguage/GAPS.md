@@ -352,19 +352,19 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 10. Advanced Source Patterns
 
-**Missing**:
-- List variable binding (e.g., `src.name[0]`)
-- Where clause evaluation with FHIRPath
-- Check clause enforcement
-- Log clause execution
-- Cardinality-based filtering
+**Implemented**:
+- ✅ Where clause evaluation with FHIRPath - **COMPLETE**
+- ✅ Check clause enforcement - **COMPLETE**
+- ✅ Log clause execution - **COMPLETE**
+- ✅ Default value support - **COMPLETE**
+
+**Still Missing**:
+- ❌ List variable binding (e.g., `src.name[0]`)
+- ❌ Cardinality-based filtering (e.g., `src.name 0..1`)
 
 **Required Work**:
-- Implement list indexing
-- Integrate FHIRPath for conditions
-- Add check enforcement
-- Implement logging
-- Support cardinality patterns
+- Implement list indexing syntax
+- Support cardinality patterns in source expressions
 
 ## Testing Gaps
 
