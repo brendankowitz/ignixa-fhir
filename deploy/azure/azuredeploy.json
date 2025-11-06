@@ -204,6 +204,8 @@
     "logAnalyticsName": "[concat(parameters('appName'), '-logs')]",
     "tenantId": "[subscription().tenantId]",
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+    "storageTableDataContributorRoleId": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
+    "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
     "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
     "sqlServerFqdn": "[concat(variables('sqlServerName'), '.database.windows.net')]",
     "blobEndpoint": "[concat('https://', variables('storageAccountName'), '.blob.core.windows.net')]",
@@ -645,6 +647,36 @@
       ],
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('durableTaskStorageAccountName')), resourceId('Microsoft.Web/sites', parameters('appName')), variables('storageTableDataContributorRoleId'))]",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('durableTaskStorageAccountName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('durableTaskStorageAccountName'))]",
+        "[resourceId('Microsoft.Web/sites', parameters('appName'))]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageTableDataContributorRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('durableTaskStorageAccountName')), resourceId('Microsoft.Web/sites', parameters('appName')), variables('storageQueueDataContributorRoleId'))]",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('durableTaskStorageAccountName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('durableTaskStorageAccountName'))]",
+        "[resourceId('Microsoft.Web/sites', parameters('appName'))]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageQueueDataContributorRoleId'))]",
         "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]",
         "principalType": "ServicePrincipal"
       }
