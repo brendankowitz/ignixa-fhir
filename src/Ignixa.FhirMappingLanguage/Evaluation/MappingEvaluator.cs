@@ -176,6 +176,13 @@ public class MappingEvaluator
         // Visit the source context expression
         var contextValues = VisitExpression(source.Context, context);
 
+        // Apply default value if source is empty and default is specified
+        if (!contextValues.Any() && source.Default != null)
+        {
+            // Evaluate the default expression
+            contextValues = VisitExpression(source.Default, context);
+        }
+
         // Apply where condition if present
         if (source.Condition != null && source.Condition is FhirPathExpression fhirPathCondition)
         {

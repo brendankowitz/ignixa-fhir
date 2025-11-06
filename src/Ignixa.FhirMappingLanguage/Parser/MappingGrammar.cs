@@ -176,7 +176,7 @@ public static class MappingGrammar
             .Or(Token.EqualTo(MappingTokenKind.Share).Value(ListMode.Share))
             .Or(Token.EqualTo(MappingTokenKind.Single).Value(ListMode.Single));
 
-    // Source: context [as variable] [: type] [where condition] [check condition] [log message]
+    // Source: context [as variable] [: type] [default value] [where condition] [check condition] [log message]
     private static readonly TokenListParser<MappingTokenKind, SourceExpression> Source =
         from context in QualifiedIdentifier
         from variable in (
@@ -188,6 +188,11 @@ public static class MappingGrammar
             from colon in Token.EqualTo(MappingTokenKind.DoubleColon)
             from typeName in Identifier
             select typeName.Name
+        ).Optional()
+        from defaultValue in (
+            from defaultToken in Token.EqualTo(MappingTokenKind.Default)
+            from expr in Parse.Ref(() => FhirPathExpression)
+            select expr
         ).Optional()
         from condition in (
             from whereToken in Token.EqualTo(MappingTokenKind.Where)
@@ -210,7 +215,8 @@ public static class MappingGrammar
             type.HasValue ? type.Value : null,
             condition.HasValue ? condition.Value : null,
             check.HasValue ? check.Value : null,
-            log.HasValue ? log.Value : null);
+            log.HasValue ? log.Value : null,
+            defaultValue.HasValue ? defaultValue.Value : null);
 
     // Target: [context] [as variable] [= transform] [list mode]
     private static readonly TokenListParser<MappingTokenKind, TargetExpression> Target =

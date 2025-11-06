@@ -292,6 +292,7 @@ public class SourceExpression : Expression
         Expression? condition,
         FhirPathExpression? check,
         FhirPathExpression? log,
+        Expression? defaultValue = null,
         ISourcePositionInfo? location = null) : base(location)
     {
         Context = context ?? throw new ArgumentNullException(nameof(context));
@@ -300,6 +301,7 @@ public class SourceExpression : Expression
         Condition = condition;
         Check = check;
         Log = log;
+        Default = defaultValue;
     }
 
     public Expression Context { get; }
@@ -308,6 +310,7 @@ public class SourceExpression : Expression
     public Expression? Condition { get; }
     public FhirPathExpression? Check { get; }
     public FhirPathExpression? Log { get; }
+    public Expression? Default { get; }
 
     public override string ToString() => $"Source({Context})";
 }
