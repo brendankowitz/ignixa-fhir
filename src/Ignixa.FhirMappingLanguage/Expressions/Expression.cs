@@ -280,6 +280,59 @@ public class RuleExpression : Expression
 }
 
 /// <summary>
+/// Represents cardinality constraints for source elements.
+/// Example: 0..1, 1..*, 0..*
+/// </summary>
+public class Cardinality
+{
+    public Cardinality(int min, int? max)
+    {
+        if (min < 0)
+        {
+            throw new ArgumentException("Minimum cardinality cannot be negative", nameof(min));
+        }
+
+        if (max.HasValue && max.Value < min)
+        {
+            throw new ArgumentException("Maximum cardinality cannot be less than minimum", nameof(max));
+        }
+
+        Min = min;
+        Max = max;
+    }
+
+    /// <summary>
+    /// Minimum number of elements (inclusive).
+    /// </summary>
+    public int Min { get; }
+
+    /// <summary>
+    /// Maximum number of elements (inclusive). Null means unbounded (*).
+    /// </summary>
+    public int? Max { get; }
+
+    /// <summary>
+    /// Returns true if the given count satisfies this cardinality constraint.
+    /// </summary>
+    public bool IsSatisfiedBy(int count)
+    {
+        if (count < Min)
+        {
+            return false;
+        }
+
+        if (Max.HasValue && count > Max.Value)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public override string ToString() => Max.HasValue ? $"{Min}..{Max}" : $"{Min}..*";
+}
+
+/// <summary>
 /// Represents a source element in a transformation rule.
 /// Example: src.name as vn where name.exists()
 /// </summary>
@@ -293,6 +346,7 @@ public class SourceExpression : Expression
         FhirPathExpression? check,
         FhirPathExpression? log,
         Expression? defaultValue = null,
+        Cardinality? cardinality = null,
         ISourcePositionInfo? location = null) : base(location)
     {
         Context = context ?? throw new ArgumentNullException(nameof(context));
@@ -302,6 +356,7 @@ public class SourceExpression : Expression
         Check = check;
         Log = log;
         Default = defaultValue;
+        Cardinality = cardinality;
     }
 
     public Expression Context { get; }
@@ -311,6 +366,7 @@ public class SourceExpression : Expression
     public FhirPathExpression? Check { get; }
     public FhirPathExpression? Log { get; }
     public Expression? Default { get; }
+    public Cardinality? Cardinality { get; }
 
     public override string ToString() => $"Source({Context})";
 }

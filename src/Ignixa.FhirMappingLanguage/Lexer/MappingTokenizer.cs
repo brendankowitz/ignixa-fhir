@@ -84,10 +84,12 @@ public static class MappingTokenizer
             // Multi-character operators (longest first)
             .Match(Span.EqualTo("::"), MappingTokenKind.DoubleColon)
             .Match(Span.EqualTo("->"), MappingTokenKind.Arrow)
+            .Match(Span.EqualTo(".."), MappingTokenKind.Range)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
             .Match(Character.EqualTo('.'), MappingTokenKind.Dot)
+            .Match(Character.EqualTo('*'), MappingTokenKind.Asterisk)
             .Match(Character.EqualTo(','), MappingTokenKind.Comma)
             .Match(Character.EqualTo(';'), MappingTokenKind.Semicolon)
             .Match(Character.EqualTo('('), MappingTokenKind.LeftParen)
@@ -162,10 +164,12 @@ public static class MappingTokenizer
             // Multi-character operators (longest first)
             .Match(Span.EqualTo("::"), MappingTokenKind.DoubleColon)
             .Match(Span.EqualTo("->"), MappingTokenKind.Arrow)
+            .Match(Span.EqualTo(".."), MappingTokenKind.Range)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
             .Match(Character.EqualTo('.'), MappingTokenKind.Dot)
+            .Match(Character.EqualTo('*'), MappingTokenKind.Asterisk)
             .Match(Character.EqualTo(','), MappingTokenKind.Comma)
             .Match(Character.EqualTo(';'), MappingTokenKind.Semicolon)
             .Match(Character.EqualTo('('), MappingTokenKind.LeftParen)

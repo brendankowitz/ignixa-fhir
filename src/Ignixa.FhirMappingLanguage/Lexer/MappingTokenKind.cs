@@ -57,9 +57,11 @@ public enum MappingTokenKind
     Equals,              // =
     Arrow,               // ->
     DoubleColon,         // ::
+    Range,               // .. (for cardinality)
     Dot,                 // .
     Comma,               // ,
     Semicolon,           // ;
+    Asterisk,            // * (for unbounded cardinality)
 
     // Delimiters
     LeftParen,           // (

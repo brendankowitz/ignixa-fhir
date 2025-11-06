@@ -386,6 +386,7 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Log clause execution - **COMPLETE**
 - ✅ Default value support - **COMPLETE**
 - ✅ List indexing (e.g., `src.name[0]`) - **COMPLETE**
+- ✅ **Cardinality constraints (e.g., `src.name 0..1`) - COMPLETE**
 
 **Completed Work**:
 - ✅ IndexExpression added to AST
@@ -397,12 +398,19 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ Negative index returns empty
 - ✅ Integration with where/check/log/default
 - ✅ Created ListIndexingTests.cs with 15+ test cases
-
-**Still Missing**:
-- ❌ Cardinality-based filtering (e.g., `src.name 0..1`)
-
-**Required Work**:
-- Support cardinality patterns in source expressions
+- ✅ Cardinality class with min..max support and IsSatisfiedBy method
+- ✅ Range (`..`) and Asterisk (`*`) tokens added to lexer
+- ✅ CardinalityParser recognizes `min..max` and `min..*` syntax
+- ✅ Cardinality validation in MappingEvaluator after where clause
+- ✅ Error reporting via CARDINALITY_ERROR code
+- ✅ Integration with Strict/Graceful error modes
+- ✅ Cardinality checked after where/default, before check/log
+- ✅ Created CardinalityTests.cs with 30+ test cases
+- ✅ Tests for Cardinality class logic
+- ✅ Parser integration tests
+- ✅ Strict mode tests (exceptions thrown)
+- ✅ Graceful mode tests (errors collected)
+- ✅ Integration tests with other clauses
 
 ## Testing Gaps
 
@@ -768,3 +776,24 @@ When implementing missing features:
   - ✅ Tests for Strict vs Graceful modes
   - ✅ Tests for partial results and error collection
   - ✅ Integration tests with complex mappings
+
+- **v0.12.0** (2025-01-XX): Cardinality constraints - **Advanced Source Patterns COMPLETE**
+  - ✅ Cardinality class with min and max properties
+  - ✅ IsSatisfiedBy method for validation logic
+  - ✅ Range (`..`) token added to lexer
+  - ✅ Asterisk (`*`) token added for unbounded cardinality
+  - ✅ CardinalityParser recognizes `min..max` and `min..*` syntax
+  - ✅ Cardinality property added to SourceExpression
+  - ✅ Parser integration: cardinality follows type declaration
+  - ✅ Evaluator enforces cardinality after where/default
+  - ✅ CARDINALITY_ERROR code for violations
+  - ✅ Integration with Strict mode (throws exceptions)
+  - ✅ Integration with Graceful mode (collects errors)
+  - ✅ Cardinality checked before check/log execution
+  - ✅ Cardinality tests (30+ test cases)
+  - ✅ Tests for Cardinality class (IsSatisfiedBy logic)
+  - ✅ Parser tests (0..1, 1..1, 1..*, 0..*)
+  - ✅ Strict mode tests (exception verification)
+  - ✅ Graceful mode tests (error collection)
+  - ✅ Integration tests with where/default/check/log
+  - ✅ Edge case tests (multiple sources, combined errors)
