@@ -258,14 +258,20 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
                     // in this case it can only be of one type.
                     string singleAllowedResourceType = allowedReferenceResourceTypes[0];
                     foreach (ISearchValue searchValue in searchValues)
+                    {
+                        if (searchValue == null)
+                            continue;
+
                         if (searchValue is ReferenceSearchValue rsr && string.IsNullOrEmpty(rsr.ResourceType))
                             results.Add(new ReferenceSearchValue(rsr.Kind, rsr.BaseUri, singleAllowedResourceType, rsr.ResourceId));
                         else
                             results.Add(searchValue);
+                    }
                 }
                 else
                 {
-                    results.AddRange(searchValues);
+                    // Filter out any null values that converters might return
+                    results.AddRange(searchValues.Where(sv => sv != null));
                 }
             }
         }

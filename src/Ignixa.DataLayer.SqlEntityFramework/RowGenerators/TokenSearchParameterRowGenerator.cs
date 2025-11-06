@@ -50,6 +50,11 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not TokenSearchValue tokenValue)
                     continue;
 
+                // Skip tokens without a code - the Code column is NOT NULL in the database
+                // Text-only tokens are indexed separately in the TokenText table
+                if (string.IsNullOrEmpty(tokenValue.Code))
+                    continue;
+
                 if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
                     continue;
 
@@ -62,17 +67,15 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt32(3, string.IsNullOrEmpty(tokenValue.System) ? 0 : tokenValue.System.GetHashCode(StringComparison.Ordinal));
 
                 // Handle code overflow for very long codes
-                if (tokenValue.Code != null && tokenValue.Code.Length > 128)
+                // Code is guaranteed to be non-null here due to guard at line 55
+                if (tokenValue.Code.Length > 128)
                 {
                     record.SetString(4, tokenValue.Code.Substring(0, 128));
                     record.SetString(5, tokenValue.Code.Substring(128));
                 }
                 else
                 {
-                    if (tokenValue.Code != null)
-                        record.SetString(4, tokenValue.Code);
-                    else
-                        record.SetDBNull(4);
+                    record.SetString(4, tokenValue.Code);
                     record.SetDBNull(5);
                 }
 
