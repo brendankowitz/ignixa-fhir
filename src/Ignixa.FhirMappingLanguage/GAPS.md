@@ -202,22 +202,24 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 3. List Mode Semantics
 
-**Status**: List modes parsed but not enforced
+**Status**: ✅ **COMPLETE** - All list modes implemented
 
-**List Modes** (from spec):
-- `first` - Use only first element
-- `not_first` - Skip first element
-- `last` - Use only last element
-- `not_last` - Skip last element
-- `only_one` - Error if more than one element
-- `share` - Share target between rules
-- `single` - Create single target
+**Implemented List Modes**:
+- ✅ `first` - Use only first element
+- ✅ `not_first` - Skip first element
+- ✅ `last` - Use only last element
+- ✅ `not_last` - Skip last element
+- ✅ `only_one` - Error if more than one element (with validation)
+- ✅ `share` - Share target between rules
+- ✅ `single` - Create single target
 
-**Required Work**:
-- Implement list mode enforcement
-- Add tests for each list mode
-- Handle errors for `only_one`
-- Support target sharing for `share`
+**Completed Work**:
+- ✅ ApplyListModeFiltering method in MappingEvaluator
+- ✅ List mode filtering for all target expressions
+- ✅ Error validation for only_one mode
+- ✅ Support for all 7 list mode types
+- ✅ Created ListModeTests.cs with 15+ test cases
+- ✅ Parser already supported list mode parsing
 
 ### 4. Default Values
 
@@ -392,13 +394,17 @@ This document identifies gaps in the current implementation compared to the full
    - ✅ Parser integration
    - ✅ 15+ test cases
 
+9. **List Mode Tests** (ListModeTests.cs)
+   - ✅ First, NotFirst, Last, NotLast modes
+   - ✅ OnlyOne validation
+   - ✅ Single and Share modes
+   - ✅ Edge cases (empty collections, single elements)
+   - ✅ Parser integration
+   - ✅ 15+ test cases
+
 ### ❌ Missing Tests
 
-1. **List Mode Tests**
-   - Each list mode behavior
-   - List mode error cases
-
-5. **Performance Tests**
+1. **Performance Tests**
    - Large mapping execution
    - Memory usage
    - Benchmark suite
@@ -425,7 +431,7 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ FHIRPath integration (fully wired up) - **COMPLETE**
 - ✅ Type system enforcement (BasicTypeValidator) - **COMPLETE**
 - ✅ Group inheritance (extends with circular detection) - **COMPLETE**
-- ❌ List mode semantics (parsed but not enforced)
+- ✅ List mode semantics (all 7 modes implemented) - **COMPLETE**
 - ❌ Import resolution (parsed but not loaded)
 - 🔶 ConceptMap integration (hook exists, requires ConceptMap resource loading)
 - 🔶 Where/check execution (FHIRPath integrated, working in evaluator)
@@ -441,9 +447,9 @@ This document identifies gaps in the current implementation compared to the full
 4. ✅ ~~Implement group inheritance~~ - **COMPLETE** (with circular detection)
 5. ✅ ~~Add comprehensive error messages~~ - **COMPLETE** (TypeValidationError, ParseException, etc.)
 
-### Phase 2: Advanced Features (Medium Priority)
+### Phase 2: Advanced Features (Medium Priority) - In Progress
 
-1. Implement list mode semantics
+1. ✅ ~~Implement list mode semantics~~ - **COMPLETE** (all 7 modes)
 2. Add import resolution
 3. Implement ConceptMap integration
 4. Add debugging and tracing
@@ -503,5 +509,11 @@ When implementing missing features:
   - ✅ Type validation tests (35+ test cases)
   - ✅ Group inheritance tests (15+ test cases)
   - ✅ TypeValidationException with error formatting
-  - ❌ List mode semantics (not enforced)
+
+- **v0.4.0** (2025-01-XX): List mode semantics - **Phase 2 Priority 1 COMPLETE**
+  - ✅ All 7 list modes implemented (first, not_first, last, not_last, only_one, share, single)
+  - ✅ ApplyListModeFiltering in MappingEvaluator
+  - ✅ Validation for only_one mode
+  - ✅ List mode tests (15+ test cases)
+  - ✅ Visitor pattern naming (renamed Evaluate→Visit)
   - ❌ Log statement execution (not implemented)

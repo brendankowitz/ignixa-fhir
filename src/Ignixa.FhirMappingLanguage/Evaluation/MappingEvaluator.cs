@@ -146,10 +146,10 @@ public class MappingEvaluator
             return;
         }
 
-        // Visit targets
+        // Visit targets with list mode filtering
         foreach (var target in rule.Targets)
         {
-            VisitTarget(target, context);
+            VisitTarget(target, context, sourceValues);
         }
 
         // Visit dependent rules
@@ -209,31 +209,73 @@ public class MappingEvaluator
         return contextValues;
     }
 
-    private void VisitTarget(TargetExpression target, MappingContext context)
+    private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<ITypedElement>> sourceValues)
     {
-        // If there's a transform, visit it
-        if (target.Transform != null)
-        {
-            var transformResult = VisitTransform(target.Transform, context);
+        // Determine the collection to iterate over (typically comes from source values)
+        // For now, we use all source values combined as the basis for list mode filtering
+        var allSourceElements = sourceValues.Values.SelectMany(v => v).ToList();
 
-            // Set the result to the target context if specified
-            if (target.Context != null && transformResult is ITypedElement element)
+        // Apply list mode filtering
+        var filteredElements = ApplyListModeFiltering(allSourceElements, target.ListMode);
+
+        // Process each filtered element
+        foreach (var sourceElement in filteredElements)
+        {
+            // If there's a transform, visit it
+            if (target.Transform != null)
             {
+                var transformResult = VisitTransform(target.Transform, context);
+
+                // Set the result to the target context if specified
+                if (target.Context != null && transformResult is ITypedElement element)
+                {
+                    if (target.Variable != null)
+                    {
+                        context.SetVariable(target.Variable, element);
+                    }
+                }
+            }
+            else if (target.Context != null)
+            {
+                // Simple assignment without transform
+                var contextValues = VisitExpression(target.Context, context);
                 if (target.Variable != null)
                 {
-                    context.SetVariable(target.Variable, element);
+                    context.SetVariable(target.Variable, contextValues.FirstOrDefault()!);
                 }
             }
         }
-        else if (target.Context != null)
+    }
+
+    private IEnumerable<ITypedElement> ApplyListModeFiltering(IReadOnlyList<ITypedElement> elements, ListMode? listMode)
+    {
+        if (!listMode.HasValue || elements.Count == 0)
         {
-            // Simple assignment without transform
-            var contextValues = VisitExpression(target.Context, context);
-            if (target.Variable != null)
-            {
-                context.SetVariable(target.Variable, contextValues.FirstOrDefault()!);
-            }
+            return elements;
         }
+
+        return listMode.Value switch
+        {
+            ListMode.First => elements.Take(1),
+            ListMode.NotFirst => elements.Skip(1),
+            ListMode.Last => elements.Skip(elements.Count - 1),
+            ListMode.NotLast => elements.Take(elements.Count - 1),
+            ListMode.OnlyOne => ValidateOnlyOne(elements),
+            ListMode.Share => elements, // Share means use the same target - handled differently
+            ListMode.Single => elements.Take(1), // Single creates one target regardless of source count
+            _ => throw new NotSupportedException($"List mode {listMode.Value} not yet implemented")
+        };
+    }
+
+    private IEnumerable<ITypedElement> ValidateOnlyOne(IReadOnlyList<ITypedElement> elements)
+    {
+        if (elements.Count != 1)
+        {
+            throw new InvalidOperationException(
+                $"List mode 'only_one' requires exactly one element, but found {elements.Count}");
+        }
+
+        return elements;
     }
 
     private object? VisitTransform(TransformExpression transform, MappingContext context)
