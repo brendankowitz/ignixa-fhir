@@ -209,6 +209,27 @@ public class MappingEvaluator
             }
         }
 
+        // Execute log statement if present
+        if (source.Log != null && source.Log is FhirPathExpression fhirPathLog)
+        {
+            foreach (var element in contextValues)
+            {
+                if (context.FhirPathEvaluator == null)
+                {
+                    throw new InvalidOperationException("FhirPathEvaluator not configured in context");
+                }
+
+                var result = context.FhirPathEvaluator(fhirPathLog.PathExpression, element);
+                var logMessage = FormatLogResult(result);
+
+                // Call logger if configured
+                if (context.Logger != null)
+                {
+                    context.Logger(logMessage);
+                }
+            }
+        }
+
         // Set variable if specified
         if (source.Variable != null)
         {
@@ -389,6 +410,29 @@ public class MappingEvaluator
         };
 
         return new PrimitiveElement(value, typeName);
+    }
+
+    private string FormatLogResult(IEnumerable<ITypedElement> result)
+    {
+        var elements = result.ToList();
+        if (!elements.Any())
+        {
+            return "(empty)";
+        }
+
+        if (elements.Count == 1)
+        {
+            var element = elements[0];
+            if (element.Value != null)
+            {
+                return element.Value.ToString() ?? "(null)";
+            }
+            return $"{element.InstanceType}: {element.Name}";
+        }
+
+        // Multiple elements - format as comma-separated list
+        return string.Join(", ", elements.Select(e =>
+            e.Value != null ? e.Value.ToString() : $"{e.InstanceType}: {e.Name}"));
     }
 
     /// <summary>

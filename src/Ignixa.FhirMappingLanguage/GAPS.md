@@ -164,21 +164,33 @@ This document identifies gaps in the current implementation compared to the full
 
 ### 6. Debugging and Tracing
 
-**Status**: Basic structure exists but minimal functionality
+**Status**: ✅ **BASIC IMPLEMENTATION COMPLETE** - Log and check statements implemented
 
-**Missing**:
-- `log()` statement execution
-- `check()` condition validation with error messages
-- Execution tracing for debugging
-- Stack trace on errors
-- Variable inspection during execution
+**Implemented**:
+- ✅ `log` statement execution with Logger callback
+- ✅ `check` condition validation with exceptions
+- ✅ Logger callback in MappingContext
+- ✅ FormatLogResult for readable log messages
+- ✅ Integration with where/check/log execution order
+- ✅ Empty result handling in logs
+- ✅ Multi-element logging support
 
-**Required Work**:
-- Implement logging infrastructure
-- Add check condition enforcement
-- Create debugging API
-- Add execution tracing mode
-- Provide detailed error messages with context
+**Completed Work**:
+- ✅ Added Logger callback to MappingContext
+- ✅ Implemented log statement execution in VisitSource
+- ✅ Check statement already implemented (throws exception on failure)
+- ✅ FormatLogResult method for formatting FHIRPath evaluation results
+- ✅ Created LogAndCheckTests.cs with 15+ test cases
+- ✅ Tests for check validation, log execution, combined scenarios
+
+**Partially Implemented**:
+- 🔶 Execution tracing (basic logging only, no full trace)
+- 🔶 Stack trace on errors (standard .NET stack traces)
+
+**Still Missing**:
+- ❌ Advanced execution tracing mode with detailed step tracking
+- ❌ Variable inspection API during execution
+- ❌ Performance profiling integration
 
 ## ❌ Not Implemented / Remaining Items
 
@@ -438,6 +450,18 @@ This document identifies gaps in the current implementation compared to the full
    - ✅ Resolver function creation
    - ✅ 15+ test cases
 
+12. **Log and Check Statement Tests** (LogAndCheckTests.cs)
+   - ✅ Check condition validation (true/false)
+   - ✅ Check with complex FHIRPath expressions
+   - ✅ Log statement execution with Logger callback
+   - ✅ Log with expression evaluation
+   - ✅ Log without logger configured (silent)
+   - ✅ Multiple elements logging
+   - ✅ Empty result logging
+   - ✅ Combined where/check/log scenarios
+   - ✅ Parser integration tests
+   - ✅ 15+ test cases
+
 ### ❌ Missing Tests
 
 1. **Performance Tests**
@@ -470,8 +494,7 @@ This document identifies gaps in the current implementation compared to the full
 - ✅ List mode semantics (all 7 modes implemented) - **COMPLETE**
 - ✅ Import resolution (full support with circular detection) - **COMPLETE**
 - ✅ ConceptMap integration (full support with caching) - **COMPLETE**
-- 🔶 Where/check execution (FHIRPath integrated, working in evaluator)
-- ❌ Log execution (parsed but not evaluated)
+- ✅ Where/check/log execution (fully implemented) - **COMPLETE**
 
 ## Priority Roadmap
 
@@ -483,13 +506,13 @@ This document identifies gaps in the current implementation compared to the full
 4. ✅ ~~Implement group inheritance~~ - **COMPLETE** (with circular detection)
 5. ✅ ~~Add comprehensive error messages~~ - **COMPLETE** (TypeValidationError, ParseException, etc.)
 
-### Phase 2: Advanced Features (Medium Priority) - In Progress
+### Phase 2: Advanced Features (Medium Priority) - ✅ **COMPLETE**
 
 1. ✅ ~~Implement list mode semantics~~ - **COMPLETE** (all 7 modes)
 2. ✅ ~~Add import resolution~~ - **COMPLETE** (with circular detection)
 3. ✅ ~~Implement ConceptMap integration~~ - **COMPLETE** (with caching)
-4. Add debugging and tracing (log execution)
-5. Support where/check/log execution
+4. ✅ ~~Add debugging and tracing~~ - **COMPLETE** (log/check execution)
+5. ✅ ~~Support where/check/log execution~~ - **COMPLETE** (all three implemented)
 
 ### Phase 3: Production Readiness (Medium Priority)
 
@@ -575,3 +598,15 @@ When implementing missing features:
   - ✅ Integration with translate() transform function
   - ✅ Resolver function for MappingContext
   - ✅ ConceptMap tests (15+ test cases)
+
+- **v0.7.0** (2025-01-XX): Log and check execution - **Phase 2 COMPLETE**
+  - ✅ Logger callback in MappingContext
+  - ✅ Log statement execution in VisitSource
+  - ✅ Check condition validation (already implemented)
+  - ✅ FormatLogResult for readable log output
+  - ✅ Support for multi-element logging
+  - ✅ Empty result handling
+  - ✅ Integration with where/check/log execution order
+  - ✅ Log and check tests (15+ test cases)
+  - ✅ Combined where/check/log scenario tests
+  - ✅ **Phase 2: Advanced Features - COMPLETE**
