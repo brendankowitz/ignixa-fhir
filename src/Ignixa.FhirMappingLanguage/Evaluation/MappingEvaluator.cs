@@ -46,7 +46,7 @@ public class MappingEvaluator
         // Execute each group in the map
         foreach (var group in map.Groups)
         {
-            EvaluateGroup(group, context);
+            EvaluateGroup(group, map, context);
         }
     }
 
@@ -70,11 +70,37 @@ public class MappingEvaluator
             throw new InvalidOperationException($"Group '{groupName}' not found in map");
         }
 
-        EvaluateGroup(group, context);
+        EvaluateGroup(group, map, context);
     }
 
-    private void EvaluateGroup(GroupExpression group, MappingContext context)
+    private void EvaluateGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<string>? visitedGroups = null)
     {
+        // Initialize visited groups set for circular inheritance detection
+        visitedGroups ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Check for circular inheritance
+        if (!visitedGroups.Add(group.Name))
+        {
+            throw new InvalidOperationException(
+                $"Circular group inheritance detected: group '{group.Name}' is part of an inheritance cycle");
+        }
+
+        // Handle group inheritance (extends)
+        if (!string.IsNullOrEmpty(group.Extends))
+        {
+            var baseGroup = map.Groups.FirstOrDefault(g => g.Name == group.Extends);
+            if (baseGroup == null)
+            {
+                throw new InvalidOperationException(
+                    $"Group '{group.Name}' extends '{group.Extends}', but base group not found");
+            }
+
+            // Execute base group first (recursive, handles transitive inheritance)
+            EvaluateGroup(baseGroup, map, context, visitedGroups);
+        }
+
+        // Then execute this group's own rules
+
         // Validate that all required parameters are provided
         foreach (var param in group.Parameters)
         {
