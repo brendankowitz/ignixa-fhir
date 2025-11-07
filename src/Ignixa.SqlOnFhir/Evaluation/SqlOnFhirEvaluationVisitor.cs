@@ -35,6 +35,9 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         _currentResource = resource;
         _currentContext = CreateEvaluationContext(viewDef);
 
+        // Set the root resource for SQL on FHIR v2 functions like getResourceKey()
+        _currentContext.RootResource = resource;
+
         return (IEnumerable<Dictionary<string, object?>>)viewDef.Accept(this)!;
     }
 
@@ -72,8 +75,8 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         {
             var selectExpr = node.Select[i];
 
-            // If no forEach, just add columns to existing rows
-            if (selectExpr.ForEach == null && selectExpr.ForEachOrNull == null)
+            // If no forEach/forEachOrNull/repeat/unionAll, just add columns to existing rows
+            if (selectExpr.ForEach == null && selectExpr.ForEachOrNull == null && selectExpr.Repeat.IsEmpty && selectExpr.UnionAll.IsEmpty)
             {
                 foreach (var row in currentRows)
                 {
@@ -86,7 +89,7 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
             }
             else
             {
-                // Has forEach: create Cartesian product
+                // Has forEach/forEachOrNull/repeat/unionAll: create Cartesian product
                 var selectRows = ((IEnumerable<Dictionary<string, object?>>)selectExpr.Accept(this)!).ToList();
 
                 if (selectRows.Count == 0)
@@ -142,8 +145,8 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     {
         ArgumentNullException.ThrowIfNull(_currentResource);
 
-        // If no forEach, evaluate columns directly against the resource
-        if (node.ForEach == null && node.ForEachOrNull == null)
+        // If no forEach/forEachOrNull/repeat, evaluate columns directly against the resource
+        if (node.ForEach == null && node.ForEachOrNull == null && node.Repeat.IsEmpty)
         {
             var row = EvaluateColumns(node.Columns);
 
@@ -153,6 +156,33 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
             // Process UnionAll groups (Concatenation)
             var finalRows = ProcessUnionAllConcat(rowsWithSelect, node.UnionAll);
             return finalRows;
+        }
+
+        // repeat: recursively traverse paths and collect all results
+        if (!node.Repeat.IsEmpty)
+        {
+            var allItems = RecursivelyCollectItems(_currentResource, node.Repeat);
+
+            var repeatRows = new List<Dictionary<string, object?>>();
+
+            foreach (var item in allItems)
+            {
+                // Temporarily switch context to the repeat item
+                var previousResource = _currentResource;
+                _currentResource = item;
+
+                var row = EvaluateColumns(node.Columns);
+
+                // Process nested SELECT and UnionAll WITHIN the repeat context
+                var rowsForThisItem = ProcessNestedSelectsCartesian(new[] { row }, node.NestedSelect);
+                rowsForThisItem = ProcessUnionAllConcat(rowsForThisItem, node.UnionAll);
+
+                repeatRows.AddRange(rowsForThisItem);
+
+                _currentResource = previousResource;
+            }
+
+            return repeatRows;
         }
 
         // forEach: unnest collection
@@ -217,25 +247,32 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
 
         // FHIRPath expression is already compiled - just evaluate it!
         var results = _evaluator.Evaluate(_currentResource, node.Path, _currentContext!);
+        var resultsList = results.ToList();
 
         // If collection=true, return all values as array
         if (node.Collection)
         {
-            var values = results.Select(ExtractValue).Select(v => ConvertToSqlType(v, node.Type)).ToArray();
+            var values = resultsList.Select(ExtractValue).Select(v => ConvertToSqlType(v, node.Type)).ToArray();
             return FormatArrayAsJson(values);
         }
 
         // Otherwise, return first value only (SQL on FHIR default behavior)
-        var firstResult = results.FirstOrDefault();
-        var rawValue = ExtractValue(firstResult);
-
-        // Special handling for boolean type: empty collection means false in FHIRPath
-        if (node.Type?.ToUpperInvariant() == "BOOLEAN" && rawValue == null)
+        // Per SQL on FHIR v2 spec Section 3.2.4: when collection=false, path MUST return at most one value
+        if (resultsList.Count > 1)
         {
-            return false;
+            throw new InvalidOperationException(
+                $"Column '{node.Name}' has collection=false but FHIRPath expression '{node.Path}' returned {resultsList.Count} values. " +
+                "Either set collection=true or ensure the path returns at most one value.");
         }
 
-        return ConvertToSqlType(rawValue, node.Type);
+        var firstResult = resultsList.FirstOrDefault();
+        var rawValue = ExtractValue(firstResult);
+
+        // Per FHIRPath N1 spec and SQL on FHIR v2 spec:
+        // - Empty FHIRPath collection → SQL null (including for boolean columns)
+        // - FHIRPath comparison operators return empty when operand is missing
+        var converted = ConvertToSqlType(rawValue, node.Type);
+        return converted;
     }
 
     /// <summary>
@@ -293,8 +330,9 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         var rows = currentRows.ToList();
 
         // Each nested select creates Cartesian product with existing rows
-        foreach (var nestedSelect in nestedSelects)
+        for (int i = 0; i < nestedSelects.Length; i++)
         {
+            var nestedSelect = nestedSelects[i];
             var newRows = new List<Dictionary<string, object?>>();
 
             foreach (var currentRow in rows)
@@ -303,12 +341,18 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
 
                 if (nestedRows.Count == 0)
                 {
-                    // No nested rows - keep current row as-is (empty collection case)
-                    newRows.Add(currentRow);
+                    // Cartesian product semantics: Only drop the row if nested select has forEach/forEachOrNull
+                    // Regular selects without forEach should preserve rows with null values for their columns
+                    if (nestedSelect.ForEach == null && nestedSelect.ForEachOrNull == null)
+                    {
+                        // No forEach/forEachOrNull: keep the row (columns will be null)
+                        newRows.Add(currentRow);
+                    }
+                    // If it has forEach/forEachOrNull: drop the row (Cartesian product with empty set)
                 }
                 else
                 {
-                    // Cartesian product: merge each nested row with current row
+                    // Normal Cartesian product: merge each nested row with current row
                     foreach (var nestedRow in nestedRows)
                     {
                         var mergedRow = new Dictionary<string, object?>(currentRow);
@@ -572,5 +616,54 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
             .Replace("\n", "\\n", StringComparison.Ordinal)
             .Replace("\r", "\\r", StringComparison.Ordinal)
             .Replace("\t", "\\t", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Recursively collects all items reachable via the repeat paths.
+    /// Implements breadth-first traversal to collect items at all nesting depths.
+    /// Per SQL on FHIR spec: evaluates repeat paths starting from the root, collecting
+    /// ALL items found at any depth (including the initial matches from root).
+    /// </summary>
+    /// <param name="root">The root element to start traversal from</param>
+    /// <param name="repeatPaths">Array of FHIRPath expressions defining recursive paths</param>
+    /// <returns>Flat list of all items found at any depth via the repeat paths</returns>
+    private List<ITypedElement> RecursivelyCollectItems(
+        ITypedElement root,
+        ImmutableArray<FhirPath.Expressions.Expression> repeatPaths)
+    {
+        var result = new List<ITypedElement>();
+
+        // Helper function for depth-first recursive traversal
+        void DepthFirstTraversal(ITypedElement element, int depth)
+        {
+            // Add current element to results
+            result.Add(element);
+
+            // Recursively follow all repeat paths from this element (depth-first)
+            foreach (var repeatPath in repeatPaths)
+            {
+                var children = _evaluator.Evaluate(element, repeatPath, _currentContext!);
+
+                // Recursively traverse each child
+                foreach (var child in children)
+                {
+                    DepthFirstTraversal(child, depth + 1);
+                }
+            }
+        }
+
+        // Start by evaluating repeat paths from the root (not the root itself)
+        foreach (var repeatPath in repeatPaths)
+        {
+            var initialItems = _evaluator.Evaluate(root, repeatPath, _currentContext!);
+
+            // Traverse each initial item depth-first
+            foreach (var item in initialItems)
+            {
+                DepthFirstTraversal(item, 0);
+            }
+        }
+
+        return result;
     }
 }

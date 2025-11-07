@@ -135,6 +135,19 @@ public static class ViewDefinitionExpressionParser
                 ? _compiler.Parse(forEachOrNullText)
                 : null;
 
+            // Parse repeat - array of FHIRPath expressions
+            var repeatNodes = selectNode.Children("repeat").ToList();
+            var repeatBuilder = ImmutableArray.CreateBuilder<FhirPath.Expressions.Expression>(repeatNodes.Count);
+            foreach (var repeatNode in repeatNodes)
+            {
+                var repeatPath = repeatNode.Text;
+                if (!string.IsNullOrEmpty(repeatPath))
+                {
+                    repeatBuilder.Add(_compiler.Parse(repeatPath));
+                }
+            }
+            var repeat = repeatBuilder.ToImmutable();
+
             // Parse columns
             var columns = ParseColumns(selectNode);
 
@@ -142,7 +155,11 @@ public static class ViewDefinitionExpressionParser
             var nestedSelects = ParseNestedSelectGroups(selectNode, "select");
             var unionAllGroups = ParseNestedSelectGroups(selectNode, "unionAll");
 
-            builder.Add(new SelectExpression(forEach, forEachOrNull, columns, nestedSelects, unionAllGroups));
+            // Per SQL on FHIR v2 spec Section 3.2.6: All SELECT expressions in unionAll
+            // must have same column names in same order
+            ValidateUnionAllColumns(unionAllGroups);
+
+            builder.Add(new SelectExpression(forEach, forEachOrNull, repeat, columns, nestedSelects, unionAllGroups));
         }
 
         return builder.ToImmutable();
@@ -218,6 +235,19 @@ public static class ViewDefinitionExpressionParser
                 ? _compiler.Parse(forEachOrNullText)
                 : null;
 
+            // Parse repeat - array of FHIRPath expressions
+            var repeatNodes = nestedNode.Children("repeat").ToList();
+            var repeatBuilder = ImmutableArray.CreateBuilder<FhirPath.Expressions.Expression>(repeatNodes.Count);
+            foreach (var repeatNode in repeatNodes)
+            {
+                var repeatPath = repeatNode.Text;
+                if (!string.IsNullOrEmpty(repeatPath))
+                {
+                    repeatBuilder.Add(_compiler.Parse(repeatPath));
+                }
+            }
+            var repeat = repeatBuilder.ToImmutable();
+
             var columns = ParseColumns(nestedNode);
 
             // Recursively parse both "select" and "unionAll" at deeper levels
@@ -227,6 +257,7 @@ public static class ViewDefinitionExpressionParser
             builder.Add(new SelectExpression(
                 forEach,
                 forEachOrNull,
+                repeat,
                 columns,
                 deeperNestedSelects,
                 deeperUnionAll));
@@ -266,5 +297,35 @@ public static class ViewDefinitionExpressionParser
         }
 
         return text;
+    }
+
+    /// <summary>
+    /// Validates that all SELECT expressions in a unionAll have the same column names in the same order.
+    /// Per SQL on FHIR v2 Specification Section 3.2.6.
+    /// </summary>
+    private static void ValidateUnionAllColumns(ImmutableArray<SelectExpression> unionAllGroups)
+    {
+        if (unionAllGroups.Length <= 1)
+        {
+            return; // Nothing to validate
+        }
+
+        // Get column names from first SELECT
+        var firstColumns = unionAllGroups[0].Columns.Select(c => c.Name).ToList();
+
+        // Validate all subsequent SELECTs have same columns in same order
+        for (int i = 1; i < unionAllGroups.Length; i++)
+        {
+            var currentColumns = unionAllGroups[i].Columns.Select(c => c.Name).ToList();
+
+            if (!firstColumns.SequenceEqual(currentColumns))
+            {
+                var firstColumnList = string.Join(", ", firstColumns);
+                var currentColumnList = string.Join(", ", currentColumns);
+                throw new InvalidOperationException(
+                    $"All SELECT expressions in unionAll must have the same columns in the same order. " +
+                    $"First SELECT has columns: [{firstColumnList}], but SELECT #{i + 1} has columns: [{currentColumnList}]");
+            }
+        }
     }
 }

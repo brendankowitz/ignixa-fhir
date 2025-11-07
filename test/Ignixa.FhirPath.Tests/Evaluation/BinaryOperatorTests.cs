@@ -273,10 +273,10 @@ public class BinaryOperatorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result); // False in FhirPath returns empty
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -335,10 +335,10 @@ public class BinaryOperatorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result); // False returns empty
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -381,10 +381,10 @@ public class BinaryOperatorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -423,10 +423,10 @@ public class BinaryOperatorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -451,10 +451,10 @@ public class BinaryOperatorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     #endregion

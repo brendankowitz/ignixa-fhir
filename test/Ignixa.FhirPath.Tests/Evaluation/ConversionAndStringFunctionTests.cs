@@ -162,10 +162,10 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result); // False in FhirPath returns empty
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -414,10 +414,10 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result); // False in FhirPath returns empty
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]

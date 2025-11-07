@@ -18,7 +18,7 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
     private readonly ISourceNode _source;
     private readonly IStructureDefinitionSummaryProvider _provider;
     private readonly IElementDefinitionSummary? _definition;
-    private readonly string? _parentPath; // Track parent path for BackboneElement lookups
+    private readonly string? _instanceType;
 
     // OPTIMIZATION: Cache structure definition (immutable, safe to cache per-instance)
     private readonly Lazy<IStructureDefinitionSummary?> _structureDefinition;
@@ -29,93 +29,95 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
     private readonly Lazy<ConcurrentDictionary<string, IElementDefinitionSummary?>> _childDefinitionCache =
         new(() => new ConcurrentDictionary<string, IElementDefinitionSummary?>());
 
-    public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null, string? parentPath = null)
+    /// <summary>
+    /// Public constructor for root elements (resources)
+    /// </summary>
+    public TypedElementOnSourceNode(ISourceNode source, IStructureDefinitionSummaryProvider provider, IElementDefinitionSummary? definition = null, string? instanceType = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _definition = definition;
-        _parentPath = parentPath;
+        _instanceType = instanceType ?? DeriveInstanceType(source, definition);
 
-        // Lazy initialization - only fetch structure definition if needed
+        // Lazy initialization - fetch structure definition when needed
         _structureDefinition = new Lazy<IStructureDefinitionSummary?>(() =>
         {
-            var currentType = InstanceType;
-            if (currentType == null) return null;
-
-            // Try to get structure definition by type name first
-            var structureDef = _provider.Provide(currentType);
-
-            // If the type is BackboneElement and we have a parent path, try the fully qualified path
-            if (structureDef != null && structureDef.TypeName == "BackboneElement" && !string.IsNullOrEmpty(_parentPath))
+            // Use the derived instance type to get structure definition
+            if (!string.IsNullOrEmpty(_instanceType))
             {
-                // Try fully qualified name like "AuditEvent.Agent"
-                var fullyQualifiedName = $"{_parentPath}.{char.ToUpperInvariant(_source.Name[0])}{_source.Name.Substring(1)}";
-                var specificDef = _provider.Provide(fullyQualifiedName);
-                if (specificDef != null)
-                {
-                    return specificDef;
-                }
+                return _provider.Provide(_instanceType);
+            }
 
-                // Also try lowercase version like "AuditEvent.agent"
-                fullyQualifiedName = $"{_parentPath}.{_source.Name}";
-                specificDef = _provider.Provide(fullyQualifiedName);
-                if (specificDef != null)
+            return null;
+        });
+    }
+
+    /// <summary>
+    /// Derives the instance type for an element based on its source node and definition.
+    /// KEY INSIGHT: For BackboneElements, the ElementName IS the qualified type name (e.g., "QuestionnaireResponse.item").
+    /// </summary>
+    private static string? DeriveInstanceType(ISourceNode source, IElementDefinitionSummary? definition)
+    {
+        // For resources, check for resourceType element first
+        var resourceTypeIndicator = source.Children("resourceType").FirstOrDefault()?.Text;
+
+        if (definition != null && definition.IsResource)
+        {
+            return resourceTypeIndicator;
+        }
+
+        // For choice elements (value[x]), extract type from property name suffix
+        if (definition != null && (definition.IsChoiceElement || definition.ElementName?.EndsWith("[x]", StringComparison.Ordinal) == true))
+        {
+            var elementBaseName = definition.ElementName?.TrimEnd("[x]".ToCharArray());
+            if (!string.IsNullOrEmpty(elementBaseName) && source.Name.StartsWith(elementBaseName, StringComparison.Ordinal))
+            {
+                var suffix = source.Name.Substring(elementBaseName.Length);
+                if (!string.IsNullOrEmpty(suffix))
                 {
-                    return specificDef;
+                    var normalized = NormalizeFhirPathTypeName(suffix);
+                    return normalized;
+                }
+            }
+        }
+
+        // For elements with a single type, check if it's a BackboneElement
+        if (definition?.Type?.Length == 1)
+        {
+            var typeName = definition.Type[0].GetTypeName();
+
+            // BackboneElements have qualified ElementName like "QuestionnaireResponse.item"
+            // This IS the InstanceType we want (not generic "BackboneElement")
+            if (typeName == "BackboneElement" || typeName == "Element")
+            {
+                // Use the ElementName as the InstanceType (it's qualified for BackboneElements)
+                if (!string.IsNullOrEmpty(definition.ElementName))
+                {
+                    return definition.ElementName;
                 }
             }
 
-            return structureDef;
-        });
+            return typeName;
+        }
+
+        // Fallback for resources without definition
+        if (!string.IsNullOrEmpty(resourceTypeIndicator))
+        {
+            return resourceTypeIndicator;
+        }
+
+        // Fallback to element name if uppercase (likely a resource or complex type)
+        if (!string.IsNullOrEmpty(source.Name) && char.IsUpper(source.Name[0]))
+        {
+            return source.Name;
+        }
+
+        return null;
     }
 
     public string Name => _source.Name;
 
-    public string? InstanceType
-    {
-        get
-        {
-            // If we have a definition with a single type, use that
-            if (_definition?.Type?.Length == 1)
-            {
-                // Use GetTypeName extension method to handle both IStructureDefinitionSummary and IStructureDefinitionReference
-                return _definition.Type[0].GetTypeName();
-            }
-
-            // Handle choice types (e.g., value[x] → valueQuantity means type is "Quantity")
-            // Check if this is a choice element with multiple types
-            if (_definition != null && (_definition.IsChoiceElement || _definition.ElementName?.EndsWith("[x]", StringComparison.Ordinal) == true))
-            {
-                // Extract type from property name suffix
-                // For "valueQuantity" with definition "value[x]", extract "Quantity"
-                var elementBaseName = _definition.ElementName?.TrimEnd("[x]".ToCharArray());
-                if (!string.IsNullOrEmpty(elementBaseName) && _source.Name.StartsWith(elementBaseName, StringComparison.Ordinal))
-                {
-                    var typeSuffix = _source.Name.Substring(elementBaseName.Length);
-                    if (!string.IsNullOrEmpty(typeSuffix))
-                    {
-                        // Return the extracted type (e.g., "Quantity", "String", "CodeableConcept")
-                        return typeSuffix;
-                    }
-                }
-            }
-
-            // For resources, check for resourceType element
-            var resourceType = _source.Children("resourceType").FirstOrDefault()?.Text;
-            if (!string.IsNullOrEmpty(resourceType))
-            {
-                return resourceType;
-            }
-
-            // Fallback to element name if it's uppercase (likely a resource or complex type)
-            if (!string.IsNullOrEmpty(_source.Name) && char.IsUpper(_source.Name[0]))
-            {
-                return _source.Name;
-            }
-
-            return null;
-        }
-    }
+    public string? InstanceType => _instanceType; // Just return the stored field
 
     public object? Value
     {
@@ -185,34 +187,51 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
             // OPTIMIZATION: Use cached structure definition lookup (immutable per instance)
             var cachedStructureDef = _structureDefinition.Value;
             IElementDefinitionSummary? childDef = null;
+            string? childInstanceType = null;
 
             if (cachedStructureDef != null)
             {
+                // For BackboneElements, check if a qualified structure exists (e.g., "QuestionnaireResponse.item")
+                var qualifiedName = $"{cachedStructureDef.TypeName}.{child.Name}";
+                var qualifiedStructDef = _provider.Provide(qualifiedName);
+
+                if (qualifiedStructDef != null)
+                {
+                    // This child is a BackboneElement with its own structure definition
+                    // Use the qualified typename directly as the instance type
+                    childInstanceType = qualifiedStructDef.TypeName;
+                }
+                else
+                {
+                    // Check for recursive BackboneElements (e.g., QuestionnaireResponse.item.item)
+                    // The parent InstanceType might already be the qualified name we need
+                    // Extract last segment of parent's TypeName and compare with child name
+                    var parentTypeName = cachedStructureDef.TypeName;
+                    var lastSegment = parentTypeName.Contains('.', StringComparison.Ordinal)
+                        ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
+                        : parentTypeName;
+
+                    // Case-insensitive comparison for recursion check
+                    if (child.Name.Equals(lastSegment, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // This is a recursive element - use the parent's qualified type
+                        childInstanceType = parentTypeName;
+                    }
+                }
+
                 // Use child definition cache to avoid repeated lookups
                 childDef = GetCachedChildDefinition(child.Name, cachedStructureDef);
             }
 
-            // Build parent path for BackboneElement children
-            // For resource root, use resource type name (e.g., "AuditEvent")
-            // For nested elements, append element name (e.g., "AuditEvent.agent")
-            string? childParentPath = null;
-            if (cachedStructureDef != null && cachedStructureDef.IsResource)
+            // If we didn't already determine the instance type (not a BackboneElement),
+            // derive it using the standard method
+            if (childInstanceType == null)
             {
-                // Root resource element
-                childParentPath = cachedStructureDef.TypeName;
-            }
-            else if (!string.IsNullOrEmpty(_parentPath))
-            {
-                // Nested element
-                childParentPath = $"{_parentPath}.{_source.Name}";
-            }
-            else if (InstanceType != null && char.IsUpper(InstanceType[0]))
-            {
-                // Current element is likely a resource or type name
-                childParentPath = InstanceType;
+                childInstanceType = DeriveInstanceType(child, childDef);
             }
 
-            yield return new TypedElementOnSourceNode(child, _provider, childDef, childParentPath);
+            // Create child node with explicit instance type
+            yield return new TypedElementOnSourceNode(child, _provider, childDef, childInstanceType);
         }
     }
 
@@ -235,14 +254,24 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
             return cachedDef;
 
         // Cache miss: Look up definition
-        // First try exact match (for unqualified names like "value")
-        var childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == childName);
+        // For BackboneElements, try to get the qualified structure definition directly
+        // (e.g., provider.Provide("QuestionnaireResponse.item"))
+        var qualifiedName = $"{cachedStructureDef.TypeName}.{childName}";
+        var qualifiedStructDef = _provider.Provide(qualifiedName);
 
-        // If no exact match, try qualified name (e.g., "Quantity.value")
+        // If we found a qualified structure definition for this child (it's a BackboneElement),
+        // get its root element as the definition
+        IElementDefinitionSummary? childDef = null;
+        if (qualifiedStructDef != null)
+        {
+            // Use the root element of the qualified structure
+            childDef = qualifiedStructDef.GetElements().FirstOrDefault();
+        }
+
+        // If no qualified structure def, try exact match from parent's elements (for primitives/simple types)
         if (childDef == null)
         {
-            var qualifiedName = $"{cachedStructureDef.TypeName}.{childName}";
-            childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == qualifiedName);
+            childDef = cachedStructureDef.GetElements().FirstOrDefault(e => e.ElementName == childName);
         }
 
         // If still no match, check if this is a choice type variant (e.g., valueString for value[x])
@@ -298,6 +327,35 @@ internal class TypedElementOnSourceNode : ITypedElement, IAnnotated
         // Cache the result (including null) - ConcurrentDictionary makes this thread-safe
         cache.TryAdd(childName, childDef);
         return childDef;
+    }
+
+    /// <summary>
+    /// Normalizes FHIR type names extracted from choice elements to match FHIRPath conventions.
+    /// Primitive type names are lowercase (e.g., "String" → "string", "Integer" → "integer"),
+    /// while complex types remain capitalized (e.g., "Quantity", "CodeableConcept").
+    /// </summary>
+    /// <param name="typeName">The type name extracted from the choice element suffix (e.g., "String", "Quantity").</param>
+    /// <returns>The normalized type name per FHIRPath conventions.</returns>
+    private static string NormalizeFhirPathTypeName(string typeName)
+    {
+        // FHIR primitive types that should be lowercase in FHIRPath
+        // Reference: http://hl7.org/fhir/datatypes.html and FHIRPath specification
+        var primitiveLowercase = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "string", "integer", "boolean", "decimal",
+            "date", "dateTime", "time", "code",
+            "uri", "url", "canonical", "uuid", "oid", "id",
+            "markdown", "base64Binary", "instant",
+            "unsignedInt", "positiveInt", "integer64"
+        };
+
+        // If it's a primitive type, return lowercase version
+        // FHIRPath type names for primitives are lowercase per specification, ToLowerInvariant is intentional
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        return primitiveLowercase.Contains(typeName)
+            ? typeName.ToLowerInvariant()
+            : typeName; // Keep complex types as-is (Quantity, CodeableConcept, etc.)
+#pragma warning restore CA1308 // Normalize strings to uppercase
     }
 
     public IEnumerable<object> Annotations(Type type)

@@ -35,4 +35,14 @@ public class SelectGroup
     /// If the array is empty, one row is created with null values for array-dependent columns.
     /// </summary>
     public string? ForEachOrNull { get; set; }
+
+    /// <summary>
+    /// List of FHIRPath expressions that define paths to recursively traverse.
+    /// The view runner will recursively follow each path to any depth, collecting results
+    /// from all levels. All results are combined using a union operation.
+    /// Example: ["item", "answer.item"] will recursively collect all items at any nesting depth.
+    /// </summary>
+#pragma warning disable CA2227 // Collection properties should be read-only
+    public IList<string>? Repeat { get; set; }
+#pragma warning restore CA2227 // Collection properties should be read-only
 }

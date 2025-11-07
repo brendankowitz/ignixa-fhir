@@ -169,6 +169,10 @@ public class FhirPathEvaluator
             "extension" => EvaluateExtension(focusElements, func.Arguments, context),
             "resolve" => EvaluateResolve(focusElements, context),
 
+            // SQL on FHIR v2 Reference functions
+            "getresourcekey" => EvaluateGetResourceKey(context),
+            "getreferencekey" => EvaluateGetReferenceKey(focusElements, func.Arguments),
+
             // Utility functions
             "trace" => EvaluateTrace(focusElements, func.Arguments, context),
             "now" => EvaluateNow(),
@@ -230,13 +234,16 @@ public class FhirPathEvaluator
             exists = focus.Any();
         }
 
-        return exists ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        // This ensures columns with type: "boolean" get true/false/null, not true/null
+        return new[] { CreateBoolean(exists) };
     }
 
     private IEnumerable<ITypedElement> EvaluateEmpty(IEnumerable<ITypedElement> focus)
     {
         var isEmpty = !focus.Any();
-        return isEmpty ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(isEmpty) };
     }
 
     private IEnumerable<ITypedElement> EvaluateCount(IEnumerable<ITypedElement> focus)
@@ -316,7 +323,8 @@ public class FhirPathEvaluator
             return result.Any() && IsTrue(result);
         });
 
-        return allMatch ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(allMatch) };
     }
 
     private IEnumerable<ITypedElement> EvaluateAny(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments, EvaluationContext context)
@@ -324,7 +332,8 @@ public class FhirPathEvaluator
         if (arguments.Count == 0)
         {
             // any() without criteria: returns true if collection is not empty
-            return focus.Any() ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+            // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+            return new[] { CreateBoolean(focus.Any()) };
         }
 
         var criteria = arguments[0];
@@ -334,7 +343,8 @@ public class FhirPathEvaluator
             return result.Any() && IsTrue(result);
         });
 
-        return anyMatch ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(anyMatch) };
     }
 
     // Subsetting functions
@@ -425,17 +435,20 @@ public class FhirPathEvaluator
             return new[] { CreateBoolean(true) }; // Empty collection returns true
 
         var allTrue = list.All(e => e.Value is bool b && b);
-        return allTrue ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(allTrue) };
     }
 
     private IEnumerable<ITypedElement> EvaluateAnyTrue(IEnumerable<ITypedElement> focus)
     {
         var list = focus.ToList();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        // Empty collection means false (no true values found)
         if (list.Count == 0)
-            return Enumerable.Empty<ITypedElement>(); // Empty collection returns false
+            return new[] { CreateBoolean(false) };
 
         var anyTrue = list.Any(e => e.Value is bool b && b);
-        return anyTrue ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        return new[] { CreateBoolean(anyTrue) };
     }
 
     private IEnumerable<ITypedElement> EvaluateAllFalse(IEnumerable<ITypedElement> focus)
@@ -445,17 +458,20 @@ public class FhirPathEvaluator
             return new[] { CreateBoolean(true) }; // Empty collection returns true
 
         var allFalse = list.All(e => e.Value is bool b && !b);
-        return allFalse ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(allFalse) };
     }
 
     private IEnumerable<ITypedElement> EvaluateAnyFalse(IEnumerable<ITypedElement> focus)
     {
         var list = focus.ToList();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        // Empty collection means false (no false values found)
         if (list.Count == 0)
-            return Enumerable.Empty<ITypedElement>(); // Empty collection returns false
+            return new[] { CreateBoolean(false) };
 
         var anyFalse = list.Any(e => e.Value is bool b && !b);
-        return anyFalse ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        return new[] { CreateBoolean(anyFalse) };
     }
 
     // Set operations
@@ -473,7 +489,8 @@ public class FhirPathEvaluator
 
         // Check if all focus items are in other
         var isSubset = focusList.All(f => other.Any(o => AreEqual(o.Value, f.Value)));
-        return isSubset ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(isSubset) };
     }
 
     private IEnumerable<ITypedElement> EvaluateSupersetOf(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments, EvaluationContext context)
@@ -490,7 +507,8 @@ public class FhirPathEvaluator
 
         // Check if all other items are in focus
         var isSuperset = other.All(o => focusList.Any(f => AreEqual(f.Value, o.Value)));
-        return isSuperset ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(isSuperset) };
     }
 
     private IEnumerable<ITypedElement> EvaluateIsDistinct(IEnumerable<ITypedElement> focus)
@@ -498,7 +516,8 @@ public class FhirPathEvaluator
         var list = focus.ToList();
         var distinctCount = list.Select(e => e.Value).Distinct(new ObjectEqualityComparer()).Count();
         var isDistinct = distinctCount == list.Count;
-        return isDistinct ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>();
+        // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+        return new[] { CreateBoolean(isDistinct) };
     }
 
     // Filtering and projection functions
@@ -540,7 +559,8 @@ public class FhirPathEvaluator
 
         if (arguments[0] is IdentifierExpression idExpr)
         {
-            // Direct identifier like ofType(string)
+            // Type specifier: ofType(string)
+            // Parser correctly handles this per FHIRPath spec
             typeName = idExpr.Name;
         }
         else
@@ -557,10 +577,9 @@ public class FhirPathEvaluator
             return Enumerable.Empty<ITypedElement>();
 
         // Case-insensitive type name comparison
-        var typeNameUpper = typeName.ToUpperInvariant();
+        // Filter elements where InstanceType matches the requested type name
         return focus.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&
-                               e.InstanceType.Equals(typeName, System.StringComparison.OrdinalIgnoreCase) ||
-                               e.InstanceType?.ToUpperInvariant() == typeNameUpper);
+                               e.InstanceType.Equals(typeName, StringComparison.OrdinalIgnoreCase));
     }
 
     private IEnumerable<ITypedElement> EvaluateAs(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments)
@@ -1096,8 +1115,14 @@ public class FhirPathEvaluator
                 DateTime dt => CreateString(GetDateTimeLowBoundary(dt)),
                 DateTimeOffset dto => CreateString(GetDateTimeOffsetLowBoundary(dto)),
 
-                // String dates (partial dates)
+                // String dateTime (when element type is dateTime)
+                string s when IsDateLike(s) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => CreateString(GetStringDateTimeLowBoundary(s)),
+
+                // String dates (partial dates, when element type is date)
                 string s when IsDateLike(s) => CreateString(GetStringDateLowBoundary(s)),
+
+                // String times (partial times)
+                string s when IsTimeLike(s) => CreateString(GetStringTimeLowBoundary(s)),
 
                 // Unsupported type: return no result
                 _ => null
@@ -1135,8 +1160,14 @@ public class FhirPathEvaluator
                 DateTime dt => CreateString(GetDateTimeHighBoundary(dt)),
                 DateTimeOffset dto => CreateString(GetDateTimeOffsetHighBoundary(dto)),
 
-                // String dates (partial dates)
+                // String dateTime (when element type is dateTime)
+                string s when IsDateLike(s) && string.Equals(element.InstanceType, "dateTime", StringComparison.OrdinalIgnoreCase) => CreateString(GetStringDateTimeHighBoundary(s)),
+
+                // String dates (partial dates, when element type is date)
                 string s when IsDateLike(s) => CreateString(GetStringDateHighBoundary(s)),
+
+                // String times (partial times)
+                string s when IsTimeLike(s) => CreateString(GetStringTimeHighBoundary(s)),
 
                 // Unsupported type: return no result
                 _ => null
@@ -1198,10 +1229,11 @@ public class FhirPathEvaluator
     private static string GetStringDateLowBoundary(string dateString)
     {
         // Parse partial date string and expand to the start of the period
+        // Returns just a date (no time component) per SQL on FHIR v2 spec
         // Examples:
-        // "1970" -> "1970-01-01T00:00:00.000+14:00"
-        // "1970-06" -> "1970-06-01T00:00:00.000+14:00"
-        // "1970-06-15" -> "1970-06-15T00:00:00.000+14:00"
+        // "1970" -> "1970-01-01"
+        // "1970-06" -> "1970-06-01"
+        // "1970-06-15" -> "1970-06-15" (already complete)
         var parts = dateString.Split('-');
 
         if (parts.Length < 1)
@@ -1213,17 +1245,18 @@ public class FhirPathEvaluator
         int month = parts.Length > 1 ? int.Parse(parts[1]) : 1;
         int day = parts.Length > 2 ? int.Parse(parts[2]) : 1;
 
-        var dt = new DateTime(year, month, day, 0, 0, 0, 0);
-        return dt.ToString("yyyy-MM-ddTHH:mm:ss.fff+14:00");
+        // Return date only (yyyy-MM-dd format)
+        return $"{year:D4}-{month:D2}-{day:D2}";
     }
 
     private static string GetStringDateHighBoundary(string dateString)
     {
         // Parse partial date string and expand to the end of the period
+        // Returns just a date (no time component) per SQL on FHIR v2 spec
         // Examples:
-        // "1970" -> "1970-12-31T23:59:59.999-12:00"
-        // "1970-06" -> "1970-06-30T23:59:59.999-12:00"
-        // "1970-06-15" -> "1970-06-15T23:59:59.999-12:00"
+        // "1970" -> "1970-12-31"
+        // "1970-06" -> "1970-06-30"
+        // "1970-06-15" -> "1970-06-15" (already complete)
         var parts = dateString.Split('-');
 
         if (parts.Length < 1)
@@ -1235,8 +1268,129 @@ public class FhirPathEvaluator
         int month = parts.Length > 1 ? int.Parse(parts[1]) : 12;
         int day = parts.Length > 2 ? int.Parse(parts[2]) : DateTime.DaysInMonth(year, month);
 
-        var dt = new DateTime(year, month, day, 23, 59, 59, 999);
-        return dt.ToString("yyyy-MM-ddTHH:mm:ss.fff-12:00");
+        // Return date only (yyyy-MM-dd format)
+        return $"{year:D4}-{month:D2}-{day:D2}";
+    }
+
+    private static string GetStringDateTimeLowBoundary(string dateString)
+    {
+        // Parse partial date string and expand to the start of the period with UTC+14:00 timezone
+        // Returns dateTime format (with time and timezone) per SQL on FHIR v2 spec
+        // Examples:
+        // "2010-10-10" -> "2010-10-10T00:00:00.000+14:00"
+        // "2010-10" -> "2010-10-01T00:00:00.000+14:00"
+        // "2010" -> "2010-01-01T00:00:00.000+14:00"
+        var parts = dateString.Split('-');
+
+        if (parts.Length < 1)
+        {
+            return dateString;
+        }
+
+        int year = int.Parse(parts[0]);
+        int month = parts.Length > 1 ? int.Parse(parts[1]) : 1;
+        int day = parts.Length > 2 ? int.Parse(parts[2]) : 1;
+
+        // Return dateTime with UTC+14:00 timezone (yyyy-MM-ddTHH:mm:ss.fff+14:00 format)
+        return $"{year:D4}-{month:D2}-{day:D2}T00:00:00.000+14:00";
+    }
+
+    private static string GetStringDateTimeHighBoundary(string dateString)
+    {
+        // Parse partial date string and expand to the end of the period with UTC-12:00 timezone
+        // Returns dateTime format (with time and timezone) per SQL on FHIR v2 spec
+        // Examples:
+        // "2010-10-10" -> "2010-10-10T23:59:59.999-12:00"
+        // "2010-10" -> "2010-10-31T23:59:59.999-12:00"
+        // "2010" -> "2010-12-31T23:59:59.999-12:00"
+        var parts = dateString.Split('-');
+
+        if (parts.Length < 1)
+        {
+            return dateString;
+        }
+
+        int year = int.Parse(parts[0]);
+        int month = parts.Length > 1 ? int.Parse(parts[1]) : 12;
+        int day = parts.Length > 2 ? int.Parse(parts[2]) : DateTime.DaysInMonth(year, month);
+
+        // Return dateTime with UTC-12:00 timezone (yyyy-MM-ddTHH:mm:ss.fff-12:00 format)
+        return $"{year:D4}-{month:D2}-{day:D2}T23:59:59.999-12:00";
+    }
+
+    private static string GetStringTimeLowBoundary(string timeString)
+    {
+        // Parse partial time string and expand to the start of the period
+        // Examples:
+        // "12" -> "12:00:00.000"
+        // "12:34" -> "12:34:00.000"
+        // "12:34:56" -> "12:34:56.000"
+        // "12:34:56.789" -> "12:34:56.789" (already complete)
+        var parts = timeString.Split(':', '.');
+
+        if (parts.Length < 1)
+        {
+            return timeString;
+        }
+
+        int hour = int.Parse(parts[0]);
+        int minute = parts.Length > 1 ? int.Parse(parts[1]) : 0;
+        int second = parts.Length > 2 ? int.Parse(parts[2]) : 0;
+        int millisecond = parts.Length > 3 ? int.Parse(parts[3].PadRight(3, '0').Substring(0, 3)) : 0;
+
+        // Return time with milliseconds (HH:mm:ss.fff format)
+        return $"{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}";
+    }
+
+    private static string GetStringTimeHighBoundary(string timeString)
+    {
+        // Parse partial time string and expand to the end of the period
+        // Examples:
+        // "12" -> "12:59:59.999"
+        // "12:34" -> "12:34:59.999"
+        // "12:34:56" -> "12:34:56.999"
+        // "12:34:56.789" -> "12:34:56.789" (already complete)
+        var parts = timeString.Split(':', '.');
+
+        if (parts.Length < 1)
+        {
+            return timeString;
+        }
+
+        int hour = int.Parse(parts[0]);
+        int minute = parts.Length > 1 ? int.Parse(parts[1]) : 59;
+        int second = parts.Length > 2 ? int.Parse(parts[2]) : 59;
+        int millisecond = parts.Length > 3 ? int.Parse(parts[3].PadRight(3, '0').Substring(0, 3)) : 999;
+
+        // Return time with milliseconds (HH:mm:ss.fff format)
+        return $"{hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}";
+    }
+
+    private static bool IsTimeLike(string value)
+    {
+        // Check if string looks like a time (HH or HH:mm or HH:mm:ss or HH:mm:ss.fff)
+        // Time format uses colons and optional dot for milliseconds
+        if (value.Contains('-', StringComparison.Ordinal))
+        {
+            return false; // Has dashes, likely a date
+        }
+
+        var parts = value.Split(':', '.');
+        if (parts.Length < 1 || parts.Length > 4)
+        {
+            return false;
+        }
+
+        // Check if all parts are numeric
+        foreach (var part in parts)
+        {
+            if (!int.TryParse(part, out _))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool IsDateLike(string value)
@@ -1377,6 +1531,94 @@ public class FhirPathEvaluator
         return results;
     }
 
+    // SQL on FHIR v2 Reference functions (Section 3.2.8)
+    private IEnumerable<ITypedElement> EvaluateGetResourceKey(EvaluationContext context)
+    {
+        // Per SQL on FHIR v2 spec: getResourceKey() returns "{resourceType}/{id}" for the ROOT resource
+        // This enables JOINs across resources and should always reference the root, not the current focus
+        var rootResource = context.RootResource ?? context.Resource;
+        if (rootResource == null)
+        {
+            yield break; // No root resource available
+        }
+
+        // Get resource type from InstanceType
+        var resourceType = rootResource.InstanceType;
+        if (string.IsNullOrEmpty(resourceType))
+        {
+            yield break; // No resource type
+        }
+
+        // Get id from the "id" child element
+        var idElement = rootResource.Children("id").FirstOrDefault();
+        if (idElement == null)
+        {
+            yield break; // No id
+        }
+
+        var id = idElement.Value?.ToString();
+        if (string.IsNullOrEmpty(id))
+        {
+            yield break; // Empty id
+        }
+
+        // Return "{resourceType}/{id}"
+        var resourceKey = $"{resourceType}/{id}";
+        yield return new PrimitiveElement(resourceKey, "string");
+    }
+
+    private IEnumerable<ITypedElement> EvaluateGetReferenceKey(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments)
+    {
+        // Per SQL on FHIR v2 spec: getReferenceKey([type]) extracts reference from a Reference element
+        // Optional type parameter filters by resource type
+        // Returns empty collection if reference doesn't match specified type
+
+        // Parse optional type argument
+        string? filterType = null;
+        if (arguments.Count > 0)
+        {
+            // Type argument should be a simple identifier (e.g., "Patient", "Observation")
+            if (arguments[0] is IdentifierExpression identExpr)
+            {
+                filterType = identExpr.Name;
+            }
+            else
+            {
+                // Invalid argument - return empty
+                yield break;
+            }
+        }
+
+        foreach (var element in focus)
+        {
+            // Get the "reference" child element from the Reference
+            var referenceElement = element.Children("reference").FirstOrDefault();
+            if (referenceElement == null)
+            {
+                continue; // Skip if no reference property
+            }
+
+            var reference = referenceElement.Value?.ToString();
+            if (string.IsNullOrEmpty(reference))
+            {
+                continue; // Skip if reference is empty
+            }
+
+            // If type filter specified, check if reference starts with "{type}/"
+            if (filterType != null)
+            {
+                var expectedPrefix = $"{filterType}/";
+                if (!reference.StartsWith(expectedPrefix, StringComparison.Ordinal))
+                {
+                    continue; // Type mismatch - skip this reference
+                }
+            }
+
+            // Return the reference string
+            yield return new PrimitiveElement(reference, "string");
+        }
+    }
+
     // Utility functions
     private IEnumerable<ITypedElement> EvaluateTrace(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments, EvaluationContext context)
     {
@@ -1458,8 +1700,12 @@ public class FhirPathEvaluator
     // Helper: Convert boolean result to FhirPath collection
     private IEnumerable<ITypedElement> ReturnBoolean(bool? result)
     {
+        // Per FHIRPath spec:
+        // - true → collection with boolean true
+        // - false → collection with boolean false
+        // - null → empty collection
         return result.HasValue
-            ? (result.Value ? new[] { CreateBoolean(true) } : Enumerable.Empty<ITypedElement>())
+            ? new[] { CreateBoolean(result.Value) }
             : Enumerable.Empty<ITypedElement>();
     }
 
@@ -1811,10 +2057,11 @@ public class FhirPathEvaluator
             return Enumerable.Empty<ITypedElement>();
         }
 
-        // For named constants, the variable must exist
+        // Per FHIRPath specification, accessing undefined variables returns empty collection
+        // (not an error) - allows for defensive expressions like %resource.where(...)
         if (value == null)
         {
-            throw new InvalidOperationException($"Undefined variable '{var.Name}'");
+            return Enumerable.Empty<ITypedElement>();
         }
 
         // Handle both single element and collection returns

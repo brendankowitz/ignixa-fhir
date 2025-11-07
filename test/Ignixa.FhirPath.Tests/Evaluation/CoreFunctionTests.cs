@@ -149,10 +149,10 @@ public class CoreFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -177,10 +177,10 @@ public class CoreFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -233,10 +233,10 @@ public class CoreFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     #endregion
@@ -265,10 +265,10 @@ public class CoreFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     [Fact]
@@ -324,10 +324,10 @@ public class CoreFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        Assert.False((bool)result.Value!);
     }
 
     #endregion

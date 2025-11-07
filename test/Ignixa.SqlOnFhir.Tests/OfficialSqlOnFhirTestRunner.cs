@@ -12,6 +12,7 @@ using Ignixa.Serialization.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Ignixa.SqlOnFhir.Evaluation;
+using Ignixa.SqlOnFhir.Parsing;
 
 namespace Ignixa.SqlOnFhir.Tests;
 
@@ -105,10 +106,16 @@ public class OfficialSqlOnFhirTestRunner
 
         if (sqlTestCase.ExpectError)
         {
-            // Test expects an error - run evaluator and verify it throws
+            // Test expects an error - validate ViewDefinition structure
+            // This catches structural errors (missing resource, empty view, invalid types, etc.)
+            // without needing to load resources
             var exceptionThrown = false;
             try
             {
+                // Try parsing the ViewDefinition - this validates structure and compiles FHIRPath
+                _ = ViewDefinitionExpressionParser.Parse(sqlTestCase.ViewNode);
+
+                // If parsing succeeded, try evaluating with resources (for runtime errors like invalid FHIRPath results)
                 foreach (var resource in resources)
                 {
                     _ = _evaluator.Evaluate(sqlTestCase.ViewNode, resource).ToList();

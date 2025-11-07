@@ -540,10 +540,10 @@ public class EdgeCaseAndErrorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result); // Empty collection: any returns false (empty)
+        Assert.False((bool)result.Value!); // Empty collection: any returns {false}
     }
 
     #endregion

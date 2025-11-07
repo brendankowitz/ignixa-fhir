@@ -27,11 +27,12 @@ public sealed record ViewDefinitionExpression(
 }
 
 /// <summary>
-/// Expression representing a SELECT group with optional forEach unnesting.
+/// Expression representing a SELECT group with optional forEach unnesting or repeat traversal.
 /// </summary>
 public sealed record SelectExpression(
     Expression? ForEach,
     Expression? ForEachOrNull,
+    ImmutableArray<Expression> Repeat,
     ImmutableArray<ColumnExpression> Columns,
     ImmutableArray<SelectExpression> NestedSelect,
     ImmutableArray<SelectExpression> UnionAll) : SqlOnFhirExpression
