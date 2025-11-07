@@ -343,8 +343,8 @@ public class SourceExpression : Expression
         string? variable,
         string? type,
         Expression? condition,
-        FhirPathExpression? check,
-        FhirPathExpression? log,
+        Expression? check,
+        Expression? log,
         Expression? defaultValue = null,
         Cardinality? cardinality = null,
         ISourcePositionInfo? location = null) : base(location)
@@ -363,8 +363,8 @@ public class SourceExpression : Expression
     public string? Variable { get; }
     public string? Type { get; }
     public Expression? Condition { get; }
-    public FhirPathExpression? Check { get; }
-    public FhirPathExpression? Log { get; }
+    public Expression? Check { get; }
+    public Expression? Log { get; }
     public Expression? Default { get; }
     public Cardinality? Cardinality { get; }
 

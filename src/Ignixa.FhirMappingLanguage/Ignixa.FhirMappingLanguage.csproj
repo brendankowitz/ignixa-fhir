@@ -4,6 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Disable specific CA rules for FHIR Mapping Language project -->
+    <NoWarn>$(NoWarn);CA1308;CA1024;CA1510;CA1720</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
