@@ -409,7 +409,9 @@ public enum ListMode
     NotLast,
     OnlyOne,
     Share,
+#pragma warning disable CA1720 // Identifier contains type name - 'Single' is a FHIR spec keyword for list modes
     Single
+#pragma warning restore CA1720
 }
 
 /// <summary>

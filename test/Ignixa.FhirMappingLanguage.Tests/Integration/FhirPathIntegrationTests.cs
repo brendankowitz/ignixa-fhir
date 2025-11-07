@@ -246,7 +246,7 @@ public class FhirPathIntegrationTests
         patient.AddChild(id);
 
         // Act
-        integration.Evaluate("id", patient).ToList();
+        _ = integration.Evaluate("id", patient).ToList();
         integration.ClearCache();
         var result = integration.Evaluate("id", patient).ToList();
 
@@ -267,7 +267,7 @@ public class FhirPathIntegrationTests
         // Act
         var act = () =>
         {
-            integration.Evaluate("id", patient).ToList();
+            _ = integration.Evaluate("id", patient).ToList();
             integration.ClearCache(); // Should not throw
         };
 

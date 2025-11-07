@@ -81,7 +81,7 @@ group BaseGroup(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }
 
-group DerivedGroup extends BaseGroup (source src : Patient, target tgt : Bundle) {
+group DerivedGroup (source src : Patient, target tgt : Bundle) extends BaseGroup {
   src.name -> tgt.type;
 }";
 
@@ -156,11 +156,11 @@ group BaseGroup(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }
 
-group MiddleGroup extends BaseGroup (source src : Patient, target tgt : Bundle) {
+group MiddleGroup (source src : Patient, target tgt : Bundle) extends BaseGroup {
   src.name -> tgt.type;
 }
 
-group DerivedGroup extends MiddleGroup (source src : Patient, target tgt : Bundle) {
+group DerivedGroup (source src : Patient, target tgt : Bundle) extends MiddleGroup {
   src.gender -> tgt.timestamp;
 }";
 
@@ -193,11 +193,11 @@ group DerivedGroup extends MiddleGroup (source src : Patient, target tgt : Bundl
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
-group GroupA extends GroupB (source src : Patient, target tgt : Bundle) {
+group GroupA (source src : Patient, target tgt : Bundle) extends GroupB {
   src.id -> tgt.id;
 }
 
-group GroupB extends GroupA (source src : Patient, target tgt : Bundle) {
+group GroupB (source src : Patient, target tgt : Bundle) extends GroupA {
   src.name -> tgt.type;
 }";
 
@@ -227,7 +227,7 @@ group GroupB extends GroupA (source src : Patient, target tgt : Bundle) {
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
-group RecursiveGroup extends RecursiveGroup (source src : Patient, target tgt : Bundle) {
+group RecursiveGroup (source src : Patient, target tgt : Bundle) extends RecursiveGroup {
   src.id -> tgt.id;
 }";
 
@@ -257,7 +257,7 @@ group RecursiveGroup extends RecursiveGroup (source src : Patient, target tgt : 
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
-group DerivedGroup extends NonExistentGroup (source src : Patient, target tgt : Bundle) {
+group DerivedGroup (source src : Patient, target tgt : Bundle) extends NonExistentGroup {
   src.id -> tgt.id;
 }";
 
@@ -287,19 +287,19 @@ group DerivedGroup extends NonExistentGroup (source src : Patient, target tgt : 
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
-group GroupA extends GroupB (source src : Patient, target tgt : Bundle) {
+group GroupA (source src : Patient, target tgt : Bundle) extends GroupB {
   src.id -> tgt.id;
 }
 
-group GroupB extends GroupC (source src : Patient, target tgt : Bundle) {
+group GroupB (source src : Patient, target tgt : Bundle) extends GroupC {
   src.name -> tgt.type;
 }
 
-group GroupC extends GroupD (source src : Patient, target tgt : Bundle) {
+group GroupC (source src : Patient, target tgt : Bundle) extends GroupD {
   src.gender -> tgt.timestamp;
 }
 
-group GroupD extends GroupB (source src : Patient, target tgt : Bundle) {
+group GroupD (source src : Patient, target tgt : Bundle) extends GroupB {
   src.birthDate -> tgt.total;
 }";
 
@@ -333,11 +333,11 @@ group GroupD extends GroupB (source src : Patient, target tgt : Bundle) {
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
-group GroupA extends groupb (source src : Patient, target tgt : Bundle) {
+group GroupA (source src : Patient, target tgt : Bundle) extends groupb {
   src.id -> tgt.id;
 }
 
-group GROUPB extends groupa (source src : Patient, target tgt : Bundle) {
+group GROUPB (source src : Patient, target tgt : Bundle) extends groupa {
   src.name -> tgt.type;
 }";
 
@@ -379,7 +379,7 @@ group Group2(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.type;
 }
 
-group Group3 extends Group1 (source src : Patient, target tgt : Bundle) {
+group Group3 (source src : Patient, target tgt : Bundle) extends Group1 {
   src.gender -> tgt.timestamp;
 }";
 
@@ -416,7 +416,7 @@ group Group2(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.type;
 }
 
-group Group3 extends Group1 (source src : Patient, target tgt : Bundle) {
+group Group3 (source src : Patient, target tgt : Bundle) extends Group1 {
   src.gender -> tgt.timestamp;
 }";
 
@@ -453,7 +453,7 @@ group BaseGroup(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }
 
-group DerivedGroup extends BaseGroup (source src : Patient, target tgt : Bundle) {
+group DerivedGroup (source src : Patient, target tgt : Bundle) extends BaseGroup {
   src.name -> tgt.type;
 }";
 
@@ -485,11 +485,11 @@ group A(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }
 
-group B extends A (source src : Patient, target tgt : Bundle) {
+group B (source src : Patient, target tgt : Bundle) extends A {
   src.name -> tgt.type;
 }
 
-group C extends B (source src : Patient, target tgt : Bundle) {
+group C (source src : Patient, target tgt : Bundle) extends B {
   src.gender -> tgt.timestamp;
 }";
 

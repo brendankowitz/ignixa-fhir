@@ -63,7 +63,7 @@ uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
 uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias PatientR5 as target
 
 group PatientToPatient(source src : Patient, target tgt : PatientR5) {
-  src.name :: HumanName as vn -> tgt.name = create('HumanName') as tn then {
+  src.name : HumanName as vn -> tgt.name = create('HumanName') as tn then {
     vn.given -> tn.given;
     vn.family -> tn.family;
   };

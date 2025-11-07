@@ -45,16 +45,16 @@ group Transform(source src : Patient, target tgt : Bundle) {
         // Arrange - Create invalid map manually
         var map = new Expressions.MapExpression(
             url: "",  // Invalid: empty URL
-            id: "Test",
+            identifier: "Test",
             new List<Expressions.UsesExpression>(),
-            new List<Expressions.ImportExpression>(),
+            new List<Expressions.ImportsExpression>(),
             new List<Expressions.GroupExpression>
             {
                 new Expressions.GroupExpression(
                     "Group1",
                     new List<Expressions.ParameterExpression>
                     {
-                        new Expressions.ParameterExpression("src", Expressions.ParameterMode.Source, "Patient")
+                        new Expressions.ParameterExpression(Expressions.ParameterMode.Source, "src", "Patient")
                     },
                     null,
                     new List<Expressions.RuleExpression>())
@@ -76,9 +76,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
         // Arrange
         var map = new Expressions.MapExpression(
             url: "http://example.org/test",
-            id: "Test",
+            identifier: "Test",
             new List<Expressions.UsesExpression>(),
-            new List<Expressions.ImportExpression>(),
+            new List<Expressions.ImportsExpression>(),
             new List<Expressions.GroupExpression>());  // No groups
 
         var validator = new MappingValidator();
@@ -227,16 +227,16 @@ group Group2(source src : Patient, target tgt : Bundle) extends Group1 {
         // Create invalid rule manually
         var map = new Expressions.MapExpression(
             url: "http://example.org/test",
-            id: "Test",
+            identifier:"Test",
             new List<Expressions.UsesExpression>(),
-            new List<Expressions.ImportExpression>(),
+            new List<Expressions.ImportsExpression>(),
             new List<Expressions.GroupExpression>
             {
                 new Expressions.GroupExpression(
                     "Group1",
                     new List<Expressions.ParameterExpression>
                     {
-                        new Expressions.ParameterExpression("src", Expressions.ParameterMode.Source, "Patient")
+                        new Expressions.ParameterExpression(Expressions.ParameterMode.Source, "src", "Patient")
                     },
                     null,
                     new List<Expressions.RuleExpression>
@@ -389,11 +389,11 @@ group Transform(source src : Patient, target tgt : Bundle) {
         // Arrange - manually create map with invalid import
         var map = new Expressions.MapExpression(
             url: "http://example.org/test",
-            id: "Test",
+            identifier:"Test",
             new List<Expressions.UsesExpression>(),
-            new List<Expressions.ImportExpression>
+            new List<Expressions.ImportsExpression>
             {
-                new Expressions.ImportExpression("") // Empty URL
+                new Expressions.ImportsExpression("") // Empty URL
             },
             new List<Expressions.GroupExpression>
             {
@@ -401,7 +401,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
                     "Group1",
                     new List<Expressions.ParameterExpression>
                     {
-                        new Expressions.ParameterExpression("src", Expressions.ParameterMode.Source, "Patient")
+                        new Expressions.ParameterExpression(Expressions.ParameterMode.Source, "src", "Patient")
                     },
                     null,
                     new List<Expressions.RuleExpression>())

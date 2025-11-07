@@ -414,7 +414,7 @@ group Main(source src : Patient, target tgt : Bundle) {
 map 'http://example.org' = 'Test'
 
 group Main(source src : Patient, target tgt : Bundle) {
-  src.name :: HumanName -> tgt.name;
+  src.name : HumanName -> tgt.name;
 }
 ";
         var compiler = new MappingCompiler();
@@ -435,7 +435,7 @@ group Main(source src : Patient, target tgt : Bundle) {
 map 'http://example.org' = 'Test'
 
 group Main(source src : Patient, target tgt : Bundle) {
-  src.name as vn :: HumanName -> tgt.name;
+  src.name as vn : HumanName -> tgt.name;
 }
 ";
         var compiler = new MappingCompiler();

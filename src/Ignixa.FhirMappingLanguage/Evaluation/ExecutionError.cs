@@ -112,7 +112,9 @@ public class ExecutionResult<T>
     /// <summary>
     /// Returns a summary of the execution result.
     /// </summary>
+#pragma warning disable CA1024 // Use properties where appropriate - This method generates a formatted string
     public string GetSummary()
+#pragma warning restore CA1024
     {
         if (IsSuccess)
         {

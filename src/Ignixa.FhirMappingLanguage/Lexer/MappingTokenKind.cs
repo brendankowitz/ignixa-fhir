@@ -39,7 +39,9 @@ public enum MappingTokenKind
     NotLast,
     OnlyOne,
     Share,
+#pragma warning disable CA1720 // Identifier contains type name - 'Single' is a FHIR spec keyword for list modes
     Single,
+#pragma warning restore CA1720
 
     // Boolean literals
     True,
@@ -57,6 +59,7 @@ public enum MappingTokenKind
     Equals,              // =
     Arrow,               // ->
     DoubleColon,         // ::
+    Colon,               // :
     Range,               // .. (for cardinality)
     Dot,                 // .
     Comma,               // ,
