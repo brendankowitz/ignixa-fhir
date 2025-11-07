@@ -81,7 +81,7 @@ public class OfficialSqlOnFhirTestRunner
     /// </summary>
     [Theory]
     [MemberData(nameof(GetOfficialTestCases))]
-    public void RunOfficialTestCase(string fileName, SqlOnFhirTestFile? testFile, object testCase)
+    public void GivenViewDefinition_WhenEvaluated_ThenMatchesExpectedOutput(string fileName, SqlOnFhirTestFile? testFile, object testCase)
     {
         // Handle parsing errors
         if (testCase is ErrorTestCase errorCase)

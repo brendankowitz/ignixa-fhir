@@ -24,4 +24,11 @@
     <ProjectReference Include="../../src/Ignixa.Specification/Ignixa.Specification.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="sql-on-fhir-tests\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>sql-on-fhir-tests\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
 </Project>

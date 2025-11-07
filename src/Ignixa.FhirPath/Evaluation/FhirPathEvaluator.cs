@@ -115,6 +115,7 @@ public class FhirPathEvaluator
             "anytrue" => EvaluateAnyTrue(focusElements),
             "allfalse" => EvaluateAllFalse(focusElements),
             "anyfalse" => EvaluateAnyFalse(focusElements),
+            "not" => EvaluateNot(focusElements),
 
             // Set operations
             "subsetof" => EvaluateSubsetOf(focusElements, func.Arguments, context),
@@ -171,7 +172,7 @@ public class FhirPathEvaluator
 
             // SQL on FHIR v2 Reference functions
             "getresourcekey" => EvaluateGetResourceKey(context),
-            "getreferencekey" => EvaluateGetReferenceKey(focusElements, func.Arguments),
+            "getreferencekey" => EvaluateGetReferenceKey(focusElements, func.Arguments, context),
 
             // Utility functions
             "trace" => EvaluateTrace(focusElements, func.Arguments, context),
@@ -472,6 +473,26 @@ public class FhirPathEvaluator
 
         var anyFalse = list.Any(e => e.Value is bool b && !b);
         return new[] { CreateBoolean(anyFalse) };
+    }
+
+    private IEnumerable<ITypedElement> EvaluateNot(IEnumerable<ITypedElement> focus)
+    {
+        var list = focus.ToList();
+
+        // Empty collection returns empty (per FHIRPath spec)
+        if (list.Count == 0)
+            return Enumerable.Empty<ITypedElement>();
+
+        // Single boolean: negate it
+        if (list.Count == 1 && list[0].Value is bool b)
+        {
+            // Per SQL on FHIR: boolean functions must return [true] or [false], never empty
+            return new[] { CreateBoolean(!b) };
+        }
+
+        // Multiple items or non-boolean: per spec, this is an error
+        // Return empty for safety
+        return Enumerable.Empty<ITypedElement>();
     }
 
     // Set operations
@@ -1567,13 +1588,13 @@ public class FhirPathEvaluator
         yield return new PrimitiveElement(resourceKey, "string");
     }
 
-    private IEnumerable<ITypedElement> EvaluateGetReferenceKey(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments)
+    private IEnumerable<ITypedElement> EvaluateGetReferenceKey(IEnumerable<ITypedElement> focus, IReadOnlyList<Expression> arguments, EvaluationContext context)
     {
         // Per SQL on FHIR v2 spec: getReferenceKey([type]) extracts reference from a Reference element
-        // Optional type parameter filters by resource type
-        // Returns empty collection if reference doesn't match specified type
+        // Returns the full reference string (e.g., "Patient/123")
+        // Optional type parameter filters by resource type - returns empty if type doesn't match
 
-        // Parse optional type argument
+        // Parse optional type argument (matches ofType() implementation pattern)
         string? filterType = null;
         if (arguments.Count > 0)
         {
@@ -1582,16 +1603,31 @@ public class FhirPathEvaluator
             {
                 filterType = identExpr.Name;
             }
+            else if (arguments[0] is FunctionCallExpression funcExpr && funcExpr.Arguments.Count == 0)
+            {
+                // Sometimes bare identifiers are parsed as zero-argument function calls
+                filterType = funcExpr.FunctionName;
+            }
             else
             {
-                // Invalid argument - return empty
+                // Fallback: evaluate the expression to get the type name
+                var result = EvaluateExpression(focus, arguments[0], context).ToList();
+                if (result.Count > 0)
+                {
+                    filterType = result[0].Value?.ToString();
+                }
+            }
+
+            // If we couldn't determine the filter type, return empty
+            if (string.IsNullOrEmpty(filterType))
+            {
                 yield break;
             }
         }
 
         foreach (var element in focus)
         {
-            // Get the "reference" child element from the Reference
+            // Get the "reference" child element from the Reference datatype
             var referenceElement = element.Children("reference").FirstOrDefault();
             if (referenceElement == null)
             {
@@ -1604,17 +1640,20 @@ public class FhirPathEvaluator
                 continue; // Skip if reference is empty
             }
 
-            // If type filter specified, check if reference starts with "{type}/"
+            // If type filter specified, check if reference matches the type
             if (filterType != null)
             {
+                // Check if reference starts with "{type}/" (e.g., "Patient/123")
                 var expectedPrefix = $"{filterType}/";
                 if (!reference.StartsWith(expectedPrefix, StringComparison.Ordinal))
                 {
-                    continue; // Type mismatch - skip this reference
+                    // Type mismatch - skip this reference (don't yield anything)
+                    continue;
                 }
             }
 
-            // Return the reference string
+            // Return the full reference string (e.g., "Patient/123")
+            // This matches the format returned by getResourceKey()
             yield return new PrimitiveElement(reference, "string");
         }
     }

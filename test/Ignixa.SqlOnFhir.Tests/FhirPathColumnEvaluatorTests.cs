@@ -34,7 +34,7 @@ public class SqlOnFhirEvaluatorTests
     #region Basic Column Evaluation Tests
 
     [Fact]
-    public void Evaluate_SimpleColumnPath_ReturnsValue()
+    public void GivenSimpleColumnPath_WhenEvaluated_ThenReturnsValue()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -68,7 +68,7 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_MultipleColumns_ReturnsRowWithAllColumns()
+    public void GivenMultipleColumns_WhenEvaluated_ThenReturnsRowWithAllColumns()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -105,7 +105,7 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_MissingColumn_ReturnsNull()
+    public void GivenMissingColumn_WhenEvaluated_ThenReturnsNull()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -143,7 +143,7 @@ public class SqlOnFhirEvaluatorTests
     #region Type Conversion Tests
 
     [Fact]
-    public void Evaluate_BooleanColumn_ConvertsCorrectly()
+    public void GivenBooleanColumn_WhenEvaluated_ThenConvertsCorrectly()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -178,7 +178,7 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_IntegerTypeConversion_Works()
+    public void GivenIntegerType_WhenEvaluated_ThenConvertsCorrectly()
     {
         // Arrange
         var observationJson = new Dictionary<string, object?>
@@ -217,7 +217,7 @@ public class SqlOnFhirEvaluatorTests
     #region WHERE Clause Tests
 
     [Fact]
-    public void Evaluate_WithWhereClause_IncludesMatchingResource()
+    public void GivenWhereClause_WhenEvaluated_ThenIncludesMatchingResource()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -256,7 +256,7 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_WithWhereClause_ExcludesNonMatchingResource()
+    public void GivenWhereClause_WhenEvaluated_ThenExcludesNonMatchingResource()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -298,7 +298,7 @@ public class SqlOnFhirEvaluatorTests
     #region ForEach Array Unnesting Tests
 
     [Fact]
-    public void Evaluate_WithForEach_CreatesRowPerArrayElement()
+    public void GivenForEach_WhenEvaluated_ThenCreatesRowPerArrayElement()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -347,7 +347,7 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_WithForEachEmpty_SkipsResource()
+    public void GivenEmptyForEach_WhenEvaluated_ThenSkipsResource()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>
@@ -382,7 +382,7 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_WithForEachOrNull_CreatesRowWhenEmpty()
+    public void GivenEmptyForEachOrNull_WhenEvaluated_ThenCreatesRowWithNull()
     {
         // Arrange
         var patientJson = new Dictionary<string, object?>

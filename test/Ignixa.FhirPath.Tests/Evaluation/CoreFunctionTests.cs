@@ -241,6 +241,122 @@ public class CoreFunctionTests
 
     #endregion
 
+    #region not() Function Tests
+
+    [Fact]
+    public void GivenTrueValue_WhenNot_ThenReturnsFalse()
+    {
+        // Arrange
+        var expr = _compiler.Parse("true.not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenFalseValue_WhenNot_ThenReturnsTrue()
+    {
+        // Arrange
+        var expr = _compiler.Parse("false.not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenEmptyCollection_WhenNot_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _compiler.Parse("{}.not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenComparisonTrue_WhenNot_ThenReturnsFalse()
+    {
+        // Arrange
+        var expr = _compiler.Parse("(1 = 1).not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.False((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenComparisonFalse_WhenNot_ThenReturnsTrue()
+    {
+        // Arrange
+        var expr = _compiler.Parse("(1 = 2).not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenDoubleNegation_WhenNot_ThenReturnsOriginal()
+    {
+        // Arrange
+        var expr = _compiler.Parse("true.not().not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        Assert.True((bool)result.Value!);
+    }
+
+    [Fact]
+    public void GivenNonBooleanValue_WhenNot_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _compiler.Parse("5.not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenMultipleItems_WhenNot_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expr = _compiler.Parse("(true | false).not()");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Empty(result); // Multiple items should return empty
+    }
+
+    #endregion
+
     #region Set Operation Function Tests
 
     [Fact]
