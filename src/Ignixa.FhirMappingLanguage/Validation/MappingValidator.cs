@@ -62,7 +62,7 @@ public class MappingValidator
         }
 
         // Validate ID
-        if (string.IsNullOrWhiteSpace(map.Id))
+        if (string.IsNullOrWhiteSpace(map.Identifier))
         {
             result.AddError("Map ID is required", location: "Map", code: "MISSING_ID");
         }
@@ -201,7 +201,7 @@ public class MappingValidator
         }
 
         // Validate dependent rules
-        foreach (var dependent in rule.DependentRules)
+        foreach (var dependent in rule.Dependent)
         {
             ValidateRule(group, dependent, ruleIndex, result);
         }

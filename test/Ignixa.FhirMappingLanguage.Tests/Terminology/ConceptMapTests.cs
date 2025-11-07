@@ -438,7 +438,9 @@ public class ConceptMapTests
     #region Integration with MappingEvaluator Tests
 
     [Fact]
+#pragma warning disable CS1998 // Async method lacks 'await' operators
     public async Task GivenTranslateTransform_WhenConceptMapConfigured_ThenTranslatesCode()
+#pragma warning restore CS1998
     {
         // Arrange
         var mappingText = @"
@@ -504,9 +506,10 @@ group Transform(source src : Patient, target tgt : Bundle) {
             if (name == "translate")
             {
                 translateCalled = true;
-                var sourceCode = args[0].ToString()!;
-                var mapUrl = args[1].ToString()!;
-                var output = args[2].ToString()!;
+                var argsList = args.ToList();
+                var sourceCode = argsList[0].ToString()!;
+                var mapUrl = argsList[1].ToString()!;
+                var output = argsList[2].ToString()!;
 
                 return resolver.TranslateAsync(mapUrl, sourceCode, output).GetAwaiter().GetResult() ?? sourceCode;
             }

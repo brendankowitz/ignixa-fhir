@@ -19,10 +19,7 @@ public class MapRegistry : IMapRegistry
 
     public void Register(MapExpression map)
     {
-        if (map == null)
-        {
-            throw new ArgumentNullException(nameof(map));
-        }
+        ArgumentNullException.ThrowIfNull(map);
 
         lock (_lock)
         {
@@ -111,10 +108,7 @@ public class CompositeMapLoader : IMapLoader
     /// </summary>
     public void AddLoader(IMapLoader loader)
     {
-        if (loader == null)
-        {
-            throw new ArgumentNullException(nameof(loader));
-        }
+        ArgumentNullException.ThrowIfNull(loader);
 
         _loaders.Add(loader);
     }
@@ -157,10 +151,7 @@ public class DictionaryMapLoader : IMapLoader
             throw new ArgumentException("URL cannot be null or empty", nameof(url));
         }
 
-        if (content == null)
-        {
-            throw new ArgumentNullException(nameof(content));
-        }
+        ArgumentNullException.ThrowIfNull(content);
 
         _maps[url] = content;
     }

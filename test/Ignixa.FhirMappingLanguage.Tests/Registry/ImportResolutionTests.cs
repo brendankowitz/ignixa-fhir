@@ -11,6 +11,8 @@ using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.Serialization.Abstractions;
 using Xunit;
 
+#pragma warning disable xUnit1031 // Test methods should not use blocking task operations - Intentional for testing
+
 namespace Ignixa.FhirMappingLanguage.Tests.Registry;
 
 public class ImportResolutionTests

@@ -67,7 +67,7 @@ public class LogAndCheckTests
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id check src.id.exists() -> tgt.id;
+  src.id check (src.id.exists()) -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -98,7 +98,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id check false -> tgt.id;
+  src.id check (false) -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -130,7 +130,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.name check src.name.count() > 0 -> tgt.entry;
+  src.name check (src.name.count() > 0) -> tgt.entry;
 }";
 
         var compiler = new MappingCompiler();
@@ -161,7 +161,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id check true -> tgt.id;
+  src.id check (true) -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -197,7 +197,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id log 'Processing patient' -> tgt.id;
+  src.id log ('Processing patient') -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -232,7 +232,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id log src.id -> tgt.id;
+  src.id log (src.id) -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -267,7 +267,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id log 'No logger configured' -> tgt.id;
+  src.id log ('No logger configured') -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -299,7 +299,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.name log 'Processing name' -> tgt.entry;
+  src.name log ('Processing name') -> tgt.entry;
 }";
 
         var compiler = new MappingCompiler();
@@ -335,7 +335,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id log src.nonexistent -> tgt.id;
+  src.id log (src.nonexistent) -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -370,7 +370,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id log 'message' -> tgt.id;
+  src.id log ('message') -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -406,7 +406,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.name where src.name.exists() check src.name.count() > 0 log 'Processing names' -> tgt.entry;
+  src.name where (src.name.exists()) check (src.name.count() > 0) log ('Processing names') -> tgt.entry;
 }";
 
         var compiler = new MappingCompiler();
@@ -441,7 +441,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.name where false check true log 'Should not log' -> tgt.entry;
+  src.name where (false) check (true) log ('Should not log') -> tgt.entry;
 }";
 
         var compiler = new MappingCompiler();
@@ -479,7 +479,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id check src.id.exists() -> tgt.id;
+  src.id check (src.id.exists()) -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();
@@ -502,7 +502,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.id log 'message' -> tgt.id;
+  src.id log ('message') -> tgt.id;
 }";
 
         var compiler = new MappingCompiler();

@@ -75,8 +75,8 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
             .Match(Span.Regex(@"[0-9]+"), MappingTokenKind.IntegerLiteral, requireDelimiters: true)
 
-            // URLs (simplified pattern)
-            .Match(Span.Regex(@"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
+            // URLs (supports both http://example.com and urn:uuid:... patterns)
+            .Match(Span.Regex(@"[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
 
             // Identifiers (letters/underscore start, alphanumeric/underscore continuation)
             .Match(Identifier.CStyle, MappingTokenKind.Identifier)
@@ -88,6 +88,7 @@ public static class MappingTokenizer
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
+            .Match(Character.EqualTo(':'), MappingTokenKind.Colon)
             .Match(Character.EqualTo('.'), MappingTokenKind.Dot)
             .Match(Character.EqualTo('*'), MappingTokenKind.Asterisk)
             .Match(Character.EqualTo(','), MappingTokenKind.Comma)
@@ -111,6 +112,10 @@ public static class MappingTokenizer
     public static Tokenizer<MappingTokenKind> Create()
     {
         return new TokenizerBuilder<MappingTokenKind>()
+            // Comments (ignore for standard parsing)
+            .Ignore(Comment.CStyle)
+            .Ignore(Comment.CPlusPlusStyle)
+
             // Keywords (case-sensitive, must come before identifiers)
             .Match(Span.Regex(@"\bmap\b"), MappingTokenKind.Map, requireDelimiters: false)
             .Match(Span.Regex(@"\buses\b"), MappingTokenKind.Uses, requireDelimiters: false)
@@ -155,8 +160,8 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
             .Match(Span.Regex(@"[0-9]+"), MappingTokenKind.IntegerLiteral, requireDelimiters: true)
 
-            // URLs (simplified pattern)
-            .Match(Span.Regex(@"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
+            // URLs (supports both http://example.com and urn:uuid:... patterns)
+            .Match(Span.Regex(@"[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
 
             // Identifiers (letters/underscore start, alphanumeric/underscore continuation)
             .Match(Identifier.CStyle, MappingTokenKind.Identifier)
@@ -168,6 +173,7 @@ public static class MappingTokenizer
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
+            .Match(Character.EqualTo(':'), MappingTokenKind.Colon)
             .Match(Character.EqualTo('.'), MappingTokenKind.Dot)
             .Match(Character.EqualTo('*'), MappingTokenKind.Asterisk)
             .Match(Character.EqualTo(','), MappingTokenKind.Comma)

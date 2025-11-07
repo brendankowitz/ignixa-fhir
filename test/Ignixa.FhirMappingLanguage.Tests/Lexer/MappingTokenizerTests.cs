@@ -12,6 +12,24 @@ namespace Ignixa.FhirMappingLanguage.Tests.Lexer;
 
 public class MappingTokenizerTests
 {
+    #region Helper Methods
+
+    /// <summary>
+    /// Unescapes a string token value by removing quotes and processing escape sequences.
+    /// Mirrors the logic in MappingGrammar.UnescapeString.
+    /// </summary>
+    private static string UnescapeStringToken(string tokenValue)
+    {
+        if (tokenValue.StartsWith('\'') && tokenValue.EndsWith('\''))
+        {
+            tokenValue = tokenValue.Substring(1, tokenValue.Length - 2);
+            tokenValue = tokenValue.Replace("''", "'", StringComparison.Ordinal);
+        }
+        return tokenValue;
+    }
+
+    #endregion
+
     #region Keyword Tests
 
     [Theory]
@@ -94,6 +112,7 @@ public class MappingTokenizerTests
     [Theory]
     [InlineData("->", MappingTokenKind.Arrow)]
     [InlineData("::", MappingTokenKind.DoubleColon)]
+    [InlineData(":", MappingTokenKind.Colon)]
     [InlineData("=", MappingTokenKind.Equals)]
     [InlineData(".", MappingTokenKind.Dot)]
     [InlineData(",", MappingTokenKind.Comma)]
@@ -153,14 +172,14 @@ public class MappingTokenizerTests
         // Assert
         result.Should().HaveCount(1);
         result.First().Kind.Should().Be(MappingTokenKind.StringLiteral);
-        result.First().ToStringValue().Should().Be(input);
+        UnescapeStringToken(result.First().ToStringValue()).Should().Be(expected);
     }
 
     [Theory]
-    [InlineData("42", MappingTokenKind.IntegerLiteral)]
-    [InlineData("0", MappingTokenKind.IntegerLiteral)]
-    [InlineData("999999", MappingTokenKind.IntegerLiteral)]
-    public void GivenIntegerLiteral_WhenTokenizing_ThenReturnsIntegerToken(string input, MappingTokenKind expectedKind)
+    [InlineData("42")]
+    [InlineData("0")]
+    [InlineData("999999")]
+    public void GivenIntegerLiteral_WhenTokenizing_ThenReturnsIntegerToken(string input)
     {
         // Arrange
         var tokenizer = MappingTokenizer.Create();
@@ -170,15 +189,15 @@ public class MappingTokenizerTests
 
         // Assert
         result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(expectedKind);
+        result.First().Kind.Should().Be(MappingTokenKind.IntegerLiteral);
         result.First().ToStringValue().Should().Be(input);
     }
 
     [Theory]
-    [InlineData("3.14", MappingTokenKind.DecimalLiteral)]
-    [InlineData("0.5", MappingTokenKind.DecimalLiteral)]
-    [InlineData("123.456", MappingTokenKind.DecimalLiteral)]
-    public void GivenDecimalLiteral_WhenTokenizing_ThenReturnsDecimalToken(string input, MappingTokenKind expectedKind)
+    [InlineData("3.14")]
+    [InlineData("0.5")]
+    [InlineData("123.456")]
+    public void GivenDecimalLiteral_WhenTokenizing_ThenReturnsDecimalToken(string input)
     {
         // Arrange
         var tokenizer = MappingTokenizer.Create();
@@ -188,7 +207,7 @@ public class MappingTokenizerTests
 
         // Assert
         result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(expectedKind);
+        result.First().Kind.Should().Be(MappingTokenKind.DecimalLiteral);
     }
 
     [Theory]
@@ -365,7 +384,7 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result.Should().HaveCount(5);
+        result.Should().HaveCount(4); // map, 'url', =, 'name'
         result[0].Kind.Should().Be(MappingTokenKind.Map);
         result[1].Kind.Should().Be(MappingTokenKind.StringLiteral);
         result[2].Kind.Should().Be(MappingTokenKind.Equals);
@@ -407,7 +426,7 @@ public class MappingTokenizerTests
         result[2].Kind.Should().Be(MappingTokenKind.LeftParen);
         result[3].Kind.Should().Be(MappingTokenKind.Source);
         result[4].Kind.Should().Be(MappingTokenKind.Identifier); // src
-        result[5].Kind.Should().Be(MappingTokenKind.DoubleColon);
+        result[5].Kind.Should().Be(MappingTokenKind.Colon); // Type annotation uses single colon
         result[6].Kind.Should().Be(MappingTokenKind.Identifier); // Patient
         result[7].Kind.Should().Be(MappingTokenKind.Comma);
     }

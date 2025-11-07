@@ -39,7 +39,7 @@ public class MappingEvaluator
     public void Execute(MapExpression map, MappingContext context)
     {
         // Wire up standard transforms if not already configured
-        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name).Execute(args.ToList(), context);
+        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name)!.Execute(args.ToList(), context);
 
         // Wire up FhirPath evaluator if enabled and not already configured
         if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
@@ -60,7 +60,7 @@ public class MappingEvaluator
     public void ExecuteGroup(MapExpression map, string groupName, MappingContext context)
     {
         // Wire up standard transforms if not already configured
-        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name).Execute(args.ToList(), context);
+        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name)!.Execute(args.ToList(), context);
 
         // Wire up FhirPath evaluator if enabled and not already configured
         if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
@@ -124,14 +124,14 @@ public class MappingEvaluator
                 {
                     if (context.GetSource(param.Name) == null)
                     {
-                        throw new InvalidOperationException($"Required source parameter '{param.Name}' not provided");
+                        throw new MappingExecutionException($"Required source parameter '{param.Name}' not provided", location, "MISSING_PARAMETER");
                     }
                 }
                 else if (param.Mode == ParameterMode.Target)
                 {
                     if (context.GetTarget(param.Name) == null)
                     {
-                        throw new InvalidOperationException($"Required target parameter '{param.Name}' not provided");
+                        throw new MappingExecutionException($"Required target parameter '{param.Name}' not provided", location, "MISSING_PARAMETER");
                     }
                 }
             }
@@ -263,10 +263,13 @@ public class MappingEvaluator
                 contextValues = contextList;
             }
 
+            // Materialize context values to avoid multiple enumeration
+            var contextValuesList = contextValues.ToList();
+
             // Apply check condition if present
             if (source.Check != null && source.Check is FhirPathExpression fhirPathCheck)
             {
-                foreach (var element in contextValues)
+                foreach (var element in contextValuesList)
                 {
                     try
                     {
@@ -289,45 +292,76 @@ public class MappingEvaluator
                 }
             }
 
-            // Execute log statement if present
-            if (source.Log != null && source.Log is FhirPathExpression fhirPathLog)
+            // Execute log statement if present (only if we have values to log)
+            if (source.Log != null && contextValuesList.Any())
             {
-                foreach (var element in contextValues)
+                try
                 {
-                    try
+                    // Check if the log expression matches the source context expression
+                    // If so, just log the contextValues directly (which may include defaults)
+                    bool logMatchesContext = source.Log is FhirPathExpression fhirPathLog &&
+                                              source.Context is QualifiedIdentifierExpression qual &&
+                                              fhirPathLog.PathExpression == $"{((IdentifierExpression)qual.Context).Name}.{qual.Property}";
+
+                    if (!logMatchesContext && source.Context is IdentifierExpression id &&
+                        source.Log is FhirPathExpression fp && fp.PathExpression == id.Name)
                     {
-                        if (context.FhirPathEvaluator == null)
-                        {
-                            throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                        }
+                        logMatchesContext = true;
+                    }
 
-                        var result = context.FhirPathEvaluator(fhirPathLog.PathExpression, element);
-                        var logMessage = FormatLogResult(result);
-
-                        // Call logger if configured
+                    if (logMatchesContext)
+                    {
+                        // Log expression matches source context - log the actual values (including defaults)
+                        var logMessage = FormatLogResult(contextValuesList);
                         if (context.Logger != null)
                         {
                             context.Logger(logMessage);
                         }
                     }
-                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                    else
                     {
-                        context.AddError($"Error executing log statement: {ex.Message}", location, "LOG_ERROR", ex);
-                        // Continue processing
+                        // Log expression is different - evaluate it for each element
+                        foreach (var element in contextValuesList)
+                        {
+                            IEnumerable<ITypedElement> logResult;
+
+                            if (source.Log is FhirPathExpression logExpr)
+                            {
+                                // Evaluate as a mapping expression first (handles variables like "src")
+                                logResult = VisitFhirPath(logExpr, context);
+                            }
+                            else
+                            {
+                                // For other expression types, evaluate in the mapping context
+                                logResult = VisitExpression(source.Log, context, location);
+                            }
+
+                            // Format and log the result
+                            var logMessage = FormatLogResult(logResult);
+
+                            if (context.Logger != null)
+                            {
+                                context.Logger(logMessage);
+                            }
+                        }
                     }
+                }
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                {
+                    context.AddError($"Error executing log statement: {ex.Message}", location, "LOG_ERROR", ex);
                 }
             }
 
             // Set variable if specified
             if (source.Variable != null)
             {
-                foreach (var element in contextValues)
+                foreach (var element in contextValuesList)
                 {
                     context.SetVariable(source.Variable, element);
                 }
             }
 
-            return contextValues;
+            return contextValuesList;
         }
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
         {
@@ -543,9 +577,129 @@ public class MappingEvaluator
             throw new InvalidOperationException("FhirPathEvaluator not configured in context");
         }
 
-        // This is a simplified implementation - in reality, we'd need a root context
-        // For now, throw an exception indicating this needs a proper context
-        throw new NotImplementedException("FHIRPath evaluation requires a root context element");
+        // Try to parse and evaluate as a Mapping Language expression first
+        // This handles cases like "src.gender" which refer to mapping variables
+        var pathExpr = fhirPath.PathExpression.Trim();
+
+        // Try to parse as a mapping language qualified identifier (e.g., "src.gender")
+        if (TryParseAsMappingExpression(pathExpr, context, out var mappingResult))
+        {
+            return mappingResult;
+        }
+
+        // Fall back to FHIRPath evaluation for pure FHIRPath expressions (e.g., "'hello'", "0", "name.first()")
+        // Use an empty root element so that literals and environment variables work
+        var emptyRoot = new PrimitiveElement(null!, "Element");
+        return context.FhirPathEvaluator(fhirPath.PathExpression, emptyRoot);
+    }
+
+    private bool TryParseAsMappingExpression(string expression, MappingContext context, out IEnumerable<ITypedElement> result)
+    {
+        result = Enumerable.Empty<ITypedElement>();
+
+        // Check for simple identifier or qualified identifier patterns
+        // Simple identifier: "src", "tgt"
+        // Qualified identifier: "src.gender", "src.name.given"
+        // Indexed: "src.name[0]"
+
+        var parts = new List<string>();
+        var currentPart = new System.Text.StringBuilder();
+        var depth = 0;
+
+        foreach (var ch in expression)
+        {
+            if (ch == '[')
+            {
+                depth++;
+            }
+            else if (ch == ']')
+            {
+                depth--;
+            }
+            else if (ch == '.' && depth == 0)
+            {
+                if (currentPart.Length > 0)
+                {
+                    parts.Add(currentPart.ToString());
+                    currentPart.Clear();
+                }
+                continue;
+            }
+
+            currentPart.Append(ch);
+        }
+
+        if (currentPart.Length > 0)
+        {
+            parts.Add(currentPart.ToString());
+        }
+
+        if (parts.Count == 0)
+        {
+            return false;
+        }
+
+        // Check if the first part is a known variable
+        var rootName = parts[0].Split('[')[0]; // Handle indexed access like "src[0]"
+        var rootElement = context.GetSource(rootName) ?? context.GetTarget(rootName);
+
+        if (rootElement == null)
+        {
+            var variable = context.GetVariable(rootName);
+            if (variable is ITypedElement element)
+            {
+                rootElement = element;
+            }
+        }
+
+        if (rootElement == null)
+        {
+            return false; // Not a mapping variable
+        }
+
+        // Navigate through the path
+        var current = new[] { rootElement }.AsEnumerable();
+
+        for (int i = 0; i < parts.Count; i++)
+        {
+            var part = parts[i];
+
+            // Handle array indexing
+            if (part.Contains('[', StringComparison.Ordinal) && part.Contains(']', StringComparison.Ordinal))
+            {
+                var propertyName = part.Substring(0, part.IndexOf('[', StringComparison.Ordinal));
+                var indexStr = part.Substring(part.IndexOf('[', StringComparison.Ordinal) + 1, part.IndexOf(']', StringComparison.Ordinal) - part.IndexOf('[', StringComparison.Ordinal) - 1);
+
+                if (i == 0)
+                {
+                    // Indexing on the root variable (e.g., "src[0]")
+                    if (int.TryParse(indexStr, out var index))
+                    {
+                        var list = current.ToList();
+                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<ITypedElement>();
+                    }
+                }
+                else
+                {
+                    // Navigate to property first, then index
+                    current = current.SelectMany(e => e.Children(propertyName));
+
+                    if (int.TryParse(indexStr, out var index))
+                    {
+                        var list = current.ToList();
+                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<ITypedElement>();
+                    }
+                }
+            }
+            else if (i > 0) // Skip the root, we already have it
+            {
+                // Navigate to property
+                current = current.SelectMany(e => e.Children(part));
+            }
+        }
+
+        result = current;
+        return true;
     }
 
     private ITypedElement CreatePrimitive(object value)

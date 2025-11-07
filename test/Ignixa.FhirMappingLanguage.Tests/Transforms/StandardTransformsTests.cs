@@ -11,6 +11,8 @@ using Ignixa.Serialization.Abstractions;
 using System.Text.Json.Nodes;
 using Xunit;
 
+#pragma warning disable CS8602 // Dereference of a possibly null reference - Test assertions handle nulls
+
 namespace Ignixa.FhirMappingLanguage.Tests.Transforms;
 
 public class StandardTransformsTests
@@ -98,13 +100,13 @@ public class StandardTransformsTests
     }
 
     [Fact]
-    public void GivenAllTransforms_WhenListing_ThenReturns18Transforms()
+    public void GivenAllTransforms_WhenListing_ThenReturns17Transforms()
     {
         // Act
         var transforms = StandardTransforms.All();
 
         // Assert
-        transforms.Should().HaveCount(18);
+        transforms.Should().HaveCount(17);
     }
 
     #endregion
@@ -358,7 +360,7 @@ public class StandardTransformsTests
         var transform = StandardTransforms.Get("id");
 
         // Act
-        var result = transform.Execute(new List<object> { "http://example.org/ids", "12345" }, context);
+        var result = transform.Execute(new List<object> { "12345", "http://example.org/ids" }, context);
 
         // Assert
         result.Should().BeOfType<JsonObject>();

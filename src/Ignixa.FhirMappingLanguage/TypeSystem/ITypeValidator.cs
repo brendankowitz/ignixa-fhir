@@ -64,7 +64,7 @@ public class TypeValidationError
     {
         if (Location != null)
         {
-            return $"{Location.Line}:{Location.Column} - {Message}";
+            return $"{Location.LineNumber}:{Location.LinePosition} - {Message}";
         }
         return Message;
     }

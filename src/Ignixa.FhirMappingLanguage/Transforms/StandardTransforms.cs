@@ -60,9 +60,14 @@ public static class StandardTransforms
     /// <summary>
     /// Gets a transform function by name.
     /// </summary>
-    public static ITransformFunction? Get(string name)
+    public static ITransformFunction Get(string name)
     {
-        return _functions.TryGetValue(name, out var function) ? function : null;
+        if (_functions.TryGetValue(name, out var function))
+        {
+            return function;
+        }
+
+        throw new InvalidOperationException($"Transform function '{name}' not found");
     }
 
     /// <summary>
@@ -163,20 +168,33 @@ public class EscapeTransform : ITransformFunction
             throw new ArgumentException("escape() requires source and format arguments");
 
         var source = arguments[0].ToString() ?? string.Empty;
+#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR format names are lowercase by convention
         var format = arguments[1].ToString()?.ToLowerInvariant() ?? "url";
+#pragma warning restore CA1308
 
         return format switch
         {
             "url" => Uri.EscapeDataString(source),
-            "json" => System.Text.Json.JsonSerializer.Serialize(source).Trim('"'),
+            "json" => EscapeJson(source),
             "xml" => System.Security.SecurityElement.Escape(source) ?? source,
+            "html" => System.Security.SecurityElement.Escape(source) ?? source,
             _ => throw new ArgumentException($"Unknown escape format: {format}")
         };
+    }
+
+    private static string EscapeJson(string value)
+    {
+        return value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal);
     }
 }
 
 /// <summary>
-/// append(source) - Appends source to a collection.
+/// append(source, suffix) - Appends suffix to source string.
 /// </summary>
 public class AppendTransform : ITransformFunction
 {
@@ -184,11 +202,13 @@ public class AppendTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count == 0)
-            throw new ArgumentException("append() requires a source argument");
+        if (arguments.Count < 2)
+            throw new ArgumentException("append() requires source and suffix arguments");
 
-        // For now, just return the source - actual collection handling needs more context
-        return arguments[0];
+        var source = arguments[0].ToString() ?? string.Empty;
+        var suffix = arguments[1].ToString() ?? string.Empty;
+
+        return source + suffix;
     }
 }
 
@@ -209,7 +229,9 @@ public class CastTransform : ITransformFunction
             throw new ArgumentException("cast() requires source and type arguments");
 
         var source = arguments[0];
+#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are lowercase by convention
         var targetType = arguments[1].ToString()!.ToLowerInvariant();
+#pragma warning restore CA1308
 
         return targetType switch
         {
@@ -459,18 +481,18 @@ public class TranslateTransform : ITransformFunction
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
         if (arguments.Count < 3)
-            throw new ArgumentException("translate() requires source, map_uri, and output arguments");
+            throw new ArgumentException("translate() requires conceptMap, sourceSystem, and sourceCode arguments");
 
         if (context.ConceptMapResolver == null)
             throw new InvalidOperationException("ConceptMapResolver not configured in context");
 
-        var sourceCode = arguments[0].ToString()!;
-        var mapUri = arguments[1].ToString()!;
-        var output = arguments[2].ToString()!;
+        var conceptMapUrl = arguments[0].ToString()!;
+        var sourceSystem = arguments[1].ToString()!;
+        var sourceCode = arguments[2].ToString()!;
 
-        var translated = context.ConceptMapResolver(mapUri, sourceCode, output);
+        var translated = context.ConceptMapResolver(conceptMapUrl, sourceSystem, sourceCode);
 
-        return translated ?? sourceCode; // Return original if translation fails
+        return translated!; // Return null if translation fails (let caller handle)
     }
 }
 
@@ -513,15 +535,47 @@ public class DateOpTransform : ITransformFunction
         if (arguments.Count == 0)
             throw new ArgumentException("dateOp() requires at least a value argument");
 
-        var value = arguments[0].ToString()!;
+        var value = arguments[0];
         var operation = arguments.Count > 1 ? arguments[1].ToString() : "parse";
 
-        return operation?.ToLowerInvariant() switch
+#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR operation names are lowercase by convention
+        var op = operation?.ToLowerInvariant();
+#pragma warning restore CA1308
+
+        // Handle operations
+        if (op == "add" || op == "subtract")
         {
-            "parse" => ParseDate(value),
+            if (arguments.Count < 4)
+                throw new ArgumentException($"{op}() requires date, operation, amount, and unit arguments");
+
+            var date = value is DateTime dt ? dt : DateTime.Parse(value.ToString()!);
+            var amount = Convert.ToInt32(arguments[2]);
+#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR unit names are lowercase by convention
+            var unit = arguments[3].ToString()!.ToLowerInvariant();
+#pragma warning restore CA1308
+
+            var multiplier = op == "subtract" ? -1 : 1;
+            var adjustedAmount = amount * multiplier;
+
+            return unit switch
+            {
+                "years" => date.AddYears(adjustedAmount),
+                "months" => date.AddMonths(adjustedAmount),
+                "days" => date.AddDays(adjustedAmount),
+                "hours" => date.AddHours(adjustedAmount),
+                "minutes" => date.AddMinutes(adjustedAmount),
+                "seconds" => date.AddSeconds(adjustedAmount),
+                _ => date
+            };
+        }
+
+        var valueStr = value.ToString()!;
+        return op switch
+        {
+            "parse" => ParseDate(valueStr),
             "now" => DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
             "today" => DateTime.Today.ToString("yyyy-MM-dd"),
-            _ => value
+            _ => valueStr
         };
     }
 
