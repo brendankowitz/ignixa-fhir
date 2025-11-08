@@ -178,7 +178,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Auto-register all DurableTask activities from the BackgroundOperations assembly
     // This scans for all classes inheriting from TaskActivity and registers them with DI
     // New activities are automatically discovered without requiring manual registration updates
-    var backgroundOpsAssembly = typeof(Ignixa.Application.BackgroundOperations.Export.Activities.SearchAndWriteChunkActivity).Assembly;
+    var backgroundOpsAssembly = typeof(Ignixa.Application.BackgroundOperations.Export.Activities.ExportWorkerActivity).Assembly;
     containerBuilder.RegisterAssemblyTypes(backgroundOpsAssembly)
         .Where(t => typeof(DurableTask.Core.TaskActivity).IsAssignableFrom(t) && !t.IsAbstract)
         .AsSelf()
@@ -298,6 +298,13 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     })
     .As<IBlobStorageClient>()
     .SingleInstance();
+
+    // Register IExportStreamWriterFactory for streaming NDJSON export to blob storage
+    // Used by ExportWorkerActivity to create writers that handle memory-pooled buffering
+    // and write directly to blob storage during export processing
+    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.BlobStorageExportStreamWriterFactory>()
+        .As<IExportStreamWriterFactory>()
+        .SingleInstance();
 
     // Register open generic background job repository (in-memory for dev, SQL Server for production)
     // Supports both import and export with unified generic interface: IBackgroundJobRepository<T>
@@ -585,6 +592,23 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     containerBuilder.RegisterType<SearchOptionsBuilderFactory>()
         .As<ISearchOptionsBuilderFactory>()
         .SingleInstance();
+
+    // Register ISearchOptionsBuilder as default (R4) for background operations
+    // Background activities like ExportWorkerActivity need a direct ISearchOptionsBuilder
+    // For Phase 1 (single-tenant), this is R4. Phase 2+ will need tenant-specific resolution
+    containerBuilder.Register<ISearchOptionsBuilder>(c =>
+    {
+        var factory = c.Resolve<ISearchOptionsBuilderFactory>();
+        return factory.Create(FhirSpecification.R4);
+    }).SingleInstance();
+
+    // Register FhirSchemaProviderResolver - enables version-aware components to resolve
+    // the correct provider at runtime based on request FHIR version
+    containerBuilder.Register<FhirSchemaProviderResolver>(c =>
+    {
+        var versionContext = c.Resolve<IFhirVersionContext>();
+        return (FhirSpecification version) => versionContext.GetSchemaProvider(version);
+    }).SingleInstance();
 
     // DEPRECATED: VersionAwareSearchParameterDefinitionManager replaced by FhirVersionContext.GetSearchParameterDefinitionManager()
     // Multi-version support now provided via FhirVersionContext pattern (same as SearchIndexer and SchemaProvider)

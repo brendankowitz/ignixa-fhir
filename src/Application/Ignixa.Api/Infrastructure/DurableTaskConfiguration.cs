@@ -48,7 +48,8 @@ public static class DurableTaskConfiguration
             worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
 
             // Register Export activities with service provider for DI
-            worker.AddTaskActivitiesFromInterface<SearchAndWriteChunkActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<GetExportRangesActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ExportWorkerActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ExportCompleteJobActivity>(sp);
 
             // Register Import activities with service provider for DI

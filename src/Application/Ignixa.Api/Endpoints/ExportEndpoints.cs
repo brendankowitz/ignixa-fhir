@@ -4,6 +4,8 @@ using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Application.BackgroundOperations.Export.Models;
+using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
@@ -16,6 +18,7 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class ExportEndpoints
 {
+    private static readonly string[] AllResourcesArray = ["all"];
     /// <summary>
     /// Registers export-related endpoints with the application.
     /// </summary>

@@ -88,6 +88,7 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     /// <summary>
     /// Gets or creates a BlobContainerClient for the specified container name.
     /// Supports lazy-loading of container clients for multi-container scenarios.
+    /// Automatically creates the container if it doesn't exist (idempotent operation).
     /// </summary>
     private BlobContainerClient GetContainerClient(string containerName)
     {
@@ -105,6 +106,18 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
 
             // Create new container client and cache it
             var newClient = _blobServiceClient.GetBlobContainerClient(containerName);
+
+            // Ensure container exists (idempotent operation)
+            try
+            {
+                newClient.CreateIfNotExistsAsync(cancellationToken: CancellationToken.None).GetAwaiter().GetResult();
+                _logger.LogDebug("Ensured container exists: {ContainerName}", containerName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create container '{ContainerName}'. It may already exist or you may lack permissions", containerName);
+            }
+
             _containerClientCache[containerName] = newClient;
             _logger.LogDebug("Created container client for container: {ContainerName}", containerName);
             return newClient;

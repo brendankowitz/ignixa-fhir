@@ -1,74 +1,79 @@
-### FHIR Bulk Export Operations ($export)
-### Uses DurableTask framework for background processing
-### Based on: https://hl7.org/fhir/async.html
-
-@baseUrl = http://localhost:5027
+@hostname = https://127.0.0.1:7058
 @tenantId = 1
 
-### 1. Start System-Level Export (all resource types)
-# @name startSystemExport
-POST {{baseUrl}}/tenant/{{tenantId}}/$export
-Accept: application/fhir+json
+###
+# Bulk Export - System Level (All Resources)
+# Starts an asynchronous export job for all resource types
+# Returns: 202 Accepted with Content-Location header pointing to status endpoint
+POST {{hostname}}/tenant/{{tenantId}}/$export
 Prefer: respond-async
 
 ###
-
-### 2. Start System-Level Export (specific resource types)
-# @name startFilteredExport
-POST {{baseUrl}}/tenant/{{tenantId}}/$export?_type=Patient,Observation
-Accept: application/fhir+json
+# Bulk Export - Specific Resource Types
+# Export only Patient and Observation resources
+# @name ExportRequest
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient,Observation
 Prefer: respond-async
 
 ###
-
-### 3. Start Export with Since Parameter (incremental export)
-# @name startIncrementalExport
-POST {{baseUrl}}/tenant/{{tenantId}}/$export?_type=Patient&_since=2024-01-01T00:00:00Z
-Accept: application/fhir+json
+# Bulk Export - With Date Filter
+# Export resources modified since a specific date
+POST {{hostname}}/tenant/{{tenantId}}/$export?_since=2024-01-01T00:00:00Z
 Prefer: respond-async
 
 ###
-
-### 4. Start Export with Type Filter (advanced filtering)
-# @name startTypeFilterExport
-POST {{baseUrl}}/tenant/{{tenantId}}/$export?_type=Observation&_typeFilter=Observation?code=http://loinc.org|8867-4
-Accept: application/fhir+json
+# Bulk Export - With Type Filters
+# Export specific resources with search parameter filters
+# Format: ResourceType?param=value
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Observation,Condition&_typeFilter=Observation?code=http://loinc.org|85354-9,Condition?category=encounter-diagnosis
 Prefer: respond-async
 
 ###
-
-### 5. Poll Export Job Status
-# Replace {jobId} with the ID from Content-Location header
-# @name pollExportStatus
-GET {{baseUrl}}/tenant/{{tenantId}}/_export/{jobId}
-Accept: application/fhir+json
+# Bulk Export - Complete Example
+# Export Patient and Observation resources since Jan 1, 2024 with filters
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient,Observation&_since=2024-01-01T00:00:00Z&_typeFilter=Observation?status=final&_outputFormat=application/fhir+ndjson
+Prefer: respond-async
 
 ###
-
-### 6. Cancel Export Job
-# Replace {jobId} with the ID from Content-Location header
-# @name cancelExport
-DELETE {{baseUrl}}/tenant/{{tenantId}}/_export/{jobId}
+# Get Export Job Status
+# Replace {jobId} with the actual job ID returned from the export request
+# Returns: 202 Accepted (still processing) or 200 OK (complete with manifest)
+GET {{hostname}}/tenant/{{tenantId}}/_export/{jobId}
 
 ###
+# Get Export Job Status - Example with Job ID
+# Replace the GUID with an actual job ID from your export request
+GET {{hostname}}/tenant/{{tenantId}}/_export/12345678-1234-1234-1234-123456789abc
 
-### Expected Response Flow:
-# 1. POST $export returns 202 Accepted with Content-Location header
-# 2. Poll GET _export/{jobId} returns:
-#    - 202 Accepted (still processing) with X-Progress header
-#    - 200 OK (completed) with output file links in JSON body
-# 3. Download output files from URLs in response
+###
+# Cancel Export Job
+# Terminates a running export job
+# Returns: 204 No Content
+DELETE {{hostname}}/tenant/{{tenantId}}/_export/{jobId}
 
-### Example Completed Response Body:
+###
+# Cancel Export Job - Example with Job ID
+DELETE {{hostname}}/tenant/{{tenantId}}/_export/12345678-1234-1234-1234-123456789abc
+
+###
+# Example: Complete Export Workflow
+# 1. Start export (copy job ID from Content-Location header)
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient
+Prefer: respond-async
+
+# 2. Poll status (replace {jobId} with actual ID)
+# GET {{hostname}}/tenant/{{tenantId}}/_export/{jobId}
+
+# 3. Download files from URLs in the manifest when status is 200 OK
+# The response will contain output URLs like:
 # {
-#   "transactionTime": "2024-01-15T10:30:00Z",
-#   "request": "https://localhost:5027/tenant/1/$export?_type=Patient",
+#   "transactionTime": "2025-01-08T12:00:00Z",
+#   "request": "/tenant/1/$export",
 #   "requiresAccessToken": false,
 #   "output": [
 #     {
 #       "type": "Patient",
-#       "url": "https://localhost:5027/tenant/1/_export/files/job-123/Patient_001.ndjson"
+#       "url": "https://storage.example.com/tenant/1/export/{jobId}/Patient.ndjson?sas_token"
 #     }
-#   ],
-#   "error": []
+#   ]
 # }
