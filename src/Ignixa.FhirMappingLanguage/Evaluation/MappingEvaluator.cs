@@ -20,6 +20,7 @@ public class MappingEvaluator
 {
     private readonly FhirPathIntegration? _fhirPathIntegration;
     private readonly ImportResolver? _importResolver;
+    private MapExpression? _currentMap;
 
     /// <summary>
     /// Creates a new MappingEvaluator instance.
@@ -38,6 +39,8 @@ public class MappingEvaluator
     /// <param name="context">The evaluation context with sources and targets</param>
     public void Execute(MapExpression map, MappingContext context)
     {
+        _currentMap = map;
+
         // Wire up standard transforms if not already configured
         context.TransformResolver ??= (name, args) => StandardTransforms.Get(name)!.Execute(args.ToList(), context);
 
@@ -59,6 +62,8 @@ public class MappingEvaluator
     /// </summary>
     public void ExecuteGroup(MapExpression map, string groupName, MappingContext context)
     {
+        _currentMap = map;
+
         // Wire up standard transforms if not already configured
         context.TransformResolver ??= (name, args) => StandardTransforms.Get(name)!.Execute(args.ToList(), context);
 
@@ -197,15 +202,140 @@ public class MappingEvaluator
                 }
             }
 
-            // Visit dependent rules
-            foreach (var dependentRule in rule.Dependent)
+            // Visit dependent expression (either group invocation or nested rules)
+            if (rule.Dependent != null)
             {
-                VisitRule(dependentRule, context, groupName);
+                VisitDependentExpression(rule.Dependent, context, groupName, location);
             }
         }
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
         {
             context.AddError($"Error executing rule: {ex.Message}", location, "RULE_EXECUTION_ERROR", ex);
+        }
+    }
+
+    private void VisitDependentExpression(Expression dependent, MappingContext context, string? groupName, string? location)
+    {
+        try
+        {
+            switch (dependent)
+            {
+                case RuleSetExpression ruleSet:
+                    // Execute nested rules
+                    foreach (var nestedRule in ruleSet.Rules)
+                    {
+                        VisitRule(nestedRule, context, groupName);
+                    }
+                    break;
+
+                case GroupInvocationExpression groupInvocation:
+                    // Execute group invocation
+                    VisitGroupInvocation(groupInvocation, context, location);
+                    break;
+
+                default:
+                    throw new NotSupportedException($"Dependent expression type {dependent.GetType().Name} not supported");
+            }
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error executing dependent expression: {ex.Message}", location, "DEPENDENT_ERROR", ex);
+        }
+    }
+
+    private void VisitGroupInvocation(GroupInvocationExpression invocation, MappingContext context, string? location)
+    {
+        try
+        {
+            if (_currentMap == null)
+            {
+                throw new InvalidOperationException("Cannot invoke group - no map context available");
+            }
+
+            // Find the group to invoke (case-insensitive)
+            var targetGroup = _currentMap.Groups.FirstOrDefault(g =>
+                string.Equals(g.Name, invocation.GroupName, StringComparison.OrdinalIgnoreCase));
+
+            if (targetGroup == null && _importResolver != null)
+            {
+                // Try to find in imported maps
+                targetGroup = _importResolver.FindGroup(_currentMap, invocation.GroupName);
+            }
+
+            if (targetGroup == null)
+            {
+                throw new InvalidOperationException($"Group '{invocation.GroupName}' not found in map or imports");
+            }
+
+            // Validate argument count matches parameter count
+            if (invocation.Arguments.Count != targetGroup.Parameters.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Group '{invocation.GroupName}' expects {targetGroup.Parameters.Count} parameters " +
+                    $"but {invocation.Arguments.Count} arguments were provided");
+            }
+
+            // Create a new context scope for the group invocation
+            // We need to map arguments to parameter names
+            var originalSources = new Dictionary<string, ITypedElement?>();
+            var originalTargets = new Dictionary<string, ITypedElement?>();
+
+            try
+            {
+                // Save current parameter values and set new ones from arguments
+                for (int i = 0; i < targetGroup.Parameters.Count; i++)
+                {
+                    var param = targetGroup.Parameters[i];
+                    var arg = invocation.Arguments[i];
+
+                    // Evaluate the argument
+                    var argValue = VisitExpression(arg, context, location).FirstOrDefault();
+
+                    if (argValue == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Argument {i + 1} for parameter '{param.Name}' evaluated to null");
+                    }
+
+                    // Save original value and set new value
+                    if (param.Mode == ParameterMode.Source)
+                    {
+                        originalSources[param.Name] = context.GetSource(param.Name);
+                        context.SetSource(param.Name, argValue);
+                    }
+                    else if (param.Mode == ParameterMode.Target)
+                    {
+                        originalTargets[param.Name] = context.GetTarget(param.Name);
+                        context.SetTarget(param.Name, argValue);
+                    }
+                }
+
+                // Execute the group
+                VisitGroup(targetGroup, _currentMap, context);
+            }
+            finally
+            {
+                // Restore original parameter values
+                foreach (var kvp in originalSources)
+                {
+                    if (kvp.Value != null)
+                    {
+                        context.SetSource(kvp.Key, kvp.Value);
+                    }
+                }
+
+                foreach (var kvp in originalTargets)
+                {
+                    if (kvp.Value != null)
+                    {
+                        context.SetTarget(kvp.Key, kvp.Value);
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        {
+            context.AddError($"Error invoking group '{invocation.GroupName}': {ex.Message}", location, "GROUP_INVOCATION_ERROR", ex);
         }
     }
 

@@ -629,7 +629,9 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Dependent.Should().HaveCount(2);
+        result.Groups[0].Rules[0].Dependent.Should().BeOfType<RuleSetExpression>();
+        var ruleSet = (RuleSetExpression)result.Groups[0].Rules[0].Dependent!;
+        ruleSet.Rules.Should().HaveCount(2);
     }
 
     [Fact]
@@ -653,8 +655,13 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Dependent.Should().HaveCount(1);
-        result.Groups[0].Rules[0].Dependent[0].Dependent.Should().HaveCount(1);
+        result.Groups[0].Rules[0].Dependent.Should().BeOfType<RuleSetExpression>();
+        var outerRuleSet = (RuleSetExpression)result.Groups[0].Rules[0].Dependent!;
+        outerRuleSet.Rules.Should().HaveCount(1);
+
+        outerRuleSet.Rules[0].Dependent.Should().BeOfType<RuleSetExpression>();
+        var innerRuleSet = (RuleSetExpression)outerRuleSet.Rules[0].Dependent!;
+        innerRuleSet.Rules.Should().HaveCount(1);
     }
 
     #endregion

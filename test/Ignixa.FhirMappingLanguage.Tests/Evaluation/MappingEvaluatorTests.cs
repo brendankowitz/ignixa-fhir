@@ -210,7 +210,7 @@ public class MappingEvaluatorTests
                 new SourceExpression(new IdentifierExpression("src"), null, null, null, null, null)
             },
             new List<TargetExpression> { target },
-            new List<RuleExpression>());
+            null);
 
         var group = new GroupExpression(
             "Main",
@@ -273,7 +273,7 @@ public class MappingEvaluatorTests
             null,
             new List<SourceExpression> { source },
             new List<TargetExpression>(),
-            new List<RuleExpression>());
+            null);
 
         var group = new GroupExpression(
             "Main",
@@ -318,7 +318,7 @@ public class MappingEvaluatorTests
                 new SourceExpression(new IdentifierExpression("src"), null, null, null, null, null)
             },
             new List<TargetExpression>(),
-            new List<RuleExpression>());
+            null);
 
         var outerRule = new RuleExpression(
             "outerRule",
@@ -327,7 +327,7 @@ public class MappingEvaluatorTests
                 new SourceExpression(new IdentifierExpression("src"), null, null, null, null, null)
             },
             new List<TargetExpression>(),
-            new List<RuleExpression> { innerRule });
+            new RuleSetExpression(new List<RuleExpression> { innerRule }));
 
         var group = new GroupExpression(
             "Main",
@@ -380,7 +380,7 @@ public class MappingEvaluatorTests
             null,
             new List<SourceExpression> { source },
             new List<TargetExpression>(),
-            new List<RuleExpression>());
+            null);
 
         var group = new GroupExpression(
             "Main",
@@ -499,7 +499,7 @@ public class MappingEvaluatorTests
             null,
             new List<SourceExpression> { source },
             new List<TargetExpression>(),
-            new List<RuleExpression>());
+            null);
 
         var group = new GroupExpression(
             "Main",

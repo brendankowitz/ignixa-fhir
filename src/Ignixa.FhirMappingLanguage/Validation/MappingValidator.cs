@@ -123,7 +123,7 @@ public class MappingValidator
 
         for (int i = 0; i < group.Rules.Count; i++)
         {
-            ValidateRule(group, group.Rules[i], i, result);
+            ValidateRule(map, group, group.Rules[i], i, result);
         }
     }
 
@@ -172,7 +172,7 @@ public class MappingValidator
         }
     }
 
-    private void ValidateRule(GroupExpression group, RuleExpression rule, int ruleIndex, ValidationResult result)
+    private void ValidateRule(MapExpression map, GroupExpression group, RuleExpression rule, int ruleIndex, ValidationResult result)
     {
         var location = !string.IsNullOrWhiteSpace(rule.Name)
             ? $"Group: {group.Name}, Rule: {rule.Name}"
@@ -200,10 +200,10 @@ public class MappingValidator
             ValidateTarget(target, location, result);
         }
 
-        // Validate dependent rules
-        foreach (var dependent in rule.Dependent)
+        // Validate dependent expression (group invocation or nested rules)
+        if (rule.Dependent != null)
         {
-            ValidateRule(group, dependent, ruleIndex, result);
+            ValidateDependentExpression(map, group, rule.Dependent, ruleIndex, result);
         }
     }
 
@@ -248,6 +248,52 @@ public class MappingValidator
             {
                 // This is just informational
             }
+        }
+    }
+
+    private void ValidateDependentExpression(MapExpression map, GroupExpression group, Expression dependent, int ruleIndex, ValidationResult result)
+    {
+        switch (dependent)
+        {
+            case RuleSetExpression ruleSet:
+                // Validate nested rules
+                foreach (var nestedRule in ruleSet.Rules)
+                {
+                    ValidateRule(map, group, nestedRule, ruleIndex, result);
+                }
+                break;
+
+            case GroupInvocationExpression groupInvocation:
+                // Validate group invocation exists
+                ValidateGroupInvocation(map, groupInvocation, result);
+                break;
+
+            default:
+                result.AddError($"Unknown dependent expression type: {dependent.GetType().Name}",
+                    location: $"Group: {group.Name}, Rule {ruleIndex}",
+                    code: "UNKNOWN_DEPENDENT_TYPE");
+                break;
+        }
+    }
+
+    private void ValidateGroupInvocation(MapExpression map, GroupInvocationExpression invocation, ValidationResult result)
+    {
+        // Check if the group exists in the current map
+        var groupExists = map.Groups.Any(g =>
+            string.Equals(g.Name, invocation.GroupName, StringComparison.OrdinalIgnoreCase));
+
+        if (!groupExists && _importResolver != null)
+        {
+            // Check if it exists in imports
+            var importedGroup = _importResolver.FindGroup(map, invocation.GroupName);
+            groupExists = importedGroup != null;
+        }
+
+        if (!groupExists)
+        {
+            result.AddError($"Group '{invocation.GroupName}' not found",
+                location: "Group Invocation",
+                code: "UNKNOWN_GROUP");
         }
     }
 

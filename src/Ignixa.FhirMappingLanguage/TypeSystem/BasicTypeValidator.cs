@@ -237,10 +237,39 @@ public class BasicTypeValidator : ITypeValidator
             }
         }
 
-        // Validate dependent rules
-        foreach (var dependent in rule.Dependent)
+        // Validate dependent expression (group invocation or nested rules)
+        if (rule.Dependent != null)
         {
-            errors.AddRange(ValidateRule(dependent, declaredTypes));
+            errors.AddRange(ValidateDependentExpression(rule.Dependent, declaredTypes));
+        }
+
+        return errors;
+    }
+
+    private IEnumerable<TypeValidationError> ValidateDependentExpression(Expression dependent, Dictionary<string, string> declaredTypes)
+    {
+        var errors = new List<TypeValidationError>();
+
+        switch (dependent)
+        {
+            case RuleSetExpression ruleSet:
+                // Validate nested rules
+                foreach (var nestedRule in ruleSet.Rules)
+                {
+                    errors.AddRange(ValidateRule(nestedRule, declaredTypes));
+                }
+                break;
+
+            case GroupInvocationExpression:
+                // Group invocations are validated at runtime
+                // No type validation needed here
+                break;
+
+            default:
+                errors.Add(new TypeValidationError(
+                    $"Unknown dependent expression type: {dependent.GetType().Name}",
+                    dependent.Location));
+                break;
         }
 
         return errors;

@@ -374,7 +374,24 @@ public static class MappingGrammar
             transform,
             listMode.HasValue ? listMode.Value : null);
 
-    // Rule: source [, source]* [-> target [, target]*] [then { rule* }]
+    // Group invocation: GroupName(arg1, arg2, ...)
+    private static readonly TokenListParser<MappingTokenKind, GroupInvocationExpression> GroupInvocation =
+        from groupName in Identifier
+        from lparen in Token.EqualTo(MappingTokenKind.LeftParen)
+        from args in TransformArgumentExpression.ManyDelimitedBy(Token.EqualTo(MappingTokenKind.Comma))
+        from rparen in Token.EqualTo(MappingTokenKind.RightParen)
+        select new GroupInvocationExpression(groupName.Name, args, groupName.Location);
+
+    // Nested rules: { rule1; rule2; }
+    private static readonly TokenListParser<MappingTokenKind, RuleSetExpression> NestedRules =
+        from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
+#pragma warning disable CS8603 // Possible null reference return - Many() never returns null
+        from rules in Parse.Ref(() => Rule).Many()
+#pragma warning restore CS8603
+        from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
+        select new RuleSetExpression(rules, CreatePosition(lbrace));
+
+    // Rule: source [, source]* [-> target [, target]*] [then (GroupInvocation | NestedRules)]
     // NOTE: Rule names (ruleName::) are not supported - not part of FHIR spec
     // FHIR spec uses trailing quoted strings for rule names instead
     // A rule MUST have at least one source (AtLeastOnceDelimitedBy prevents zero-width parser error)
@@ -387,19 +404,15 @@ public static class MappingGrammar
         ).OptionalOrDefault()
         from dependent in (
             from thenToken in Token.EqualTo(MappingTokenKind.Then)
-            from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
-#pragma warning disable CS8603 // Possible null reference return - Many() never returns null
-            from rules in Parse.Ref(() => Rule).Many()
-#pragma warning restore CS8603
-            from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
-            select rules
+            from content in GroupInvocation.Select(g => (Expression)g).Or(NestedRules.Select(r => (Expression)r))
+            select content
         ).OptionalOrDefault()
         from semicolon in Token.EqualTo(MappingTokenKind.Semicolon).Optional()
         select new RuleExpression(
             null, // Rule name not supported - see FHIR spec for trailing string syntax
             sources,
             targets ?? Array.Empty<TargetExpression>(),
-            dependent ?? Array.Empty<RuleExpression>());
+            dependent);
 
     // Group: group Name(params) [extends OtherGroup] { rules }
     private static readonly TokenListParser<MappingTokenKind, GroupExpression> Group =

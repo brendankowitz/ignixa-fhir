@@ -262,19 +262,19 @@ public class RuleExpression : Expression
         string? name,
         IEnumerable<SourceExpression> sources,
         IEnumerable<TargetExpression> targets,
-        IEnumerable<RuleExpression> dependent,
+        Expression? dependent,
         ISourcePositionInfo? location = null) : base(location)
     {
         Name = name;
         Sources = sources?.ToList() ?? new List<SourceExpression>();
         Targets = targets?.ToList() ?? new List<TargetExpression>();
-        Dependent = dependent?.ToList() ?? new List<RuleExpression>();
+        Dependent = dependent;
     }
 
     public string? Name { get; }
     public IReadOnlyList<SourceExpression> Sources { get; }
     public IReadOnlyList<TargetExpression> Targets { get; }
-    public IReadOnlyList<RuleExpression> Dependent { get; }
+    public Expression? Dependent { get; }
 
     public override string ToString() => $"Rule({Name ?? "anonymous"})";
 }
@@ -475,4 +475,43 @@ public class IndexExpression : Expression
     public int Index { get; }
 
     public override string ToString() => $"{Context}[{Index}]";
+}
+
+/// <summary>
+/// Represents a group invocation in a dependent clause.
+/// Example: then GroupName(src, tgt)
+/// </summary>
+public class GroupInvocationExpression : Expression
+{
+    public GroupInvocationExpression(
+        string groupName,
+        IEnumerable<Expression> arguments,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        GroupName = groupName ?? throw new ArgumentNullException(nameof(groupName));
+        Arguments = arguments?.ToList() ?? new List<Expression>();
+    }
+
+    public string GroupName { get; }
+    public IReadOnlyList<Expression> Arguments { get; }
+
+    public override string ToString() => $"{GroupName}({string.Join(", ", Arguments)})";
+}
+
+/// <summary>
+/// Represents a set of nested rules in a dependent clause.
+/// Example: then { rule1; rule2; }
+/// </summary>
+public class RuleSetExpression : Expression
+{
+    public RuleSetExpression(
+        IEnumerable<RuleExpression> rules,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        Rules = rules?.ToList() ?? new List<RuleExpression>();
+    }
+
+    public IReadOnlyList<RuleExpression> Rules { get; }
+
+    public override string ToString() => $"{{ {Rules.Count} rules }}";
 }

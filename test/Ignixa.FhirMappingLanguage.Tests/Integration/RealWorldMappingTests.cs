@@ -6,6 +6,7 @@
  */
 
 using FluentAssertions;
+using Ignixa.FhirMappingLanguage.Expressions;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Integration;
@@ -208,8 +209,11 @@ group PatientToBundle(source patient : Patient, target bundle : Bundle) {
         result.Groups[0].Rules.Should().HaveCountGreaterThan(1);
 
         // Verify nested structure
-        var firstRule = result.Groups[0].Rules.First(r => r.Dependent.Any());
-        firstRule.Dependent.Should().NotBeEmpty();
+        var firstRule = result.Groups[0].Rules.First(r => r.Dependent != null);
+        firstRule.Dependent.Should().NotBeNull();
+        firstRule.Dependent.Should().BeOfType<RuleSetExpression>();
+        var ruleSet = (RuleSetExpression)firstRule.Dependent!;
+        ruleSet.Rules.Should().NotBeEmpty();
     }
 
     #endregion

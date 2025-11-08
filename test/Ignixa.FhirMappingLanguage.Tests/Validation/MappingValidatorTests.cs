@@ -245,7 +245,7 @@ group Group2(source src : Patient, target tgt : Bundle) extends Group1 {
                             null,
                             new List<Expressions.SourceExpression>(),  // No sources
                             new List<Expressions.TargetExpression>(),
-                            new List<Expressions.RuleExpression>())
+                            null)
                     })
             });
 
