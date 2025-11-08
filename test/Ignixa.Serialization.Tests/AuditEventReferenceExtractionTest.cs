@@ -4,13 +4,13 @@
 // </copyright>
 
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
 using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
-using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
 namespace Ignixa.Serialization.Tests;
 

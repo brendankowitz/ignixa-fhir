@@ -8,7 +8,7 @@ using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Terminology;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Terminology;

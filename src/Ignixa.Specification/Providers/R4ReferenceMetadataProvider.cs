@@ -4,7 +4,7 @@
 // </copyright>
 
 using System;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 using Ignixa.Specification.Generated;
 

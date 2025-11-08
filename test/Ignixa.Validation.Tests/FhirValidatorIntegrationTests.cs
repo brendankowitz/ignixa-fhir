@@ -5,7 +5,7 @@
 
 using System.Text.Json.Nodes;
 using FluentAssertions;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;

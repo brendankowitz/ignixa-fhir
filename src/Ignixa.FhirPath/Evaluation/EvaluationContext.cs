@@ -5,7 +5,7 @@
  * Stores variables and resources available during expression evaluation.
  */
 
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
 

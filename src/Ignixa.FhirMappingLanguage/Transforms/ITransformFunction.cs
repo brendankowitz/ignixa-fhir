@@ -4,7 +4,7 @@
  * Transform function interface for FHIR Mapping Language.
  */
 
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirMappingLanguage.Transforms;
 

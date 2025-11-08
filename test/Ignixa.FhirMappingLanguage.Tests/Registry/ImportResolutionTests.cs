@@ -8,7 +8,7 @@ using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Registry;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Xunit;
 
 #pragma warning disable xUnit1031 // Test methods should not use blocking task operations - Intentional for testing

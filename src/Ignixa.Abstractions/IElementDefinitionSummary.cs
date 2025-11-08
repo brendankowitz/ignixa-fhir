@@ -7,10 +7,7 @@
  */
 
 
-using Ignixa.Serialization.Specification;
-using Ignixa.Serialization.Utilities;
-
-namespace Ignixa.Serialization.Abstractions;
+namespace Ignixa.Abstractions;
 
 public interface IElementDefinitionSummary  // ElementDefinition
 {
@@ -96,7 +93,7 @@ public static class TypeSerializationInfoExtensions
             case IStructureDefinitionSummary ct:
                 return ct.TypeName;
             default:
-                throw Error.NotSupported($"Don't know how to derive type information from type {info.GetType()}");
+                throw new NotSupportedException($"Don't know how to derive type information from type {info.GetType()}");
         }
     }
 

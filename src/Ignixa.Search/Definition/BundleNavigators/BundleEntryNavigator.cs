@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.Search.Definition.BundleNavigators;
 

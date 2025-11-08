@@ -8,7 +8,7 @@
 
 #nullable enable
 
-namespace Ignixa.Serialization.Abstractions;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// A element within a tree of typed FHIR data.

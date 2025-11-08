@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.Serialization.SourceNodes;
 

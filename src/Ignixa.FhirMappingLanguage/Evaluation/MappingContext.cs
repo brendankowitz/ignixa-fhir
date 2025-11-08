@@ -5,7 +5,7 @@
  */
 
 using Ignixa.FhirMappingLanguage.Transforms;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirMappingLanguage.Evaluation;
 

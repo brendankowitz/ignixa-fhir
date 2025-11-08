@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 using EnsureThat;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.Search.InMemory;
 

@@ -10,7 +10,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
 using Ignixa.Specification;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;

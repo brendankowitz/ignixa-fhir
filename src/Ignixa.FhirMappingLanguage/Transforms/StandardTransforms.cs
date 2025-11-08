@@ -5,7 +5,7 @@
  * Implements the built-in transforms defined in the FHIR specification.
  */
 
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
 
 namespace Ignixa.FhirMappingLanguage.Transforms;

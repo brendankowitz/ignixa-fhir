@@ -10,8 +10,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using Ignixa.Domain;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Abstractions;
-using Ignixa.Serialization.Specification;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 namespace Ignixa.Specification.Generated;

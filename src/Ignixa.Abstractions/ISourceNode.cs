@@ -6,7 +6,7 @@
  * available at https://github.com/FirelyTeam/firely-net-sdk/blob/master/LICENSE
  */
 
-namespace Ignixa.Serialization.Abstractions;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// A node within a tree of FHIR data.

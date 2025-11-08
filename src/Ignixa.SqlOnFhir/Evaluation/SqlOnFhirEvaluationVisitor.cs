@@ -7,7 +7,7 @@
 
 using System.Collections.Immutable;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.SqlOnFhir.Expressions;
 
 namespace Ignixa.SqlOnFhir.Evaluation;

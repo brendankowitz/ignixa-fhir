@@ -9,7 +9,7 @@ using EnsureThat;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition.BundleNavigators;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Models;

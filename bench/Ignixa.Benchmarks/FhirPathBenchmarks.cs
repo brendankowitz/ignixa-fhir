@@ -15,7 +15,7 @@ using Ignixa.Serialization.SourceNodes;
 // Ignixa FHIRPath extension methods
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
+using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
 // Static using for extension methods
 using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;

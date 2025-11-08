@@ -14,7 +14,7 @@ using Ignixa.Search.Definition.BundleNavigators;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 

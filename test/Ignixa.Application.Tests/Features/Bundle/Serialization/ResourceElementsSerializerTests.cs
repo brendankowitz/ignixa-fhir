@@ -10,7 +10,7 @@ using System.Text.Json;
 using FluentAssertions;
 using NSubstitute;
 using Ignixa.Application.Features.Bundle.Serialization;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Bundle.Serialization;

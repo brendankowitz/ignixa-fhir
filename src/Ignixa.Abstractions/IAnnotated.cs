@@ -10,7 +10,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-namespace Ignixa.Serialization.Abstractions;
+namespace Ignixa.Abstractions;
 
 public interface IAnnotated
 {

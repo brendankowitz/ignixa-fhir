@@ -7,7 +7,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.SqlOnFhir.Models;
 using Ignixa.SqlOnFhir.Parsing;

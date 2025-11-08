@@ -108,7 +108,7 @@ public class PostPutBenchmarks
 
     [Benchmark(Description = "2. Convert to ITypedElement (schema navigation)")]
     [BenchmarkCategory("Navigation")]
-    public Ignixa.Serialization.Abstractions.ITypedElement ConvertToTypedElement()
+    public Ignixa.Abstractions.ITypedElement ConvertToTypedElement()
     {
         var sourceNode = _patientNode.ToSourceNode();
         return sourceNode.ToTypedElement(_schemaProvider);

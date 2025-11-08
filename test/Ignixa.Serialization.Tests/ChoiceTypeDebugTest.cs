@@ -7,7 +7,7 @@ using Hl7.Fhir.Model;
 using Hl7.Fhir.ElementModel; // SDK ElementModel (ISourceNode, ITypedElement, ToTypedElement extensions)
 using Hl7.FhirPath; // SDK FhirPath extensions
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 // Our FhirPath extensions
 using Ignixa.Specification.Generated;
 using Xunit;
@@ -17,8 +17,8 @@ using Xunit.Abstractions;
 
 // Static using for our extension methods
 using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
-using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;

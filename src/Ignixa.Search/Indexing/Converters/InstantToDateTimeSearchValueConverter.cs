@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Search.Indexing.SearchValues;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Utilities;
 
 namespace Ignixa.Search.Indexing.Converters;

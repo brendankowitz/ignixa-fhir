@@ -5,7 +5,7 @@
  * type name normalization, and proper InstanceType resolution.
  */
 
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Xunit;

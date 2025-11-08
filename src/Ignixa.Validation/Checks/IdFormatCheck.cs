@@ -4,7 +4,7 @@
 // </copyright>
 
 using System.Text.RegularExpressions;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Checks;

@@ -16,4 +16,8 @@
     <PackageReference Include="System.Collections.Immutable" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+  </ItemGroup>
+
 </Project>

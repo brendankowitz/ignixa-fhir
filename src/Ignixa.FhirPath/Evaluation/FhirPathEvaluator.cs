@@ -6,7 +6,7 @@
  */
 
 using Ignixa.FhirPath.Expressions;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
 

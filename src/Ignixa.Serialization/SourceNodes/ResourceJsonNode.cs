@@ -7,10 +7,10 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
-using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
 // For ToTypedElement extension method
 

@@ -7,7 +7,7 @@
 
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Compilation;
 

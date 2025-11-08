@@ -9,6 +9,7 @@ COPY Directory.Packages.props ./
 COPY .editorconfig ./
 
 # Copy all source project files for layer caching
+COPY src/Ignixa.Abstractions/Ignixa.Abstractions.csproj src/Ignixa.Abstractions/
 COPY src/Ignixa.Api/Ignixa.Api.csproj src/Ignixa.Api/
 COPY src/Ignixa.Application/Ignixa.Application.csproj src/Ignixa.Application/
 COPY src/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj src/Ignixa.Application.BackgroundOperations/

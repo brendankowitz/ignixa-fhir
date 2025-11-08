@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;

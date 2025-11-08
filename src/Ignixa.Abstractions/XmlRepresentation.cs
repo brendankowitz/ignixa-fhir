@@ -28,7 +28,7 @@
 
 */
 
-namespace Ignixa.Serialization.Specification;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// Xml Serialization used for primitive values

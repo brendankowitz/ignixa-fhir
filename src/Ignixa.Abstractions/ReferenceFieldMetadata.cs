@@ -5,7 +5,7 @@
 
 #nullable enable
 
-namespace Ignixa.Serialization.Models;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// Metadata about a reference field in a FHIR resource.

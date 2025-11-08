@@ -5,7 +5,7 @@
 
 using System.Text.Json.Nodes;
 using EnsureThat;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Serialization.Extensions;

@@ -7,7 +7,7 @@
 using Ignixa.FhirPath.Compilation;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Xunit;
 
 namespace Ignixa.FhirPath.Tests;

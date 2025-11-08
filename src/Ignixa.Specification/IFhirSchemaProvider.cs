@@ -5,7 +5,7 @@
 
 using Ignixa.Domain;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.Specification;
 

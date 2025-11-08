@@ -13,8 +13,8 @@ using Ignixa.Specification;
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
 // Static using for extension methods
 using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;

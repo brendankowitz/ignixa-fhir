@@ -8,7 +8,7 @@
 using System.Collections.Concurrent;
 using Ignixa.FhirPath.Compilation;
 using Ignixa.FhirPath.Expressions;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
 

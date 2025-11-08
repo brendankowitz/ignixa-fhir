@@ -7,7 +7,7 @@
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Transforms;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using System.Text.Json.Nodes;
 using Xunit;
 

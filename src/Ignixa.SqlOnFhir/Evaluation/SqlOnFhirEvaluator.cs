@@ -5,7 +5,7 @@
  * Uses ISourceNode for proper handling of FHIR data and visitor pattern for evaluation.
  */
 
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.SqlOnFhir.Expressions;
 using Ignixa.SqlOnFhir.Parsing;
 

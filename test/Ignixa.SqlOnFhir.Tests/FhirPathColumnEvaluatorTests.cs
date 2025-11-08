@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Ignixa.SqlOnFhir.Evaluation;

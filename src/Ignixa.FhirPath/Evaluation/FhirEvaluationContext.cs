@@ -4,7 +4,7 @@
  * FHIR-specific evaluation context with support for resolve() and terminology services.
  */
 
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
 

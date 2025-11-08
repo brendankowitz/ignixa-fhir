@@ -6,7 +6,7 @@
  * available at https://github.com/FirelyTeam/firely-net-sdk/blob/master/LICENSE
  */
 
-namespace Ignixa.Serialization.Abstractions;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// This interface is implemented by FHIR parsers to represent the resource type indicator

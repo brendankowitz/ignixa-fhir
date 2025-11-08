@@ -8,7 +8,7 @@
 
 using System.Collections.Immutable;
 using Ignixa.FhirPath;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.SqlOnFhir.Expressions;
 
 namespace Ignixa.SqlOnFhir.Parsing;

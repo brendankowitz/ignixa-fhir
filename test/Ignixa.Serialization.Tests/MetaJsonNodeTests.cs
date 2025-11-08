@@ -22,8 +22,8 @@ using Xunit;
 
 // Static using for our extension methods
 using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
-using ISourceNode = Ignixa.Serialization.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Serialization.Abstractions.ITypedElement;
+using ISourceNode = Ignixa.Abstractions.ISourceNode;
+using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;

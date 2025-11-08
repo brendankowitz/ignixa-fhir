@@ -13,7 +13,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing;

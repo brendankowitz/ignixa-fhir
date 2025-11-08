@@ -6,7 +6,7 @@
 
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage.TypeSystem;
-using Ignixa.Serialization.Abstractions;
+using Ignixa.Abstractions;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.TypeSystem;

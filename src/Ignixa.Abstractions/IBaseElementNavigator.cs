@@ -8,7 +8,7 @@
 
 #nullable enable
 
-namespace Ignixa.Serialization.Abstractions;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// The base interface for <see cref="ITypedElement"/>."/>
