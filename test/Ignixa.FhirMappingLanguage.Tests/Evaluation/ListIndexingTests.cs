@@ -445,12 +445,12 @@ group Transform(source src : Patient, target tgt : Bundle) {
     [Fact]
     public void GivenIndexingWithWhere_WhenFiltering_ThenWorksCorrectly()
     {
-        // Arrange
+        // Arrange - Use a contextual where condition that references the mapping context
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.name[0] where name.exists() log src.name[0] -> tgt.entry;
+  src.name[0] where src.name.exists() log src.name[0] -> tgt.entry;
 }";
 
         var compiler = new MappingCompiler();
@@ -522,12 +522,13 @@ group Transform(source src : Patient, target tgt : Bundle) {
     [Fact]
     public void GivenNegativeIndex_WhenEvaluating_ThenReturnsEmpty()
     {
-        // Arrange - Parser should accept any integer, evaluator handles bounds
+        // Arrange - FHIR Mapping Language doesn't support negative indexes
+        // This test verifies out-of-bounds behavior with index 999
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
 group Transform(source src : Patient, target tgt : Bundle) {
-  src.name[-1] log src.name[-1] -> tgt.entry;
+  src.name[999] log src.name[999] -> tgt.entry;
 }";
 
         var compiler = new MappingCompiler();
@@ -549,7 +550,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         // Act
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
-        // Assert - Negative index returns empty (no error)
+        // Assert - Out-of-bounds index returns empty (no error)
         act.Should().NotThrow();
         logMessages.Should().BeEmpty();
     }

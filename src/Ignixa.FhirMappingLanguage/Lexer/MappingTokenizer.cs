@@ -82,7 +82,6 @@ public static class MappingTokenizer
             .Match(Identifier.CStyle, MappingTokenKind.Identifier)
 
             // Multi-character operators (longest first)
-            .Match(Span.EqualTo("::"), MappingTokenKind.DoubleColon)
             .Match(Span.EqualTo("->"), MappingTokenKind.Arrow)
             .Match(Span.EqualTo(".."), MappingTokenKind.Range)
 
@@ -167,7 +166,6 @@ public static class MappingTokenizer
             .Match(Identifier.CStyle, MappingTokenKind.Identifier)
 
             // Multi-character operators (longest first)
-            .Match(Span.EqualTo("::"), MappingTokenKind.DoubleColon)
             .Match(Span.EqualTo("->"), MappingTokenKind.Arrow)
             .Match(Span.EqualTo(".."), MappingTokenKind.Range)
 

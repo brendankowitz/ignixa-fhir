@@ -446,7 +446,10 @@ public class ReferenceTransform : ITransformFunction
         if (source is ITypedElement element)
         {
             var resourceType = element.InstanceType;
-            var id = element.Children("id").FirstOrDefault()?.Value?.ToString();
+
+            // Try to get id from children first, then from element value
+            var id = element.Children("id").FirstOrDefault()?.Value?.ToString()
+                     ?? element.Value?.ToString();
 
             if (resourceType != null && id != null)
             {
@@ -516,7 +519,7 @@ public class PointerTransform : ITransformFunction
 
         if (source is ITypedElement element)
         {
-            return element.Location ?? "/";
+            return string.IsNullOrEmpty(element.Location) ? "/" : element.Location;
         }
 
         return "/";

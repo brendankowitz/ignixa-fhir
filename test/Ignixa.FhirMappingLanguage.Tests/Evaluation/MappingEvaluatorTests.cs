@@ -169,7 +169,7 @@ public class MappingEvaluatorTests
 
         // Act & Assert
         var act = () => evaluator.Execute(map, context);
-        act.Should().Throw<InvalidOperationException>()
+        act.Should().Throw<MappingExecutionException>()
             .WithMessage("*src*");
     }
 

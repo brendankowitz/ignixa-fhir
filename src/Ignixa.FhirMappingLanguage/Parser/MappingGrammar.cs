@@ -352,18 +352,20 @@ public static class MappingGrammar
             defaultValue,
             cardinality);
 
-    // Target: [context] [as variable] [= transform] [list mode]
+    // Target: [context] [= transform] [as variable] [list mode]
+    // Note: The order is context -> transform -> as variable -> list mode
+    // This matches FHIR spec: "tgt.name = create('Type') as variable listmode"
     private static readonly TokenListParser<MappingTokenKind, TargetExpression> Target =
         from context in QualifiedIdentifier.Select(e => (Expression?)e).OptionalOrDefault()
-        from variable in (
-            from asToken in Token.EqualTo(MappingTokenKind.As)
-            from varName in Identifier
-            select varName.Name
-        ).OptionalOrDefault()
         from transform in (
             from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
             from trans in Transform
             select trans
+        ).OptionalOrDefault()
+        from variable in (
+            from asToken in Token.EqualTo(MappingTokenKind.As)
+            from varName in Identifier
+            select varName.Name
         ).OptionalOrDefault()
         from listMode in ListModeParser.Optional()
         select new TargetExpression(

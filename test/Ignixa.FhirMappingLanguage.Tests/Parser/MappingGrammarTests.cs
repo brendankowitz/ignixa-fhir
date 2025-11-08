@@ -300,25 +300,8 @@ group Main(source src : Patient, target tgt : Bundle) {
         rule.Targets.Should().HaveCount(1);
     }
 
-    [Fact]
-    public void GivenNamedRule_WhenParsing_ThenReturnsRuleWithName()
-    {
-        // Arrange
-        var mappingText = @"
-map 'http://example.org' = 'Test'
-
-group Main(source src : Patient, target tgt : Bundle) {
-  copyName:: src.name -> tgt.name;
-}
-";
-        var compiler = new MappingCompiler();
-
-        // Act
-        var result = compiler.Parse(mappingText);
-
-        // Assert
-        result.Groups[0].Rules[0].Name.Should().Be("copyName");
-    }
+    // NOTE: Named rule test removed - :: syntax is not part of FHIR Mapping Language spec
+    // The FHIR spec does not support rule names with :: syntax
 
     [Fact]
     public void GivenRuleWithMultipleSources_WhenParsing_ThenReturnsRuleWithAllSources()

@@ -292,40 +292,8 @@ group Patient(source src : Patient, target tgt : PatientOut) extends DomainResou
 
     #endregion
 
-    #region Named Rules Example
-
-    [Fact]
-    public void GivenNamedRules_WhenParsing_ThenParsesSuccessfully()
-    {
-        // Arrange - Example with named rules
-        var mappingText = @"
-map 'http://example.org/named' = 'named'
-
-uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
-uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias PatientOut as target
-
-group Patient(source src : Patient, target tgt : PatientOut) {
-  copyId:: src.id -> tgt.id;
-  copyName:: src.name -> tgt.name;
-  copyGender:: src.gender -> tgt.gender;
-  copyBirthDate:: src.birthDate -> tgt.birthDate;
-}
-";
-        var compiler = new MappingCompiler();
-
-        // Act
-        var result = compiler.Parse(mappingText);
-
-        // Assert
-        result.Should().NotBeNull();
-        result.Groups[0].Rules.Should().HaveCount(4);
-        result.Groups[0].Rules[0].Name.Should().Be("copyId");
-        result.Groups[0].Rules[1].Name.Should().Be("copyName");
-        result.Groups[0].Rules[2].Name.Should().Be("copyGender");
-        result.Groups[0].Rules[3].Name.Should().Be("copyBirthDate");
-    }
-
-    #endregion
+    // NOTE: Named rules using :: syntax removed - not part of FHIR Mapping Language spec
+    // The FHIR spec uses trailing quoted strings for rule documentation, not rule names
 
     #region Multiple Sources and Targets
 

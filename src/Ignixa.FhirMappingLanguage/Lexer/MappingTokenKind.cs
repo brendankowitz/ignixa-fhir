@@ -58,7 +58,6 @@ public enum MappingTokenKind
     // Operators
     Equals,              // =
     Arrow,               // ->
-    DoubleColon,         // ::
     Colon,               // :
     Range,               // .. (for cardinality)
     Dot,                 // .

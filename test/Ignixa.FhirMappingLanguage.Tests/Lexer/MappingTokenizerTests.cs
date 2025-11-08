@@ -111,7 +111,6 @@ public class MappingTokenizerTests
 
     [Theory]
     [InlineData("->", MappingTokenKind.Arrow)]
-    [InlineData("::", MappingTokenKind.DoubleColon)]
     [InlineData(":", MappingTokenKind.Colon)]
     [InlineData("=", MappingTokenKind.Equals)]
     [InlineData(".", MappingTokenKind.Dot)]
@@ -138,19 +137,7 @@ public class MappingTokenizerTests
         result.First().Kind.Should().Be(expectedKind);
     }
 
-    [Fact]
-    public void GivenMultiCharacterOperator_WhenTokenizing_ThenRecognizesLongestMatch()
-    {
-        // Arrange
-        var tokenizer = MappingTokenizer.Create();
-
-        // Act
-        var result = tokenizer.Tokenize("::").ToList();
-
-        // Assert
-        result.Should().HaveCount(1);
-        result[0].Kind.Should().Be(MappingTokenKind.DoubleColon);
-    }
+    // NOTE: DoubleColon (::) test removed - not part of FHIR Mapping Language spec
 
     #endregion
 

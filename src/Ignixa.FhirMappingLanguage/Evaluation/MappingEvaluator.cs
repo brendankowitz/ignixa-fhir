@@ -96,8 +96,8 @@ public class MappingEvaluator
             // Handle group inheritance (extends)
             if (!string.IsNullOrEmpty(group.Extends))
             {
-                // Try to find base group in current map first
-                var baseGroup = map.Groups.FirstOrDefault(g => g.Name == group.Extends);
+                // Try to find base group in current map first (case-insensitive)
+                var baseGroup = map.Groups.FirstOrDefault(g => string.Equals(g.Name, group.Extends, StringComparison.OrdinalIgnoreCase));
 
                 // If not found and import resolver is available, check imports
                 if (baseGroup == null && _importResolver != null)
@@ -157,24 +157,23 @@ public class MappingEvaluator
         {
             // Visit sources
             var sourceValues = new Dictionary<string, IEnumerable<ITypedElement>>();
+            var anonymousSourceIndex = 0;
             foreach (var source in rule.Sources)
             {
                 try
                 {
                     var values = VisitSource(source, context, location);
-                    if (source.Variable != null)
-                    {
-                        sourceValues[source.Variable] = values;
-                    }
+
+                    // Store source values with either the variable name or an anonymous key
+                    var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
+                    sourceValues[key] = values;
                 }
                 catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
                 {
                     context.AddError($"Error evaluating source: {ex.Message}", location, "SOURCE_ERROR", ex);
                     // Continue with other sources
-                    if (source.Variable != null)
-                    {
-                        sourceValues[source.Variable] = Enumerable.Empty<ITypedElement>();
-                    }
+                    var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
+                    sourceValues[key] = Enumerable.Empty<ITypedElement>();
                 }
             }
 
@@ -227,24 +226,55 @@ public class MappingEvaluator
             // Apply where condition if present
             if (source.Condition != null && source.Condition is FhirPathExpression fhirPathCondition)
             {
-                contextValues = contextValues.Where(element =>
+                // Check if the where condition references mapping variables (contains function calls or mapping variable names)
+                var whereExpr = fhirPathCondition.PathExpression.Trim();
+                bool isContextualWhere = whereExpr.Contains('(', StringComparison.Ordinal) ||
+                                        whereExpr.StartsWith("src.", StringComparison.Ordinal) ||
+                                        whereExpr.StartsWith("tgt.", StringComparison.Ordinal);
+
+                if (isContextualWhere)
                 {
+                    // Evaluate once against mapping context
                     try
                     {
-                        if (context.FhirPathEvaluator == null)
-                        {
-                            throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                        }
+                        var whereResult = VisitFhirPath(fhirPathCondition, context);
+                        bool conditionMet = whereResult.Any() && whereResult.First().Value is bool b && b;
 
-                        var result = context.FhirPathEvaluator(fhirPathCondition.PathExpression, element);
-                        return result.Any() && result.First().Value is bool b && b;
+                        if (!conditionMet)
+                        {
+                            // Filter out all elements
+                            contextValues = Enumerable.Empty<ITypedElement>();
+                        }
+                        // Otherwise keep all elements
                     }
                     catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
                     {
                         context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
-                        return false; // Exclude element on error
+                        contextValues = Enumerable.Empty<ITypedElement>(); // Exclude all on error
                     }
-                });
+                }
+                else
+                {
+                    // Evaluate against each element (for element-specific conditions like "use='official'")
+                    contextValues = contextValues.Where(element =>
+                    {
+                        try
+                        {
+                            if (context.FhirPathEvaluator == null)
+                            {
+                                throw new InvalidOperationException("FhirPathEvaluator not configured in context");
+                            }
+
+                            var result = context.FhirPathEvaluator(fhirPathCondition.PathExpression, element);
+                            return result.Any() && result.First().Value is bool b && b;
+                        }
+                        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                        {
+                            context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
+                            return false; // Exclude element on error
+                        }
+                    });
+                }
             }
 
             // Check cardinality constraint if present
@@ -269,26 +299,25 @@ public class MappingEvaluator
             // Apply check condition if present
             if (source.Check != null && source.Check is FhirPathExpression fhirPathCheck)
             {
-                foreach (var element in contextValuesList)
+                // Check conditions are evaluated against the mapping context, not individual elements
+                // This allows expressions like "src.name.count() > 0" to work correctly
+                try
                 {
-                    try
+                    if (context.FhirPathEvaluator == null)
                     {
-                        if (context.FhirPathEvaluator == null)
-                        {
-                            throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                        }
+                        throw new InvalidOperationException("FhirPathEvaluator not configured in context");
+                    }
 
-                        var result = context.FhirPathEvaluator(fhirPathCheck.PathExpression, element);
-                        if (!result.Any() || result.First().Value is not bool b || !b)
-                        {
-                            throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
-                        }
-                    }
-                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                    // Evaluate the check expression in the mapping context
+                    var checkResult = VisitFhirPath(fhirPathCheck, context);
+                    if (!checkResult.Any() || checkResult.First().Value is not bool b || !b)
                     {
-                        context.AddError($"Check condition failed: {ex.Message}", location, "CHECK_ERROR", ex);
-                        // Continue processing other elements
+                        throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
                     }
+                }
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                {
+                    context.AddError($"Check condition failed: {ex.Message}", location, "CHECK_ERROR", ex);
                 }
             }
 
@@ -299,14 +328,32 @@ public class MappingEvaluator
                 {
                     // Check if the log expression matches the source context expression
                     // If so, just log the contextValues directly (which may include defaults)
-                    bool logMatchesContext = source.Log is FhirPathExpression fhirPathLog &&
-                                              source.Context is QualifiedIdentifierExpression qual &&
-                                              fhirPathLog.PathExpression == $"{((IdentifierExpression)qual.Context).Name}.{qual.Property}";
+                    bool logMatchesContext = false;
 
-                    if (!logMatchesContext && source.Context is IdentifierExpression id &&
-                        source.Log is FhirPathExpression fp && fp.PathExpression == id.Name)
+                    if (source.Log is FhirPathExpression fhirPathLog)
                     {
-                        logMatchesContext = true;
+                        // Check for simple identifier match (e.g., log src when context is src)
+                        if (source.Context is IdentifierExpression id && fhirPathLog.PathExpression == id.Name)
+                        {
+                            logMatchesContext = true;
+                        }
+                        // Check for qualified identifier match (e.g., log src.name when context is src.name)
+                        else if (source.Context is QualifiedIdentifierExpression qual &&
+                                 qual.Context is IdentifierExpression qualId &&
+                                 fhirPathLog.PathExpression == $"{qualId.Name}.{qual.Property}")
+                        {
+                            logMatchesContext = true;
+                        }
+                        // Check for indexed expression match (e.g., log src.name[0] when context is src.name[0])
+                        else if (source.Context is IndexExpression idx)
+                        {
+                            // Build the string representation of the index expression
+                            var contextStr = BuildExpressionString(idx);
+                            if (fhirPathLog.PathExpression == contextStr)
+                            {
+                                logMatchesContext = true;
+                            }
+                        }
                     }
 
                     if (logMatchesContext)
@@ -587,10 +634,11 @@ public class MappingEvaluator
             return mappingResult;
         }
 
-        // Fall back to FHIRPath evaluation for pure FHIRPath expressions (e.g., "'hello'", "0", "name.first()")
-        // Use an empty root element so that literals and environment variables work
-        var emptyRoot = new PrimitiveElement(null!, "Element");
-        return context.FhirPathEvaluator(fhirPath.PathExpression, emptyRoot);
+        // Fall back to FHIRPath evaluation for FHIRPath expressions with function calls
+        // (e.g., "src.id.exists()", "src.name.count()>0", "'hello'", "0")
+        // Create a context root element that provides access to mapping variables
+        var contextRoot = new MappingContextElement(context);
+        return context.FhirPathEvaluator(fhirPath.PathExpression, contextRoot);
     }
 
     private bool TryParseAsMappingExpression(string expression, MappingContext context, out IEnumerable<ITypedElement> result)
@@ -601,6 +649,15 @@ public class MappingEvaluator
         // Simple identifier: "src", "tgt"
         // Qualified identifier: "src.gender", "src.name.given"
         // Indexed: "src.name[0]"
+
+        // If expression contains function calls (parentheses), operators, or comparisons,
+        // it's a FhirPath expression and should not be parsed as a mapping expression
+        if (expression.Contains('(', StringComparison.Ordinal) || expression.Contains('>', StringComparison.Ordinal) || expression.Contains('<', StringComparison.Ordinal) ||
+            expression.Contains('=', StringComparison.Ordinal) || expression.Contains('+', StringComparison.Ordinal) || expression.Contains('-', StringComparison.Ordinal) ||
+            expression.Contains('*', StringComparison.Ordinal) || expression.Contains('/', StringComparison.Ordinal))
+        {
+            return false;
+        }
 
         var parts = new List<string>();
         var currentPart = new System.Text.StringBuilder();
@@ -757,5 +814,104 @@ public class MappingEvaluator
         public IElementDefinitionSummary? Definition => null;
 
         public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+    }
+
+    /// <summary>
+    /// Wrapper element that provides access to mapping context variables.
+    /// Allows FhirPath expressions to resolve mapping variables like "src" and "tgt".
+    /// </summary>
+    private class MappingContextElement : ITypedElement
+    {
+        private readonly MappingContext _context;
+
+        public MappingContextElement(MappingContext context)
+        {
+            _context = context;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType => "MappingContext";
+        public object? Value => null;
+        public string Location => string.Empty;
+        public IElementDefinitionSummary? Definition => null;
+
+        public IEnumerable<ITypedElement> Children(string? name = null)
+        {
+            if (name == null)
+            {
+                // Return all sources and targets as children
+                foreach (var source in GetAllSources())
+                {
+                    yield return source;
+                }
+                foreach (var target in GetAllTargets())
+                {
+                    yield return target;
+                }
+            }
+            else
+            {
+                // Try to resolve as a source variable
+                var source = _context.GetSource(name);
+                if (source != null)
+                {
+                    yield return source;
+                    yield break;
+                }
+
+                // Try to resolve as a target variable
+                var target = _context.GetTarget(name);
+                if (target != null)
+                {
+                    yield return target;
+                    yield break;
+                }
+
+                // Try to resolve as a general variable
+                var variable = _context.GetVariable(name);
+                if (variable is ITypedElement element)
+                {
+                    yield return element;
+                }
+            }
+        }
+
+        private IEnumerable<ITypedElement> GetAllSources()
+        {
+            // Use reflection to access the private _sources dictionary
+            var contextType = _context.GetType();
+            var sourcesField = contextType.GetField("_sources", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (sourcesField?.GetValue(_context) is Dictionary<string, ITypedElement> sources)
+            {
+                return sources.Values;
+            }
+            return Enumerable.Empty<ITypedElement>();
+        }
+
+        private IEnumerable<ITypedElement> GetAllTargets()
+        {
+            // Use reflection to access the private _targets dictionary
+            var contextType = _context.GetType();
+            var targetsField = contextType.GetField("_targets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (targetsField?.GetValue(_context) is Dictionary<string, ITypedElement> targets)
+            {
+                return targets.Values;
+            }
+            return Enumerable.Empty<ITypedElement>();
+        }
+    }
+
+    /// <summary>
+    /// Builds a string representation of an expression for matching against log expressions.
+    /// </summary>
+    private string BuildExpressionString(Expression expr)
+    {
+        return expr switch
+        {
+            IdentifierExpression id => id.Name,
+            QualifiedIdentifierExpression qual => $"{BuildExpressionString(qual.Context)}.{qual.Property}",
+            IndexExpression idx => $"{BuildExpressionString(idx.Context)}[{idx.Index}]",
+            _ => string.Empty
+        };
     }
 }
