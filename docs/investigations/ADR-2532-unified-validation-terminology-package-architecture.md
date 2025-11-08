@@ -464,6 +464,405 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
 
 ---
 
+## Multi-Version Package Support & Resolution
+
+### Supporting Multiple Package Versions (US Core 6 & 7 Coexisting)
+
+The `PackageResource` table supports multiple versions of the same package through its composite key:
+
+```sql
+-- Both versions coexist in the table
+PackageResource:
+  (PackageId='hl7.fhir.us.core', PackageVersion='6.0.0',
+   Canonical='http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient')
+
+  (PackageId='hl7.fhir.us.core', PackageVersion='7.0.0',
+   Canonical='http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient')
+```
+
+### Resolution Priority & Fallback Chain
+
+The resolver uses a **4-tier fallback chain** with tenant resources taking priority:
+
+```
+Resolution Order (highest to lowest priority):
+┌────────────────────────────────────────────────┐
+│ 1. Cache (L1 Memory + L2 Redis)               │ ← All sources cached here
+├────────────────────────────────────────────────┤
+│ 2. Tenant Resources (Resource table)          │ ← USER UPLOADS (highest priority)
+│    - StructureDefinitions uploaded via POST   │
+│    - ValueSets created by tenant               │
+│    - CodeSystems customized for organization  │
+├────────────────────────────────────────────────┤
+│ 3. Package Resources (PackageResource table)  │ ← IG PACKAGES (standard definitions)
+│    - Loaded from NPM packages                  │
+│    - Version selection based on:               │
+│      a. Explicit version in canonical URL      │
+│      b. Preferred packages (header/config)     │
+│      c. Tenant default packages                │
+│      d. Latest version available               │
+├────────────────────────────────────────────────┤
+│ 4. External Registry (packages.fhir.org)      │ ← FALLBACK (slowest, optional)
+│    - Live download if local not found          │
+│    - Cached after first retrieval              │
+└────────────────────────────────────────────────┘
+```
+
+**Why Tenant Resources First?**
+- ✅ **Customization**: Organizations can override standard definitions
+- ✅ **Testing**: Upload draft profiles for validation testing
+- ✅ **Local Extensions**: Organization-specific profiles not in public IGs
+- ✅ **Hotfixes**: Patch broken ValueSets without waiting for IG update
+
+### Version Resolution Strategy
+
+```csharp
+private async ValueTask<T?> ResolveFromPackagesAsync<T>(
+    string tenantId,
+    string canonical,
+    string? version,
+    IReadOnlyList<string>? preferredPackages,
+    CancellationToken cancellationToken) where T : Resource
+{
+    // 1. EXPLICIT VERSION (highest priority)
+    // Example: "http://.../us-core-patient|6.0.0"
+    if (!string.IsNullOrEmpty(version))
+    {
+        var exact = await QueryPackageResourceAsync<T>(
+            canonical, version, packageId: null, cancellationToken);
+        if (exact != null)
+        {
+            _logger.LogDebug("Resolved {Canonical}|{Version} with explicit version",
+                canonical, version);
+            return exact;
+        }
+    }
+
+    // 2. PREFERRED PACKAGES (from request headers or options)
+    // Example: X-IG-Version: hl7.fhir.us.core@6.0.0
+    if (preferredPackages?.Count > 0)
+    {
+        foreach (var packageRef in preferredPackages)
+        {
+            var (packageId, packageVersion) = ParsePackageRef(packageRef);
+            var fromPreferred = await QueryPackageResourceAsync<T>(
+                canonical, packageVersion, packageId, cancellationToken);
+            if (fromPreferred != null)
+            {
+                _logger.LogInformation(
+                    "Resolved {Canonical} from preferred package {PackageId}@{Version}",
+                    canonical, packageId, packageVersion);
+                return fromPreferred;
+            }
+        }
+    }
+
+    // 3. TENANT DEFAULT PACKAGES (from configuration)
+    var tenantConfig = await _tenantConfig.GetConfigurationAsync(tenantId, cancellationToken);
+    var defaultPackages = tenantConfig.DefaultPackages
+        .GetValueOrDefault(FhirVersion.R4, Array.Empty<string>());
+
+    foreach (var packageRef in defaultPackages)
+    {
+        var (packageId, packageVersion) = ParsePackageRef(packageRef);
+        var fromDefault = await QueryPackageResourceAsync<T>(
+            canonical, packageVersion, packageId, cancellationToken);
+        if (fromDefault != null)
+        {
+            _logger.LogInformation(
+                "Resolved {Canonical} from tenant default {PackageId}@{Version}",
+                canonical, packageId, packageVersion);
+            return fromDefault;
+        }
+    }
+
+    // 4. LATEST VERSION (fallback)
+    var latest = await QueryLatestPackageResourceAsync<T>(canonical, cancellationToken);
+    if (latest != null)
+    {
+        _logger.LogWarning(
+            "Resolved {Canonical} to latest version (no explicit version specified)",
+            canonical);
+    }
+
+    return latest;
+}
+
+// SQL query for latest version using semantic versioning
+private async Task<T?> QueryLatestPackageResourceAsync<T>(
+    string canonical,
+    CancellationToken cancellationToken) where T : Resource
+{
+    // Parse semantic versions (MAJOR.MINOR.PATCH)
+    var sql = @"
+        SELECT TOP 1 ResourceJson
+        FROM PackageResource
+        WHERE Canonical = @canonical
+          AND ResourceType = @resourceType
+        ORDER BY
+            CAST(PARSENAME(PackageVersion, 3) AS INT) DESC,  -- Major
+            CAST(PARSENAME(PackageVersion, 2) AS INT) DESC,  -- Minor
+            CAST(PARSENAME(PackageVersion, 1) AS INT) DESC   -- Patch";
+
+    var result = await _dbContext.PackageResources
+        .FromSqlRaw(sql, new { canonical, resourceType = typeof(T).Name })
+        .FirstOrDefaultAsync(cancellationToken);
+
+    return result != null ? JsonSerializer.Deserialize<T>(result.ResourceJson) : null;
+}
+```
+
+### Tenant Configuration for Version Control
+
+```csharp
+public record TenantPackageConfiguration
+{
+    public required string TenantId { get; init; }
+
+    // Pin specific package versions per FHIR version
+    public IReadOnlyDictionary<FhirVersion, IReadOnlyList<string>> DefaultPackages { get; init; } =
+        new Dictionary<FhirVersion, IReadOnlyList<string>>
+        {
+            [FhirVersion.R4] = new[]
+            {
+                "hl7.fhir.r4.core@4.0.1",
+                "hl7.fhir.us.core@6.0.0"  // Pin to v6
+            }
+        };
+
+    // Fallback strategy when no version specified
+    public VersionResolutionStrategy VersionResolution { get; init; } =
+        VersionResolutionStrategy.TenantDefault;
+
+    // Allow multiple versions to coexist?
+    public bool AllowMultipleVersions { get; init; } = true;
+}
+
+public enum VersionResolutionStrategy
+{
+    TenantDefault,  // Use tenant's configured default packages
+    Latest,         // Always use latest version in PackageResource table
+    Oldest,         // Use oldest version (for maximum stability)
+    Fail            // Require explicit version, error if not specified
+}
+```
+
+### Resolution Examples
+
+#### Example 1: Explicit Version in Profile URL
+
+```http
+POST /Patient
+{
+  "resourceType": "Patient",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient|6.0.0"]
+  }
+}
+
+→ Resolution:
+  1. Cache: MISS
+  2. Tenant Resources: MISS (not uploaded by user)
+  3. Package Resources:
+     - Parse version "6.0.0" from canonical
+     - Query: WHERE Canonical=... AND Version='6.0.0'
+     - HIT ✅ Returns US Core 6.0.0 profile
+```
+
+#### Example 2: Request Header Specifies Package
+
+```http
+POST /Patient
+X-IG-Version: hl7.fhir.us.core@7.0.0
+{
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  }
+}
+
+→ Resolution:
+  1. Cache: MISS
+  2. Tenant Resources: MISS
+  3. Package Resources:
+     - PreferredPackages = ["hl7.fhir.us.core@7.0.0"] (from header)
+     - Query: WHERE Canonical=... AND PackageId='hl7.fhir.us.core' AND PackageVersion='7.0.0'
+     - HIT ✅ Returns US Core 7.0.0 profile
+```
+
+#### Example 3: Tenant Default Package
+
+```http
+POST /Patient
+# Tenant config: defaultPackages = { R4: ["hl7.fhir.us.core@6.0.0"] }
+{
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  }
+}
+
+→ Resolution:
+  1. Cache: MISS
+  2. Tenant Resources: MISS
+  3. Package Resources:
+     - No explicit version, no preferred packages
+     - Tenant defaults = ["hl7.fhir.us.core@6.0.0"]
+     - Query: WHERE Canonical=... AND PackageId='hl7.fhir.us.core' AND PackageVersion='6.0.0'
+     - HIT ✅ Returns US Core 6.0.0 profile (tenant default)
+```
+
+#### Example 4: Latest Version Fallback
+
+```http
+POST /Patient
+# No version specified, no tenant defaults
+{
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  }
+}
+
+→ Resolution:
+  1. Cache: MISS
+  2. Tenant Resources: MISS
+  3. Package Resources:
+     - No version, no preferred packages, no tenant defaults
+     - Query: WHERE Canonical=... ORDER BY version DESC
+     - HIT ✅ Returns US Core 7.0.0 (latest available)
+     - ⚠️ Warning logged: "Using latest version, consider pinning"
+```
+
+#### Example 5: Tenant Resource Override
+
+```http
+# Step 1: Tenant uploads custom profile
+POST /StructureDefinition
+{
+  "resourceType": "StructureDefinition",
+  "url": "http://example.org/fhir/StructureDefinition/custom-patient",
+  "version": "1.0.0",
+  "name": "CustomPatient",
+  "status": "active",
+  "kind": "resource",
+  "type": "Patient"
+  // ... custom constraints
+}
+→ Saved to Resource table (tenant-specific)
+
+# Step 2: Validate against custom profile
+POST /Patient
+{
+  "meta": {
+    "profile": ["http://example.org/fhir/StructureDefinition/custom-patient"]
+  }
+}
+
+→ Resolution:
+  1. Cache: MISS
+  2. Tenant Resources:
+     - Query Resource table: WHERE url='http://example.org/.../custom-patient'
+     - HIT ✅ Returns tenant's custom profile
+  3. (Package Resources: skipped, already found)
+
+→ Validation uses tenant's custom profile, not package version
+```
+
+### Package Version Migration Strategy
+
+**Scenario**: Upgrade from US Core 6.0.0 to 7.0.0
+
+```bash
+# Step 1: Load new package (coexists with v6)
+POST /admin/packages/load
+{
+  "packageId": "hl7.fhir.us.core",
+  "version": "7.0.0"
+}
+→ PackageResource table now has both 6.0.0 and 7.0.0
+
+# Step 2: Test with specific tenant (canary deployment)
+PUT /admin/tenants/test-tenant/config
+{
+  "defaultPackages": {
+    "R4": ["hl7.fhir.us.core@7.0.0"]
+  }
+}
+→ test-tenant now uses v7, others still on v6
+
+# Step 3: Validate test resources
+POST /Patient
+X-Tenant-Id: test-tenant
+{ ... }
+→ Validation uses US Core 7.0.0 profiles
+
+# Step 4: Gradual rollout to production tenants
+PUT /admin/tenants/tenant1/config { ... "7.0.0" }
+PUT /admin/tenants/tenant2/config { ... "7.0.0" }
+
+# Step 5: After all migrated, optionally remove v6
+DELETE /admin/packages/hl7.fhir.us.core/6.0.0
+→ Deletes from PackageResource table
+```
+
+### Configuration Examples
+
+**Development (lenient, latest versions)**:
+```json
+{
+  "tenantId": "dev",
+  "defaultPackages": {
+    "R4": ["hl7.fhir.r4.core@4.0.1"]
+  },
+  "versionResolution": "Latest",
+  "allowMultipleVersions": true
+}
+```
+
+**Staging (realistic, pinned major version)**:
+```json
+{
+  "tenantId": "staging",
+  "defaultPackages": {
+    "R4": [
+      "hl7.fhir.r4.core@4.0.1",
+      "hl7.fhir.us.core@6.0.0"
+    ]
+  },
+  "versionResolution": "TenantDefault",
+  "allowMultipleVersions": true
+}
+```
+
+**Production (strict, explicit versions required)**:
+```json
+{
+  "tenantId": "prod",
+  "defaultPackages": {
+    "R4": [
+      "hl7.fhir.r4.core@4.0.1",
+      "hl7.fhir.us.core@6.0.0",
+      "hl7.fhir.us.mcode@2.0.0"
+    ]
+  },
+  "versionResolution": "Fail",  // Force explicit versions
+  "allowMultipleVersions": false
+}
+```
+
+### Table Comparison: Resource vs PackageResource
+
+| Aspect | Resource Table | PackageResource Table |
+|--------|----------------|----------------------|
+| **Source** | User uploaded (POST/PUT) | Package imported (admin API) |
+| **Tenant Scope** | Per-tenant (partitioned) | Global (shared across tenants) |
+| **Mutability** | Mutable (can UPDATE/DELETE) | Immutable (delete entire package) |
+| **Storage** | Compressed (Gzip) | Uncompressed (fast reads) |
+| **Versioning** | FHIR meta.versionId (1, 2, 3...) | Package semver (6.0.0, 7.0.0) |
+| **Resolution Priority** | **Higher** (tenant customization) | Lower (standard definitions) |
+| **Cache TTL** | 1 hour (may change frequently) | 4 hours (immutable) |
+| **Use Cases** | Testing, customization, local extensions | Standard IGs, shared profiles |
+
+---
+
 ## Implementation Plan
 
 ### Phase 1: Foundation (3-4 weeks)
