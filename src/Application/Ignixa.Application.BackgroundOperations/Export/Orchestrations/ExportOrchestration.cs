@@ -56,6 +56,11 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                 ? input.ResourceTypes.ToList()
                 : GetDefaultResourceTypes();
 
+            // Determine file extension based on output format (used for all worker outputs)
+            var fileExtension = input.OutputFormat == "application/vnd.apache.parquet"
+                ? ".parquet"
+                : ".ndjson";
+
             // Phase 1: For EACH resource type, get its surrogate ID ranges
             var allWorkerTasks = new List<Task<ExportWorkerOutput>>();
 
@@ -76,7 +81,7 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                     // Step 2: For EACH range, queue a worker activity (all in parallel)
                     foreach (var (startId, endId) in rangesOutput.Ranges)
                     {
-                        var outputPath = $"partition/{input.TenantId}/export/{input.JobId}/{resourceType}-{startId}-{endId}.ndjson";
+                        var outputPath = $"partition/{input.TenantId}/export/{input.JobId}/{resourceType}-{startId}-{endId}{fileExtension}";
 
                         var workerInput = new ExportWorkerInput(
                             JobId: input.JobId,
@@ -86,7 +91,8 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                             EndSurrogateId: endId,
                             OutputPath: outputPath,
                             Since: input.Since,
-                            TypeFilters: input.TypeFilters);
+                            TypeFilters: input.TypeFilters,
+                            ViewDefinitionId: input.ViewDefinitionId);
 
                         // Schedule worker task (doesn't wait - queues for parallel execution)
                         var workerTask = context.ScheduleTask<ExportWorkerOutput>(
@@ -179,7 +185,7 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
             foreach (var workerOutput in workerResults)
             {
                 var fileKey = $"{workerOutput.ResourceType}-{workerOutput.StartSurrogateId}-{workerOutput.EndSurrogateId}";
-                var filePath = $"tenant/{input.TenantId}/export/{input.JobId}/{workerOutput.ResourceType}-{workerOutput.StartSurrogateId}-{workerOutput.EndSurrogateId}.ndjson";
+                var filePath = $"tenant/{input.TenantId}/export/{input.JobId}/{workerOutput.ResourceType}-{workerOutput.StartSurrogateId}-{workerOutput.EndSurrogateId}{fileExtension}";
                 exportedFiles[fileKey] = filePath;
             }
 

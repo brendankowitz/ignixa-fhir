@@ -56,7 +56,112 @@ DELETE {{hostname}}/tenant/{{tenantId}}/_export/{jobId}
 DELETE {{hostname}}/tenant/{{tenantId}}/_export/12345678-1234-1234-1234-123456789abc
 
 ###
-# Example: Complete Export Workflow
+# ============================================================================
+# PARQUET EXPORT (Phase 1)
+# ============================================================================
+
+###
+# Parquet Export - All Patients
+# Exports Patient resources in Apache Parquet columnar format
+# Output: .parquet files (3-5x smaller than NDJSON, optimized for analytics)
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient&_outputFormat=application/vnd.apache.parquet
+Prefer: respond-async
+
+###
+# ============================================================================
+# VIEWDEFINITION EXPORT (Phase 2 - SQL-on-FHIR)
+# ============================================================================
+
+###
+# ViewDefinition Export - Patient Demographics
+# Applies SQL-on-FHIR ViewDefinition to transform FHIR resources into tabular format
+# Requires: ViewDefinition resource must exist in datastore (POST /ViewDefinition first)
+# Output: Parquet files with columns defined by ViewDefinition
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient&_outputFormat=application/vnd.apache.parquet&_viewDefinition=patient-demographics
+Prefer: respond-async
+
+###
+# ViewDefinition Export - Observation Vitals
+# Export vital signs observations with specific columns (code, value, unit, date)
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Observation&_outputFormat=application/vnd.apache.parquet&_viewDefinition=observation-vitals
+Prefer: respond-async
+
+###
+# Example: Create a ViewDefinition first
+# POST a ViewDefinition resource before using it in export
+POST {{hostname}}/ViewDefinition
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "ViewDefinition",
+  "id": "patient-demographics",
+  "name": "patient_demographics",
+  "status": "active",
+  "resource": "Patient",
+  "select": [
+    {
+      "column": [
+        {
+          "name": "id",
+          "path": "id",
+          "type": "string"
+        },
+        {
+          "name": "family_name",
+          "path": "name.where(use='official').first().family",
+          "type": "string"
+        },
+        {
+          "name": "given_names",
+          "path": "name.where(use='official').first().given.join(', ')",
+          "type": "string"
+        },
+        {
+          "name": "birth_date",
+          "path": "birthDate",
+          "type": "date"
+        },
+        {
+          "name": "gender",
+          "path": "gender",
+          "type": "string"
+        },
+        {
+          "name": "active",
+          "path": "active",
+          "type": "boolean"
+        }
+      ]
+    }
+  ]
+}
+
+###
+# Parquet Export - Multiple Resource Types
+# Export Patient and Observation resources as Parquet
+# Each partition creates separate .parquet file
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient,Observation&_outputFormat=application/vnd.apache.parquet
+Prefer: respond-async
+
+###
+# Parquet Export - With Date Filter
+# Export resources modified since specific date in Parquet format
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient&_since=2024-01-01T00:00:00Z&_outputFormat=application/vnd.apache.parquet
+Prefer: respond-async
+
+###
+# Parquet Export - Complete Example
+# Export with filters and date range in Parquet format
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Observation&_since=2024-01-01T00:00:00Z&_typeFilter=Observation?status=final&_outputFormat=application/vnd.apache.parquet
+Prefer: respond-async
+
+###
+# ============================================================================
+# EXAMPLE WORKFLOWS
+# ============================================================================
+
+###
+# Example: NDJSON Export Workflow
 # 1. Start export (copy job ID from Content-Location header)
 POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient
 Prefer: respond-async
@@ -73,7 +178,35 @@ Prefer: respond-async
 #   "output": [
 #     {
 #       "type": "Patient",
-#       "url": "https://storage.example.com/tenant/1/export/{jobId}/Patient.ndjson?sas_token"
+#       "url": "https://storage.example.com/tenant/1/export/{jobId}/Patient-1-1000.ndjson?sas_token"
 #     }
 #   ]
 # }
+
+###
+# Example: Parquet Export Workflow
+# 1. Start Parquet export
+POST {{hostname}}/tenant/{{tenantId}}/$export?_type=Patient&_outputFormat=application/vnd.apache.parquet
+Prefer: respond-async
+
+# 2. Poll status until completion
+# GET {{hostname}}/tenant/{{tenantId}}/_export/{jobId}
+
+# 3. Download .parquet files and query with DuckDB:
+#
+# Example DuckDB queries (after downloading Patient-*.parquet files):
+#
+# -- Read single Parquet file
+# SELECT * FROM read_parquet('Patient-1-1000.parquet') LIMIT 10;
+#
+# -- Read multiple Parquet files as one table (union)
+# SELECT * FROM read_parquet('Patient-*.parquet') WHERE id = 'P123';
+#
+# -- Count resources per file
+# SELECT filename, COUNT(*)
+# FROM read_parquet('Patient-*.parquet', filename=true)
+# GROUP BY filename;
+#
+# -- Extract specific columns only (columnar efficiency)
+# SELECT id, resourceType
+# FROM read_parquet('Patient-*.parquet');

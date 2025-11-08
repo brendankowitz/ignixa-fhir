@@ -10,12 +10,9 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Parsing;
-
-#pragma warning disable CS0618 // Type or member is obsolete - ISourceNavigator used for legacy tests
 
 namespace Ignixa.SqlOnFhir.Tests;
 
@@ -26,6 +23,7 @@ namespace Ignixa.SqlOnFhir.Tests;
 public class OfficialSqlOnFhirTestRunner
 {
     private readonly SqlOnFhirEvaluator _evaluator = new();
+    private readonly SqlOnFhirSchemaEvaluator _schemaEvaluator = new();
     private static readonly string TestFilesDirectory = Path.Combine(
         Path.GetDirectoryName(typeof(OfficialSqlOnFhirTestRunner).Assembly.Location) ?? "",
         "..", "..", "..", "sql-on-fhir-tests", "tests");
@@ -133,6 +131,64 @@ public class OfficialSqlOnFhirTestRunner
         }
         else
         {
+            // Parse ViewDefinition expression for schema validation
+            var viewDefinitionExpression = ViewDefinitionExpressionParser.Parse(sqlTestCase.ViewNode);
+
+            // Validate schema: Extract expected columns from test data
+            var expectedColumns = GetExpectedColumns(sqlTestCase);
+            if (expectedColumns.Count > 0)
+            {
+                // Extract actual schema using SqlOnFhirSchemaEvaluator
+                var actualSchema = _schemaEvaluator.GetSchema(viewDefinitionExpression);
+                var actualColumnNames = actualSchema.Select(c => c.Name).ToList();
+
+                // Validate column count matches
+                if (expectedColumns.Count != actualColumnNames.Count)
+                {
+                    var missing = expectedColumns.Except(actualColumnNames).ToList();
+                    var extra = actualColumnNames.Except(expectedColumns).ToList();
+
+                    var errorMessage = $"Schema validation failed for test '{sqlTestCase.Title}':\n" +
+                                     $"  Expected {expectedColumns.Count} columns: [{string.Join(", ", expectedColumns)}]\n" +
+                                     $"  Extracted {actualColumnNames.Count} columns: [{string.Join(", ", actualColumnNames)}]";
+
+                    if (missing.Count > 0)
+                    {
+                        errorMessage += $"\n  Missing columns: [{string.Join(", ", missing)}]";
+                    }
+
+                    if (extra.Count > 0)
+                    {
+                        errorMessage += $"\n  Extra columns: [{string.Join(", ", extra)}]";
+                    }
+
+                    Assert.Fail(errorMessage);
+                }
+
+                // Validate column names match (order-independent for now)
+                var missingColumns = expectedColumns.Except(actualColumnNames).ToList();
+                var extraColumns = actualColumnNames.Except(expectedColumns).ToList();
+
+                if (missingColumns.Count > 0 || extraColumns.Count > 0)
+                {
+                    var errorMessage = $"Schema validation failed for test '{sqlTestCase.Title}':\n" +
+                                     $"  Expected columns: [{string.Join(", ", expectedColumns)}]\n" +
+                                     $"  Extracted columns: [{string.Join(", ", actualColumnNames)}]";
+
+                    if (missingColumns.Count > 0)
+                    {
+                        errorMessage += $"\n  Missing columns: [{string.Join(", ", missingColumns)}]";
+                    }
+
+                    if (extraColumns.Count > 0)
+                    {
+                        errorMessage += $"\n  Extra columns: [{string.Join(", ", extraColumns)}]";
+                    }
+
+                    Assert.Fail(errorMessage);
+                }
+            }
+
             // Run evaluator for each resource
             var actualResults = new List<Dictionary<string, object?>>();
             foreach (var resource in resources)
@@ -147,12 +203,33 @@ public class OfficialSqlOnFhirTestRunner
     }
 
     /// <summary>
-    /// Loads test resources from JSON elements and converts them to IElement.
+    /// Gets expected column names from test case expected results.
+    /// Uses the first row's keys to determine column names if ExpectedColumns is not specified.
+    /// </summary>
+    private static List<string> GetExpectedColumns(SqlOnFhirTestCase testCase)
+    {
+        // First, try to use ExpectedColumns if specified
+        if (testCase.ExpectedColumns != null && testCase.ExpectedColumns.Count > 0)
+        {
+            return testCase.ExpectedColumns;
+        }
+
+        // Otherwise, extract from first expected row
+        if (testCase.ExpectedRows.Count > 0)
+        {
+            return testCase.ExpectedRows[0].Keys.ToList();
+        }
+
+        return new List<string>();
+    }
+
+
+    /// Loads test resources from JSON elements and converts them to ITypedElement.
     /// Uses proper ResourceJsonNode with version-specific StructureDefinitionSummaryProvider.
     /// </summary>
-    private static List<IElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
+    private static List<ITypedElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
     {
-        var resources = new List<IElement>();
+        var resources = new List<ITypedElement>();
         var provider = GetStructureDefinitionProvider(fhirVersion);
 
         foreach (var jsonElement in jsonResources)
@@ -167,10 +244,10 @@ public class OfficialSqlOnFhirTestRunner
 
             try
             {
-                // Parse JsonElement text directly to ResourceJsonNode, then convert to IElement
+                // Parse JsonElement text directly to ResourceJsonNode, then convert to ITypedElement
                 var resourceNode = ResourceJsonNode.Parse(jsonElement.GetRawText());
-                var element = (IElement)resourceNode.ToElement(provider);
-                resources.Add(element);
+                var typedElement = resourceNode.ToTypedElement(provider);
+                resources.Add(typedElement);
             }
             catch (Exception ex)
             {
@@ -183,10 +260,10 @@ public class OfficialSqlOnFhirTestRunner
     }
 
     /// <summary>
-    /// Gets the appropriate IFhirSchemaProvider for a FHIR version string.
-    /// Uses existing FhirVersion extensions to resolve the provider.
+    /// Gets the appropriate IStructureDefinitionSummaryProvider for a FHIR version string.
+    /// Uses existing FhirSpecification extensions to resolve the provider.
     /// </summary>
-    private static IFhirSchemaProvider GetStructureDefinitionProvider(string fhirVersion)
+    private static IStructureDefinitionSummaryProvider GetStructureDefinitionProvider(string fhirVersion)
     {
         var spec = FhirSpecificationExtensions.FromVersionString(fhirVersion);
         return spec.GetSchemaProvider();

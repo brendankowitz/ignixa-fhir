@@ -18,7 +18,7 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 /// Visitor that evaluates ViewDefinition expressions against FHIR resources.
 /// Implements the visitor pattern for clean separation of concerns.
 /// </summary>
-public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
+internal class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
 {
     private readonly FhirPathEvaluator _evaluator;
     private IElement? _currentResource;

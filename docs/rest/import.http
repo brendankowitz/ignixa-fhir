@@ -29,11 +29,11 @@ Content-Type: application/fhir+json
       "part": [
         {
           "name": "type",
-          "valueString": "Observation"
+          "valueString": "Encounter"
         },
         {
           "name": "url",
-          "valueString": "{{storageUrl}}/Observation.ndjson"
+          "valueString": "{{storageUrl}}/Encounter.ndjson"
         }
       ]
     }

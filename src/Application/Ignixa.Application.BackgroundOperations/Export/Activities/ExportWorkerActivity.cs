@@ -5,13 +5,17 @@
 
 using DurableTask.Core;
 using Microsoft.Extensions.Logging;
+using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Export.Models;
+using Ignixa.DataLayer.BlobStorage;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
+using Ignixa.Serialization;
 using Ignixa.Specification;
 
 namespace Ignixa.Application.BackgroundOperations.Export.Activities;
@@ -28,6 +32,10 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IQueryParameterParser _parameterParser;
     private readonly ISearchOptionsBuilder _searchOptionsBuilder;
+    private readonly ViewDefinitionLoader _viewDefinitionLoader;
+    private readonly IBlobStorageClient _blobStorageClient;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ExportWorkerActivity> _logger;
 
     public ExportWorkerActivity(
@@ -36,6 +44,10 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
         ITenantConfigurationStore tenantConfigurationStore,
         IQueryParameterParser parameterParser,
         ISearchOptionsBuilder searchOptionsBuilder,
+        ViewDefinitionLoader viewDefinitionLoader,
+        IBlobStorageClient blobStorageClient,
+        IFhirVersionContext fhirVersionContext,
+        ILoggerFactory loggerFactory,
         ILogger<ExportWorkerActivity> logger)
     {
         _searchServiceFactory = searchServiceFactory ?? throw new ArgumentNullException(nameof(searchServiceFactory));
@@ -43,6 +55,10 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
         _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
         _parameterParser = parameterParser ?? throw new ArgumentNullException(nameof(parameterParser));
         _searchOptionsBuilder = searchOptionsBuilder ?? throw new ArgumentNullException(nameof(searchOptionsBuilder));
+        _viewDefinitionLoader = viewDefinitionLoader ?? throw new ArgumentNullException(nameof(viewDefinitionLoader));
+        _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
+        _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -75,109 +91,148 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                 CancellationToken.None);
 
             // Create streaming writer (writes to blob storage as we process)
-            await using var writer = await _writerFactory.CreateAsync(
-                input.TenantId,
-                input.OutputPath,
-                CancellationToken.None);
+            IExportStreamWriter writer;
+
+            if (!string.IsNullOrEmpty(input.ViewDefinitionId))
+            {
+                // ViewDefinition-guided export (Parquet with transformation)
+                _logger.LogInformation(
+                    "Using ViewDefinition export: Job={JobId}, ViewDefinitionId={ViewDefinitionId}, OutputPath={OutputPath}",
+                    input.JobId,
+                    input.ViewDefinitionId,
+                    input.OutputPath);
+
+                // Load ViewDefinition from datastore
+                var viewDefNode = await _viewDefinitionLoader.LoadViewDefinitionAsync(
+                    input.TenantId,
+                    input.ViewDefinitionId,
+                    CancellationToken.None);
+
+                // Get structure provider for tenant's FHIR version
+                var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+                var structureProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
+
+                // Create ViewDefinition export writer with schema derived from ViewDefinition
+                // This constructor builds the Parquet schema from ViewDefinition columns
+#pragma warning disable CA2000 // Dispose ownership transferred to 'await using' statement
+                writer = new ViewDefinitionExportStreamWriter(
+                    _blobStorageClient,
+                    input.OutputPath,
+                    viewDefNode,
+                    structureProvider,
+                    _loggerFactory);
+#pragma warning restore CA2000
+            }
+            else
+            {
+                // Standard export (NDJSON or raw Parquet, depending on factory configuration)
+                writer = await _writerFactory.CreateAsync(
+                    input.TenantId,
+                    input.OutputPath,
+                    CancellationToken.None);
+            }
 
             long resourcesExported = 0;
 
-            try
+            await using (writer)
             {
-                // Build search query string with all applicable filters
-                var queryStringBuilder = new System.Text.StringBuilder();
-
-                // Add type-specific filters from TypeFilters dictionary
-                if (input.TypeFilters?.ContainsKey(input.ResourceType) == true)
+                try
                 {
-                    queryStringBuilder.Append(input.TypeFilters[input.ResourceType]);
-                }
+                    // Build search query string with all applicable filters
+                    var queryStringBuilder = new System.Text.StringBuilder();
 
-                // Add _since parameter for temporal filtering (FHIR spec: resources modified since this time)
-                if (input.Since.HasValue)
-                {
-                    if (queryStringBuilder.Length > 0)
+                    // Add type-specific filters from TypeFilters dictionary
+                    if (input.TypeFilters?.ContainsKey(input.ResourceType) == true)
                     {
-                        queryStringBuilder.Append('&');
+                        queryStringBuilder.Append(input.TypeFilters[input.ResourceType]);
                     }
-                    queryStringBuilder.Append("_since=");
-                    queryStringBuilder.Append(Uri.EscapeDataString(input.Since.Value.ToString("O")));
-                }
 
-                // Parse all filter parameters and build SearchOptions with expression
-                var filterParams = _parameterParser.Parse(queryStringBuilder.ToString());
-
-                // Use SearchOptionsBuilder to properly parse filters into expressions
-                var searchOptions = _searchOptionsBuilder.Build(input.ResourceType, filterParams);
-
-                // Add partition boundaries (surrogate ID range)
-                searchOptions.MaxItemCount = 50_000;  // Large batches (memory-safe due to streaming)
-                searchOptions.StartSurrogateId = input.StartSurrogateId;
-                searchOptions.EndSurrogateId = input.EndSurrogateId;
-
-                // Log filter application
-                if (filterParams.Count > 0)
-                {
-                    _logger.LogDebug(
-                        "Export worker applying filters: Job={JobId}, Type={ResourceType}, Filters={FilterCount}",
-                        input.JobId,
-                        input.ResourceType,
-                        filterParams.Count);
-                }
-
-                // Stream results directly from database to file
-                // This single async enumeration runs until ALL resources in the range are processed
-                // No continuation tokens, no checkpoints - just stream until done
-                await foreach (var resource in searchService.SearchStreamAsync(searchOptions, CancellationToken.None))
-                {
-                    // Write resource directly to file stream
-                    // (buffered internally by IExportStreamWriter, then flushed periodically)
-                    await writer.WriteResourceAsync(resource, CancellationToken.None);
-                    resourcesExported++;
-
-                    // Log progress periodically (every 10K resources)
-                    if (resourcesExported % 10_000 == 0)
+                    // Add _since parameter for temporal filtering (FHIR spec: resources modified since this time)
+                    if (input.Since.HasValue)
                     {
-                        _logger.LogInformation(
-                            "Export progress: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}], Count={Count}",
+                        if (queryStringBuilder.Length > 0)
+                        {
+                            queryStringBuilder.Append('&');
+                        }
+                        queryStringBuilder.Append("_since=");
+                        queryStringBuilder.Append(Uri.EscapeDataString(input.Since.Value.ToString("O")));
+                    }
+
+                    // Parse all filter parameters and build SearchOptions with expression
+                    var filterParams = _parameterParser.Parse(queryStringBuilder.ToString());
+
+                    // Use SearchOptionsBuilder to properly parse filters into expressions
+                    var searchOptions = _searchOptionsBuilder.Build(input.ResourceType, filterParams);
+
+                    // Add partition boundaries (surrogate ID range)
+                    searchOptions.MaxItemCount = 50_000;  // Large batches (memory-safe due to streaming)
+                    searchOptions.StartSurrogateId = input.StartSurrogateId;
+                    searchOptions.EndSurrogateId = input.EndSurrogateId;
+
+                    // Log filter application
+                    if (filterParams.Count > 0)
+                    {
+                        _logger.LogDebug(
+                            "Export worker applying filters: Job={JobId}, Type={ResourceType}, Filters={FilterCount}",
                             input.JobId,
                             input.ResourceType,
-                            input.StartSurrogateId,
-                            input.EndSurrogateId,
-                            resourcesExported);
+                            filterParams.Count);
                     }
+
+                    // Stream results directly from database to file
+                    // This single async enumeration runs until ALL resources in the range are processed
+                    // No continuation tokens, no checkpoints - just stream until done
+                    await foreach (var resource in searchService.SearchStreamAsync(searchOptions, CancellationToken.None))
+                    {
+                        // Write resource directly to file stream
+                        // (buffered internally by IExportStreamWriter, then flushed periodically)
+                        await writer.WriteResourceAsync(resource, CancellationToken.None);
+                        resourcesExported++;
+
+                        // Log progress periodically (every 10K resources)
+                        if (resourcesExported % 10_000 == 0)
+                        {
+                            _logger.LogInformation(
+                                "Export progress: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}], Count={Count}",
+                                input.JobId,
+                                input.ResourceType,
+                                input.StartSurrogateId,
+                                input.EndSurrogateId,
+                                resourcesExported);
+                        }
+                    }
+
+                    // Final flush ensures all remaining data is written to blob storage
+                    await writer.FlushAsync(CancellationToken.None);
+
+                    _logger.LogInformation(
+                        "Completed export worker: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}], Count={Count}, Bytes={Bytes}",
+                        input.JobId,
+                        input.ResourceType,
+                        input.StartSurrogateId,
+                        input.EndSurrogateId,
+                        resourcesExported,
+                        writer.BytesWritten);
+
+                    return new ExportWorkerOutput(
+                        ResourceType: input.ResourceType,
+                        StartSurrogateId: input.StartSurrogateId,
+                        EndSurrogateId: input.EndSurrogateId,
+                        ResourcesExported: resourcesExported,
+                        BytesWritten: writer.BytesWritten);
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Export worker failed during processing: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}]",
+                        input.JobId,
+                        input.ResourceType,
+                        input.StartSurrogateId,
+                        input.EndSurrogateId);
 
-                // Final flush ensures all remaining data is written to blob storage
-                await writer.FlushAsync(CancellationToken.None);
-
-                _logger.LogInformation(
-                    "Completed export worker: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}], Count={Count}, Bytes={Bytes}",
-                    input.JobId,
-                    input.ResourceType,
-                    input.StartSurrogateId,
-                    input.EndSurrogateId,
-                    resourcesExported,
-                    writer.BytesWritten);
-
-                return new ExportWorkerOutput(
-                    ResourceType: input.ResourceType,
-                    StartSurrogateId: input.StartSurrogateId,
-                    EndSurrogateId: input.EndSurrogateId,
-                    ResourcesExported: resourcesExported,
-                    BytesWritten: writer.BytesWritten);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Export worker failed during processing: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}]",
-                    input.JobId,
-                    input.ResourceType,
-                    input.StartSurrogateId,
-                    input.EndSurrogateId);
-
-                throw;
+                    throw;
+                }
             }
         }
         catch (Exception ex)

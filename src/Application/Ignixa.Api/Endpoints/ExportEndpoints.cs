@@ -50,9 +50,52 @@ public static class ExportEndpoints
         [FromQuery(Name = "_since")] DateTimeOffset? since,
         [FromQuery(Name = "_typeFilter")] string? typeFilter,
         [FromQuery(Name = "_outputFormat")] string? outputFormat,
+        [FromQuery(Name = "_viewDefinition")] string? viewDefinition,
         [FromServices] IMediator mediator,
         HttpContext httpContext)
     {
+        // Validate _outputFormat (only application/fhir+ndjson and application/vnd.apache.parquet supported)
+        if (!string.IsNullOrEmpty(outputFormat) &&
+            outputFormat != "application/fhir+ndjson" &&
+            outputFormat != "application/vnd.apache.parquet")
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "not-supported",
+                        diagnostics = $"Unsupported _outputFormat: {outputFormat}. Supported formats: application/fhir+ndjson, application/vnd.apache.parquet"
+                    }
+                }
+            });
+        }
+
+        // Validate _viewDefinition parameter
+        if (!string.IsNullOrEmpty(viewDefinition))
+        {
+            // ViewDefinition requires Parquet format
+            if (outputFormat != "application/vnd.apache.parquet")
+            {
+                return Results.BadRequest(new
+                {
+                    resourceType = "OperationOutcome",
+                    issue = new[]
+                    {
+                        new
+                        {
+                            severity = "error",
+                            code = "invalid",
+                            diagnostics = "_viewDefinition parameter requires _outputFormat=application/vnd.apache.parquet"
+                        }
+                    }
+                });
+            }
+        }
+
         // Parse resource types from comma-separated query parameter
         var types = string.IsNullOrWhiteSpace(resourceTypes)
             ? Array.Empty<string>()
@@ -69,7 +112,8 @@ public static class ExportEndpoints
                 ResourceTypes = types,
                 Since = since,
                 TypeFilters = typeFilters,
-                OutputFormat = outputFormat ?? "application/fhir+ndjson"
+                OutputFormat = outputFormat ?? "application/fhir+ndjson",
+                ViewDefinitionId = viewDefinition
             };
 
             var result = await mediator.SendAsync(command, httpContext.RequestAborted);

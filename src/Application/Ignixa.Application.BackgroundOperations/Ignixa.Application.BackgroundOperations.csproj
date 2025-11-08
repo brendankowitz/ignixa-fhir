@@ -2,11 +2,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Application\Ignixa.Application.csproj" />
-    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\..\Core\Ignixa.Search\Ignixa.Search.csproj" />
-    <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
-    <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -299,11 +299,20 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     .As<IBlobStorageClient>()
     .SingleInstance();
 
-    // Register IExportStreamWriterFactory for streaming NDJSON export to blob storage
-    // Used by ExportWorkerActivity to create writers that handle memory-pooled buffering
-    // and write directly to blob storage during export processing
-    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.BlobStorageExportStreamWriterFactory>()
+    // Register IExportStreamWriterFactory for streaming export to blob storage
+    // CompositeExportStreamWriterFactory determines format based on file extension:
+    // - .ndjson → BlobStorageExportStreamWriter (NDJSON format with memory pooling)
+    // - .parquet → ParquetExportStreamWriter (Parquet format with row buffering)
+    // Used by ExportWorkerActivity to create writers that handle buffering and write directly to blob storage
+    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.CompositeExportStreamWriterFactory>()
         .As<IExportStreamWriterFactory>()
+        .SingleInstance();
+
+    // Register ViewDefinitionLoader for SQL-on-FHIR ViewDefinition export
+    // Used by ExportWorkerActivity to load ViewDefinition resources from the datastore
+    // when _viewDefinition parameter is specified in export requests
+    containerBuilder.RegisterType<Ignixa.DataLayer.BlobStorage.ViewDefinitionLoader>()
+        .AsSelf()
         .SingleInstance();
 
     // Register open generic background job repository (in-memory for dev, SQL Server for production)

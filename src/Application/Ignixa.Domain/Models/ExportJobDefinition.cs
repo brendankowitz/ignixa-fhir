@@ -45,4 +45,10 @@ public class ExportJobDefinition : IJobDefinition
     /// Format: {baseDir}/{tenantId}/export/{jobId}/
     /// </summary>
     public required string OutputPath { get; init; }
+
+    /// <summary>
+    /// Optional ViewDefinition ID for Parquet export with schema transformation.
+    /// When specified, must be used with OutputFormat = "application/vnd.apache.parquet".
+    /// </summary>
+    public string? ViewDefinitionId { get; init; }
 }
