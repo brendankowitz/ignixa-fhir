@@ -100,6 +100,11 @@ public class FhirDbContext : DbContext
     public DbSet<BackgroundJobEntity> BackgroundJobs { get; set; } = null!;
 
     /// <summary>
+    /// Gets or sets the PackageResources table (conformance resources from FHIR NPM packages).
+    /// </summary>
+    public DbSet<PackageResourceEntity> PackageResources { get; set; } = null!;
+
+    /// <summary>
     /// Configures entity mappings, keys, indexes, and relationships.
     /// </summary>
     /// <param name="modelBuilder">The model builder to configure.</param>
@@ -115,6 +120,7 @@ public class FhirDbContext : DbContext
         ConfigureQuantityCodeEntity(modelBuilder);
         ConfigureSearchParamEntities(modelBuilder);
         ConfigureBackgroundJobEntity(modelBuilder);
+        ConfigurePackageResourceEntity(modelBuilder);
     }
 
     private static void ConfigureResourceEntity(ModelBuilder modelBuilder)
@@ -260,6 +266,26 @@ public class FhirDbContext : DbContext
             "CHK_TokenSearchParam_CodeOverflow",
             "LEN(Code) = 256 OR CodeOverflow IS NULL"));
 
+        // Strategic Terminology Index 1: Query all codes in a CodeSystem (per ADR-2531)
+        // Enables: GET /CodeSystem?url=system | SELECT * WHERE SearchParamId = 'url' AND SystemId = X
+        tokenEntity.HasIndex(t => new { t.SearchParamId, t.SystemId, t.Code })
+            .IncludeProperties(t => new { t.ResourceTypeId, t.ResourceSurrogateId })
+            .HasDatabaseName("IX_TokenSearchParam_SearchParamId_SystemId_Code")
+            .HasFilter("[SystemId] IS NOT NULL");
+
+        // Strategic Terminology Index 2: Fast code validation
+        // Enables: Does code X exist in system Y? SELECT COUNT(*) WHERE SystemId = Y AND Code = X
+        tokenEntity.HasIndex(t => new { t.SystemId, t.Code })
+            .IncludeProperties(t => new { t.ResourceTypeId, t.ResourceSurrogateId })
+            .HasDatabaseName("IX_TokenSearchParam_SystemId_Code")
+            .HasFilter("[SystemId] IS NOT NULL");
+
+        // Strategic Terminology Index 3: Resource-level token queries
+        // Enables: GET /ValueSet?code=X | SELECT * WHERE ResourceTypeId = ValueSet AND SearchParamId = 'code'
+        tokenEntity.HasIndex(t => new { t.ResourceTypeId, t.SearchParamId })
+            .IncludeProperties(t => new { t.SystemId, t.Code })
+            .HasDatabaseName("IX_TokenSearchParam_ResourceTypeId_SearchParamId");
+
         // NumberSearchParam
         var numberEntity = modelBuilder.Entity<NumberSearchParamEntity>();
         numberEntity.HasKey(n => new { n.ResourceTypeId, n.ResourceSurrogateId, n.SearchParamId });
@@ -353,5 +379,46 @@ public class FhirDbContext : DbContext
         entity.Property(b => b.OrchestrationInstanceId)
             .HasMaxLength(100)
             .IsRequired(false);
+    }
+
+    private static void ConfigurePackageResourceEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PackageResourceEntity>();
+
+        // Primary key on PackageResourceId
+        entity.HasKey(pr => pr.PackageResourceId)
+            .HasName("PK_PackageResource");
+
+        // Unique index on PackageId + PackageVersion + Canonical (per ADR-2532)
+        // Ensures one canonical per package version
+        entity.HasIndex(pr => new { pr.PackageId, pr.PackageVersion, pr.Canonical })
+            .IsUnique()
+            .HasDatabaseName("UQ_PackageResource_Canonical");
+
+        // Index on Canonical + Version for fast canonical URL lookups
+        entity.HasIndex(pr => new { pr.Canonical, pr.Version })
+            .HasDatabaseName("IX_PackageResource_Canonical_Version")
+            .HasFilter("[IsActive] = 1");
+
+        // Index on ResourceType + Canonical for type-scoped lookups
+        entity.HasIndex(pr => new { pr.ResourceType, pr.Canonical })
+            .HasDatabaseName("IX_PackageResource_ResourceType_Canonical")
+            .HasFilter("[IsActive] = 1");
+
+        // Index on PackageId + PackageVersion for package management queries
+        entity.HasIndex(pr => new { pr.PackageId, pr.PackageVersion })
+            .HasDatabaseName("IX_PackageResource_Package");
+
+        // Index on LoadedDate for package auditing and cleanup
+        entity.HasIndex(pr => pr.LoadedDate)
+            .HasDatabaseName("IX_PackageResource_LoadedDate");
+
+        // Default value for LoadedDate
+        entity.Property(pr => pr.LoadedDate)
+            .HasDefaultValueSql("GETUTCDATE()");
+
+        // Default value for IsActive
+        entity.Property(pr => pr.IsActive)
+            .HasDefaultValue(true);
     }
 }
