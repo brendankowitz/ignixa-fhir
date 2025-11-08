@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Map registry interface for FHIR Mapping Language.
  */

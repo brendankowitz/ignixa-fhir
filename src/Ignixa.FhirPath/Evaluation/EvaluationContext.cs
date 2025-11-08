@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FhirPath evaluation context.
  * Stores variables and resources available during expression evaluation.

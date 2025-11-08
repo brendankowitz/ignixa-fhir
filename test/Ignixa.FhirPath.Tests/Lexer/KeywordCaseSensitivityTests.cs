@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Tests for case-sensitivity of FHIRPath keywords.
  * Per FHIRPath N1.0 specification, keywords are case-sensitive.

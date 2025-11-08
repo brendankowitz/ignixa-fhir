@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FHIRPath integration for FHIR Mapping Language.
  * Bridges the mapping evaluator with the Ignixa.FhirPath library.

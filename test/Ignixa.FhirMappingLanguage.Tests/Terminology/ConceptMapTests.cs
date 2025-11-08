@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Unit tests for ConceptMap integration in FHIR Mapping Language.
  */
@@ -33,6 +33,35 @@ public class ConceptMapTests
         public IElementDefinitionSummary? Definition => null;
 
         public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+    }
+
+    private class TestTypedElementWithChildren : ITypedElement
+    {
+        private readonly List<ITypedElement> _children = new();
+
+        public TestTypedElementWithChildren(string name, object? value = null, string instanceType = "string")
+        {
+            Name = name;
+            Value = value;
+            InstanceType = instanceType;
+        }
+
+        public string Name { get; }
+        public string InstanceType { get; }
+        public object? Value { get; }
+        public string Location => string.Empty;
+        public IElementDefinitionSummary? Definition => null;
+
+        public void AddChild(ITypedElement child) => _children.Add(child);
+
+        public IEnumerable<ITypedElement> Children(string? name = null)
+        {
+            if (name == null)
+            {
+                return _children;
+            }
+            return _children.Where(c => c.Name == name);
+        }
     }
 
     #endregion
@@ -493,7 +522,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
             ConceptMapResolver = resolver.CreateResolverFunction()
         };
 
-        var source = new TestTypedElement("Patient");
+        var source = new TestTypedElementWithChildren("Patient");
+        source.AddChild(new TestTypedElement("gender", "male", "code"));
         var target = new TestTypedElement("Bundle");
 
         context.SetSource("src", source);

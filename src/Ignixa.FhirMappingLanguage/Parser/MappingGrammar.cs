@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FHIR Mapping Language grammar using Superpower token parser.
  * Based on FHIR StructureMap specification.
@@ -86,6 +86,7 @@ public static class MappingGrammar
             .Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier))
             .Or(Token.EqualTo(MappingTokenKind.Type))  // 'type' can be used as property name
             .Or(Token.EqualTo(MappingTokenKind.Default))  // 'default' can be used as property name
+            .Or(Token.EqualTo(MappingTokenKind.Prefix))  // 'prefix' can be used as property name
             .Select(t => new IdentifierExpression(UnescapeIdentifier(t.ToStringValue()), CreatePosition(t)));
 
     // FHIRPath expression (embedded in parentheses or as unparenthesized expression)
@@ -308,18 +309,19 @@ public static class MappingGrammar
                         .Or(Token.EqualTo(MappingTokenKind.Asterisk).Value((int?)null))
         select new Cardinality(int.Parse(min.ToStringValue()), max);
 
-    // Source: context [as variable] [: type] [cardinality] [default value] [where condition] [check condition] [log message]
+    // Source: context [: type] [as variable] [cardinality] [default value] [where condition] [check condition] [log message]
+    // Note: Type constraint comes before 'as' variable per FHIR spec
     private static readonly TokenListParser<MappingTokenKind, SourceExpression> Source =
         from context in QualifiedIdentifier
-        from variable in (
-            from asToken in Token.EqualTo(MappingTokenKind.As)
-            from varName in Identifier
-            select varName.Name
-        ).OptionalOrDefault()
         from type in (
             from colon in Token.EqualTo(MappingTokenKind.Colon)
             from typeName in Identifier
             select typeName.Name
+        ).OptionalOrDefault()
+        from variable in (
+            from asToken in Token.EqualTo(MappingTokenKind.As)
+            from varName in Identifier
+            select varName.Name
         ).OptionalOrDefault()
         from cardinality in CardinalityParser.Select(c => (Cardinality?)c).OptionalOrDefault()
         from defaultValue in (
@@ -352,15 +354,22 @@ public static class MappingGrammar
             defaultValue,
             cardinality);
 
-    // Target: [context] [= transform] [as variable] [list mode]
-    // Note: The order is context -> transform -> as variable -> list mode
+    // Target: [context] [= expression] [as variable] [list mode]
+    // Note: The order is context -> expression -> as variable -> list mode
     // This matches FHIR spec: "tgt.name = create('Type') as variable listmode"
+    // The expression can be a literal value, a Transform (function call), or a variable reference
+    // Note: Literals are tried first. Transform uses Try() to allow backtracking to QualifiedIdentifier
     private static readonly TokenListParser<MappingTokenKind, TargetExpression> Target =
         from context in QualifiedIdentifier.Select(e => (Expression?)e).OptionalOrDefault()
-        from transform in (
+        from expression in (
             from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
-            from trans in Transform
-            select trans
+            from expr in StringLiteral.Select(l => (Expression)l)
+                .Or(IntegerLiteral.Select(l => (Expression)l))
+                .Or(DecimalLiteral.Select(l => (Expression)l))
+                .Or(BooleanLiteral.Select(l => (Expression)l))
+                .Or(Transform.Select(t => (Expression)t).Try())
+                .Or(QualifiedIdentifier)
+            select expr
         ).OptionalOrDefault()
         from variable in (
             from asToken in Token.EqualTo(MappingTokenKind.As)
@@ -371,7 +380,7 @@ public static class MappingGrammar
         select new TargetExpression(
             context,
             variable,
-            transform,
+            expression,
             listMode.HasValue ? listMode.Value : null);
 
     // Group invocation: GroupName(arg1, arg2, ...)

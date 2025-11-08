@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Token kinds for FHIR Mapping Language lexer.
  * Based on FHIR StructureMap specification.

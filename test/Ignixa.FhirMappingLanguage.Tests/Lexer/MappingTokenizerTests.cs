@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Comprehensive unit tests for FHIR Mapping Language lexer/tokenizer.
  */

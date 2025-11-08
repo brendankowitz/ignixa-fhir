@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Unit tests for FhirPath type conversion, string manipulation, and utility functions (Phase 3).
  */

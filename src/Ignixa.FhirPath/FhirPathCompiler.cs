@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FhirPath compiler using Superpower parser.
  * Entry point for parsing FhirPath expressions.

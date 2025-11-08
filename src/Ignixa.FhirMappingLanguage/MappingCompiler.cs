@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FHIR Mapping Language compiler.
  * Entry point for parsing and compiling mapping expressions.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FHIR Mapping Language evaluator.
  * Executes parsed mapping AST to transform FHIR resources.
@@ -42,7 +42,15 @@ public class MappingEvaluator
         _currentMap = map;
 
         // Wire up standard transforms if not already configured
-        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name)!.Execute(args.ToList(), context);
+        context.TransformResolver ??= (name, args) =>
+        {
+            var transform = StandardTransforms.Get(name);
+            if (transform == null)
+            {
+                throw new InvalidOperationException($"Transform function '{name}' not found");
+            }
+            return transform.Execute(args.ToList(), context);
+        };
 
         // Wire up FhirPath evaluator if enabled and not already configured
         if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
@@ -65,7 +73,15 @@ public class MappingEvaluator
         _currentMap = map;
 
         // Wire up standard transforms if not already configured
-        context.TransformResolver ??= (name, args) => StandardTransforms.Get(name)!.Execute(args.ToList(), context);
+        context.TransformResolver ??= (name, args) =>
+        {
+            var transform = StandardTransforms.Get(name);
+            if (transform == null)
+            {
+                throw new InvalidOperationException($"Transform function '{name}' not found");
+            }
+            return transform.Execute(args.ToList(), context);
+        };
 
         // Wire up FhirPath evaluator if enabled and not already configured
         if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
@@ -438,8 +454,43 @@ public class MappingEvaluator
                         throw new InvalidOperationException("FhirPathEvaluator not configured in context");
                     }
 
+                    // If we have context values (including from defaults), create a wrapper that provides access to them
+                    // This allows check expressions like "src.active = true" to work even when active came from a default
+                    MappingContext checkContext = context;
+                    ITypedElement? tempWrapper = null;
+
+                    if (contextValuesList.Any() && source.Context is QualifiedIdentifierExpression qual)
+                    {
+                        // Extract the root and property from the qualified identifier
+                        var rootExpr = qual.Context;
+                        var propertyName = qual.Property;
+
+                        if (rootExpr is IdentifierExpression rootId)
+                        {
+                            var originalRoot = context.GetSource(rootId.Name) ?? context.GetTarget(rootId.Name);
+                            if (originalRoot != null)
+                            {
+                                // Create a wrapper that adds the context values as a child property
+                                tempWrapper = new TempPropertyWrapper(originalRoot, propertyName, contextValuesList);
+                                checkContext = new MappingContext();
+                                checkContext.SetSource(rootId.Name, tempWrapper);
+
+                                // Copy other sources/targets
+                                foreach (var (name, element) in GetAllContextElements(context))
+                                {
+                                    if (name != rootId.Name)
+                                    {
+                                        checkContext.SetSource(name, element);
+                                    }
+                                }
+
+                                checkContext.FhirPathEvaluator = context.FhirPathEvaluator;
+                            }
+                        }
+                    }
+
                     // Evaluate the check expression in the mapping context
-                    var checkResult = VisitFhirPath(fhirPathCheck, context);
+                    var checkResult = VisitFhirPath(fhirPathCheck, checkContext);
                     if (!checkResult.Any() || checkResult.First().Value is not bool b || !b)
                     {
                         throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
@@ -563,10 +614,10 @@ public class MappingEvaluator
             {
                 try
                 {
-                    // If there's a transform, visit it
-                    if (target.Transform != null)
+                    // If there's a transform expression, visit it
+                    if (target.Transform is TransformExpression transform)
                     {
-                        var transformResult = VisitTransform(target.Transform, context, location);
+                        var transformResult = VisitTransform(transform, context, location);
 
                         // Set the result to the target context if specified
                         if (target.Context != null && transformResult is ITypedElement element)
@@ -574,6 +625,18 @@ public class MappingEvaluator
                             if (target.Variable != null)
                             {
                                 context.SetVariable(target.Variable, element);
+                            }
+                        }
+                    }
+                    else if (target.Transform != null)
+                    {
+                        // Handle literal value assignment (e.g., tgt.type = 'collection')
+                        var expressionResult = VisitExpression(target.Transform, context, location);
+                        if (target.Context != null && expressionResult.Any())
+                        {
+                            if (target.Variable != null)
+                            {
+                                context.SetVariable(target.Variable, expressionResult.First());
                             }
                         }
                     }
@@ -1043,5 +1106,68 @@ public class MappingEvaluator
             IndexExpression idx => $"{BuildExpressionString(idx.Context)}[{idx.Index}]",
             _ => string.Empty
         };
+    }
+
+    /// <summary>
+    /// Gets all context elements (sources and targets) from the mapping context.
+    /// </summary>
+    private IEnumerable<(string name, ITypedElement element)> GetAllContextElements(MappingContext context)
+    {
+        // Use reflection to access private fields
+        var contextType = context.GetType();
+        var sourcesField = contextType.GetField("_sources", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var targetsField = contextType.GetField("_targets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        if (sourcesField?.GetValue(context) is Dictionary<string, ITypedElement> sources)
+        {
+            foreach (var kvp in sources)
+            {
+                yield return (kvp.Key, kvp.Value);
+            }
+        }
+
+        if (targetsField?.GetValue(context) is Dictionary<string, ITypedElement> targets)
+        {
+            foreach (var kvp in targets)
+            {
+                yield return (kvp.Key, kvp.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Temporary wrapper that adds a property with specific values to an element.
+    /// Used for check conditions with default values.
+    /// </summary>
+    private class TempPropertyWrapper : ITypedElement
+    {
+        private readonly ITypedElement _wrapped;
+        private readonly string _propertyName;
+        private readonly IReadOnlyList<ITypedElement> _propertyValues;
+
+        public TempPropertyWrapper(ITypedElement wrapped, string propertyName, IReadOnlyList<ITypedElement> propertyValues)
+        {
+            _wrapped = wrapped;
+            _propertyName = propertyName;
+            _propertyValues = propertyValues;
+        }
+
+        public string Name => _wrapped.Name ?? string.Empty;
+        public string? InstanceType => _wrapped.InstanceType;
+        public object? Value => _wrapped.Value;
+        public string Location => _wrapped.Location ?? string.Empty;
+        public IElementDefinitionSummary? Definition => _wrapped.Definition;
+
+        public IEnumerable<ITypedElement> Children(string? name = null)
+        {
+            if (name == _propertyName)
+            {
+                // Return our injected property values
+                return _propertyValues;
+            }
+
+            // Delegate to wrapped element for other properties
+            return _wrapped.Children(name);
+        }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Basic type validator for FHIR Mapping Language.
  */
@@ -231,9 +231,9 @@ public class BasicTypeValidator : ITypeValidator
         // Validate transforms in targets
         foreach (var target in rule.Targets)
         {
-            if (target.Transform != null)
+            if (target.Transform is TransformExpression transform)
             {
-                errors.AddRange(ValidateTransform(target.Transform));
+                errors.AddRange(ValidateTransform(transform));
             }
         }
 

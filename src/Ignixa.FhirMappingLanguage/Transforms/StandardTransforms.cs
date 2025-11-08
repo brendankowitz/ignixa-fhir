@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Standard transform functions for FHIR Mapping Language.
  * Implements the built-in transforms defined in the FHIR specification.
@@ -60,14 +60,10 @@ public static class StandardTransforms
     /// <summary>
     /// Gets a transform function by name.
     /// </summary>
-    public static ITransformFunction Get(string name)
+    public static ITransformFunction? Get(string name)
     {
-        if (_functions.TryGetValue(name, out var function))
-        {
-            return function;
-        }
-
-        throw new InvalidOperationException($"Transform function '{name}' not found");
+        _functions.TryGetValue(name, out var function);
+        return function;
     }
 
     /// <summary>

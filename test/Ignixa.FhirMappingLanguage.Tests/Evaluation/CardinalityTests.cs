@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Unit tests for cardinality constraint functionality in FHIR Mapping Language.
  */
@@ -496,7 +496,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         var compiler = new MappingCompiler();
         var map = compiler.Parse(mappingText);
-        var evaluator = new MappingEvaluator(enableFhirPath: false);
+        var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext
         {
             ErrorMode = ErrorMode.Graceful

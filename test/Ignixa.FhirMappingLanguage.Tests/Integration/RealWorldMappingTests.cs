@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Integration tests with real-world FHIR mapping examples.
  * Based on FHIR cross-version mapping specifications.

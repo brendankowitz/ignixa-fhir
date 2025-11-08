@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Validator for FHIR Mapping Language mappings.
  */
@@ -233,9 +233,9 @@ public class MappingValidator
     private void ValidateTarget(TargetExpression target, string location, ValidationResult result)
     {
         // Validate transform if present
-        if (target.Transform != null)
+        if (target.Transform is TransformExpression transform)
         {
-            ValidateTransform(target.Transform, location, result);
+            ValidateTransform(transform, location, result);
         }
 
         // Validate list mode combinations

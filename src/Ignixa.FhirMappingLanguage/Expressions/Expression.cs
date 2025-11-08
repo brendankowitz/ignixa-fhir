@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Expression tree for FHIR Mapping Language abstract syntax tree (AST).
  */
@@ -373,14 +373,14 @@ public class SourceExpression : Expression
 
 /// <summary>
 /// Represents a target element in a transformation rule.
-/// Example: tgt.name = create('HumanName')
+/// Example: tgt.name = create('HumanName') or tgt.type = 'collection'
 /// </summary>
 public class TargetExpression : Expression
 {
     public TargetExpression(
         Expression? context,
         string? variable,
-        TransformExpression? transform,
+        Expression? transform,
         ListMode? listMode,
         ISourcePositionInfo? location = null) : base(location)
     {
@@ -392,7 +392,7 @@ public class TargetExpression : Expression
 
     public Expression? Context { get; }
     public string? Variable { get; }
-    public TransformExpression? Transform { get; }
+    public Expression? Transform { get; }
     public ListMode? ListMode { get; }
 
     public override string ToString() => $"Target({Context})";

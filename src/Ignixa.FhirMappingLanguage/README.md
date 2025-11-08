@@ -202,5 +202,5 @@ This implementation is based on the FHIR Mapping Language specification:
 
 ## License
 
-Copyright (c) 2025, Sparky Contributors
+Copyright (c) 2025, Ignixa Contributors
 Licensed under the BSD 3-Clause license.

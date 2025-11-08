@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FhirPath grammar using Superpower token parser.
  * Based on FhirPath N1.0 (Normative) specification.

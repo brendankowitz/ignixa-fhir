@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * Unit tests for standard transform functions.
  */
@@ -89,14 +89,13 @@ public class StandardTransformsTests
     }
 
     [Fact]
-    public void GivenUnknownTransformName_WhenGetting_ThenThrowsInvalidOperationException()
+    public void GivenUnknownTransformName_WhenGetting_ThenReturnsNull()
     {
         // Act
-        var act = () => StandardTransforms.Get("unknownTransform");
+        var result = StandardTransforms.Get("unknownTransform");
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*unknownTransform*");
+        result.Should().BeNull();
     }
 
     [Fact]

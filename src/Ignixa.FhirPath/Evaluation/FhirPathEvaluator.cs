@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Sparky Contributors
+ * Copyright (c) 2025, Ignixa Contributors
  *
  * FhirPath expression evaluator.
  * Executes parsed FhirPath AST against ITypedElement trees.
