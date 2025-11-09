@@ -92,6 +92,20 @@ builder.Services.AddHttpClient();
 // Register DurableTask framework for background job processing ($export, $import)
 builder.Services.AddDurableTask();
 
+// Register MCP Server services (Phase 1 - ADR-2540)
+// Provides AI-accessible tools for FHIR operations via Server-Sent Events (SSE) transport
+// Tools are located in Ignixa.Application.Features.Mcp.Tools (Application layer)
+// Can be disabled via configuration: Mcp:Enabled = false
+var mcpEnabled = builder.Configuration.GetValue<bool>("Mcp:Enabled", true);
+if (mcpEnabled)
+{
+    builder.Services
+        .AddMcpServer()
+        .WithHttpTransport()
+        .WithToolsFromAssembly(typeof(Ignixa.Application.Features.Mcp.Tools.DiagnosticTool).Assembly)
+        .WithToolsFromAssembly(typeof(Ignixa.Application.BackgroundOperations.JobManagement.GetJobStatusTool).Assembly);
+}
+
 // Configure Autofac container
 builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 {
@@ -597,7 +611,9 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// HTTPS redirection - disabled for MCP development (self-signed cert issues with VS Code)
+// Enable in production with valid certificates
+// app.UseHttpsRedirection();
 
 // Map health check endpoints (before FHIR endpoints, bypasses tenant resolution)
 app.MapHealthCheckEndpoints();
@@ -613,6 +629,14 @@ app.MapOperationEndpoints(); // FHIR operation endpoints ($validate, etc.)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (direct and conditional)
 app.MapCompartmentEndpoints(); // FHIR compartment search endpoints (GET /Patient/123/Observation)
 app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)
+
+// MCP (Model Context Protocol) Integration (Phase 1 - ADR-2540)
+// Provides AI-accessible tools for FHIR operations via Server-Sent Events (SSE) transport
+// Only map endpoints if MCP is enabled in configuration
+if (mcpEnabled)
+{
+    app.MapMcpEndpoints();
+}
 
 app.Logger.LogInformation("Ignixa FHIR starting...");
 app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",

@@ -24,8 +24,8 @@
     <PackageVersion Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.CommandLine" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.10" />
@@ -40,6 +40,8 @@
     <!-- ASP.NET Core -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+    <!-- Model Context Protocol (MCP) - AI Integration -->
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
     <!-- Microsoft.Health legacy dependencies - using 7.1.5 from Directory.Build.props -->
     <PackageVersion Include="Ensure.That" Version="10.1.0" />
     <PackageVersion Include="Superpower" Version="3.1.0" />

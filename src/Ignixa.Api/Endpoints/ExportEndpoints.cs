@@ -1,7 +1,9 @@
 using System.Text.Json.Nodes;
 using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Export;
+using Ignixa.Application.BackgroundOperations.Jobs;
+using Medino;
 using Microsoft.AspNetCore.Mvc;
-using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 
@@ -44,12 +46,37 @@ public static class ExportEndpoints
         [FromQuery(Name = "_since")] DateTimeOffset? since,
         [FromQuery(Name = "_typeFilter")] string? typeFilter,
         [FromQuery(Name = "_outputFormat")] string? outputFormat,
-        [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        [FromServices] IMediator mediator,
         HttpContext httpContext)
     {
-        // Validate _outputFormat (only application/fhir+ndjson supported for now)
-        if (!string.IsNullOrEmpty(outputFormat) && outputFormat != "application/fhir+ndjson")
+        // Parse resource types from comma-separated query parameter
+        var types = string.IsNullOrWhiteSpace(resourceTypes)
+            ? Array.Empty<string>()
+            : resourceTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        // Parse type filters from comma-separated query parameter
+        var typeFilters = ParseTypeFilters(typeFilter);
+
+        try
+        {
+            var command = new CreateExportJobCommand
+            {
+                TenantId = tenantId,
+                ResourceTypes = types,
+                Since = since,
+                TypeFilters = typeFilters,
+                OutputFormat = outputFormat ?? "application/fhir+ndjson"
+            };
+
+            var result = await mediator.SendAsync(command, httpContext.RequestAborted);
+
+            // Return 202 Accepted with Content-Location header
+            var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_export/{result.JobId}";
+            httpContext.Response.Headers["Content-Location"] = statusUrl;
+
+            return Results.Accepted(statusUrl, new { jobId = result.JobId, status = "queued" });
+        }
+        catch (ArgumentException ex)
         {
             return Results.BadRequest(new
             {
@@ -60,69 +87,11 @@ public static class ExportEndpoints
                     {
                         severity = "error",
                         code = "not-supported",
-                        diagnostics = $"Unsupported _outputFormat: {outputFormat}. Only 'application/fhir+ndjson' is supported."
+                        diagnostics = ex.Message
                     }
                 }
             });
         }
-
-        // Parse resource types from comma-separated query parameter
-        var types = string.IsNullOrWhiteSpace(resourceTypes)
-            ? Array.Empty<string>()
-            : resourceTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        // Parse type filters from comma-separated query parameter
-        // Format: "ResourceType?param=value,AnotherType?param=value"
-        var typeFilters = ParseTypeFilters(typeFilter);
-
-        // Generate job ID
-        var jobId = Guid.NewGuid().ToString();
-
-        // Create job metadata in unified repository
-        // TenantId is stored in the Definition (payload), not as a BackgroundJob property
-        var job = new BackgroundJob<ExportJobDefinition>
-        {
-            JobId = jobId,
-            JobType = (int)BackgroundJobType.Export,
-            Status = "Queued",
-            Definition = new ExportJobDefinition
-            {
-                TenantId = tenantId,
-                ResourceTypes = types,
-                Since = since,
-                TypeFilters = typeFilters,
-                OutputFormat = outputFormat ?? "application/fhir+ndjson",
-                OutputPath = $"tenant/{tenantId}/export/{jobId}"
-            },
-            CreateDate = DateTimeOffset.UtcNow,
-            HeartbeatDate = DateTimeOffset.UtcNow
-        };
-
-        await jobRepository.CreateAsync(job, httpContext.RequestAborted);
-
-        // Start the orchestration
-        var orchestrationInput = new ExportOrchestrationInput(
-            JobId: jobId,
-            TenantId: tenantId,
-            ResourceTypes: types,
-            Since: since,
-            TypeFilters: typeFilters);
-
-        var instance = await taskHubClient.CreateOrchestrationInstanceAsync(
-            typeof(ExportOrchestration),
-            jobId, // Use jobId as instance ID for easy lookup
-            orchestrationInput);
-
-        // Update job with orchestration instance ID
-        job.OrchestrationInstanceId = instance.InstanceId;
-        await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
-
-        // Return 202 Accepted with Content-Location header
-        var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_export/{jobId}";
-
-        httpContext.Response.Headers["Content-Location"] = statusUrl;
-
-        return Results.Accepted(statusUrl, new { jobId, status = "queued" });
     }
 
     /// <summary>
@@ -132,91 +101,63 @@ public static class ExportEndpoints
     private static async Task<IResult> GetExportStatusAsync(
         [FromRoute] int tenantId,
         [FromRoute] string jobId,
-        [FromServices] TaskHubClient taskHubClient,
-        [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        [FromServices] IMediator mediator,
         [FromServices] IBlobStorageClient blobStorage,
         HttpContext httpContext)
     {
-        // Get job metadata (with tenant validation)
-        var job = await jobRepository.GetAsync(jobId, tenantId, httpContext.RequestAborted);
-        if (job == null)
+        try
+        {
+            var query = new GetJobStatusQuery
+            {
+                JobId = jobId,
+                JobType = "Export",
+                TenantId = tenantId
+            };
+
+            var jobStatus = await mediator.SendAsync(query, httpContext.RequestAborted);
+
+            // Return response based on status
+            return jobStatus.Status switch
+            {
+                "Queued" or "Running" => Results.Accepted(
+                    value: new
+                    {
+                        jobId = jobStatus.JobId,
+                        status = jobStatus.Status,
+                        progressPercentage = jobStatus.ProgressPercentage,
+                        progressDescription = jobStatus.ProgressDescription
+                    }),
+
+                "Completed" => Results.Ok(new
+                {
+                    transactionTime = jobStatus.EndDate ?? jobStatus.CreateDate,
+                    request = $"/tenant/{tenantId}/$export",
+                    requiresAccessToken = false,
+                    output = await BuildOutputManifestFromResultAsync(jobStatus.Result, blobStorage, httpContext.RequestAborted),
+                    error = Array.Empty<object>(),
+                }),
+
+                "Failed" => Results.Ok(new
+                {
+                    transactionTime = jobStatus.EndDate ?? jobStatus.CreateDate,
+                    request = $"/tenant/{tenantId}/$export",
+                    error = new[]
+                    {
+                        new
+                        {
+                            type = "OperationOutcome",
+                            message = jobStatus.ErrorMessage,
+                        },
+                    },
+                }),
+
+                _ => Results.StatusCode(500),
+            };
+        }
+        catch (InvalidOperationException)
         {
             return Results.NotFound(new { error = "Export job not found" });
         }
-
-        // Get orchestration state
-        var state = await taskHubClient.GetOrchestrationStateAsync(jobId);
-
-        // Update job status based on orchestration state
-        if (state != null)
-        {
-            switch (state.OrchestrationStatus)
-            {
-                case OrchestrationStatus.Running:
-                case OrchestrationStatus.Pending:
-                    job.Status = "Running";
-                    if (job.StartDate == null)
-                    {
-                        job.StartDate = DateTimeOffset.UtcNow;
-                    }
-                    break;
-
-                case OrchestrationStatus.Completed:
-                    job.Status = "Completed";
-                    job.EndDate = DateTimeOffset.UtcNow;
-                    break;
-
-                case OrchestrationStatus.Failed:
-                    job.Status = "Failed";
-                    job.EndDate = DateTimeOffset.UtcNow;
-                    job.ErrorMessage = "Orchestration failed";
-                    break;
-
-                case OrchestrationStatus.Terminated:
-                    job.Status = "Cancelled";
-                    job.EndDate = DateTimeOffset.UtcNow;
-                    break;
-            }
-
-            await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
-        }
-
-        // Return response based on status
-        return job.Status switch
-        {
-            "Queued" or "Running" => Results.Accepted(
-                value: new
-                {
-                    jobId = job.JobId,
-                    status = job.Status,
-                    progress = job.Progress,
-                }),
-
-            "Completed" => Results.Ok(new
-            {
-                transactionTime = job.EndDate ?? job.CreateDate,
-                request = $"/tenant/{tenantId}/$export",
-                requiresAccessToken = false,
-                output = await BuildOutputManifestAsync(job, blobStorage, httpContext.RequestAborted),
-                error = Array.Empty<object>(),
-            }),
-
-            "Failed" => Results.Ok(new
-            {
-                transactionTime = job.EndDate ?? job.CreateDate,
-                request = $"/tenant/{tenantId}/$export",
-                error = new[]
-                {
-                    new
-                    {
-                        type = "OperationOutcome",
-                        message = job.ErrorMessage,
-                    },
-                },
-            }),
-
-            _ => Results.StatusCode(500),
-        };
     }
 
     /// <summary>
@@ -247,32 +188,30 @@ public static class ExportEndpoints
     }
 
     /// <summary>
-    /// Builds the FHIR Bulk Data output manifest.
+    /// Builds the FHIR Bulk Data output manifest from job result.
     /// </summary>
-    private static async Task<List<object>> BuildOutputManifestAsync(
-        BackgroundJob<ExportJobDefinition> job,
+    private static async Task<List<object>> BuildOutputManifestFromResultAsync(
+        object? result,
         IBlobStorageClient blobStorage,
         CancellationToken cancellationToken)
     {
         var outputManifest = new List<object>();
 
-        // Extract exported files from Result JSON if available
-        if (job.Result != null)
+        if (result != null)
         {
-            var exportedFilesNode = job.Result["exportedFiles"];
-            if (exportedFilesNode != null && exportedFilesNode is JsonObject filesObj)
+            var resultDynamic = result as dynamic;
+            var outputFiles = resultDynamic?.outputFiles as Dictionary<string, string>;
+
+            if (outputFiles != null)
             {
-                foreach (var (resourceType, filePath) in filesObj)
+                foreach (var (resourceType, filePath) in outputFiles)
                 {
-                    if (filePath is JsonValue pathValue && pathValue.TryGetValue(out string? path))
+                    var url = await blobStorage.GetBlobUrlAsync(filePath, TimeSpan.FromHours(24), cancellationToken);
+                    outputManifest.Add(new
                     {
-                        var url = await blobStorage.GetBlobUrlAsync(path, TimeSpan.FromHours(24), cancellationToken);
-                        outputManifest.Add(new
-                        {
-                            type = resourceType,
-                            url,
-                        });
-                    }
+                        type = resourceType,
+                        url,
+                    });
                 }
             }
         }

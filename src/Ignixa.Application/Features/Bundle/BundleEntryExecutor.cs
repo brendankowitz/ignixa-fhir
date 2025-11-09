@@ -107,89 +107,78 @@ public class BundleEntryExecutor
                 }
             }
 
-            try
+            // Set request properties
+            httpContext.Request.Protocol = "HTTP/1.1";
+            httpContext.Request.Scheme = "http";
+            httpContext.Request.Method = entry.HttpVerb.ToUpperInvariant();
+            httpContext.Request.PathBase = string.Empty;
+            httpContext.Request.Path = ParsePath(entry.RequestUrl).Value ?? string.Empty;
+            httpContext.Request.QueryString = ParseQueryString(entry.RequestUrl);
+            httpContext.Request.Body = Stream.Null;
+
+            // Set response body to MemoryStream so we can capture output
+            httpContext.Response.Body = responseBodyStream;
+
+            // Add conditional operation headers from bundle entry
+            if (!string.IsNullOrWhiteSpace(entry.IfNoneExist))
             {
-                // Set request properties
-                httpContext.Request.Protocol = "HTTP/1.1";
-                httpContext.Request.Scheme = "http";
-                httpContext.Request.Method = entry.HttpVerb.ToUpperInvariant();
-                httpContext.Request.PathBase = string.Empty;
-                httpContext.Request.Path = ParsePath(entry.RequestUrl).Value ?? string.Empty;
-                httpContext.Request.QueryString = ParseQueryString(entry.RequestUrl);
-                httpContext.Request.Body = Stream.Null;
-
-                // Set response body to MemoryStream so we can capture output
-                httpContext.Response.Body = responseBodyStream;
-
-                // Add conditional operation headers from bundle entry
-                if (!string.IsNullOrWhiteSpace(entry.IfNoneExist))
-                {
-                    httpContext.Request.Headers["If-None-Exist"] = entry.IfNoneExist;
-                    _logger.LogDebug(
-                        "Added If-None-Exist header to entry {Index}: {IfNoneExist}",
-                        entry.Index,
-                        entry.IfNoneExist);
-                }
-
-                if (!string.IsNullOrWhiteSpace(entry.IfMatch))
-                {
-                    httpContext.Request.Headers["If-Match"] = entry.IfMatch;
-                    _logger.LogDebug(
-                        "Added If-Match header to entry {Index}: {IfMatch}",
-                        entry.Index,
-                        entry.IfMatch);
-                }
-
-                // Serialize resource to request body (if present)
-                if (entry.Resource != null)
-                {
-                    httpContext.Request.Body = SerializeResourceToStream(entry);
-                    httpContext.Request.ContentType = "application/fhir+json";
-                }
-
-                // Pass coordinator via HttpContext.Items for deferred writes
-                // This enables handlers to detect bundle context and queue writes appropriately
-                if (deferredWriteCoordinator != null)
-                {
-                    httpContext.Items["DeferredWriteCoordinator"] = deferredWriteCoordinator;
-
-                    // Use AsyncLocal instead of HttpContext.Items to avoid race conditions
-                    // when processing bundle entries concurrently
-                    httpContext.SetBundleEntryIndex(entry.Index);
-
-                    _logger.LogWarning(
-                        "EXECUTOR: Set entry index {EntryIndex} in AsyncLocal for {Verb} {Url}",
-                        entry.Index,
-                        entry.HttpVerb,
-                        entry.RequestUrl);
-                }
-
-                // Pass assigned resource ID for POST operations with urn:uuid fullUrls
-                // This ensures conditional creates use the pre-assigned ID for reference resolution
-                if (!string.IsNullOrWhiteSpace(entry.AssignedResourceId))
-                {
-                    httpContext.Items["BundleAssignedResourceId"] = entry.AssignedResourceId;
-                    _logger.LogDebug(
-                        "Passed assigned resource ID to entry {Index}: {AssignedId}",
-                        entry.Index,
-                        entry.AssignedResourceId);
-                }
-
-                // Execute through ASP.NET Core pipeline
-                // This automatically routes to correct endpoint handler (FhirEndpoints)
-                await _pipelineExecutor.ExecuteAsync(httpContext);
-
-                // Extract response from HttpContext
-                return await ExtractResponseAsync(httpContext, cancellationToken);
+                httpContext.Request.Headers["If-None-Exist"] = entry.IfNoneExist;
+                _logger.LogDebug(
+                    "Added If-None-Exist header to entry {Index}: {IfNoneExist}",
+                    entry.Index,
+                    entry.IfNoneExist);
             }
-            finally
+
+            if (!string.IsNullOrWhiteSpace(entry.IfMatch))
             {
-                // Manually dispose HttpContext if it implements IDisposable
-                if (httpContext is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
+                httpContext.Request.Headers["If-Match"] = entry.IfMatch;
+                _logger.LogDebug(
+                    "Added If-Match header to entry {Index}: {IfMatch}",
+                    entry.Index,
+                    entry.IfMatch);
             }
+
+            // Serialize resource to request body (if present)
+            if (entry.Resource != null)
+            {
+                httpContext.Request.Body = SerializeResourceToStream(entry);
+                httpContext.Request.ContentType = "application/fhir+json";
+            }
+
+            // Pass coordinator via HttpContext.Items for deferred writes
+            // This enables handlers to detect bundle context and queue writes appropriately
+            if (deferredWriteCoordinator != null)
+            {
+                httpContext.Items["DeferredWriteCoordinator"] = deferredWriteCoordinator;
+
+                // Use AsyncLocal instead of HttpContext.Items to avoid race conditions
+                // when processing bundle entries concurrently
+                httpContext.SetBundleEntryIndex(entry.Index);
+
+                _logger.LogWarning(
+                    "EXECUTOR: Set entry index {EntryIndex} in AsyncLocal for {Verb} {Url}",
+                    entry.Index,
+                    entry.HttpVerb,
+                    entry.RequestUrl);
+            }
+
+            // Pass assigned resource ID for POST operations with urn:uuid fullUrls
+            // This ensures conditional creates use the pre-assigned ID for reference resolution
+            if (!string.IsNullOrWhiteSpace(entry.AssignedResourceId))
+            {
+                httpContext.Items["BundleAssignedResourceId"] = entry.AssignedResourceId;
+                _logger.LogDebug(
+                    "Passed assigned resource ID to entry {Index}: {AssignedId}",
+                    entry.Index,
+                    entry.AssignedResourceId);
+            }
+
+            // Execute through ASP.NET Core pipeline
+            // This automatically routes to correct endpoint handler (FhirEndpoints)
+            await _pipelineExecutor.ExecuteAsync(httpContext);
+
+            // Extract response from HttpContext
+            return await ExtractResponseAsync(httpContext, cancellationToken);
         }
         catch (FhirException fhirEx)
         {

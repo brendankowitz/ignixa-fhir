@@ -21,6 +21,7 @@
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
     <PackageReference Include="Microsoft.Azure.DurableTask.AzureStorage" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>
