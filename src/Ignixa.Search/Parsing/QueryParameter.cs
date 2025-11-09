@@ -37,6 +37,7 @@ public record QueryParameter(string Name, string Value)
             "_contained" or "_containedType" => ParameterCategory.Control,
 
             // Search parameters (filter resources)
+            "_id" => ParameterCategory.Search,
             "_tag" => ParameterCategory.Search,
             "_lastUpdated" => ParameterCategory.Search,
             "_filter" => ParameterCategory.Search,
