@@ -20,15 +20,15 @@ using Ignixa.Serialization.SourceNodes;
 namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
 
 /// <summary>
-/// Simplified MCP tool for patching a single field in a FHIR resource.
+/// MCP tool for patching a single field in a FHIR resource.
 /// Use this for simple field updates. For complex multi-operation patches, use patch_fhir_resource.
 /// </summary>
 [McpServerToolType]
-public class PatchResourceSimpleTool : TenantAwareMcpTool
+public class PatchResourceFieldTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
 
-    public PatchResourceSimpleTool(
+    public PatchResourceFieldTool(
         IHttpContextAccessor httpContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator)
@@ -41,7 +41,7 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
     [Description("Patch a single field in a FHIR resource. Simple interface for updating one field at a time. " +
         "Examples: Set active=true, change name, update birthDate, etc. " +
         "For complex multi-field patches, use patch_fhir_resource instead.")]
-    public async Task<PatchResourceSimpleResultDto> PatchResourceFieldAsync(
+    public async Task<PatchResourceFieldResultDto> PatchResourceFieldAsync(
         [Description("Resource type: Patient, Observation, Condition, etc.")]
         string resourceType,
 
@@ -66,7 +66,7 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
         var validationError = ValidateInput(resourceType, resourceId, fieldPath, operation);
         if (validationError != null)
         {
-            return new PatchResourceSimpleResultDto
+            return new PatchResourceFieldResultDto
             {
                 Success = false,
                 ErrorMessage = validationError,
@@ -82,7 +82,7 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
         }
         catch (Exception ex)
         {
-            return new PatchResourceSimpleResultDto
+            return new PatchResourceFieldResultDto
             {
                 Success = false,
                 ErrorMessage = $"Tenant resolution failed: {ex.Message}",
@@ -121,7 +121,7 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
 
             if (patchedResource == null)
             {
-                return new PatchResourceSimpleResultDto
+                return new PatchResourceFieldResultDto
                 {
                     Success = false,
                     ErrorMessage = $"Resource {resourceType}/{resourceId} not found",
@@ -129,7 +129,7 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
                 };
             }
 
-            return new PatchResourceSimpleResultDto
+            return new PatchResourceFieldResultDto
             {
                 Success = true,
                 ErrorMessage = null,
@@ -138,7 +138,7 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
         }
         catch (Exception ex)
         {
-            return new PatchResourceSimpleResultDto
+            return new PatchResourceFieldResultDto
             {
                 Success = false,
                 ErrorMessage = $"Patch operation failed: {ex.Message}",
@@ -288,9 +288,9 @@ public class PatchResourceSimpleTool : TenantAwareMcpTool
 }
 
 /// <summary>
-/// DTO for simple patch result.
+/// DTO for patch field result.
 /// </summary>
-public class PatchResourceSimpleResultDto
+public class PatchResourceFieldResultDto
 {
     /// <summary>
     /// Whether the patch operation succeeded.
