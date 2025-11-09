@@ -11,8 +11,12 @@ using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
+using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
@@ -25,14 +29,22 @@ namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
 public class SearchResourcesTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly ISearchOptionsBuilderFactory _builderFactory;
+    private readonly IFhirVersionContext _versionContext;
+    private readonly ITenantConfigurationStore _tenantConfigurationStore;
 
     public SearchResourcesTool(
         IHttpContextAccessor httpContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
+        IMediator mediator,
+        ISearchOptionsBuilderFactory builderFactory,
+        IFhirVersionContext versionContext)
         : base(httpContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _builderFactory = builderFactory ?? throw new ArgumentNullException(nameof(builderFactory));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
+        _tenantConfigurationStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
     }
 
     [McpServerTool(Name = "search_fhir_resources")]
@@ -71,39 +83,43 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         // Enforce default count=10, max=50 (LLM optimization per design guidelines)
         var effectiveCount = Math.Min(count ?? 10, 50);
 
-        // Parse _total parameter (default: None for performance)
-        var totalType = ParseTotalType(total);
+        // Build QueryParameter list from searchParams dictionary
+        // Include search parameters plus control parameters (_count, _elements, _summary, _total)
+        var queryParameters = new List<QueryParameter>();
 
-        // Build SearchOptions with LLM-optimized parameters
-        var searchOptions = new SearchOptions
+        // Add search parameters from the input dictionary
+        foreach (var kvp in searchParams)
         {
-            ResourceType = resourceType,
-            MaxItemCount = effectiveCount,
-            Total = totalType, // Can be None (default), Accurate, or Estimate
-            Summary = ParseSummaryType(summary),
-            Elements = ParseElements(elements),
-            Expression = null // Let SearchOptionsBuilder handle expression parsing
-        };
+            queryParameters.Add(new QueryParameter(kvp.Key, kvp.Value));
+        }
 
-        // Parse search parameters into FHIR query format
-        // For MCP Phase 1, we'll build a simple query - future: use SearchOptionsBuilder for full parsing
-        var queryParams = new Dictionary<string, string>(searchParams);
-        queryParams["_count"] = effectiveCount.ToString();
+        // Add control parameters
+        queryParameters.Add(new QueryParameter("_count", effectiveCount.ToString()));
 
         if (!string.IsNullOrEmpty(elements))
         {
-            queryParams["_elements"] = elements;
+            queryParameters.Add(new QueryParameter("_elements", elements));
         }
 
         if (!string.IsNullOrEmpty(summary))
         {
-            queryParams["_summary"] = summary;
+            queryParameters.Add(new QueryParameter("_summary", summary));
         }
 
         if (!string.IsNullOrEmpty(total))
         {
-            queryParams["_total"] = total;
+            queryParameters.Add(new QueryParameter("_total", total));
         }
+
+        // Get FHIR version for the tenant to resolve correct schema provider
+        var fhirVersion = await ResolveFhirVersionAsync(resolvedTenantId, cancellationToken);
+
+        // Get the appropriate schema provider for this FHIR version
+        var schemaProvider = _versionContext.GetSchemaProvider(fhirVersion);
+
+        // Use SearchOptionsBuilder to parse all parameters and build expressions
+        var builder = _builderFactory.Create(fhirVersion);
+        var searchOptions = builder.Build(resourceType, queryParameters, schemaProvider);
 
         // Set tenant context in HttpContext.Items for SearchResourcesHandler
         var httpContext = HttpContextAccessor.HttpContext
@@ -145,36 +161,27 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         };
     }
 
-    private static SummaryType ParseSummaryType(string? summary)
+    /// <summary>
+    /// Resolve the FHIR version from tenant configuration, with fallback to R4 default.
+    /// </summary>
+    private async Task<FhirSpecification> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
-        return summary?.ToUpperInvariant() switch
-        {
-            "TRUE" => SummaryType.True,
-            "DATA" => SummaryType.Data,
-            "TEXT" => SummaryType.Text,
-            "COUNT" => SummaryType.Count,
-            _ => SummaryType.False
-        };
-    }
+        // Default to R4
+        var fhirVersion = FhirSpecification.R4;
 
-    private static TotalType ParseTotalType(string? total)
-    {
-        return total?.ToUpperInvariant() switch
+        try
         {
-            "ACCURATE" => TotalType.Accurate,
-            "ESTIMATE" => TotalType.Estimate,
-            _ => TotalType.None // Default: don't calculate total (performance)
-        };
-    }
-
-    private static IReadOnlySet<string> ParseElements(string? elements)
-    {
-        if (string.IsNullOrWhiteSpace(elements))
+            var tenantConfig = await _tenantConfigurationStore.GetTenantConfigurationAsync(tenantId, cancellationToken);
+            if (tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.FhirVersion))
+            {
+                fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+            }
+        }
+        catch
         {
-            return new HashSet<string>();
+            // If tenant resolution fails, use default R4
         }
 
-        return elements.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return fhirVersion;
     }
 }
