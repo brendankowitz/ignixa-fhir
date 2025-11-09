@@ -1207,6 +1207,710 @@ DELETE /admin/packages/hl7.fhir.us.core/6.0.0
 
 ---
 
+## Custom Resource Support Architecture
+
+### Overview
+
+Custom resources (resource types not defined in the core FHIR specification) are supported through Implementation Guide loading and validation. This section describes how custom resources fit into the unified validation, terminology, and package architecture.
+
+**Examples of custom resources**:
+- **ViewDefinition** (SQL-on-FHIR v2 IG)
+- **MolecularSequence** extensions (Genomics IG)
+- **Organization-specific resources** (custom IGs)
+
+**Key principle**: Custom resources follow the same validation and storage patterns as core FHIR resources once their StructureDefinitions are loaded via packages.
+
+### FHIR Specification Guidance
+
+Based on FHIR R4/R5/R6 specifications:
+
+- **StructureDefinition Definition**: Custom resources are defined with `kind="resource"` and `derivation="specialization"`
+- **Server Discretion**: Servers have discretion to accept or reject unknown resource types (404 Not Found is the standard response)
+- **Validation Requirements**: Validation is **discretionary** - servers choose how much to perform
+- **Extensibility Rule**: Extensions cannot define new resource types (must use StructureDefinition)
+- **CapabilityStatement**: Servers MUST declare supported resource types in CapabilityStatement
+
+**Canonical Spec URLs**:
+- StructureDefinition.kind: https://hl7.org/fhir/R4/structuredefinition-definitions.html#StructureDefinition.kind
+- StructureDefinition.derivation: https://hl7.org/fhir/R4/structuredefinition-definitions.html#StructureDefinition.derivation
+- RESTful API: https://hl7.org/fhir/R4/http.html#general
+
+### Middleware Acceptance Strategy
+
+**Decision**: Hybrid Validation - Accept custom resources IF the IG is loaded OR tenant configuration allows
+
+#### When Custom Resources Are Accepted
+
+Custom resources (unknown resource types) are accepted by the middleware when:
+
+1. **IG Loaded** (Recommended)
+   - StructureDefinition for the resource type is available in PackageResource table
+   - Full validation tiers (Tier 1+2+3) can be applied
+   - SearchParameters are registered and indexed
+
+2. **Tenant Configuration** (Optional, configurable)
+   - Tenant setting `AllowUnknownResourceTypes = true`
+   - Useful for testing and development
+   - Only Tier 1 (structural) validation applied
+
+#### Implementation Example
+
+```csharp
+public class FhirResourceTypeValidator
+{
+    private readonly ISchemaProvider _schemaProvider;
+    private readonly IConformanceResourceResolver _conformanceResolver;
+    private readonly TenantConfiguration _tenantConfig;
+    private readonly ILogger<FhirResourceTypeValidator> _logger;
+
+    public async ValueTask<bool> IsValidResourceTypeAsync(
+        string resourceType,
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        // 1. Check core FHIR resources
+        if (_schemaProvider.ResourceTypeNames.Contains(resourceType))
+            return true;
+
+        // 2. Check loaded IGs for custom resources
+        // Try to resolve StructureDefinition from packages
+        var structureDefCanonical = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
+        var structureDef = await _conformanceResolver.ResolveAsync<StructureDefinition>(
+            tenantId,
+            structureDefCanonical,
+            version: null,
+            cancellationToken);
+
+        if (structureDef != null && IsCustomResource(structureDef))
+            return true;
+
+        // 3. Check tenant configuration
+        var config = await _tenantConfig.GetConfigurationAsync(tenantId, cancellationToken);
+        if (config.AllowUnknownResourceTypes)
+        {
+            _logger.LogWarning(
+                "Accepting unvalidated custom resource: {ResourceType} for tenant {TenantId}",
+                resourceType, tenantId);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsCustomResource(StructureDefinition sd)
+    {
+        // Custom resource detection algorithm (see below)
+        return sd.Kind == StructureDefinitionKind.Resource
+            && sd.Derivation == StructureDefinitionDerivation.Specialization
+            && sd.Abstract != true;
+    }
+}
+```
+
+#### Configuration
+
+```json
+{
+  "validation": {
+    "customResources": {
+      "allowUnknownResourceTypes": false,
+      "requireIgForAcceptance": true,
+      "requireValidationForAcceptance": false,
+      "failOnMissingStructureDefinition": false
+    }
+  }
+}
+```
+
+### Validation Tier Assignment
+
+**Decision**: Custom resources follow the same validation tier rules as core resources
+
+| Tier | When Applied | Validation | Custom Resources |
+|------|-------------|-----------|-----------------|
+| **Tier 1** | Always | JSON structure, resourceType field | ✅ Always applied |
+| **Tier 2** | If IG loaded | StructureDefinition-based validation | ✅ Applied if StructureDefinition available |
+| **Tier 3** | If terminology available | ValueSet binding, reference validation | ✅ Applied if profiles loaded |
+
+#### Strictness Configuration
+
+```csharp
+public enum CustomResourceValidationStrictness
+{
+    /// <summary>Lenient: Only Tier 1, accept any custom resource</summary>
+    Lenient,
+
+    /// <summary>Moderate: Tier 1+2 if IG loaded, warn if not</summary>
+    Moderate,
+
+    /// <summary>Strict: Tier 1+2+3 required, reject if IG not loaded</summary>
+    Strict
+}
+```
+
+**Behavior Examples**:
+
+```csharp
+// Lenient mode
+POST /ViewDefinition { ... }
+// Result: Tier 1 only (JSON structure)
+// Accepted even without ViewDefinition StructureDefinition
+
+// Moderate mode (recommended)
+POST /ViewDefinition { ... }
+// Result: Tier 1 + Tier 2 (if StructureDefinition loaded)
+// Warning logged if StructureDefinition not available
+// Accepted regardless
+
+// Strict mode
+POST /ViewDefinition { ... }
+// Result: Tier 1 + Tier 2 + Tier 3 required
+// HTTP 400 returned if StructureDefinition not loaded
+```
+
+### Storage Architecture
+
+**Decision**: Custom resource instances stored in main Resource table (same as core resources)
+
+#### Storage Tables
+
+```sql
+-- Resource Table (main, tenant-partitioned)
+-- Stores instances of both core and custom resources
+Resource:
+  TenantId: 1
+  ResourceType: "ViewDefinition"
+  ResourceId: "patient-demographics"
+  JsonData: {...}
+
+  TenantId: 1
+  ResourceType: "Patient"
+  ResourceId: "123"
+  JsonData: {...}
+
+-- PackageResource Table (global, shared)
+-- Stores StructureDefinitions and other conformance resources from IGs
+PackageResource:
+  PackageId: "hl7.fhir.uv.sql-on-fhir"
+  PackageVersion: "2.0.0"
+  ResourceType: "StructureDefinition"
+  Canonical: "http://hl7.org/fhir/uv/sql-on-fhir/StructureDefinition/ViewDefinition"
+  ResourceJson: {...}
+```
+
+**Rationale**:
+- ✅ Same multi-tenant isolation as core resources
+- ✅ Same versioning, history, search indexing infrastructure
+- ✅ PackageResource stores metadata (StructureDefinitions from IGs)
+- ✅ Resource table stores instances (created by tenants)
+- ✅ No schema changes needed for custom resources
+
+### Custom Resource Detection
+
+**Decision**: Detect custom resources from StructureDefinition metadata using standardized algorithm
+
+#### Detection Algorithm
+
+A custom resource is identified when:
+
+1. `StructureDefinition.kind == "resource"` (must be resource type)
+2. `StructureDefinition.derivation == "specialization"` (not a profile/constraint)
+3. `StructureDefinition.type` NOT in core FHIR resource list
+4. `StructureDefinition.abstract != true` (not abstract)
+
+#### Implementation
+
+```csharp
+public static class CustomResourceDetector
+{
+    // Core FHIR R4 resource types (153 total)
+    private static readonly HashSet<string> CoreR4Resources = new(StringComparer.Ordinal)
+    {
+        "Account", "ActivityDefinition", "AdverseEvent", "AllergyIntolerance",
+        "Appointment", "AppointmentResponse", "AuditEvent", "Basic", "Binary",
+        "BiologicallyDerivedProduct", "BodyStructure", "Bundle", "CapabilityStatement",
+        "CarePlan", "CareTeam", "CatalogEntry", "ChargeItem", "ChargeItemDefinition",
+        "Claim", "ClaimResponse", "ClinicalImpression", "CodeSystem", "Communication",
+        "CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap",
+        "Condition", "Consent", "Contract", "Coverage", "CoverageEligibilityRequest",
+        "CoverageEligibilityResponse", "DetectedIssue", "Device", "DeviceDefinition",
+        "DeviceMetric", "DeviceRequest", "DeviceUseStatement", "DiagnosticReport",
+        "DocumentManifest", "DocumentReference", "EffectEvidenceSynthesis", "Encounter",
+        "Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare",
+        "EventDefinition", "Evidence", "EvidenceVariable", "ExampleScenario",
+        "ExplanationOfBenefit", "FamilyMemberHistory", "Flag", "Goal", "GraphDefinition",
+        "Group", "GuidanceResponse", "HealthcareService", "ImagingStudy", "Immunization",
+        "ImmunizationEvaluation", "ImmunizationRecommendation", "ImplementationGuide",
+        "InsurancePlan", "Invoice", "Library", "Linkage", "List", "Location", "Measure",
+        "MeasureReport", "Media", "Medication", "MedicationAdministration",
+        "MedicationDispense", "MedicationKnowledge", "MedicationRequest",
+        "MedicationStatement", "MedicinalProduct", "MedicinalProductAuthorization",
+        "MedicinalProductContraindication", "MedicinalProductIndication",
+        "MedicinalProductIngredient", "MedicinalProductInteraction",
+        "MedicinalProductManufactured", "MedicinalProductPackaged",
+        "MedicinalProductPharmaceutical", "MedicinalProductUndesirableEffect",
+        "MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem",
+        "NutritionOrder", "Observation", "ObservationDefinition", "OperationDefinition",
+        "OperationOutcome", "Organization", "OrganizationAffiliation", "Parameters",
+        "Patient", "PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition",
+        "Practitioner", "PractitionerRole", "Procedure", "Provenance", "Questionnaire",
+        "QuestionnaireResponse", "RelatedPerson", "RequestGroup", "ResearchDefinition",
+        "ResearchElementDefinition", "ResearchStudy", "ResearchSubject", "RiskAssessment",
+        "RiskEvidenceSynthesis", "Schedule", "SearchParameter", "ServiceRequest", "Slot",
+        "Specimen", "SpecimenDefinition", "StructureDefinition", "StructureMap",
+        "Subscription", "Substance", "SubstanceNucleicAcid", "SubstancePolymer",
+        "SubstanceProtein", "SubstanceReferenceInformation", "SubstanceSourceMaterial",
+        "SubstanceSpecification", "SupplyDelivery", "SupplyRequest", "Task",
+        "TerminologyCapabilities", "TestReport", "TestScript", "ValueSet",
+        "VerificationResult", "VisionPrescription"
+    };
+
+    public static bool IsCustomResource(
+        StructureDefinition structureDefinition,
+        FhirSpecification fhirVersion = FhirSpecification.R4)
+    {
+        // 1. Must be a resource type
+        if (structureDefinition.Kind != StructureDefinitionKind.Resource)
+            return false;
+
+        // 2. Must be a specialization (not a constraint/profile)
+        if (structureDefinition.Derivation != StructureDefinitionDerivation.Specialization)
+            return false;
+
+        // 3. Must NOT be abstract
+        if (structureDefinition.Abstract == true)
+            return false;
+
+        // 4. Must NOT be a core FHIR resource
+        var coreResources = GetCoreResourcesForVersion(fhirVersion);
+        if (coreResources.Contains(structureDefinition.Type))
+            return false;
+
+        return true;
+    }
+
+    private static HashSet<string> GetCoreResourcesForVersion(FhirSpecification version)
+    {
+        return version switch
+        {
+            FhirSpecification.R4 => CoreR4Resources,
+            FhirSpecification.R5 => CoreR5Resources,  // 165 resources
+            FhirSpecification.STU3 => CoreSTU3Resources,  // 94 resources
+            _ => throw new ArgumentException($"Unsupported FHIR version: {version}")
+        };
+    }
+}
+```
+
+#### Usage Example
+
+```csharp
+// Check if a resource is custom
+var structureDef = await _conformanceResolver.ResolveAsync<StructureDefinition>(
+    tenantId,
+    "http://hl7.org/fhir/uv/sql-on-fhir/StructureDefinition/ViewDefinition",
+    cancellationToken: ct);
+
+if (CustomResourceDetector.IsCustomResource(structureDef))
+{
+    // This is a custom resource - handle accordingly
+    await _igRegistry.RegisterCustomResourceAsync(
+        tenantId,
+        structureDef.Type,  // "ViewDefinition"
+        structureDef,
+        ct);
+}
+```
+
+### CapabilityStatement Advertisement
+
+**Decision**: Auto-advertise custom resources from loaded IGs in CapabilityStatement
+
+#### When Custom Resources Appear
+
+Custom resources are automatically added to CapabilityStatement when:
+
+1. StructureDefinition is loaded into PackageResource table
+2. CustomResourceDetector identifies it as a custom resource
+3. Tenant has access to the IG (via configuration or auto-discovery)
+
+#### Implementation Example
+
+```csharp
+public class CapabilityStatementBuilder
+{
+    private readonly IConformanceResourceResolver _conformanceResolver;
+    private readonly IIgRegistry _igRegistry;
+    private readonly ILogger<CapabilityStatementBuilder> _logger;
+
+    public async Task<CapabilityStatement> BuildAsync(
+        string tenantId,
+        FhirSpecification fhirVersion,
+        CancellationToken cancellationToken)
+    {
+        var cs = new CapabilityStatement
+        {
+            FhirVersion = fhirVersion.ToCapabilityStatementFhirVersion(),
+            Software = new CapabilityStatement.SoftwareComponent
+            {
+                Name = "Ignixa FHIR Server",
+                Version = typeof(Program).Assembly.GetName().Version?.ToString()
+            },
+            Rest = new List<CapabilityStatement.RestComponent>
+            {
+                new()
+                {
+                    Mode = CapabilityStatement.RestfulCapabilityMode.Server,
+                    Resource = new List<CapabilityStatement.ResourceComponent>()
+                }
+            }
+        };
+
+        var restComponent = cs.Rest[0];
+
+        // 1. Add core resources
+        foreach (var resourceType in _schemaProvider.ResourceTypeNames)
+        {
+            AddResourceToCapabilityStatement(restComponent, resourceType);
+        }
+
+        // 2. Add custom resources from loaded IGs
+        var customResources = await _igRegistry.GetCustomResourcesForTenantAsync(
+            tenantId, cancellationToken);
+
+        foreach (var customResourceType in customResources)
+        {
+            AddResourceToCapabilityStatement(restComponent, customResourceType);
+            _logger.LogInformation(
+                "Added custom resource to CapabilityStatement: {ResourceType}",
+                customResourceType);
+        }
+
+        return cs;
+    }
+
+    private void AddResourceToCapabilityStatement(
+        CapabilityStatement.RestComponent restComponent,
+        string resourceType)
+    {
+        var resourceComponent = new CapabilityStatement.ResourceComponent
+        {
+            Type = resourceType,
+            Interaction = new List<CapabilityStatement.ResourceInteractionComponent>
+            {
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.Create },
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.Read },
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.Update },
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.Delete },
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.SearchType },
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.HistoryInstance },
+                new() { Code = CapabilityStatement.TypeRestfulInteraction.HistoryType }
+            },
+            Versioning = CapabilityStatement.ResourceVersionPolicy.Versioned,
+            ReadHistory = true,
+            UpdateCreate = true,
+            ConditionalCreate = true,
+            ConditionalUpdate = true
+        };
+
+        // Get profile URL if available
+        var structureDef = _conformanceResolver.ResolveAsync<StructureDefinition>(
+            tenantId: "<system>",
+            canonical: $"http://hl7.org/fhir/StructureDefinition/{resourceType}",
+            version: null,
+            cancellationToken: CancellationToken.None).Result;
+
+        if (structureDef?.Url != null)
+        {
+            resourceComponent.Profile = structureDef.Url;
+        }
+
+        restComponent.Resource.Add(resourceComponent);
+    }
+}
+```
+
+#### CapabilityStatement Output Example
+
+```json
+{
+  "resourceType": "CapabilityStatement",
+  "fhirVersion": "4.0.1",
+  "rest": [{
+    "mode": "server",
+    "resource": [
+      {
+        "type": "Patient",
+        "profile": "http://hl7.org/fhir/StructureDefinition/Patient",
+        "interaction": [
+          {"code": "create"},
+          {"code": "read"},
+          {"code": "update"}
+        ]
+      },
+      {
+        "type": "ViewDefinition",
+        "profile": "http://hl7.org/fhir/uv/sql-on-fhir/StructureDefinition/ViewDefinition",
+        "interaction": [
+          {"code": "create"},
+          {"code": "read"},
+          {"code": "update"}
+        ]
+      }
+    ]
+  }]
+}
+```
+
+### SearchParameter Registration
+
+**Decision**: Extract SearchParameters from IG during loading and register with search indexer
+
+#### SearchParameter Extraction
+
+When an IG is loaded, SearchParameters are extracted and registered:
+
+```csharp
+public class ImplementationGuideLoader
+{
+    private readonly IConformanceResourceResolver _conformanceResolver;
+    private readonly ISearchParameterRegistry _searchParamRegistry;
+    private readonly ILogger<ImplementationGuideLoader> _logger;
+
+    public async Task LoadImplementationGuideAsync(
+        string packageId,
+        string version,
+        string tenantId,
+        LoadOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        options ??= new LoadOptions();
+
+        // 1. Download and extract package
+        var package = await _packageLoader.LoadPackageAsync(
+            $"https://packages.fhir.org/{packageId}/{version}",
+            cancellationToken);
+
+        var structureDefinitions = package.GetResourcesByType<StructureDefinition>();
+        var searchParameters = package.GetResourcesByType<SearchParameter>();
+
+        // 2. Import StructureDefinitions to PackageResource table
+        await _packageImporter.ImportAsync(structureDefinitions, packageId, version, cancellationToken);
+
+        // 3. Register SearchParameters
+        var customResources = new List<string>();
+        foreach (var sd in structureDefinitions)
+        {
+            if (CustomResourceDetector.IsCustomResource(sd))
+            {
+                customResources.Add(sd.Type);
+            }
+        }
+
+        // Get SearchParameters for custom resources
+        var customResourceSearchParams = searchParameters
+            .Where(sp => customResources.Contains(sp.Base?.FirstOrDefault()?.Code))
+            .ToList();
+
+        _logger.LogInformation(
+            "Registering {Count} SearchParameters for custom resources",
+            customResourceSearchParams.Count);
+
+        foreach (var searchParam in customResourceSearchParams)
+        {
+            // Register with search parameter indexer
+            await _searchParamRegistry.RegisterSearchParameterAsync(
+                tenantId,
+                searchParam,
+                indexExisting: options.ReindexExistingResources,
+                cancellationToken);
+        }
+
+        // 4. Optional: Reindex existing resources
+        if (options.ReindexExistingResources)
+        {
+            foreach (var resourceType in customResources)
+            {
+                _logger.LogInformation(
+                    "Reindexing existing {ResourceType} resources with new SearchParameters",
+                    resourceType);
+
+                await _reindexService.ReindexResourceTypeAsync(
+                    tenantId,
+                    resourceType,
+                    cancellationToken);
+            }
+        }
+
+        _logger.LogInformation(
+            "Successfully loaded IG {PackageId}@{Version} with {ResourceCount} custom resources",
+            packageId, version, customResources.Count);
+    }
+}
+
+public class LoadOptions
+{
+    /// <summary>Reindex existing resources after loading new SearchParameters (expensive)</summary>
+    public bool ReindexExistingResources { get; set; } = false;
+
+    /// <summary>Allow search parameters without matching StructureDefinition</summary>
+    public bool AllowOrphanedSearchParameters { get; set; } = false;
+}
+```
+
+#### SearchParameter Registration Example
+
+```http
+# After loading SQL-on-FHIR v2 IG, these SearchParameters are registered:
+
+GET /SearchParameter?base=ViewDefinition
+
+{
+  "resourceType": "Bundle",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "SearchParameter",
+        "name": "name",
+        "code": "name",
+        "base": ["ViewDefinition"],
+        "type": "string"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "SearchParameter",
+        "name": "resource",
+        "code": "resource",
+        "base": ["ViewDefinition"],
+        "type": "string"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "SearchParameter",
+        "name": "status",
+        "code": "status",
+        "base": ["ViewDefinition"],
+        "type": "token"
+      }
+    }
+  ]
+}
+```
+
+### Example: ViewDefinition Workflow
+
+**Step 1: Admin loads SQL-on-FHIR v2 IG**
+
+```http
+POST /$load-ig
+
+{
+  "packageId": "hl7.fhir.uv.sql-on-fhir",
+  "version": "2.0.0"
+}
+
+← HTTP 200 OK
+{
+  "packageId": "hl7.fhir.uv.sql-on-fhir",
+  "version": "2.0.0",
+  "resourcesImported": 18,
+  "customResources": ["ViewDefinition"],
+  "searchParameters": 3
+}
+```
+
+**Step 2: Client checks CapabilityStatement**
+
+```http
+GET /metadata
+
+← HTTP 200 OK
+{
+  "resourceType": "CapabilityStatement",
+  "rest": [{
+    "resource": [
+      {
+        "type": "ViewDefinition",
+        "profile": "http://hl7.org/fhir/uv/sql-on-fhir/StructureDefinition/ViewDefinition",
+        "searchParam": [
+          {"name": "name", "type": "string"},
+          {"name": "resource", "type": "string"},
+          {"name": "status", "type": "token"}
+        ]
+      }
+    ]
+  }]
+}
+```
+
+**Step 3: Client creates ViewDefinition**
+
+```http
+POST /ViewDefinition
+
+{
+  "resourceType": "ViewDefinition",
+  "name": "patient_demographics",
+  "resource": "Patient",
+  "select": [...]
+}
+
+← HTTP 201 Created
+Location: /ViewDefinition/patient-demographics
+```
+
+Server validation steps:
+1. Middleware accepts `ViewDefinition` (detected as custom resource)
+2. Tier 1 validation: JSON structure ✅
+3. Tier 2 validation: StructureDefinition loaded, validates required fields ✅
+4. Stores in Resource table
+5. Indexes search parameters (name, resource, status)
+
+**Step 4: Client searches ViewDefinitions**
+
+```http
+GET /ViewDefinition?name=patient_demographics
+
+← HTTP 200 OK
+{
+  "resourceType": "Bundle",
+  "entry": [{
+    "resource": {
+      "resourceType": "ViewDefinition",
+      "id": "patient-demographics",
+      "name": "patient_demographics"
+    }
+  }]
+}
+```
+
+### Integration with Unified Architecture
+
+**Custom resources fit seamlessly into ADR-2532**:
+
+| Component | Integration |
+|-----------|-----------|
+| **Package Management** | StructureDefinitions extracted from IGs → PackageResource table |
+| **Validation System** | Custom StructureDefinitions used to build ValidationSchemas (Tier 2+3) |
+| **Terminology Services** | Custom resource ValueSet bindings validated same as core resources |
+| **CapabilityStatement** | Auto-updated when custom StructureDefinitions loaded |
+| **Search Indexing** | Custom resource SearchParameters registered and indexed |
+| **Multi-tenancy** | Custom resources isolated per tenant (same Resource table isolation) |
+| **Caching** | StructureDefinitions cached same as core profiles (ConformanceCache) |
+
+### Success Criteria
+
+✅ Custom resources accepted when IG loaded
+✅ Middleware accepts ViewDefinition (and other custom resources)
+✅ Validation tiers applied consistently (Tier 1 always, Tier 2 if IG loaded)
+✅ CapabilityStatement advertises custom resources
+✅ SearchParameters for custom resources indexed and functional
+✅ End-to-end workflow: Load IG → Create instance → Search → Validate
+
+---
+
 ## Unified Data Flow Diagrams
 
 ### Resource Creation with Full Validation
