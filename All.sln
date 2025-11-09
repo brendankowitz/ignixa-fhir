@@ -120,6 +120,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement.Tests", "test\Ignixa.PackageManagement.Tests\Ignixa.PackageManagement.Tests.csproj", "{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Shims.FirelySdk", "src\Ignixa.Shims.FirelySdk\Ignixa.Shims.FirelySdk.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -454,6 +456,18 @@ Global
 		{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}.Release|x64.Build.0 = Release|Any CPU
 		{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}.Release|x86.ActiveCfg = Release|Any CPU
 		{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}.Release|x86.Build.0 = Release|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Debug|x64.Build.0 = Debug|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Debug|x86.Build.0 = Debug|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x64.ActiveCfg = Release|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x64.Build.0 = Release|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x86.ActiveCfg = Release|Any CPU
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -493,5 +507,6 @@ Global
 		{D5354C86-98F8-4488-AEF4-738BD35CDEE2} = {0955C698-034D-424C-A981-095EB50A5673}
 		{D62AAF79-C7D4-4002-BE91-38FFC458DD59} = {0955C698-034D-424C-A981-095EB50A5673}
 		{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
+		{C282DC1F-6F99-4A9F-8639-C0885D2C820A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

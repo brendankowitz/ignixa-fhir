@@ -198,9 +198,80 @@ public class MyElement : IElement, ITypedElement // Implement both during migrat
 | Children() iteration | Allocates enumerator | Indexable, reusable |
 | Memory footprint | Larger | Minimal (byte enums, struct) |
 
+## Firely SDK Interoperability Shims
+
+**Location**: `src/Ignixa.Shims.FirelySdk/`
+
+Provides bidirectional conversion between Ignixa's modern interfaces and Firely SDK's interfaces for community adoption and gradual migration.
+
+### Purpose
+
+1. **Community adoption**: Use Ignixa core libraries with existing Firely SDK-based tools
+2. **Gradual migration**: Adopt Ignixa interfaces incrementally without rewriting everything
+3. **Interoperability**: Work with both ecosystems seamlessly
+
+### Components
+
+**Adapter Classes:**
+- `CoreElementAdapter`: Firely `ITypedElement` → Ignixa `IElement`
+  - Lazy child materialization
+  - Caches children for efficient filtering
+- `TypedElementAdapter`: Ignixa `IElement` → Firely `ITypedElement`
+  - Streaming conversion (no upfront materialization)
+  - Preserves annotation system
+
+**Extension Methods:**
+- `CoreExtensions`: `.ToCoreElement()`, `.ToCoreElements()` (Firely → Ignixa)
+- `FirelySdkExtensions`: `.ToTypedElement()`, `.ToTypedElements()` (Ignixa → Firely)
+
+### Usage Examples
+
+**Firely → Ignixa:**
+```csharp
+using Ignixa.Shims.FirelySdk;
+
+// Convert Firely element to use with Ignixa libraries
+ITypedElement firelyElement = ...;
+IElement ignixaElement = firelyElement.ToCoreElement();
+
+var validator = new IgnixaValidator();
+var result = validator.Validate(ignixaElement);
+```
+
+**Ignixa → Firely:**
+```csharp
+// Convert Ignixa element to use with Firely tools
+IElement ignixaElement = ...;
+ITypedElement firelyElement = ignixaElement.ToTypedElement();
+
+var navigator = firelyElement.ToFhirPathNavigator();
+var result = navigator.Scalar("Patient.name.family");
+```
+
+**Smart Unwrapping:**
+The adapters detect when an element has already been wrapped and unwrap it instead of double-wrapping:
+```csharp
+IElement ignixa = ...;
+ITypedElement firely = ignixa.ToTypedElement();
+IElement back = firely.ToCoreElement();  // Returns original ignixa!
+```
+
+### Files
+
+```
+src/Ignixa.Shims.FirelySdk/
+├── Ignixa.Shims.FirelySdk.csproj
+├── CoreElementAdapter.cs (Firely → Ignixa adapter)
+├── TypedElementAdapter.cs (Ignixa → Firely adapter)
+├── CoreExtensions.cs (Firely → Ignixa extension methods)
+├── FirelySdkExtensions.cs (Ignixa → Firely extension methods)
+└── README.md (comprehensive usage documentation)
+```
+
 ## Build Status
 
 ✅ **Ignixa.Abstractions** builds successfully with .NET 9.0.306
+✅ **Ignixa.Shims.FirelySdk** added to solution
 ⚠️ Full solution build blocked by NuGet proxy authentication issues (network config, not code)
 
 ## Next Steps
