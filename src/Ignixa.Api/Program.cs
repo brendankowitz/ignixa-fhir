@@ -92,6 +92,9 @@ builder.Services.AddHostedService<IndexLoaderService>();
 // Register TenantPackagePreloadService for tenant package preloading at startup
 builder.Services.AddHostedService<TenantPackagePreloadService>();
 
+// Register EmbeddedPackagePreloadService for auto-loading embedded packages (SQL-on-FHIR, etc.)
+builder.Services.AddHostedService<EmbeddedPackagePreloadService>();
+
 // Register HTTP client factory for background operations (Import activities need this)
 builder.Services.AddHttpClient();
 
@@ -569,10 +572,31 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .ConfigurePrimaryHttpMessageHandler(sp =>
             sp.GetRequiredService<Ignixa.PackageManagement.Infrastructure.ResilientHttpMessageHandler>());
 
-    // Register package loading infrastructure
-    containerBuilder.RegisterType<Ignixa.PackageManagement.Infrastructure.NpmPackageLoader>()
-        .As<Ignixa.PackageManagement.Abstractions.IPackageLoader>()
-        .InstancePerDependency();
+    // Register composite package loader: embedded -> npm
+    // Embedded packages (like SQL-on-FHIR ViewDefinition) load from assembly
+    // Official packages fallback to NPM registry (packages.fhir.org)
+    containerBuilder.Register<Ignixa.PackageManagement.Abstractions.IPackageLoader>(c =>
+    {
+        var loggerFactory = c.Resolve<ILoggerFactory>();
+        var httpClient = c.Resolve<HttpClient>();
+
+        // Create loaders in priority order
+        var embeddedLoader = new Ignixa.PackageManagement.Infrastructure.EmbeddedPackageLoader(
+            typeof(Ignixa.SqlOnFhir.ViewDefinitionExpression).Assembly,
+            loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.EmbeddedPackageLoader>());
+
+        var npmLoader = new Ignixa.PackageManagement.Infrastructure.NpmPackageLoader(
+            httpClient,
+            cacheManager: null,  // Caching handled by PackageExtractor
+            loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.NpmPackageLoader>());
+
+        return new Ignixa.PackageManagement.Infrastructure.CompositePackageLoader(
+            loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.CompositePackageLoader>(),
+            embeddedLoader,
+            npmLoader);
+    })
+    .As<Ignixa.PackageManagement.Abstractions.IPackageLoader>()
+    .InstancePerDependency();
 
     containerBuilder.RegisterType<Ignixa.PackageManagement.Infrastructure.PackageExtractor>()
         .As<Ignixa.PackageManagement.Abstractions.IPackageExtractor>()
