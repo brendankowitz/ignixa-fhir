@@ -582,7 +582,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
         // Create loaders in priority order
         var embeddedLoader = new Ignixa.PackageManagement.Infrastructure.EmbeddedPackageLoader(
-            typeof(Ignixa.SqlOnFhir.ViewDefinitionExpression).Assembly,
+            typeof(Ignixa.SqlOnFhir.Expressions.ViewDefinitionExpression).Assembly,
             loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.EmbeddedPackageLoader>());
 
         var npmLoader = new Ignixa.PackageManagement.Infrastructure.NpmPackageLoader(
