@@ -53,7 +53,7 @@ public class PatchResourceTool : TenantAwareMcpTool
 
         [Description("(Required) Array of patch operations to apply. Each operation is: {type: 'replace'|'add'|'delete'|'insert'|'move', path: 'FHIRPath expression', value: any, index?: number}. " +
             "Example: [{type: 'replace', path: 'Patient.active', value: true}, {type: 'replace', path: 'Patient.name[0].given[0]', value: 'John'}]")]
-        IReadOnlyList<PatchOperationDto>? operations,
+        IReadOnlyList<PatchOperationDto> operations,
 
         [Description("(Optional) ETag for optimistic concurrency control. Set to the version number (e.g., '5') to ensure only that version is patched")]
         string? ifMatch = null,
@@ -138,7 +138,7 @@ public class PatchResourceTool : TenantAwareMcpTool
     /// Validate input parameters and return error message if invalid, null if valid.
     /// Returns errors in the DTO result rather than throwing exceptions.
     /// </summary>
-    private static string? ValidateInput(string? resourceType, string? resourceId, IReadOnlyList<PatchOperationDto>? operations)
+    private static string? ValidateInput(string? resourceType, string? resourceId, IReadOnlyList<PatchOperationDto> operations)
     {
         if (string.IsNullOrWhiteSpace(resourceType))
         {
@@ -150,9 +150,9 @@ public class PatchResourceTool : TenantAwareMcpTool
             return "resourceId is required (the logical ID of the resource to patch)";
         }
 
-        if (operations == null || operations.Count == 0)
+        if (operations.Count == 0)
         {
-            return "operations is required and must contain at least one patch operation. " +
+            return "operations must contain at least one patch operation. " +
                    "Example: [{\"type\": \"replace\", \"path\": \"Patient.active\", \"value\": true}]";
         }
 
