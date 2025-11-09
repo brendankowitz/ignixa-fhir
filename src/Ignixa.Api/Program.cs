@@ -8,6 +8,8 @@ using Autofac.Extensions.DependencyInjection;
 using DurableTask.Core;
 using Medino;
 using Microsoft.IO;
+using Polly;
+using Polly.Extensions.Http;
 using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.HttpOverrides;
 using Ignixa.Api.Infrastructure;
@@ -32,6 +34,7 @@ using Ignixa.Search.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -85,6 +88,9 @@ builder.Services.AddHttpContextAccessor();
 
 // Register IndexLoaderService as hosted service
 builder.Services.AddHostedService<IndexLoaderService>();
+
+// Register TenantPackagePreloadService for tenant package preloading at startup
+builder.Services.AddHostedService<TenantPackagePreloadService>();
 
 // Register HTTP client factory for background operations (Import activities need this)
 builder.Services.AddHttpClient();
@@ -550,6 +556,99 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<Ignixa.Validation.Abstractions.ITerminologyService>()
         .SingleInstance();
 
+    // PACKAGE MANAGEMENT (ADR-2532 Phase 1: Package Integration)
+    // Provides NPM package download, extraction, and conformance resource caching
+
+    // Register HttpClient for NpmPackageLoader with resilience policies (downloads from packages.fhir.org)
+    builder.Services.AddTransient<Ignixa.PackageManagement.Infrastructure.ResilientHttpMessageHandler>();
+    builder.Services.AddHttpClient<Ignixa.PackageManagement.Infrastructure.NpmPackageLoader>()
+        .ConfigureHttpClient(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5);
+        })
+        .ConfigurePrimaryHttpMessageHandler(sp =>
+            sp.GetRequiredService<Ignixa.PackageManagement.Infrastructure.ResilientHttpMessageHandler>());
+
+    // Register package loading infrastructure
+    containerBuilder.RegisterType<Ignixa.PackageManagement.Infrastructure.NpmPackageLoader>()
+        .As<Ignixa.PackageManagement.Abstractions.IPackageLoader>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.PackageManagement.Infrastructure.PackageExtractor>()
+        .As<Ignixa.PackageManagement.Abstractions.IPackageExtractor>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.PackageManagement.Infrastructure.PackageResourceImporter>()
+        .As<Ignixa.PackageManagement.Abstractions.IPackageResourceImporter>()
+        .InstancePerDependency();
+
+    // Register global IPackageResourceRepository (shared across all tenants for conformance resources)
+    // NOTE: Package resources are tenant-agnostic. Phase 2: will be tenant-scoped.
+    containerBuilder.Register<IPackageResourceRepository>(c =>
+    {
+        var tenantStore = c.Resolve<ITenantConfigurationStore>();
+        var loggerFactory = c.Resolve<ILoggerFactory>();
+
+        // Get Tenant 1 connection string (system partition inherits from this)
+        // CA2012: Convert ValueTask to Task before blocking
+        var tenantConfig = tenantStore.GetTenantConfigurationAsync(1, default).AsTask().GetAwaiter().GetResult();
+        if (tenantConfig == null || string.IsNullOrEmpty(tenantConfig.Storage.ConnectionString))
+        {
+            throw new InvalidOperationException("Tenant 1 connection string is required for global package resource repository");
+        }
+
+        // Create DbContext options for global package repository
+        var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<FhirDbContext>();
+        optionsBuilder.UseSqlServer(
+            tenantConfig.Storage.ConnectionString,
+            sqlOptions =>
+            {
+                sqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
+                sqlOptions.CommandTimeout(30);
+            });
+
+        var dbContext = new FhirDbContext(optionsBuilder.Options);
+
+        return new Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository(
+            dbContext,
+            loggerFactory.CreateLogger<Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository>());
+    })
+    .As<IPackageResourceRepository>()
+    .SingleInstance();
+
+    containerBuilder.Register<Ignixa.PackageManagement.Abstractions.IImplementationGuideProvider>(c =>
+        new Ignixa.PackageManagement.Infrastructure.ImplementationGuideProvider(
+            c.Resolve<Ignixa.PackageManagement.Abstractions.IPackageLoader>(),
+            c.Resolve<Ignixa.PackageManagement.Abstractions.IPackageExtractor>(),
+            c.Resolve<Ignixa.PackageManagement.Abstractions.IPackageResourceImporter>(),
+            c.Resolve<IPackageResourceRepository>(),
+            c.Resolve<ILogger<Ignixa.PackageManagement.Infrastructure.ImplementationGuideProvider>>()))
+        .SingleInstance();
+
+    // Register conformance resource caching
+    containerBuilder.RegisterType<Ignixa.Domain.Caching.InMemoryConformanceCache>()
+        .As<Ignixa.Domain.Caching.IFhirConformanceCache>()
+        .SingleInstance();
+
+    // Register conformance resource resolver (fallback chain: Cache → DB → null)
+    // NOTE: Currently uses global IPackageResourceRepository. Phase 2: will be tenant-scoped.
+    containerBuilder.RegisterType<Ignixa.Domain.Caching.ConformanceResourceResolver>()
+        .As<Ignixa.Domain.Abstractions.IConformanceResourceResolver>()
+        .SingleInstance();
+
+    // Register package management command/query handlers
+    containerBuilder.RegisterType<Ignixa.Application.Features.Admin.LoadPackageHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.Admin.LoadPackageCommand, Ignixa.Application.Features.Admin.LoadPackageResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Admin.ListPackagesHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.Admin.ListPackagesQuery, Ignixa.Application.Features.Admin.ListPackagesResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Features.Admin.UnloadPackageHandler>()
+        .As<IRequestHandler<Ignixa.Application.Features.Admin.UnloadPackageCommand, Ignixa.Application.Features.Admin.UnloadPackageResult>>()
+        .InstancePerDependency();
+
     // Register bundle processing services
     containerBuilder.RegisterType<BundleReferencePreProcessor>()
         .InstancePerDependency();
@@ -622,6 +721,7 @@ app.MapHealthCheckEndpoints();
 // This ensures /$import and /$export routes match before the generic /{resourceType} catch-all
 app.MapExportEndpoints(); // Bulk export endpoints (DurableTask)
 app.MapImportEndpoints(); // Bulk import endpoints (DurableTask)
+app.MapAdminPackageEndpoints(); // Admin package management endpoints (/admin/packages)
 
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)

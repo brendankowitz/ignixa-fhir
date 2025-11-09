@@ -42,12 +42,14 @@ public interface IConformanceResourceResolver
     /// <summary>
     /// Lists all available conformance resources from a package.
     /// </summary>
+    /// <param name="tenantId">Tenant identifier</param>
     /// <param name="packageId">Package ID</param>
     /// <param name="packageVersion">Package version</param>
     /// <param name="resourceType">Optional: Filter by resource type</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of available resources</returns>
     Task<IReadOnlyList<PackageResource>> ListPackageResourcesAsync(
+        string tenantId,
         string packageId,
         string packageVersion,
         string? resourceType = null,

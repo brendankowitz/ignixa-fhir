@@ -77,8 +77,7 @@ public class PackageResourceEntity
     /// Package resources are immutable and don't need compression.
     /// </summary>
     [Required]
-    [Column("ResourceJson")]
-    [Column(TypeName = "nvarchar(max)")]
+    [Column("ResourceJson", TypeName = "nvarchar(max)")]
     public string ResourceJson { get; set; } = string.Empty;
 
     /// <summary>

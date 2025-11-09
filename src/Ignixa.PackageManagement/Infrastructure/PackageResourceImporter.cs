@@ -12,19 +12,15 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// </summary>
 public class PackageResourceImporter : IPackageResourceImporter
 {
-    private readonly IPackageResourceRepository _repository;
     private readonly ILogger<PackageResourceImporter> _logger;
 
     /// <summary>
     /// Initializes a new instance of the PackageResourceImporter class.
     /// </summary>
-    /// <param name="repository">Package resource repository</param>
     /// <param name="logger">Logger instance</param>
     public PackageResourceImporter(
-        IPackageResourceRepository repository,
         ILogger<PackageResourceImporter> logger)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -32,13 +28,16 @@ public class PackageResourceImporter : IPackageResourceImporter
     /// Imports extracted resources to the PackageResource table.
     /// </summary>
     /// <param name="extraction">Extracted resources and manifest</param>
+    /// <param name="repository">Package resource repository</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Import result with statistics</returns>
     public async Task<PackageImportResult> ImportAsync(
         PackageExtractionResult extraction,
+        IPackageResourceRepository repository,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(extraction);
+        ArgumentNullException.ThrowIfNull(repository);
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -77,7 +76,7 @@ public class PackageResourceImporter : IPackageResourceImporter
             }
 
             // Batch insert to database
-            await BatchUpsertResourcesAsync(packageResources, cancellationToken);
+            await BatchUpsertResourcesAsync(packageResources, repository, cancellationToken);
 
             stopwatch.Stop();
 
@@ -125,6 +124,7 @@ public class PackageResourceImporter : IPackageResourceImporter
     /// </summary>
     private async Task BatchUpsertResourcesAsync(
         IReadOnlyList<PackageResource> packageResources,
+        IPackageResourceRepository repository,
         CancellationToken cancellationToken)
     {
         const int ChunkSize = 500; // Process 500 resources per transaction
@@ -133,7 +133,7 @@ public class PackageResourceImporter : IPackageResourceImporter
         {
             // Small package - single transaction
             _logger.LogDebug("Batch upserting {Count} resources in single transaction", packageResources.Count);
-            await _repository.BatchUpsertAsync(packageResources, cancellationToken);
+            await repository.BatchUpsertAsync(packageResources, cancellationToken);
             return;
         }
 
@@ -154,7 +154,7 @@ public class PackageResourceImporter : IPackageResourceImporter
                 "Upserting chunk {ChunkNumber}/{TotalChunks} ({ResourceCount} resources)",
                 chunkNumber, totalChunks, chunk.Count);
 
-            await _repository.BatchUpsertAsync(chunk, cancellationToken);
+            await repository.BatchUpsertAsync(chunk, cancellationToken);
 
             _logger.LogDebug(
                 "Chunk {ChunkNumber}/{TotalChunks} completed ({ProgressPercent}%)",

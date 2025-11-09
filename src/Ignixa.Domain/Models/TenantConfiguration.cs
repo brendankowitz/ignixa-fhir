@@ -1,6 +1,23 @@
 namespace Ignixa.Domain.Models;
 
 /// <summary>
+/// Package configuration for a tenant.
+/// </summary>
+public record TenantPackageConfiguration
+{
+    /// <summary>
+    /// List of packages to preload at startup (format: "packageId@version").
+    /// Examples: "hl7.fhir.us.core@5.0.1", "hl7.fhir.sql@0.1.0"
+    /// </summary>
+    public IReadOnlyList<string> PreloadPackages { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Whether to automatically load packages during tenant initialization.
+    /// </summary>
+    public bool EnableAutoLoad { get; init; }
+}
+
+/// <summary>
 /// Configuration for a tenant, including FHIR version and storage settings.
 /// Note: Partition 0 is reserved for system operations (see SystemConstants.SystemPartitionId).
 /// </summary>
@@ -55,6 +72,11 @@ public record TenantConfiguration
     /// Profile = Spec + Advanced profile validation (less than 1000ms).
     /// </summary>
     public string ValidationTier { get; init; } = "Spec";
+
+    /// <summary>
+    /// Package preload configuration for this tenant.
+    /// </summary>
+    public TenantPackageConfiguration Packages { get; init; } = new();
 }
 
 /// <summary>

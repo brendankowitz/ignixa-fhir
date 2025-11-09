@@ -8,6 +8,7 @@
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
   </ItemGroup>
 
   <ItemGroup>

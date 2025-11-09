@@ -22,6 +22,7 @@
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
     <PackageReference Include="Microsoft.Azure.DurableTask.AzureStorage" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Polly.Extensions.Http" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,6 +44,8 @@
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj" />
+    <ProjectReference Include="..\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
+    <ProjectReference Include="..\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
   </ItemGroup>
 
 </Project>

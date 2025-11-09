@@ -7,6 +7,8 @@ namespace Ignixa.Domain.Caching;
 /// <summary>
 /// Resolves FHIR conformance resources using a fallback chain.
 /// Chain: Cache → PackageResource → Resource → NotFound
+/// NOTE: Currently uses a global IPackageResourceRepository for all tenants.
+/// Phase 2: Will be updated to use tenant-scoped repositories when IFhirRepository.PackageResources is available.
 /// </summary>
 public class ConformanceResourceResolver : IConformanceResourceResolver
 {
@@ -147,17 +149,21 @@ public class ConformanceResourceResolver : IConformanceResourceResolver
     /// <summary>
     /// Lists all available conformance resources from a package.
     /// </summary>
+    /// <param name="tenantId">Tenant identifier</param>
     /// <param name="packageId">Package ID</param>
     /// <param name="packageVersion">Package version</param>
     /// <param name="resourceType">Optional: Filter by resource type</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of available resources</returns>
     public async Task<IReadOnlyList<PackageResource>> ListPackageResourcesAsync(
+        string tenantId,
         string packageId,
         string packageVersion,
         string? resourceType = null,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            throw new ArgumentException("Tenant ID cannot be null or empty", nameof(tenantId));
         if (string.IsNullOrWhiteSpace(packageId))
             throw new ArgumentException("Package ID cannot be null or empty", nameof(packageId));
         if (string.IsNullOrWhiteSpace(packageVersion))

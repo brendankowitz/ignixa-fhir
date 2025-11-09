@@ -1,0 +1,83 @@
+using Ignixa.PackageManagement.Abstractions;
+using Medino;
+using Microsoft.Extensions.Logging;
+
+namespace Ignixa.Application.Features.Admin;
+
+/// <summary>
+/// Handler for LoadPackageCommand.
+/// Loads a FHIR package from the NPM registry and imports to database.
+/// </summary>
+public class LoadPackageHandler : IRequestHandler<LoadPackageCommand, LoadPackageResult>
+{
+    private readonly IImplementationGuideProvider _provider;
+    private readonly ILogger<LoadPackageHandler> _logger;
+
+    /// <summary>
+    /// Initializes a new instance of the LoadPackageHandler class.
+    /// </summary>
+    /// <param name="provider">Implementation guide provider</param>
+    /// <param name="logger">Logger instance</param>
+    public LoadPackageHandler(
+        IImplementationGuideProvider provider,
+        ILogger<LoadPackageHandler> logger)
+    {
+        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Handles the LoadPackageCommand.
+    /// </summary>
+    public async Task<LoadPackageResult> HandleAsync(
+        LoadPackageCommand request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.TenantId))
+            throw new InvalidOperationException("Tenant ID cannot be null or empty");
+        if (string.IsNullOrWhiteSpace(request.PackageId))
+            throw new InvalidOperationException("Package ID cannot be null or empty");
+        if (string.IsNullOrWhiteSpace(request.Version))
+            throw new InvalidOperationException("Version cannot be null or empty");
+
+        _logger.LogInformation(
+            "Loading package {PackageId}@{Version} into tenant {TenantId}",
+            request.PackageId, request.Version, request.TenantId);
+
+        try
+        {
+            var importResult = await _provider.LoadPackageAsync(
+                request.TenantId,
+                request.PackageId,
+                request.Version,
+                cancellationToken);
+
+            var result = new LoadPackageResult
+            {
+                PackageId = importResult.PackageId,
+                PackageVersion = importResult.PackageVersion,
+                TotalResources = importResult.TotalResources,
+                ImportedResources = importResult.ImportedResources,
+                DurationMilliseconds = (long)importResult.Duration.TotalMilliseconds,
+                ResourcesByType = importResult.ResourcesByType
+            };
+
+            _logger.LogInformation(
+                "Package {PackageId}@{Version} loaded successfully. " +
+                "Resources: {Count}, Duration: {Duration}ms",
+                result.PackageId, result.PackageVersion, result.ImportedResources,
+                result.DurationMilliseconds);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to load package {PackageId}@{Version}",
+                request.PackageId, request.Version);
+            throw;
+        }
+    }
+}
