@@ -1,3 +1,4 @@
+using Ignixa.Application.Events.Package;
 using Ignixa.PackageManagement.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -11,18 +12,22 @@ namespace Ignixa.Application.Features.Admin;
 public class LoadPackageHandler : IRequestHandler<LoadPackageCommand, LoadPackageResult>
 {
     private readonly IImplementationGuideProvider _provider;
+    private readonly IMediator _mediator;
     private readonly ILogger<LoadPackageHandler> _logger;
 
     /// <summary>
     /// Initializes a new instance of the LoadPackageHandler class.
     /// </summary>
     /// <param name="provider">Implementation guide provider</param>
+    /// <param name="mediator">Mediator for publishing events</param>
     /// <param name="logger">Logger instance</param>
     public LoadPackageHandler(
         IImplementationGuideProvider provider,
+        IMediator mediator,
         ILogger<LoadPackageHandler> logger)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -68,6 +73,17 @@ public class LoadPackageHandler : IRequestHandler<LoadPackageCommand, LoadPackag
                 "Resources: {Count}, Duration: {Duration}ms",
                 result.PackageId, result.PackageVersion, result.ImportedResources,
                 result.DurationMilliseconds);
+
+            // Publish PackageLoaded event for cache invalidation
+            await _mediator.PublishAsync(
+                new PackageLoadedEvent(
+                    PackageId: result.PackageId,
+                    PackageVersion: result.PackageVersion,
+                    TenantId: int.Parse(request.TenantId),
+                    LoadedAt: DateTimeOffset.UtcNow),
+                cancellationToken);
+
+            _logger.LogDebug("Published PackageLoaded event for {PackageId}@{Version}", result.PackageId, result.PackageVersion);
 
             return result;
         }

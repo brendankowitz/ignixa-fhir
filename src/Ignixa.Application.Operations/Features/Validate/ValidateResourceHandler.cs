@@ -23,13 +23,13 @@ namespace Ignixa.Application.Operations.Features.Validate;
 public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, ValidateResourceResult>
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirSpecification, int, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidateResourceHandler> _logger;
 
     public ValidateResourceHandler(
         IHttpContextAccessor httpContextAccessor,
-        Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
+        Func<FhirSpecification, int, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidateResourceHandler> logger)
     {
@@ -172,7 +172,10 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
             }
 
-            var schemaResolver = _schemaResolverFactory(fhirVersionEnum);
+            // Get tenantId from tenant configuration (defaults to 1 if not found)
+            var tenantId = currentTenantConfig?.TenantId ?? 1;
+
+            var schemaResolver = _schemaResolverFactory(fhirVersionEnum, tenantId);
             var schema = schemaResolver.GetSchema(canonicalUrl);
 
             if (schema is null)

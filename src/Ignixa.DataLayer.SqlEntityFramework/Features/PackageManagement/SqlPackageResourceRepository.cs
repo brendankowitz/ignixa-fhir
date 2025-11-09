@@ -329,6 +329,50 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         return count;
     }
 
+    public async Task<IReadOnlyList<PackageResource>> GetStructureDefinitionsByCanonicalAsync(
+        string canonical,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
+
+        // Query for all active StructureDefinitions matching canonical URL
+        var query = _dbContext.PackageResources
+            .Where(pr => pr.Canonical == canonical
+                && pr.ResourceType == "StructureDefinition"
+                && pr.IsActive);
+
+        // Filter by FHIR version if specified
+        if (!string.IsNullOrEmpty(fhirVersion))
+        {
+            query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        }
+
+        // Order by PackageVersion DESC so newest version is first
+        var entities = await query
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(MapEntityToModel).ToList().AsReadOnly();
+    }
+
+    public async Task<bool> PackageVersionExistsAsync(
+        string packageId,
+        string packageVersion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
+
+        var exists = await _dbContext.PackageResources
+            .Where(pr => pr.PackageId == packageId
+                && pr.PackageVersion == packageVersion
+                && pr.IsActive)
+            .AnyAsync(cancellationToken);
+
+        return exists;
+    }
+
     /// <summary>
     /// Maps database entity to domain model.
     /// </summary>

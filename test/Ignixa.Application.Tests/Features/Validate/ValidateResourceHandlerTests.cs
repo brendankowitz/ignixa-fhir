@@ -27,14 +27,14 @@ namespace Ignixa.Application.Tests.Features.Validate;
 public class ValidateResourceHandlerTests
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirSpecification, int, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ValidateResourceHandler _handler;
 
     public ValidateResourceHandlerTests()
     {
         _httpContextAccessor = Substitute.For<IHttpContextAccessor>();
-        _schemaResolverFactory = Substitute.For<Func<FhirSpecification, IValidationSchemaResolver>>();
+        _schemaResolverFactory = Substitute.For<Func<FhirSpecification, int, IValidationSchemaResolver>>();
         _terminologyService = Substitute.For<ITerminologyService>();
         _handler = new ValidateResourceHandler(
             _httpContextAccessor,
@@ -339,7 +339,7 @@ public class ValidateResourceHandlerTests
         SetupHttpContext();
         var schemaResolver = Substitute.For<IValidationSchemaResolver>();
         schemaResolver.GetSchema(missingProfileUri).Returns((object)null);
-        _schemaResolverFactory(FhirSpecification.R4).Returns(schemaResolver);
+        _schemaResolverFactory(FhirSpecification.R4, Arg.Any<int>()).Returns(schemaResolver);
 
         // Act
         var result = await _handler.HandleAsync(command, CancellationToken.None);
@@ -527,7 +527,7 @@ public class ValidateResourceHandlerTests
 
         // Setup a basic schema resolver that returns null for schemas (which will result in no validation)
         schemaResolver.GetSchema(Arg.Any<string>()).Returns((object)null);
-        _schemaResolverFactory(Arg.Any<FhirSpecification>()).Returns(schemaResolver);
+        _schemaResolverFactory(Arg.Any<FhirSpecification>(), Arg.Any<int>()).Returns(schemaResolver);
     }
 
     #endregion

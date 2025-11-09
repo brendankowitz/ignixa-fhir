@@ -538,20 +538,52 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .AsSelf()
         .SingleInstance();
 
-    // Register ValidationSchemaResolver FACTORY (creates version-specific cached resolvers)
-    // Usage: Func<FhirSpecification, IValidationSchemaResolver> factory = resolve from DI
-    //        IValidationSchemaResolver resolver = factory(FhirSpecification.R4)
-    containerBuilder.Register<Func<FhirSpecification, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
+    // Register PackageResourceProvider (converts package JSON to IStructureDefinitionSummary)
+    containerBuilder.RegisterType<Ignixa.Specification.PackageResourceProvider>()
+        .As<Ignixa.Abstractions.IPackageResourceProvider>()
+        .SingleInstance();
+
+    // Register ValidationSchemaResolver FACTORY (creates version+tenant-specific cached resolvers)
+    // New signature: Func<FhirSpecification, int, IValidationSchemaResolver>
+    // Usage: var resolver = factory(FhirSpecification.R4, tenantId)
+    // Creates composite providers that combine base FHIR spec + loaded IG packages per tenant
+    containerBuilder.Register<Func<FhirSpecification, int, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
         {
             var versionContext = c.Resolve<Ignixa.Search.Infrastructure.IFhirVersionContext>();
+            var packageRepository = c.Resolve<IPackageResourceRepository>();
+            var packageProvider = c.Resolve<Ignixa.Abstractions.IPackageResourceProvider>();
             var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();
+            var loggerFactory = c.Resolve<ILoggerFactory>();
+            var providerRegistry = c.Resolve<Ignixa.Specification.ICompositeSchemaProviderRegistry>();
 
-            return (version) =>
+            return (version, tenantId) =>
             {
-                var schemaProvider = versionContext.GetSchemaProvider(version);
-                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(schemaProvider, builder);
+                // Get base FHIR spec provider for this version
+                var baseProvider = versionContext.GetSchemaProvider(version);
+
+                // Create composite provider that combines base spec + tenant packages
+                var fhirVersionString = version.ToVersionString();
+                var compositeProvider = new Ignixa.Specification.CompositeStructureDefinitionSummaryProvider(
+                    baseProvider,
+                    packageRepository,
+                    packageProvider,
+                    fhirVersionString,
+                    loggerFactory.CreateLogger<Ignixa.Specification.CompositeStructureDefinitionSummaryProvider>());
+
+                // Register provider for cache invalidation
+                providerRegistry.RegisterProvider(tenantId, compositeProvider);
+
+                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(compositeProvider, builder);
                 return new Ignixa.Validation.Schema.CachedValidationSchemaResolver(resolver);
             };
+        })
+        .SingleInstance();
+
+    // Register backward-compatible single-tenant factory (defaults to tenant 1)
+    containerBuilder.Register<Func<FhirSpecification, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
+        {
+            var multiTenantFactory = c.Resolve<Func<FhirSpecification, int, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>();
+            return (version) => multiTenantFactory(version, 1); // Default to tenant 1
         })
         .SingleInstance();
 
@@ -693,6 +725,19 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     containerBuilder.RegisterType<Ignixa.Application.Features.Admin.UnloadPackageHandler>()
         .As<IRequestHandler<Ignixa.Application.Features.Admin.UnloadPackageCommand, Ignixa.Application.Features.Admin.UnloadPackageResult>>()
+        .InstancePerDependency();
+
+    // Register composite schema provider registry for cache invalidation
+    // Uses 1 second debounce delay to batch invalidations during bulk package loads
+    containerBuilder.Register<Ignixa.Specification.ICompositeSchemaProviderRegistry>(c =>
+        new Ignixa.Specification.CompositeSchemaProviderRegistry(
+            c.Resolve<ILogger<Ignixa.Specification.CompositeSchemaProviderRegistry>>(),
+            debounceDelay: TimeSpan.FromSeconds(1)))
+        .SingleInstance();
+
+    // Register PackageLoaded event handler
+    containerBuilder.RegisterType<Ignixa.Application.Events.Package.PackageLoadedNotificationHandler>()
+        .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageLoaded>>()
         .InstancePerDependency();
 
     // Register bundle processing services

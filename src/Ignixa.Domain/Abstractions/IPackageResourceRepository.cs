@@ -132,4 +132,32 @@ public interface IPackageResourceRepository
         string packageId,
         string packageVersion,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets all active StructureDefinition resources matching the given canonical URL.
+    /// Supports multiple versions of the same IG (e.g., US Core 5.0.1 and 6.1.0).
+    /// Ordered by PackageVersion DESC so newest version is first.
+    /// Used by composite provider for schema resolution.
+    /// </summary>
+    /// <param name="canonical">Canonical URL of the StructureDefinition.</param>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of active StructureDefinitions matching the canonical URL, newest first.</returns>
+    Task<IReadOnlyList<PackageResource>> GetStructureDefinitionsByCanonicalAsync(
+        string canonical,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks if a package version has already been loaded (has active resources).
+    /// Used to skip duplicate imports and enable idempotent package loading.
+    /// </summary>
+    /// <param name="packageId">NPM package identifier (e.g., "hl7.fhir.us.core").</param>
+    /// <param name="packageVersion">NPM package version (e.g., "5.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if package version exists and has active resources, false otherwise.</returns>
+    Task<bool> PackageVersionExistsAsync(
+        string packageId,
+        string packageVersion,
+        CancellationToken cancellationToken = default);
 }
