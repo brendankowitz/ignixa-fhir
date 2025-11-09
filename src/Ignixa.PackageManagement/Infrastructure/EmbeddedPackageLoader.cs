@@ -1,4 +1,5 @@
 using System.Reflection;
+using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -7,25 +8,27 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// <summary>
 /// Loads FHIR packages that are embedded as resources in a .NET assembly.
 /// Used for bundled packages like SQL-on-FHIR ViewDefinition.
+/// Supports multiple embedded packages registered via IEmbeddedPackage.
 /// </summary>
 public class EmbeddedPackageLoader : IPackageLoader
 {
-    private readonly Assembly _assembly;
+    private readonly List<IEmbeddedPackage> _embeddedPackages;
     private readonly ILogger<EmbeddedPackageLoader> _logger;
 
     /// <summary>
-    /// Maps package IDs to their assembly resource names.
-    /// Example: "local.ignixa.sqlonfhir" -> "Ignixa.SqlOnFhir.packages.sql-on-fhir-v2"
+    /// Initializes a new instance of the <see cref="EmbeddedPackageLoader"/> class.
     /// </summary>
-    private static readonly Dictionary<string, string> PackageResourceMapping = new(StringComparer.OrdinalIgnoreCase)
+    /// <param name="embeddedPackages">The embedded package definitions to load.</param>
+    /// <param name="logger">Logger for diagnostic information.</param>
+    public EmbeddedPackageLoader(IEnumerable<IEmbeddedPackage> embeddedPackages, ILogger<EmbeddedPackageLoader> logger)
     {
-        { "local.ignixa.sqlonfhir", "Ignixa.SqlOnFhir.packages.sql-on-fhir-v2" }
-    };
-
-    public EmbeddedPackageLoader(Assembly assembly, ILogger<EmbeddedPackageLoader> logger)
-    {
-        _assembly = assembly ?? throw new ArgumentNullException(nameof(assembly));
+        _embeddedPackages = embeddedPackages?.ToList() ?? throw new ArgumentNullException(nameof(embeddedPackages));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        if (_embeddedPackages.Count == 0)
+        {
+            throw new ArgumentException("At least one embedded package must be provided", nameof(embeddedPackages));
+        }
     }
 
     /// <summary>
@@ -42,43 +45,47 @@ public class EmbeddedPackageLoader : IPackageLoader
             throw new ArgumentException("Package ID cannot be null or empty", nameof(packageId));
         }
 
-        // Check if this package is embedded in the assembly
-        if (!PackageResourceMapping.TryGetValue(packageId, out var packageResourcePrefix))
+        // Find the embedded package matching this ID
+        var embeddedPackage = _embeddedPackages.FirstOrDefault(p =>
+            p.PackageId.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+
+        if (embeddedPackage == null)
         {
+            var availablePackages = string.Join(", ", _embeddedPackages.Select(p => p.PackageId));
             throw new InvalidOperationException(
                 $"Package '{packageId}' is not available as an embedded resource. " +
-                $"Embedded packages: {string.Join(", ", PackageResourceMapping.Keys)}");
+                $"Embedded packages: {availablePackages}");
         }
 
         try
         {
             _logger.LogInformation(
-                "Loading embedded package {PackageId}@{Version} from assembly",
+                "Loading embedded package {PackageId}@{Version} from assembly {AssemblyName}",
                 packageId,
-                version);
+                version,
+                embeddedPackage.Assembly.GetName().Name);
 
             // Get all resource names from assembly
-            var resourceNames = _assembly.GetManifestResourceNames();
+            var resourceNames = embeddedPackage.Assembly.GetManifestResourceNames();
 
             // Find package.json to verify package exists
             var packageJsonName = resourceNames.FirstOrDefault(r =>
-                r.StartsWith(packageResourcePrefix, StringComparison.OrdinalIgnoreCase) &&
+                r.StartsWith(embeddedPackage.ResourcePrefix, StringComparison.OrdinalIgnoreCase) &&
                 r.EndsWith("package.json", StringComparison.OrdinalIgnoreCase));
 
             if (packageJsonName == null)
             {
                 throw new FileNotFoundException(
                     $"Embedded package '{packageId}' not found in assembly. " +
-                    $"Expected resource with name starting with '{packageResourcePrefix}' and ending with 'package.json'");
+                    $"Expected resource with name starting with '{embeddedPackage.ResourcePrefix}' and ending with 'package.json'");
             }
 
             _logger.LogDebug(
                 "Found embedded package resource: {ResourceName}",
                 packageJsonName);
 
-            // Create in-memory tarball (simplified: just return a stream of the JSON structure)
-            // For a real implementation, this would create a proper .tgz with package/ directory
-            var packageStream = await CreatePackageStreamAsync(packageResourcePrefix, cancellationToken);
+            // Create in-memory tarball
+            var packageStream = await CreatePackageStreamAsync(embeddedPackage, cancellationToken);
 
             _logger.LogInformation(
                 "Successfully loaded embedded package {PackageId}@{Version}",
@@ -103,14 +110,14 @@ public class EmbeddedPackageLoader : IPackageLoader
     /// Assembles package.json and StructureDefinition JSON files into a .tgz tarball.
     /// </summary>
     private async Task<Stream> CreatePackageStreamAsync(
-        string packageResourcePrefix,
+        IEmbeddedPackage embeddedPackage,
         CancellationToken cancellationToken)
     {
         var resultStream = new MemoryStream();
 
         // Get all resources under this package
-        var resourceNames = _assembly.GetManifestResourceNames()
-            .Where(r => r.StartsWith(packageResourcePrefix, StringComparison.OrdinalIgnoreCase))
+        var resourceNames = embeddedPackage.Assembly.GetManifestResourceNames()
+            .Where(r => r.StartsWith(embeddedPackage.ResourcePrefix, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         _logger.LogDebug("Found {Count} embedded resources for package", resourceNames.Count);
@@ -123,11 +130,11 @@ public class EmbeddedPackageLoader : IPackageLoader
             {
                 // Extract relative path from resource name
                 // Example: "Ignixa.SqlOnFhir.packages.sql-on-fhir-v2.package.package.json" -> "package/package.json"
-                var relativePath = ExtractRelativePathFromResourceName(resourceName, packageResourcePrefix);
+                var relativePath = ExtractRelativePathFromResourceName(resourceName, embeddedPackage.ResourcePrefix);
 
                 _logger.LogDebug("Adding {ResourceName} as {RelativePath} to tarball", resourceName, relativePath);
 
-                using var resourceStream = _assembly.GetManifestResourceStream(resourceName);
+                using var resourceStream = embeddedPackage.Assembly.GetManifestResourceStream(resourceName);
                 if (resourceStream == null)
                 {
                     _logger.LogWarning("Could not load embedded resource: {ResourceName}", resourceName);

@@ -64,6 +64,23 @@ public class DatabaseInitializer
                 await CreateDatabaseSchemaAsync(cancellationToken);
             }
 
+            // Apply pending EF Core migrations (incremental schema changes after initial creation)
+            // This ensures PackageResource table and other migrations are applied
+            _logger.LogInformation("Checking for pending migrations...");
+            var pendingMigrations = await _context.Database.GetPendingMigrationsAsync(cancellationToken);
+            if (pendingMigrations.Any())
+            {
+                _logger.LogInformation("Applying {Count} pending migration(s): {Migrations}",
+                    pendingMigrations.Count(),
+                    string.Join(", ", pendingMigrations));
+                await _context.Database.MigrateAsync(cancellationToken);
+                _logger.LogInformation("Migrations applied successfully");
+            }
+            else
+            {
+                _logger.LogInformation("No pending migrations to apply");
+            }
+
             _logger.LogInformation("Database initialization completed successfully");
         }
         catch (Exception ex)

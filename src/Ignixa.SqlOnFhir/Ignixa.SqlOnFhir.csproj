@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
@@ -18,7 +19,7 @@
 
   <!-- Embed FHIR package JSON files as resources -->
   <ItemGroup>
-    <EmbeddedResource Include="packages\**\*.json" LogicalName="%(RelativeDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="packages\**\*.json" />
   </ItemGroup>
 
 </Project>

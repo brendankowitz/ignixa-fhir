@@ -34,6 +34,7 @@ using Ignixa.Search.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Ignixa.SqlOnFhir;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -572,6 +573,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .ConfigurePrimaryHttpMessageHandler(sp =>
             sp.GetRequiredService<Ignixa.PackageManagement.Infrastructure.ResilientHttpMessageHandler>());
 
+    // Register embedded packages (discoverable via IEmbeddedPackage)
+    containerBuilder.RegisterType<SqlOnFhirEmbeddedPackage>()
+        .As<Ignixa.Abstractions.IEmbeddedPackage>()
+        .SingleInstance();
+
     // Register composite package loader: embedded -> npm
     // Embedded packages (like SQL-on-FHIR ViewDefinition) load from assembly
     // Official packages fallback to NPM registry (packages.fhir.org)
@@ -579,17 +585,33 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     {
         var loggerFactory = c.Resolve<ILoggerFactory>();
         var httpClient = c.Resolve<HttpClient>();
+        var configuration = c.Resolve<IConfiguration>();
 
-        // Create loaders in priority order
+        // Create single embedded loader with all registered packages
+        var embeddedPackages = c.Resolve<IEnumerable<Ignixa.Abstractions.IEmbeddedPackage>>();
         var embeddedLoader = new Ignixa.PackageManagement.Infrastructure.EmbeddedPackageLoader(
-            typeof(Ignixa.SqlOnFhir.Expressions.ViewDefinitionExpression).Assembly,
+            embeddedPackages,
             loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.EmbeddedPackageLoader>());
+
+        // Configure NPM package loader options (allows overriding registry URL for testing)
+        // Can be configured via appsettings.json: PackageManagement:NpmRegistry:RegistryUrl
+        var npmOptions = new Ignixa.Abstractions.NpmPackageLoaderOptions
+        {
+            RegistryUrl = configuration.GetValue<string>(
+                "PackageManagement:NpmRegistry:RegistryUrl",
+                "https://packages.fhir.org"),
+            EnableRetryPolicies = configuration.GetValue<bool>(
+                "PackageManagement:NpmRegistry:EnableRetryPolicies",
+                true)
+        };
 
         var npmLoader = new Ignixa.PackageManagement.Infrastructure.NpmPackageLoader(
             httpClient,
             cacheManager: null,  // Caching handled by PackageExtractor
+            options: npmOptions,
             loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.NpmPackageLoader>());
 
+        // Create composite loader with embedded loader first, then npm
         return new Ignixa.PackageManagement.Infrastructure.CompositePackageLoader(
             loggerFactory.CreateLogger<Ignixa.PackageManagement.Infrastructure.CompositePackageLoader>(),
             embeddedLoader,

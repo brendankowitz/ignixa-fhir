@@ -1,43 +1,52 @@
+using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.PackageManagement.Infrastructure;
 
 /// <summary>
-/// Downloads FHIR NPM packages from the packages.fhir.org registry.
+/// Downloads FHIR NPM packages from a configurable NPM registry.
 /// Supports local caching to prevent re-downloading packages.
+/// Default registry: https://packages.fhir.org
 /// </summary>
 public class NpmPackageLoader : IPackageLoader
 {
-    private const string DefaultRegistryUrl = "https://packages.fhir.org";
     private readonly HttpClient _httpClient;
     private readonly PackageCacheManager? _cacheManager;
+    private readonly NpmPackageLoaderOptions _options;
     private readonly ILogger<NpmPackageLoader> _logger;
 
     /// <summary>
     /// Initializes a new instance of the NpmPackageLoader class without caching.
+    /// Uses default options (https://packages.fhir.org).
     /// </summary>
     /// <param name="httpClient">HTTP client for downloading packages</param>
     /// <param name="logger">Logger instance</param>
     public NpmPackageLoader(HttpClient httpClient, ILogger<NpmPackageLoader> logger)
-        : this(httpClient, cacheManager: null, logger)
+        : this(httpClient, cacheManager: null, options: null, logger)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the NpmPackageLoader class with optional caching.
+    /// Initializes a new instance of the NpmPackageLoader class with optional caching and custom options.
     /// </summary>
     /// <param name="httpClient">HTTP client for downloading packages</param>
     /// <param name="cacheManager">Optional cache manager for local package caching</param>
+    /// <param name="options">Optional configuration options (registry URL, timeouts, etc.). If null, uses defaults.</param>
     /// <param name="logger">Logger instance</param>
     public NpmPackageLoader(
         HttpClient httpClient,
         PackageCacheManager? cacheManager,
+        NpmPackageLoaderOptions? options,
         ILogger<NpmPackageLoader> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _cacheManager = cacheManager;
+        _options = options ?? new NpmPackageLoaderOptions();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // Log the configured registry URL
+        _logger.LogDebug("NpmPackageLoader initialized with registry URL: {RegistryUrl}", _options.RegistryUrl);
     }
 
     /// <summary>
@@ -143,11 +152,12 @@ public class NpmPackageLoader : IPackageLoader
     }
 
     /// <summary>
-    /// Builds the full URL for a package download.
+    /// Builds the full URL for a package download using the configured registry URL.
     /// </summary>
-    private static string BuildPackageUrl(string packageId, string version)
+    private string BuildPackageUrl(string packageId, string version)
     {
-        // Standard NPM registry URL format: https://packages.fhir.org/{packageId}/{version}
-        return $"{DefaultRegistryUrl}/{packageId}/{version}";
+        // Standard NPM registry URL format: {registryUrl}/{packageId}/{version}
+        // Example: https://packages.fhir.org/hl7.fhir.us.core/5.0.1
+        return $"{_options.RegistryUrl.TrimEnd('/')}/{packageId}/{version}";
     }
 }
