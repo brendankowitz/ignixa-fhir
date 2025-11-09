@@ -39,24 +39,26 @@ public class PatchResourceTool : TenantAwareMcpTool
 
     [McpServerTool(Name = "patch_fhir_resource")]
     [Description("Patch a FHIR resource using FHIRPath Patch operations. " +
-        "Supply patch operations as a list of operations with type (add/replace/delete/insert/move), path (FHIRPath expression), and value (when applicable). " +
-        "Example operations: [{\"type\": \"replace\", \"path\": \"Patient.active\", \"value\": true}, " +
-        "{\"type\": \"replace\", \"path\": \"Patient.name[0].given[0]\", \"value\": \"John\"}]. " +
+        "Required: resourceType (e.g., 'Patient'), resourceId (e.g., 'patient-123'), and operations (array of patch operations). " +
+        "Each operation must have: type ('replace'|'add'|'delete'|'insert'|'move'), path (FHIRPath like 'Patient.active' or 'Patient.name[0].given[0]'), " +
+        "and value (required for add/replace operations). " +
+        "Example call: resourceType='Patient', resourceId='patient-123', operations=[{type:'replace', path:'Patient.active', value:true}, {type:'replace', path:'Patient.name[0].given[0]', value:'John'}]. " +
         "Returns the patched resource if successful, or error details if the patch fails.")]
     public async Task<PatchResourceResultDto> PatchResourceAsync(
-        [Description("Resource type: Patient, Observation, Condition, etc.")]
+        [Description("(Required) Resource type to patch: 'Patient', 'Observation', 'Condition', etc. Example: 'Patient'")]
         string resourceType,
 
-        [Description("Logical ID of the resource to patch")]
+        [Description("(Required) Logical ID of the resource to patch. Example: 'patient-123' or 'obs-456'")]
         string resourceId,
 
-        [Description("Array of patch operations: [{type: 'replace'|'add'|'delete'|'insert'|'move', path: 'FHIRPath', value?: any, index?: number}, ...]")]
+        [Description("(Required) Array of patch operations to apply. Each operation is: {type: 'replace'|'add'|'delete'|'insert'|'move', path: 'FHIRPath expression', value: any, index?: number}. " +
+            "Example: [{type: 'replace', path: 'Patient.active', value: true}, {type: 'replace', path: 'Patient.name[0].given[0]', value: 'John'}]")]
         IReadOnlyList<PatchOperationDto>? operations,
 
-        [Description("Optional ETag for optimistic concurrency control (e.g., '5' for version 5)")]
+        [Description("(Optional) ETag for optimistic concurrency control. Set to the version number (e.g., '5') to ensure only that version is patched")]
         string? ifMatch = null,
 
-        [Description("Tenant ID (optional - auto-detected if single tenant)")]
+        [Description("(Optional) Tenant ID. Auto-detected if single-tenant, required if multi-tenant")]
         int? tenantId = null,
 
         CancellationToken cancellationToken = default)
