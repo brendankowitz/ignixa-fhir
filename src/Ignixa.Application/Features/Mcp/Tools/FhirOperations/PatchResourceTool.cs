@@ -38,39 +38,53 @@ public class PatchResourceTool : TenantAwareMcpTool
     }
 
     [McpServerTool(Name = "patch_fhir_resource")]
-    [Description("Patch a FHIR resource using FHIRPath Patch operations. " +
-        "Required: resourceType (e.g., 'Patient'), resourceId (e.g., 'patient-123'), and operations (array of patch operations). " +
-        "Each operation must have: type ('replace'|'add'|'delete'|'insert'|'move'), path (FHIRPath like 'Patient.active' or 'Patient.name[0].given[0]'), " +
-        "and value (required for add/replace operations). " +
-        "Example call: resourceType='Patient', resourceId='patient-123', operations=[{type:'replace', path:'Patient.active', value:true}, {type:'replace', path:'Patient.name[0].given[0]', value:'John'}]. " +
-        "Returns the patched resource if successful, or error details if the patch fails.")]
+    [Description("Patch a FHIR resource using FHIRPath Patch operations. Advanced tool for complex multi-field patches. " +
+        "For simple field updates, use patch_resource_field instead. " +
+        "Example: patch_fhir_resource(resourceType='Patient', resourceId='patient-123', " +
+        "operationsJson='[{\"type\":\"replace\",\"path\":\"Patient.active\",\"value\":true}]')")]
     public async Task<PatchResourceResultDto> PatchResourceAsync(
-        [Description("(Required) Resource type to patch: 'Patient', 'Observation', 'Condition', etc. Example: 'Patient'")]
+        [Description("Resource type: 'Patient', 'Observation', 'Condition', etc.")]
         string resourceType,
 
-        [Description("(Required) Logical ID of the resource to patch. Example: 'patient-123' or 'obs-456'")]
+        [Description("Resource ID to patch")]
         string resourceId,
 
-        [Description("(Required) Array of patch operations to apply. Each operation is: {type: 'replace'|'add'|'delete'|'insert'|'move', path: 'FHIRPath expression', value: any, index?: number}. " +
-            "Example: [{type: 'replace', path: 'Patient.active', value: true}, {type: 'replace', path: 'Patient.name[0].given[0]', value: 'John'}]")]
-        IReadOnlyList<PatchOperationDto> operations,
+        [Description("JSON array of patch operations. Each operation: {\"type\":\"replace\"|\"add\"|\"delete\"|\"insert\"|\"move\",\"path\":\"FHIRPath\",\"value\":any,\"index\":number}. " +
+            "Example: '[{\"type\":\"replace\",\"path\":\"Patient.active\",\"value\":true},{\"type\":\"replace\",\"path\":\"Patient.name[0].given[0]\",\"value\":\"John\"}]'")]
+        string operationsJson,
 
-        [Description("(Optional) ETag for optimistic concurrency control. Set to the version number (e.g., '5') to ensure only that version is patched")]
+        [Description("Optional ETag for version control (e.g., '5')")]
         string? ifMatch = null,
 
-        [Description("(Optional) Tenant ID. Auto-detected if single-tenant, required if multi-tenant")]
+        [Description("Optional Tenant ID")]
         int? tenantId = null,
 
         CancellationToken cancellationToken = default)
     {
         // Validate input parameters and return errors in result (not exceptions)
-        var validationError = ValidateInput(resourceType, resourceId, operations);
+        var validationError = ValidateInput(resourceType, resourceId, operationsJson);
         if (validationError != null)
         {
             return new PatchResourceResultDto
             {
                 Success = false,
                 ErrorMessage = validationError,
+                PatchedResource = null
+            };
+        }
+
+        // Parse operationsJson into PatchOperationDto list
+        IReadOnlyList<PatchOperationDto> operations;
+        try
+        {
+            operations = ParseOperationsJson(operationsJson);
+        }
+        catch (Exception ex)
+        {
+            return new PatchResourceResultDto
+            {
+                Success = false,
+                ErrorMessage = $"Invalid operationsJson: {ex.Message}",
                 PatchedResource = null
             };
         }
@@ -94,7 +108,7 @@ public class PatchResourceTool : TenantAwareMcpTool
         try
         {
             // Build Parameters resource with patch operations
-            var patchDocument = BuildPatchParameters(operations!);
+            var patchDocument = BuildPatchParameters(operations);
 
             // Execute patch via mediator
             var command = new PatchResourceCommand(
@@ -138,7 +152,7 @@ public class PatchResourceTool : TenantAwareMcpTool
     /// Validate input parameters and return error message if invalid, null if valid.
     /// Returns errors in the DTO result rather than throwing exceptions.
     /// </summary>
-    private static string? ValidateInput(string? resourceType, string? resourceId, IReadOnlyList<PatchOperationDto> operations)
+    private static string? ValidateInput(string? resourceType, string? resourceId, string? operationsJson)
     {
         if (string.IsNullOrWhiteSpace(resourceType))
         {
@@ -150,64 +164,72 @@ public class PatchResourceTool : TenantAwareMcpTool
             return "resourceId is required (the logical ID of the resource to patch)";
         }
 
-        if (operations.Count == 0)
+        if (string.IsNullOrWhiteSpace(operationsJson))
         {
-            return "operations must contain at least one patch operation. " +
-                   "Example: [{\"type\": \"replace\", \"path\": \"Patient.active\", \"value\": true}]";
-        }
-
-        // Validate each operation
-        for (int i = 0; i < operations.Count; i++)
-        {
-            var op = operations[i];
-
-            if (string.IsNullOrWhiteSpace(op.Type))
-            {
-                return $"operations[{i}].type is required (must be 'add', 'replace', 'delete', 'insert', or 'move')";
-            }
-
-            if (!IsValidOperationType(op.Type))
-            {
-                return $"operations[{i}].type '{op.Type}' is invalid. Must be one of: add, replace, delete, insert, move";
-            }
-
-            if (string.IsNullOrWhiteSpace(op.Path))
-            {
-                return $"operations[{i}].path is required (must be a FHIRPath expression like 'Patient.active' or 'Patient.name[0].given')";
-            }
-
-            // Value is required for add and replace
-            if ((string.Equals(op.Type, "add", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(op.Type, "replace", StringComparison.OrdinalIgnoreCase)) &&
-                op.Value == null)
-            {
-                return $"operations[{i}].value is required for '{op.Type}' operations";
-            }
-
-            // Index is required for insert and move
-            if ((string.Equals(op.Type, "insert", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(op.Type, "move", StringComparison.OrdinalIgnoreCase)) &&
-                !op.Index.HasValue)
-            {
-                return $"operations[{i}].index is required for '{op.Type}' operations";
-            }
+            return "operationsJson is required. Example: '[{\"type\": \"replace\", \"path\": \"Patient.active\", \"value\": true}]'";
         }
 
         return null;
     }
 
     /// <summary>
-    /// Check if the operation type is valid.
+    /// Parse operationsJson string into PatchOperationDto list.
     /// </summary>
-    private static bool IsValidOperationType(string type)
+    private static IReadOnlyList<PatchOperationDto> ParseOperationsJson(string operationsJson)
     {
-        return type != null && (
-            string.Equals(type, "add", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(type, "replace", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(type, "delete", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(type, "insert", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(type, "move", StringComparison.OrdinalIgnoreCase));
+        using var jsonDoc = System.Text.Json.JsonDocument.Parse(operationsJson);
+        var operations = new List<PatchOperationDto>();
+
+        if (jsonDoc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("operationsJson must be a JSON array");
+        }
+
+        foreach (var element in jsonDoc.RootElement.EnumerateArray())
+        {
+            if (element.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                throw new InvalidOperationException("Each operation must be a JSON object");
+            }
+
+            string? type = element.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+            string? path = element.TryGetProperty("path", out var pathProp) ? pathProp.GetString() : null;
+            int? index = element.TryGetProperty("index", out var indexProp) ? indexProp.GetInt32() : null;
+
+            object? value = null;
+            if (element.TryGetProperty("value", out var valueProp) && valueProp.ValueKind != System.Text.Json.JsonValueKind.Null)
+            {
+                value = valueProp.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.True => true,
+                    System.Text.Json.JsonValueKind.False => false,
+                    System.Text.Json.JsonValueKind.Number => valueProp.GetDecimal(),
+                    System.Text.Json.JsonValueKind.String => valueProp.GetString(),
+                    System.Text.Json.JsonValueKind.Array or System.Text.Json.JsonValueKind.Object => valueProp.GetRawText(),
+                    _ => valueProp.GetString()
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(type))
+                throw new InvalidOperationException("Each operation must have a 'type' field");
+            if (string.IsNullOrWhiteSpace(path))
+                throw new InvalidOperationException("Each operation must have a 'path' field");
+
+            operations.Add(new PatchOperationDto
+            {
+                Type = type,
+                Path = path,
+                Value = value,
+                Index = index
+            });
+        }
+
+        if (operations.Count == 0)
+            throw new InvalidOperationException("operationsJson must contain at least one operation");
+
+        return operations;
     }
+
 
     /// <summary>
     /// Build a Parameters resource from patch operation DTOs.
