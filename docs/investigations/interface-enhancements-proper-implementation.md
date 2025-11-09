@@ -43,7 +43,16 @@ This document describes the proper implementation of the interface enhancements 
 #### Modern Interfaces
 - `IElement.cs` - Replaces ITypedElement with IReadOnlyList<IElement> Children()
 - `IType.cs` - Replaces IElementDefinitionSummary with TypeInfo property
+- `ITypeExtended.cs` - Extended type metadata for validation, FHIRPath, and CapabilityStatement
 - `ISchema.cs` - Replaces IStructureDefinitionSummaryProvider with version-aware API
+
+#### Supporting Types for ITypeExtended
+- `IConstraint.cs` - FHIRPath constraint (invariant) metadata
+- `IBinding.cs` - Terminology binding metadata
+- `ITypeReference.cs` - Type reference from ElementDefinition.type array
+
+#### Constants
+- `FhirTypeConstants.cs` - Constant string definitions for FHIR type names (avoids magic strings)
 
 ### 5. Backward Compatibility
 ✅ Marked old interfaces as `[Obsolete]` with clear migration guidance:
@@ -69,11 +78,71 @@ src/Ignixa.Abstractions/
 ├── TypeInfo.cs (new)
 ├── IElement.cs (new)
 ├── IType.cs (new)
+├── ITypeExtended.cs (new)
+├── IConstraint.cs (new)
+├── IBinding.cs (new)
+├── ITypeReference.cs (new)
 ├── ISchema.cs (new)
+├── FhirTypeConstants.cs (new)
 ├── GlobalSuppressions.cs (new)
 ├── ITypedElement.cs (updated - marked Obsolete)
 ├── IElementDefinitionSummary.cs (updated - marked Obsolete)
 └── IBaseElementNavigator.cs (unchanged)
+```
+
+## ITypeExtended - Extended Metadata Interface
+
+The `ITypeExtended` interface extends `IType` with additional metadata properties required for:
+
+### 1. Validation (Ignixa.Validation)
+- **Min/Max**: Cardinality checks (Validation Tier 1)
+- **Constraints**: FHIRPath invariants (Validation Tier 2)
+- **Binding**: Terminology validation (Validation Tier 3)
+- **FixedValue/PatternValue**: Profile conformance checks (Validation Tier 2)
+- **ReferenceTargets**: Reference target validation
+
+### 2. FHIRPath Evaluation (Ignixa.FhirPath)
+- **Types**: Type resolution for choice elements (value[x])
+- **DefaultTypeName**: Default type selection for logical models
+- **ContentReference**: Recursive structure navigation (e.g., Questionnaire.item.item)
+
+### 3. CapabilityStatement Generation (Ignixa.Api)
+- **ReferenceTargets**: Search parameter target types
+- **Binding**: Code search parameter metadata
+
+### Design Decision: Critical vs Optional Properties
+
+**CRITICAL** (included in ITypeExtended):
+- Min/Max, Constraints, Binding, Types, DefaultTypeName, FixedValue, PatternValue
+
+**IMPORTANT** (included, could be lazy-loaded):
+- ReferenceTargets, ContentReference
+
+**OPTIONAL** (omitted until needed):
+- DefaultValue (never used in codebase)
+- Slicing (profile validation - not yet implemented)
+
+### Supporting Types
+
+- **IConstraint**: FHIRPath constraint metadata (key, expression, severity, human description)
+- **IBinding**: Terminology binding metadata (strength, valueSet, description)
+- **ITypeReference**: Type reference from ElementDefinition.type array (code, profile, targetProfile, aggregation, versioning)
+
+### FhirTypeConstants
+
+Constant string definitions for FHIR type names to avoid magic strings:
+- Primitive types: Boolean, Integer, String, Decimal, DateTime, etc.
+- Data types: Quantity, HumanName, Address, CodeableConcept, etc.
+- Metadata types: ContactDetail, UsageContext, RelatedArtifact, etc.
+- Resources: Patient, Observation, Condition, Procedure, etc.
+
+Usage:
+```csharp
+// ❌ Old: Magic strings
+if (typeName == "string") { ... }
+
+// ✅ New: Type-safe constants
+if (typeName == FhirTypeConstants.String) { ... }
 ```
 
 ## Migration Path
