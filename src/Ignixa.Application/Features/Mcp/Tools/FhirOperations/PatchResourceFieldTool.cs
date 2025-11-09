@@ -245,36 +245,7 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
             // Add value part if provided and not a delete operation
             if (op.Value != null && !string.Equals(op.Type, "delete", StringComparison.OrdinalIgnoreCase))
             {
-                var valuePart = new JsonObject { { "name", "value" } };
-
-                // Handle different value types
-                if (op.Value is bool boolValue)
-                {
-                    valuePart["valueBoolean"] = boolValue;
-                }
-                else if (op.Value is int intValue)
-                {
-                    valuePart["valueInteger"] = intValue;
-                }
-                else if (op.Value is double doubleValue)
-                {
-                    valuePart["valueDecimal"] = doubleValue;
-                }
-                else if (op.Value is string stringValue)
-                {
-                    valuePart["valueString"] = stringValue;
-                }
-                else if (op.Value is JsonNode jsonNode)
-                {
-                    // If it's already a JsonNode, serialize and add as JSON
-                    valuePart["valueString"] = jsonNode.ToJsonString();
-                }
-                else
-                {
-                    // Fallback: serialize as JSON string
-                    valuePart["valueString"] = System.Text.Json.JsonSerializer.Serialize(op.Value);
-                }
-
+                var valuePart = CreateValuePart(op.Value);
                 partsArray.Add(valuePart);
             }
 
@@ -285,25 +256,42 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
         parameters.MutableNode["parameter"] = parameterArray;
         return parameters;
     }
-}
-
-/// <summary>
-/// DTO for patch field result.
-/// </summary>
-public class PatchResourceFieldResultDto
-{
-    /// <summary>
-    /// Whether the patch operation succeeded.
-    /// </summary>
-    public required bool Success { get; init; }
 
     /// <summary>
-    /// Error message if the operation failed, null if successful.
+    /// Creates a FHIR Parameters part for a value, handling type conversion.
     /// </summary>
-    public string? ErrorMessage { get; init; }
+    private static JsonObject CreateValuePart(object? value)
+    {
+        var valuePart = new JsonObject { { "name", "value" } };
 
-    /// <summary>
-    /// The patched resource if successful, null if operation failed.
-    /// </summary>
-    public ResourceJsonNode? PatchedResource { get; init; }
+        // Handle different value types
+        if (value is bool boolValue)
+        {
+            valuePart["valueBoolean"] = boolValue;
+        }
+        else if (value is int intValue)
+        {
+            valuePart["valueInteger"] = intValue;
+        }
+        else if (value is double doubleValue)
+        {
+            valuePart["valueDecimal"] = doubleValue;
+        }
+        else if (value is string stringValue)
+        {
+            valuePart["valueString"] = stringValue;
+        }
+        else if (value is JsonNode jsonNode)
+        {
+            // If it's already a JsonNode, serialize and add as JSON
+            valuePart["valueString"] = jsonNode.ToJsonString();
+        }
+        else
+        {
+            // Fallback: serialize as JSON string
+            valuePart["valueString"] = System.Text.Json.JsonSerializer.Serialize(value);
+        }
+
+        return valuePart;
+    }
 }

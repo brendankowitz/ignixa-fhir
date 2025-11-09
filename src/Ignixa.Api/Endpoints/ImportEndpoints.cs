@@ -297,9 +297,10 @@ public static class ImportEndpoints
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
         [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
-        HttpContext httpContext)
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
     {
-        var job = await jobRepository.GetAsync(jobId, tenantId, httpContext.RequestAborted);
+        var job = await jobRepository.GetAsync(jobId, tenantId, cancellationToken);
         if (job == null)
         {
             return Results.NotFound(new { error = "Import job not found" });
@@ -311,7 +312,7 @@ public static class ImportEndpoints
 
         job.Status = "Cancelled";
         job.EndDate = DateTimeOffset.UtcNow;
-        await jobRepository.UpdateAsync(job, tenantId, httpContext.RequestAborted);
+        await jobRepository.UpdateAsync(job, tenantId, cancellationToken);
 
         return Results.NoContent();
     }

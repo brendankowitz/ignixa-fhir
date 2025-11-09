@@ -48,14 +48,3 @@ public class DiagnosticTool
         return Task.FromResult(result);
     }
 }
-
-/// <summary>
-/// Result model for diagnostic tool.
-/// </summary>
-public class DiagnosticResult
-{
-    public bool HasHttpContext { get; init; }
-    public Dictionary<string, string> RouteParameters { get; init; } = new();
-    public string? TenantContextItem { get; init; }
-    public string RequestPath { get; init; } = string.Empty;
-}

@@ -51,6 +51,13 @@ Example: resourceType='Patient', id='123', elements='id,name,birthDate'")]
 
         CancellationToken cancellationToken = default)
     {
+        // Validate input
+        var validationError = ValidateInput(resourceType, id);
+        if (validationError != null)
+        {
+            throw new ArgumentException(validationError);
+        }
+
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
@@ -78,5 +85,23 @@ Example: resourceType='Patient', id='123', elements='id,name,birthDate'")]
         {
             Resource = resourceJson
         };
+    }
+
+    /// <summary>
+    /// Validates required input parameters.
+    /// </summary>
+    private static string? ValidateInput(string? resourceType, string? id)
+    {
+        if (string.IsNullOrWhiteSpace(resourceType))
+        {
+            return "resourceType is required (e.g., 'Patient', 'Observation')";
+        }
+
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return "id is required";
+        }
+
+        return null;
     }
 }

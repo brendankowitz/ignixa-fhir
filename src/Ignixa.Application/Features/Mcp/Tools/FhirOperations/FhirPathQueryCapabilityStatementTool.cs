@@ -170,31 +170,4 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
         // For complex types, return a representation
         return new { type = element.InstanceType, value = element.ToString() };
     }
-
-}
-
-/// <summary>
-/// DTO for FHIRPath CapabilityStatement query results.
-/// </summary>
-public class FhirPathQueryResultDto
-{
-    /// <summary>
-    /// The FHIRPath expression that was evaluated.
-    /// </summary>
-    public required string Expression { get; init; }
-
-    /// <summary>
-    /// Number of results returned.
-    /// </summary>
-    public required int ResultCount { get; init; }
-
-    /// <summary>
-    /// Query results from FHIRPath evaluation.
-    /// </summary>
-    public required IReadOnlyList<object> Results { get; init; }
-
-    /// <summary>
-    /// Any errors that occurred during evaluation.
-    /// </summary>
-    public required IReadOnlyList<string> Errors { get; init; }
 }

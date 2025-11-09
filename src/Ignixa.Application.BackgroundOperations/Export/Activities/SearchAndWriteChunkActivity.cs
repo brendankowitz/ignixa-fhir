@@ -167,21 +167,3 @@ public class SearchAndWriteChunkActivity : AsyncTaskActivity<SearchAndWriteChunk
             FileSizeBytes: fileSizeBytes);
     }
 }
-
-/// <summary>
-/// Input for SearchAndWriteChunkActivity.
-/// </summary>
-public record SearchAndWriteChunkInput(
-    int TenantId,
-    string ResourceType,
-    string OutputPath,
-    string? ContinuationToken,
-    string? TypeFilter);
-
-/// <summary>
-/// Output from SearchAndWriteChunkActivity.
-/// </summary>
-public record SearchAndWriteChunkOutput(
-    int ResourceCount,
-    string? ContinuationToken,
-    long FileSizeBytes);

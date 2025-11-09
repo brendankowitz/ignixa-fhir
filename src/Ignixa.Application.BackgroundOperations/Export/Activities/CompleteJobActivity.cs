@@ -90,14 +90,3 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
         return true;
     }
 }
-
-/// <summary>
-/// Input for CompleteJobActivity.
-/// </summary>
-public record CompleteJobInput(
-    string JobId,
-    int TenantId,
-    bool Success,
-    Dictionary<string, string> ExportedFiles,
-    int TotalResourcesExported,
-    string? ErrorMessage);

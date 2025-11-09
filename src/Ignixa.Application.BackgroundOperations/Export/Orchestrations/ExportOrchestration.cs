@@ -172,24 +172,3 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
         };
     }
 }
-
-/// <summary>
-/// Input for the export orchestration.
-/// Uses same signature as ExportCoordinatorInput for compatibility.
-/// </summary>
-public record ExportOrchestrationInput(
-    string JobId,
-    int TenantId,
-    IReadOnlyCollection<string> ResourceTypes,
-    DateTimeOffset? Since = null,
-    IReadOnlyDictionary<string, string>? TypeFilters = null);
-
-/// <summary>
-/// Output from the export orchestration.
-/// Maps to ExportCoordinatorOutput for compatibility.
-/// </summary>
-public record ExportOrchestrationOutput(
-    bool Success,
-    Dictionary<string, string> ExportedFiles,
-    int TotalResourcesExported,
-    string? ErrorMessage);
