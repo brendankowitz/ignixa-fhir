@@ -9,6 +9,18 @@
 
 namespace Ignixa.Abstractions;
 
+/// <summary>
+/// Element definition metadata from FHIR StructureDefinition.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>OBSOLETE:</strong> This interface is deprecated in favor of <see cref="IType"/>.
+/// The new interface provides strongly-typed metadata via <see cref="TypeInfo"/> and uses
+/// <see cref="IReadOnlyList{T}"/> for child access.
+/// </para>
+/// </remarks>
+[Obsolete("Use IType instead. IElementDefinitionSummary will be removed in a future version. " +
+          "Migrate to IType which provides TypeInfo struct for better performance and type safety.")]
 public interface IElementDefinitionSummary  // ElementDefinition
 {
     string ElementName { get; }
@@ -76,7 +88,9 @@ public interface IStructureDefinitionSummary : ITypeSerializationInfo
     /// </summary>
     string? Url { get; }
 
+#pragma warning disable CS0618 // Type or member is obsolete - IStructureDefinitionSummary returns obsolete IElementDefinitionSummary for backward compatibility
     IReadOnlyCollection<IElementDefinitionSummary> GetElements();
+#pragma warning restore CS0618 // Type or member is obsolete
 }
 
 public interface IStructureDefinitionReference : ITypeSerializationInfo
@@ -84,6 +98,17 @@ public interface IStructureDefinitionReference : ITypeSerializationInfo
     string ReferredType { get; }
 }
 
+/// <summary>
+/// Provides access to FHIR StructureDefinition summaries.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>OBSOLETE:</strong> This interface is deprecated in favor of <see cref="ISchema"/>.
+/// The new interface provides FHIR version awareness and uses <see cref="IType"/> for metadata.
+/// </para>
+/// </remarks>
+[Obsolete("Use ISchema instead. IStructureDefinitionSummaryProvider will be removed in a future version. " +
+          "Migrate to ISchema which provides version-aware schema access with IType.")]
 public interface IStructureDefinitionSummaryProvider
 {
     IStructureDefinitionSummary? Provide(string canonical);
