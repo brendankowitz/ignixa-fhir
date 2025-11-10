@@ -93,7 +93,6 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("using Ignixa.Domain;");
         sb.AppendLine("using Ignixa.Serialization;");
         sb.AppendLine("using Ignixa.Abstractions;");
-        sb.AppendLine("using Ignixa.Serialization.Specification;");
         sb.AppendLine("using Ignixa.Specification;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
@@ -210,6 +209,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
             sb.AppendLine($"            typeName: \"{name}\",");
             sb.AppendLine($"            isAbstract: {(isAbstract ? "true" : "false")},");
             sb.AppendLine($"            isResource: {(isResource ? "true" : "false")},");
+            sb.AppendLine($"            url: \"http://hl7.org/fhir/StructureDefinition/{name}\",");
             sb.AppendLine($"            elementsFactory: () => {GetSafeMethodName(name)}_Elements()");
             sb.AppendLine($"        ),");
         }
@@ -559,17 +559,20 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("            string typeName,");
         sb.AppendLine("            bool isAbstract,");
         sb.AppendLine("            bool isResource,");
+        sb.AppendLine("            string url,");
         sb.AppendLine("            Func<IReadOnlyCollection<IElementDefinitionSummary>> elementsFactory)");
         sb.AppendLine("        {");
         sb.AppendLine("            TypeName = typeName;");
         sb.AppendLine("            IsAbstract = isAbstract;");
         sb.AppendLine("            IsResource = isResource;");
+        sb.AppendLine("            Url = url;");
         sb.AppendLine("            _elementsFactory = elementsFactory;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        public string TypeName { get; }");
         sb.AppendLine("        public bool IsAbstract { get; }");
         sb.AppendLine("        public bool IsResource { get; }");
+        sb.AppendLine("        public string Url { get; }");
         sb.AppendLine();
         sb.AppendLine("        // IStructureDefinitionReference implementation");
         sb.AppendLine("        // ReferredType returns the type name for choice type validation");

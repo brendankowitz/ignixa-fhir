@@ -69,6 +69,13 @@ public interface IStructureDefinitionSummary : ITypeSerializationInfo
     bool IsAbstract { get; }
     bool IsResource { get; }
 
+    /// <summary>
+    /// The canonical URL of this structure definition.
+    /// Used to distinguish custom resource types and reference the definition in capability statements.
+    /// Examples: "http://hl7.org/fhir/StructureDefinition/Patient", "http://example.com/fhir/StructureDefinition/CustomPatient"
+    /// </summary>
+    string? Url { get; }
+
     IReadOnlyCollection<IElementDefinitionSummary> GetElements();
 }
 

@@ -84,6 +84,7 @@ public class PackageResourceProvider : IPackageResourceProvider
             typeName: sdNode.Type,
             isAbstract: sdNode.IsAbstract,
             isResource: isResource,
+            url: sdNode.Url,
             elementsJson: elements,
             logger: _logger);
     }
@@ -102,12 +103,14 @@ public class PackageResourceProvider : IPackageResourceProvider
             string typeName,
             bool isAbstract,
             bool isResource,
+            string? url,
             JsonArray elementsJson,
             ILogger logger)
         {
             TypeName = typeName;
             IsAbstract = isAbstract;
             IsResource = isResource;
+            Url = url;
             _elementsJson = elementsJson;
             _logger = logger;
         }
@@ -115,6 +118,7 @@ public class PackageResourceProvider : IPackageResourceProvider
         public string TypeName { get; }
         public bool IsAbstract { get; }
         public bool IsResource { get; }
+        public string? Url { get; }
 
         // IStructureDefinitionReference implementation (for choice type validation)
         public string ReferredType => TypeName;

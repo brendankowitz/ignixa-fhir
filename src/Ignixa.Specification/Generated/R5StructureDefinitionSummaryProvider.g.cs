@@ -288,5052 +288,5894 @@ public sealed partial class R5StructureDefinitionSummaryProvider : IStructureDef
             typeName: "Account",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Account",
             elementsFactory: () => Account_Elements()
         ),
         ["Account.Balance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account.Balance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Account.Balance",
             elementsFactory: () => Account_Balance_Elements()
         ),
         ["Account.Coverage"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account.Coverage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Account.Coverage",
             elementsFactory: () => Account_Coverage_Elements()
         ),
         ["Account.Diagnosis"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account.Diagnosis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Account.Diagnosis",
             elementsFactory: () => Account_Diagnosis_Elements()
         ),
         ["Account.Guarantor"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account.Guarantor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Account.Guarantor",
             elementsFactory: () => Account_Guarantor_Elements()
         ),
         ["Account.Procedure"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account.Procedure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Account.Procedure",
             elementsFactory: () => Account_Procedure_Elements()
         ),
         ["Account.RelatedAccount"] = new GeneratedStructureDefinitionSummary(
             typeName: "Account.RelatedAccount",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Account.RelatedAccount",
             elementsFactory: () => Account_RelatedAccount_Elements()
         ),
         ["ActivityDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ActivityDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ActivityDefinition",
             elementsFactory: () => ActivityDefinition_Elements()
         ),
         ["ActivityDefinition.DynamicValue"] = new GeneratedStructureDefinitionSummary(
             typeName: "ActivityDefinition.DynamicValue",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ActivityDefinition.DynamicValue",
             elementsFactory: () => ActivityDefinition_DynamicValue_Elements()
         ),
         ["ActivityDefinition.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "ActivityDefinition.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ActivityDefinition.Participant",
             elementsFactory: () => ActivityDefinition_Participant_Elements()
         ),
         ["ActorDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ActorDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ActorDefinition",
             elementsFactory: () => ActorDefinition_Elements()
         ),
         ["Address"] = new GeneratedStructureDefinitionSummary(
             typeName: "Address",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Address",
             elementsFactory: () => Address_Elements()
         ),
         ["AdministrableProductDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdministrableProductDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/AdministrableProductDefinition",
             elementsFactory: () => AdministrableProductDefinition_Elements()
         ),
         ["AdministrableProductDefinition.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdministrableProductDefinition.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdministrableProductDefinition.Property",
             elementsFactory: () => AdministrableProductDefinition_Property_Elements()
         ),
         ["AdministrableProductDefinition.RouteOfAdministration"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdministrableProductDefinition.RouteOfAdministration",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdministrableProductDefinition.RouteOfAdministration",
             elementsFactory: () => AdministrableProductDefinition_RouteOfAdministration_Elements()
         ),
         ["AdministrableProductDefinition.routeOfAdministration.TargetSpecies"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdministrableProductDefinition.routeOfAdministration.TargetSpecies",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdministrableProductDefinition.routeOfAdministration.TargetSpecies",
             elementsFactory: () => AdministrableProductDefinition_routeOfAdministration_TargetSpecies_Elements()
         ),
         ["AdministrableProductDefinition.routeOfAdministration.targetSpecies.WithdrawalPeriod"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdministrableProductDefinition.routeOfAdministration.targetSpecies.WithdrawalPeriod",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdministrableProductDefinition.routeOfAdministration.targetSpecies.WithdrawalPeriod",
             elementsFactory: () => AdministrableProductDefinition_routeOfAdministration_targetSpecies_WithdrawalPeriod_Elements()
         ),
         ["AdverseEvent"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent",
             elementsFactory: () => AdverseEvent_Elements()
         ),
         ["AdverseEvent.ContributingFactor"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.ContributingFactor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.ContributingFactor",
             elementsFactory: () => AdverseEvent_ContributingFactor_Elements()
         ),
         ["AdverseEvent.MitigatingAction"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.MitigatingAction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.MitigatingAction",
             elementsFactory: () => AdverseEvent_MitigatingAction_Elements()
         ),
         ["AdverseEvent.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.Participant",
             elementsFactory: () => AdverseEvent_Participant_Elements()
         ),
         ["AdverseEvent.PreventiveAction"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.PreventiveAction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.PreventiveAction",
             elementsFactory: () => AdverseEvent_PreventiveAction_Elements()
         ),
         ["AdverseEvent.SupportingInfo"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.SupportingInfo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.SupportingInfo",
             elementsFactory: () => AdverseEvent_SupportingInfo_Elements()
         ),
         ["AdverseEvent.SuspectEntity"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.SuspectEntity",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.SuspectEntity",
             elementsFactory: () => AdverseEvent_SuspectEntity_Elements()
         ),
         ["AdverseEvent.suspectEntity.Causality"] = new GeneratedStructureDefinitionSummary(
             typeName: "AdverseEvent.suspectEntity.Causality",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AdverseEvent.suspectEntity.Causality",
             elementsFactory: () => AdverseEvent_suspectEntity_Causality_Elements()
         ),
         ["Age"] = new GeneratedStructureDefinitionSummary(
             typeName: "Age",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Age",
             elementsFactory: () => Age_Elements()
         ),
         ["AllergyIntolerance"] = new GeneratedStructureDefinitionSummary(
             typeName: "AllergyIntolerance",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/AllergyIntolerance",
             elementsFactory: () => AllergyIntolerance_Elements()
         ),
         ["AllergyIntolerance.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "AllergyIntolerance.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AllergyIntolerance.Participant",
             elementsFactory: () => AllergyIntolerance_Participant_Elements()
         ),
         ["AllergyIntolerance.Reaction"] = new GeneratedStructureDefinitionSummary(
             typeName: "AllergyIntolerance.Reaction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AllergyIntolerance.Reaction",
             elementsFactory: () => AllergyIntolerance_Reaction_Elements()
         ),
         ["Annotation"] = new GeneratedStructureDefinitionSummary(
             typeName: "Annotation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Annotation",
             elementsFactory: () => Annotation_Elements()
         ),
         ["Appointment"] = new GeneratedStructureDefinitionSummary(
             typeName: "Appointment",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Appointment",
             elementsFactory: () => Appointment_Elements()
         ),
         ["Appointment.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "Appointment.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Appointment.Participant",
             elementsFactory: () => Appointment_Participant_Elements()
         ),
         ["Appointment.RecurrenceTemplate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Appointment.RecurrenceTemplate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Appointment.RecurrenceTemplate",
             elementsFactory: () => Appointment_RecurrenceTemplate_Elements()
         ),
         ["Appointment.recurrenceTemplate.MonthlyTemplate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Appointment.recurrenceTemplate.MonthlyTemplate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Appointment.recurrenceTemplate.MonthlyTemplate",
             elementsFactory: () => Appointment_recurrenceTemplate_MonthlyTemplate_Elements()
         ),
         ["Appointment.recurrenceTemplate.WeeklyTemplate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Appointment.recurrenceTemplate.WeeklyTemplate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Appointment.recurrenceTemplate.WeeklyTemplate",
             elementsFactory: () => Appointment_recurrenceTemplate_WeeklyTemplate_Elements()
         ),
         ["Appointment.recurrenceTemplate.YearlyTemplate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Appointment.recurrenceTemplate.YearlyTemplate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Appointment.recurrenceTemplate.YearlyTemplate",
             elementsFactory: () => Appointment_recurrenceTemplate_YearlyTemplate_Elements()
         ),
         ["AppointmentResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "AppointmentResponse",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/AppointmentResponse",
             elementsFactory: () => AppointmentResponse_Elements()
         ),
         ["ArtifactAssessment"] = new GeneratedStructureDefinitionSummary(
             typeName: "ArtifactAssessment",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ArtifactAssessment",
             elementsFactory: () => ArtifactAssessment_Elements()
         ),
         ["ArtifactAssessment.Content"] = new GeneratedStructureDefinitionSummary(
             typeName: "ArtifactAssessment.Content",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ArtifactAssessment.Content",
             elementsFactory: () => ArtifactAssessment_Content_Elements()
         ),
         ["Attachment"] = new GeneratedStructureDefinitionSummary(
             typeName: "Attachment",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Attachment",
             elementsFactory: () => Attachment_Elements()
         ),
         ["AuditEvent"] = new GeneratedStructureDefinitionSummary(
             typeName: "AuditEvent",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/AuditEvent",
             elementsFactory: () => AuditEvent_Elements()
         ),
         ["AuditEvent.Agent"] = new GeneratedStructureDefinitionSummary(
             typeName: "AuditEvent.Agent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AuditEvent.Agent",
             elementsFactory: () => AuditEvent_Agent_Elements()
         ),
         ["AuditEvent.Entity"] = new GeneratedStructureDefinitionSummary(
             typeName: "AuditEvent.Entity",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AuditEvent.Entity",
             elementsFactory: () => AuditEvent_Entity_Elements()
         ),
         ["AuditEvent.entity.Detail"] = new GeneratedStructureDefinitionSummary(
             typeName: "AuditEvent.entity.Detail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AuditEvent.entity.Detail",
             elementsFactory: () => AuditEvent_entity_Detail_Elements()
         ),
         ["AuditEvent.Outcome"] = new GeneratedStructureDefinitionSummary(
             typeName: "AuditEvent.Outcome",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AuditEvent.Outcome",
             elementsFactory: () => AuditEvent_Outcome_Elements()
         ),
         ["AuditEvent.Source"] = new GeneratedStructureDefinitionSummary(
             typeName: "AuditEvent.Source",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/AuditEvent.Source",
             elementsFactory: () => AuditEvent_Source_Elements()
         ),
         ["Availability"] = new GeneratedStructureDefinitionSummary(
             typeName: "Availability",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Availability",
             elementsFactory: () => Availability_Elements()
         ),
         ["BackboneElement"] = new GeneratedStructureDefinitionSummary(
             typeName: "BackboneElement",
             isAbstract: true,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BackboneElement",
             elementsFactory: () => BackboneElement_Elements()
         ),
         ["BackboneType"] = new GeneratedStructureDefinitionSummary(
             typeName: "BackboneType",
             isAbstract: true,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BackboneType",
             elementsFactory: () => BackboneType_Elements()
         ),
         ["Base"] = new GeneratedStructureDefinitionSummary(
             typeName: "Base",
             isAbstract: true,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Base",
             elementsFactory: () => Base_Elements()
         ),
         ["base64Binary"] = new GeneratedStructureDefinitionSummary(
             typeName: "base64Binary",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/base64Binary",
             elementsFactory: () => base64Binary_Elements()
         ),
         ["Basic"] = new GeneratedStructureDefinitionSummary(
             typeName: "Basic",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Basic",
             elementsFactory: () => Basic_Elements()
         ),
         ["Binary"] = new GeneratedStructureDefinitionSummary(
             typeName: "Binary",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Binary",
             elementsFactory: () => Binary_Elements()
         ),
         ["BiologicallyDerivedProduct"] = new GeneratedStructureDefinitionSummary(
             typeName: "BiologicallyDerivedProduct",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/BiologicallyDerivedProduct",
             elementsFactory: () => BiologicallyDerivedProduct_Elements()
         ),
         ["BiologicallyDerivedProduct.Collection"] = new GeneratedStructureDefinitionSummary(
             typeName: "BiologicallyDerivedProduct.Collection",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BiologicallyDerivedProduct.Collection",
             elementsFactory: () => BiologicallyDerivedProduct_Collection_Elements()
         ),
         ["BiologicallyDerivedProduct.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "BiologicallyDerivedProduct.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BiologicallyDerivedProduct.Property",
             elementsFactory: () => BiologicallyDerivedProduct_Property_Elements()
         ),
         ["BiologicallyDerivedProductDispense"] = new GeneratedStructureDefinitionSummary(
             typeName: "BiologicallyDerivedProductDispense",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/BiologicallyDerivedProductDispense",
             elementsFactory: () => BiologicallyDerivedProductDispense_Elements()
         ),
         ["BiologicallyDerivedProductDispense.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "BiologicallyDerivedProductDispense.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BiologicallyDerivedProductDispense.Performer",
             elementsFactory: () => BiologicallyDerivedProductDispense_Performer_Elements()
         ),
         ["BodyStructure"] = new GeneratedStructureDefinitionSummary(
             typeName: "BodyStructure",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/BodyStructure",
             elementsFactory: () => BodyStructure_Elements()
         ),
         ["BodyStructure.IncludedStructure"] = new GeneratedStructureDefinitionSummary(
             typeName: "BodyStructure.IncludedStructure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BodyStructure.IncludedStructure",
             elementsFactory: () => BodyStructure_IncludedStructure_Elements()
         ),
         ["BodyStructure.includedStructure.BodyLandmarkOrientation"] = new GeneratedStructureDefinitionSummary(
             typeName: "BodyStructure.includedStructure.BodyLandmarkOrientation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BodyStructure.includedStructure.BodyLandmarkOrientation",
             elementsFactory: () => BodyStructure_includedStructure_BodyLandmarkOrientation_Elements()
         ),
         ["BodyStructure.includedStructure.bodyLandmarkOrientation.DistanceFromLandmark"] = new GeneratedStructureDefinitionSummary(
             typeName: "BodyStructure.includedStructure.bodyLandmarkOrientation.DistanceFromLandmark",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/BodyStructure.includedStructure.bodyLandmarkOrientation.DistanceFromLandmark",
             elementsFactory: () => BodyStructure_includedStructure_bodyLandmarkOrientation_DistanceFromLandmark_Elements()
         ),
         ["boolean"] = new GeneratedStructureDefinitionSummary(
             typeName: "boolean",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/boolean",
             elementsFactory: () => boolean_Elements()
         ),
         ["Bundle"] = new GeneratedStructureDefinitionSummary(
             typeName: "Bundle",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Bundle",
             elementsFactory: () => Bundle_Elements()
         ),
         ["Bundle.Entry"] = new GeneratedStructureDefinitionSummary(
             typeName: "Bundle.Entry",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Bundle.Entry",
             elementsFactory: () => Bundle_Entry_Elements()
         ),
         ["Bundle.entry.Request"] = new GeneratedStructureDefinitionSummary(
             typeName: "Bundle.entry.Request",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Bundle.entry.Request",
             elementsFactory: () => Bundle_entry_Request_Elements()
         ),
         ["Bundle.entry.Response"] = new GeneratedStructureDefinitionSummary(
             typeName: "Bundle.entry.Response",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Bundle.entry.Response",
             elementsFactory: () => Bundle_entry_Response_Elements()
         ),
         ["Bundle.entry.Search"] = new GeneratedStructureDefinitionSummary(
             typeName: "Bundle.entry.Search",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Bundle.entry.Search",
             elementsFactory: () => Bundle_entry_Search_Elements()
         ),
         ["Bundle.Link"] = new GeneratedStructureDefinitionSummary(
             typeName: "Bundle.Link",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Bundle.Link",
             elementsFactory: () => Bundle_Link_Elements()
         ),
         ["canonical"] = new GeneratedStructureDefinitionSummary(
             typeName: "canonical",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/canonical",
             elementsFactory: () => canonical_Elements()
         ),
         ["CapabilityStatement"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement",
             elementsFactory: () => CapabilityStatement_Elements()
         ),
         ["CapabilityStatement.Document"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.Document",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.Document",
             elementsFactory: () => CapabilityStatement_Document_Elements()
         ),
         ["CapabilityStatement.Implementation"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.Implementation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.Implementation",
             elementsFactory: () => CapabilityStatement_Implementation_Elements()
         ),
         ["CapabilityStatement.Messaging"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.Messaging",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.Messaging",
             elementsFactory: () => CapabilityStatement_Messaging_Elements()
         ),
         ["CapabilityStatement.messaging.Endpoint"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.messaging.Endpoint",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.messaging.Endpoint",
             elementsFactory: () => CapabilityStatement_messaging_Endpoint_Elements()
         ),
         ["CapabilityStatement.messaging.SupportedMessage"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.messaging.SupportedMessage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.messaging.SupportedMessage",
             elementsFactory: () => CapabilityStatement_messaging_SupportedMessage_Elements()
         ),
         ["CapabilityStatement.Rest"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.Rest",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.Rest",
             elementsFactory: () => CapabilityStatement_Rest_Elements()
         ),
         ["CapabilityStatement.rest.Interaction"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.rest.Interaction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.rest.Interaction",
             elementsFactory: () => CapabilityStatement_rest_Interaction_Elements()
         ),
         ["CapabilityStatement.rest.Resource"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.rest.Resource",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.rest.Resource",
             elementsFactory: () => CapabilityStatement_rest_Resource_Elements()
         ),
         ["CapabilityStatement.rest.resource.Interaction"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.rest.resource.Interaction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.rest.resource.Interaction",
             elementsFactory: () => CapabilityStatement_rest_resource_Interaction_Elements()
         ),
         ["CapabilityStatement.rest.resource.Operation"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.rest.resource.Operation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.rest.resource.Operation",
             elementsFactory: () => CapabilityStatement_rest_resource_Operation_Elements()
         ),
         ["CapabilityStatement.rest.resource.SearchParam"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.rest.resource.SearchParam",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.rest.resource.SearchParam",
             elementsFactory: () => CapabilityStatement_rest_resource_SearchParam_Elements()
         ),
         ["CapabilityStatement.rest.Security"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.rest.Security",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.rest.Security",
             elementsFactory: () => CapabilityStatement_rest_Security_Elements()
         ),
         ["CapabilityStatement.Software"] = new GeneratedStructureDefinitionSummary(
             typeName: "CapabilityStatement.Software",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CapabilityStatement.Software",
             elementsFactory: () => CapabilityStatement_Software_Elements()
         ),
         ["CarePlan"] = new GeneratedStructureDefinitionSummary(
             typeName: "CarePlan",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CarePlan",
             elementsFactory: () => CarePlan_Elements()
         ),
         ["CarePlan.Activity"] = new GeneratedStructureDefinitionSummary(
             typeName: "CarePlan.Activity",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CarePlan.Activity",
             elementsFactory: () => CarePlan_Activity_Elements()
         ),
         ["CareTeam"] = new GeneratedStructureDefinitionSummary(
             typeName: "CareTeam",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CareTeam",
             elementsFactory: () => CareTeam_Elements()
         ),
         ["CareTeam.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "CareTeam.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CareTeam.Participant",
             elementsFactory: () => CareTeam_Participant_Elements()
         ),
         ["ChargeItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "ChargeItem",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ChargeItem",
             elementsFactory: () => ChargeItem_Elements()
         ),
         ["ChargeItem.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "ChargeItem.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ChargeItem.Performer",
             elementsFactory: () => ChargeItem_Performer_Elements()
         ),
         ["ChargeItemDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ChargeItemDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ChargeItemDefinition",
             elementsFactory: () => ChargeItemDefinition_Elements()
         ),
         ["ChargeItemDefinition.Applicability"] = new GeneratedStructureDefinitionSummary(
             typeName: "ChargeItemDefinition.Applicability",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ChargeItemDefinition.Applicability",
             elementsFactory: () => ChargeItemDefinition_Applicability_Elements()
         ),
         ["ChargeItemDefinition.PropertyGroup"] = new GeneratedStructureDefinitionSummary(
             typeName: "ChargeItemDefinition.PropertyGroup",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ChargeItemDefinition.PropertyGroup",
             elementsFactory: () => ChargeItemDefinition_PropertyGroup_Elements()
         ),
         ["Citation"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation",
             elementsFactory: () => Citation_Elements()
         ),
         ["Citation.CitedArtifact"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.CitedArtifact",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.CitedArtifact",
             elementsFactory: () => Citation_CitedArtifact_Elements()
         ),
         ["Citation.citedArtifact.Abstract"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.Abstract",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.Abstract",
             elementsFactory: () => Citation_citedArtifact_Abstract_Elements()
         ),
         ["Citation.citedArtifact.Classification"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.Classification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.Classification",
             elementsFactory: () => Citation_citedArtifact_Classification_Elements()
         ),
         ["Citation.citedArtifact.Contributorship"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.Contributorship",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.Contributorship",
             elementsFactory: () => Citation_citedArtifact_Contributorship_Elements()
         ),
         ["Citation.citedArtifact.contributorship.Entry"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.contributorship.Entry",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.contributorship.Entry",
             elementsFactory: () => Citation_citedArtifact_contributorship_Entry_Elements()
         ),
         ["Citation.citedArtifact.contributorship.entry.ContributionInstance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.contributorship.entry.ContributionInstance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.contributorship.entry.ContributionInstance",
             elementsFactory: () => Citation_citedArtifact_contributorship_entry_ContributionInstance_Elements()
         ),
         ["Citation.citedArtifact.contributorship.Summary"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.contributorship.Summary",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.contributorship.Summary",
             elementsFactory: () => Citation_citedArtifact_contributorship_Summary_Elements()
         ),
         ["Citation.citedArtifact.Part"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.Part",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.Part",
             elementsFactory: () => Citation_citedArtifact_Part_Elements()
         ),
         ["Citation.citedArtifact.PublicationForm"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.PublicationForm",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.PublicationForm",
             elementsFactory: () => Citation_citedArtifact_PublicationForm_Elements()
         ),
         ["Citation.citedArtifact.publicationForm.PublishedIn"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.publicationForm.PublishedIn",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.publicationForm.PublishedIn",
             elementsFactory: () => Citation_citedArtifact_publicationForm_PublishedIn_Elements()
         ),
         ["Citation.citedArtifact.RelatesTo"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.RelatesTo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.RelatesTo",
             elementsFactory: () => Citation_citedArtifact_RelatesTo_Elements()
         ),
         ["Citation.citedArtifact.StatusDate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.StatusDate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.StatusDate",
             elementsFactory: () => Citation_citedArtifact_StatusDate_Elements()
         ),
         ["Citation.citedArtifact.Title"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.Title",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.Title",
             elementsFactory: () => Citation_citedArtifact_Title_Elements()
         ),
         ["Citation.citedArtifact.Version"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.Version",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.Version",
             elementsFactory: () => Citation_citedArtifact_Version_Elements()
         ),
         ["Citation.citedArtifact.WebLocation"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.citedArtifact.WebLocation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.citedArtifact.WebLocation",
             elementsFactory: () => Citation_citedArtifact_WebLocation_Elements()
         ),
         ["Citation.Classification"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.Classification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.Classification",
             elementsFactory: () => Citation_Classification_Elements()
         ),
         ["Citation.StatusDate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.StatusDate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.StatusDate",
             elementsFactory: () => Citation_StatusDate_Elements()
         ),
         ["Citation.Summary"] = new GeneratedStructureDefinitionSummary(
             typeName: "Citation.Summary",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Citation.Summary",
             elementsFactory: () => Citation_Summary_Elements()
         ),
         ["Claim"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim",
             elementsFactory: () => Claim_Elements()
         ),
         ["Claim.Accident"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Accident",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Accident",
             elementsFactory: () => Claim_Accident_Elements()
         ),
         ["Claim.CareTeam"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.CareTeam",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.CareTeam",
             elementsFactory: () => Claim_CareTeam_Elements()
         ),
         ["Claim.Diagnosis"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Diagnosis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Diagnosis",
             elementsFactory: () => Claim_Diagnosis_Elements()
         ),
         ["Claim.Event"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Event",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Event",
             elementsFactory: () => Claim_Event_Elements()
         ),
         ["Claim.Insurance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Insurance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Insurance",
             elementsFactory: () => Claim_Insurance_Elements()
         ),
         ["Claim.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Item",
             elementsFactory: () => Claim_Item_Elements()
         ),
         ["Claim.item.BodySite"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.item.BodySite",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.item.BodySite",
             elementsFactory: () => Claim_item_BodySite_Elements()
         ),
         ["Claim.item.Detail"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.item.Detail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.item.Detail",
             elementsFactory: () => Claim_item_Detail_Elements()
         ),
         ["Claim.item.detail.SubDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.item.detail.SubDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.item.detail.SubDetail",
             elementsFactory: () => Claim_item_detail_SubDetail_Elements()
         ),
         ["Claim.Payee"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Payee",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Payee",
             elementsFactory: () => Claim_Payee_Elements()
         ),
         ["Claim.Procedure"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Procedure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Procedure",
             elementsFactory: () => Claim_Procedure_Elements()
         ),
         ["Claim.Related"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.Related",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.Related",
             elementsFactory: () => Claim_Related_Elements()
         ),
         ["Claim.SupportingInfo"] = new GeneratedStructureDefinitionSummary(
             typeName: "Claim.SupportingInfo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Claim.SupportingInfo",
             elementsFactory: () => Claim_SupportingInfo_Elements()
         ),
         ["ClaimResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse",
             elementsFactory: () => ClaimResponse_Elements()
         ),
         ["ClaimResponse.AddItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.AddItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.AddItem",
             elementsFactory: () => ClaimResponse_AddItem_Elements()
         ),
         ["ClaimResponse.addItem.BodySite"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.addItem.BodySite",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.addItem.BodySite",
             elementsFactory: () => ClaimResponse_addItem_BodySite_Elements()
         ),
         ["ClaimResponse.addItem.Detail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.addItem.Detail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.addItem.Detail",
             elementsFactory: () => ClaimResponse_addItem_Detail_Elements()
         ),
         ["ClaimResponse.addItem.detail.SubDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.addItem.detail.SubDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.addItem.detail.SubDetail",
             elementsFactory: () => ClaimResponse_addItem_detail_SubDetail_Elements()
         ),
         ["ClaimResponse.Error"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.Error",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.Error",
             elementsFactory: () => ClaimResponse_Error_Elements()
         ),
         ["ClaimResponse.Event"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.Event",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.Event",
             elementsFactory: () => ClaimResponse_Event_Elements()
         ),
         ["ClaimResponse.Insurance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.Insurance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.Insurance",
             elementsFactory: () => ClaimResponse_Insurance_Elements()
         ),
         ["ClaimResponse.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.Item",
             elementsFactory: () => ClaimResponse_Item_Elements()
         ),
         ["ClaimResponse.item.Adjudication"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.item.Adjudication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.item.Adjudication",
             elementsFactory: () => ClaimResponse_item_Adjudication_Elements()
         ),
         ["ClaimResponse.item.Detail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.item.Detail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.item.Detail",
             elementsFactory: () => ClaimResponse_item_Detail_Elements()
         ),
         ["ClaimResponse.item.detail.SubDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.item.detail.SubDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.item.detail.SubDetail",
             elementsFactory: () => ClaimResponse_item_detail_SubDetail_Elements()
         ),
         ["ClaimResponse.item.ReviewOutcome"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.item.ReviewOutcome",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.item.ReviewOutcome",
             elementsFactory: () => ClaimResponse_item_ReviewOutcome_Elements()
         ),
         ["ClaimResponse.Payment"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.Payment",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.Payment",
             elementsFactory: () => ClaimResponse_Payment_Elements()
         ),
         ["ClaimResponse.ProcessNote"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.ProcessNote",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.ProcessNote",
             elementsFactory: () => ClaimResponse_ProcessNote_Elements()
         ),
         ["ClaimResponse.Total"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClaimResponse.Total",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClaimResponse.Total",
             elementsFactory: () => ClaimResponse_Total_Elements()
         ),
         ["ClinicalImpression"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalImpression",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalImpression",
             elementsFactory: () => ClinicalImpression_Elements()
         ),
         ["ClinicalImpression.Finding"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalImpression.Finding",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalImpression.Finding",
             elementsFactory: () => ClinicalImpression_Finding_Elements()
         ),
         ["ClinicalUseDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition",
             elementsFactory: () => ClinicalUseDefinition_Elements()
         ),
         ["ClinicalUseDefinition.Contraindication"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.Contraindication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.Contraindication",
             elementsFactory: () => ClinicalUseDefinition_Contraindication_Elements()
         ),
         ["ClinicalUseDefinition.contraindication.OtherTherapy"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.contraindication.OtherTherapy",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.contraindication.OtherTherapy",
             elementsFactory: () => ClinicalUseDefinition_contraindication_OtherTherapy_Elements()
         ),
         ["ClinicalUseDefinition.Indication"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.Indication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.Indication",
             elementsFactory: () => ClinicalUseDefinition_Indication_Elements()
         ),
         ["ClinicalUseDefinition.Interaction"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.Interaction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.Interaction",
             elementsFactory: () => ClinicalUseDefinition_Interaction_Elements()
         ),
         ["ClinicalUseDefinition.interaction.Interactant"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.interaction.Interactant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.interaction.Interactant",
             elementsFactory: () => ClinicalUseDefinition_interaction_Interactant_Elements()
         ),
         ["ClinicalUseDefinition.UndesirableEffect"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.UndesirableEffect",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.UndesirableEffect",
             elementsFactory: () => ClinicalUseDefinition_UndesirableEffect_Elements()
         ),
         ["ClinicalUseDefinition.Warning"] = new GeneratedStructureDefinitionSummary(
             typeName: "ClinicalUseDefinition.Warning",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition.Warning",
             elementsFactory: () => ClinicalUseDefinition_Warning_Elements()
         ),
         ["code"] = new GeneratedStructureDefinitionSummary(
             typeName: "code",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/code",
             elementsFactory: () => code_Elements()
         ),
         ["CodeableConcept"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeableConcept",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeableConcept",
             elementsFactory: () => CodeableConcept_Elements()
         ),
         ["CodeableReference"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeableReference",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeableReference",
             elementsFactory: () => CodeableReference_Elements()
         ),
         ["CodeSystem"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeSystem",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeSystem",
             elementsFactory: () => CodeSystem_Elements()
         ),
         ["CodeSystem.Concept"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeSystem.Concept",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeSystem.Concept",
             elementsFactory: () => CodeSystem_Concept_Elements()
         ),
         ["CodeSystem.concept.Designation"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeSystem.concept.Designation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeSystem.concept.Designation",
             elementsFactory: () => CodeSystem_concept_Designation_Elements()
         ),
         ["CodeSystem.concept.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeSystem.concept.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeSystem.concept.Property",
             elementsFactory: () => CodeSystem_concept_Property_Elements()
         ),
         ["CodeSystem.Filter"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeSystem.Filter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeSystem.Filter",
             elementsFactory: () => CodeSystem_Filter_Elements()
         ),
         ["CodeSystem.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "CodeSystem.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CodeSystem.Property",
             elementsFactory: () => CodeSystem_Property_Elements()
         ),
         ["Coding"] = new GeneratedStructureDefinitionSummary(
             typeName: "Coding",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Coding",
             elementsFactory: () => Coding_Elements()
         ),
         ["Communication"] = new GeneratedStructureDefinitionSummary(
             typeName: "Communication",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Communication",
             elementsFactory: () => Communication_Elements()
         ),
         ["Communication.Payload"] = new GeneratedStructureDefinitionSummary(
             typeName: "Communication.Payload",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Communication.Payload",
             elementsFactory: () => Communication_Payload_Elements()
         ),
         ["CommunicationRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "CommunicationRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CommunicationRequest",
             elementsFactory: () => CommunicationRequest_Elements()
         ),
         ["CommunicationRequest.Payload"] = new GeneratedStructureDefinitionSummary(
             typeName: "CommunicationRequest.Payload",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CommunicationRequest.Payload",
             elementsFactory: () => CommunicationRequest_Payload_Elements()
         ),
         ["CompartmentDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "CompartmentDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CompartmentDefinition",
             elementsFactory: () => CompartmentDefinition_Elements()
         ),
         ["CompartmentDefinition.Resource"] = new GeneratedStructureDefinitionSummary(
             typeName: "CompartmentDefinition.Resource",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CompartmentDefinition.Resource",
             elementsFactory: () => CompartmentDefinition_Resource_Elements()
         ),
         ["Composition"] = new GeneratedStructureDefinitionSummary(
             typeName: "Composition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Composition",
             elementsFactory: () => Composition_Elements()
         ),
         ["Composition.Attester"] = new GeneratedStructureDefinitionSummary(
             typeName: "Composition.Attester",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Composition.Attester",
             elementsFactory: () => Composition_Attester_Elements()
         ),
         ["Composition.Event"] = new GeneratedStructureDefinitionSummary(
             typeName: "Composition.Event",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Composition.Event",
             elementsFactory: () => Composition_Event_Elements()
         ),
         ["Composition.Section"] = new GeneratedStructureDefinitionSummary(
             typeName: "Composition.Section",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Composition.Section",
             elementsFactory: () => Composition_Section_Elements()
         ),
         ["ConceptMap"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap",
             elementsFactory: () => ConceptMap_Elements()
         ),
         ["ConceptMap.AdditionalAttribute"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.AdditionalAttribute",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.AdditionalAttribute",
             elementsFactory: () => ConceptMap_AdditionalAttribute_Elements()
         ),
         ["ConceptMap.Group"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.Group",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.Group",
             elementsFactory: () => ConceptMap_Group_Elements()
         ),
         ["ConceptMap.group.Element"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.group.Element",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.group.Element",
             elementsFactory: () => ConceptMap_group_Element_Elements()
         ),
         ["ConceptMap.group.element.Target"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.group.element.Target",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.group.element.Target",
             elementsFactory: () => ConceptMap_group_element_Target_Elements()
         ),
         ["ConceptMap.group.element.target.DependsOn"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.group.element.target.DependsOn",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.group.element.target.DependsOn",
             elementsFactory: () => ConceptMap_group_element_target_DependsOn_Elements()
         ),
         ["ConceptMap.group.element.target.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.group.element.target.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.group.element.target.Property",
             elementsFactory: () => ConceptMap_group_element_target_Property_Elements()
         ),
         ["ConceptMap.group.Unmapped"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.group.Unmapped",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.group.Unmapped",
             elementsFactory: () => ConceptMap_group_Unmapped_Elements()
         ),
         ["ConceptMap.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConceptMap.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConceptMap.Property",
             elementsFactory: () => ConceptMap_Property_Elements()
         ),
         ["Condition"] = new GeneratedStructureDefinitionSummary(
             typeName: "Condition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Condition",
             elementsFactory: () => Condition_Elements()
         ),
         ["Condition.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "Condition.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Condition.Participant",
             elementsFactory: () => Condition_Participant_Elements()
         ),
         ["Condition.Stage"] = new GeneratedStructureDefinitionSummary(
             typeName: "Condition.Stage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Condition.Stage",
             elementsFactory: () => Condition_Stage_Elements()
         ),
         ["ConditionDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConditionDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ConditionDefinition",
             elementsFactory: () => ConditionDefinition_Elements()
         ),
         ["ConditionDefinition.Medication"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConditionDefinition.Medication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConditionDefinition.Medication",
             elementsFactory: () => ConditionDefinition_Medication_Elements()
         ),
         ["ConditionDefinition.Observation"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConditionDefinition.Observation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConditionDefinition.Observation",
             elementsFactory: () => ConditionDefinition_Observation_Elements()
         ),
         ["ConditionDefinition.Plan"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConditionDefinition.Plan",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConditionDefinition.Plan",
             elementsFactory: () => ConditionDefinition_Plan_Elements()
         ),
         ["ConditionDefinition.Precondition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConditionDefinition.Precondition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConditionDefinition.Precondition",
             elementsFactory: () => ConditionDefinition_Precondition_Elements()
         ),
         ["ConditionDefinition.Questionnaire"] = new GeneratedStructureDefinitionSummary(
             typeName: "ConditionDefinition.Questionnaire",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ConditionDefinition.Questionnaire",
             elementsFactory: () => ConditionDefinition_Questionnaire_Elements()
         ),
         ["Consent"] = new GeneratedStructureDefinitionSummary(
             typeName: "Consent",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Consent",
             elementsFactory: () => Consent_Elements()
         ),
         ["Consent.PolicyBasis"] = new GeneratedStructureDefinitionSummary(
             typeName: "Consent.PolicyBasis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Consent.PolicyBasis",
             elementsFactory: () => Consent_PolicyBasis_Elements()
         ),
         ["Consent.Provision"] = new GeneratedStructureDefinitionSummary(
             typeName: "Consent.Provision",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Consent.Provision",
             elementsFactory: () => Consent_Provision_Elements()
         ),
         ["Consent.provision.Actor"] = new GeneratedStructureDefinitionSummary(
             typeName: "Consent.provision.Actor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Consent.provision.Actor",
             elementsFactory: () => Consent_provision_Actor_Elements()
         ),
         ["Consent.provision.Data"] = new GeneratedStructureDefinitionSummary(
             typeName: "Consent.provision.Data",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Consent.provision.Data",
             elementsFactory: () => Consent_provision_Data_Elements()
         ),
         ["Consent.Verification"] = new GeneratedStructureDefinitionSummary(
             typeName: "Consent.Verification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Consent.Verification",
             elementsFactory: () => Consent_Verification_Elements()
         ),
         ["ContactDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ContactDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ContactDetail",
             elementsFactory: () => ContactDetail_Elements()
         ),
         ["ContactPoint"] = new GeneratedStructureDefinitionSummary(
             typeName: "ContactPoint",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ContactPoint",
             elementsFactory: () => ContactPoint_Elements()
         ),
         ["Contract"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract",
             elementsFactory: () => Contract_Elements()
         ),
         ["Contract.ContentDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.ContentDefinition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.ContentDefinition",
             elementsFactory: () => Contract_ContentDefinition_Elements()
         ),
         ["Contract.Friendly"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.Friendly",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.Friendly",
             elementsFactory: () => Contract_Friendly_Elements()
         ),
         ["Contract.Legal"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.Legal",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.Legal",
             elementsFactory: () => Contract_Legal_Elements()
         ),
         ["Contract.Rule"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.Rule",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.Rule",
             elementsFactory: () => Contract_Rule_Elements()
         ),
         ["Contract.Signer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.Signer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.Signer",
             elementsFactory: () => Contract_Signer_Elements()
         ),
         ["Contract.Term"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.Term",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.Term",
             elementsFactory: () => Contract_Term_Elements()
         ),
         ["Contract.term.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.Action",
             elementsFactory: () => Contract_term_Action_Elements()
         ),
         ["Contract.term.action.Subject"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.action.Subject",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.action.Subject",
             elementsFactory: () => Contract_term_action_Subject_Elements()
         ),
         ["Contract.term.Asset"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.Asset",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.Asset",
             elementsFactory: () => Contract_term_Asset_Elements()
         ),
         ["Contract.term.asset.Context"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.asset.Context",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.asset.Context",
             elementsFactory: () => Contract_term_asset_Context_Elements()
         ),
         ["Contract.term.asset.ValuedItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.asset.ValuedItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.asset.ValuedItem",
             elementsFactory: () => Contract_term_asset_ValuedItem_Elements()
         ),
         ["Contract.term.Offer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.Offer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.Offer",
             elementsFactory: () => Contract_term_Offer_Elements()
         ),
         ["Contract.term.offer.Answer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.offer.Answer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.offer.Answer",
             elementsFactory: () => Contract_term_offer_Answer_Elements()
         ),
         ["Contract.term.offer.Party"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.offer.Party",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.offer.Party",
             elementsFactory: () => Contract_term_offer_Party_Elements()
         ),
         ["Contract.term.SecurityLabel"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contract.term.SecurityLabel",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contract.term.SecurityLabel",
             elementsFactory: () => Contract_term_SecurityLabel_Elements()
         ),
         ["Contributor"] = new GeneratedStructureDefinitionSummary(
             typeName: "Contributor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Contributor",
             elementsFactory: () => Contributor_Elements()
         ),
         ["Count"] = new GeneratedStructureDefinitionSummary(
             typeName: "Count",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Count",
             elementsFactory: () => Count_Elements()
         ),
         ["Coverage"] = new GeneratedStructureDefinitionSummary(
             typeName: "Coverage",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Coverage",
             elementsFactory: () => Coverage_Elements()
         ),
         ["Coverage.Class"] = new GeneratedStructureDefinitionSummary(
             typeName: "Coverage.Class",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Coverage.Class",
             elementsFactory: () => Coverage_Class_Elements()
         ),
         ["Coverage.CostToBeneficiary"] = new GeneratedStructureDefinitionSummary(
             typeName: "Coverage.CostToBeneficiary",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Coverage.CostToBeneficiary",
             elementsFactory: () => Coverage_CostToBeneficiary_Elements()
         ),
         ["Coverage.costToBeneficiary.Exception"] = new GeneratedStructureDefinitionSummary(
             typeName: "Coverage.costToBeneficiary.Exception",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Coverage.costToBeneficiary.Exception",
             elementsFactory: () => Coverage_costToBeneficiary_Exception_Elements()
         ),
         ["Coverage.PaymentBy"] = new GeneratedStructureDefinitionSummary(
             typeName: "Coverage.PaymentBy",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Coverage.PaymentBy",
             elementsFactory: () => Coverage_PaymentBy_Elements()
         ),
         ["CoverageEligibilityRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityRequest",
             elementsFactory: () => CoverageEligibilityRequest_Elements()
         ),
         ["CoverageEligibilityRequest.Event"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityRequest.Event",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityRequest.Event",
             elementsFactory: () => CoverageEligibilityRequest_Event_Elements()
         ),
         ["CoverageEligibilityRequest.Insurance"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityRequest.Insurance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityRequest.Insurance",
             elementsFactory: () => CoverageEligibilityRequest_Insurance_Elements()
         ),
         ["CoverageEligibilityRequest.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityRequest.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityRequest.Item",
             elementsFactory: () => CoverageEligibilityRequest_Item_Elements()
         ),
         ["CoverageEligibilityRequest.item.Diagnosis"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityRequest.item.Diagnosis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityRequest.item.Diagnosis",
             elementsFactory: () => CoverageEligibilityRequest_item_Diagnosis_Elements()
         ),
         ["CoverageEligibilityRequest.SupportingInfo"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityRequest.SupportingInfo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityRequest.SupportingInfo",
             elementsFactory: () => CoverageEligibilityRequest_SupportingInfo_Elements()
         ),
         ["CoverageEligibilityResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityResponse",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityResponse",
             elementsFactory: () => CoverageEligibilityResponse_Elements()
         ),
         ["CoverageEligibilityResponse.Error"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityResponse.Error",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityResponse.Error",
             elementsFactory: () => CoverageEligibilityResponse_Error_Elements()
         ),
         ["CoverageEligibilityResponse.Event"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityResponse.Event",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityResponse.Event",
             elementsFactory: () => CoverageEligibilityResponse_Event_Elements()
         ),
         ["CoverageEligibilityResponse.Insurance"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityResponse.Insurance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityResponse.Insurance",
             elementsFactory: () => CoverageEligibilityResponse_Insurance_Elements()
         ),
         ["CoverageEligibilityResponse.insurance.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityResponse.insurance.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityResponse.insurance.Item",
             elementsFactory: () => CoverageEligibilityResponse_insurance_Item_Elements()
         ),
         ["CoverageEligibilityResponse.insurance.item.Benefit"] = new GeneratedStructureDefinitionSummary(
             typeName: "CoverageEligibilityResponse.insurance.item.Benefit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/CoverageEligibilityResponse.insurance.item.Benefit",
             elementsFactory: () => CoverageEligibilityResponse_insurance_item_Benefit_Elements()
         ),
         ["DataRequirement"] = new GeneratedStructureDefinitionSummary(
             typeName: "DataRequirement",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DataRequirement",
             elementsFactory: () => DataRequirement_Elements()
         ),
         ["DataType"] = new GeneratedStructureDefinitionSummary(
             typeName: "DataType",
             isAbstract: true,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DataType",
             elementsFactory: () => DataType_Elements()
         ),
         ["date"] = new GeneratedStructureDefinitionSummary(
             typeName: "date",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/date",
             elementsFactory: () => date_Elements()
         ),
         ["dateTime"] = new GeneratedStructureDefinitionSummary(
             typeName: "dateTime",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/dateTime",
             elementsFactory: () => dateTime_Elements()
         ),
         ["decimal"] = new GeneratedStructureDefinitionSummary(
             typeName: "decimal",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/decimal",
             elementsFactory: () => decimal_Elements()
         ),
         ["DetectedIssue"] = new GeneratedStructureDefinitionSummary(
             typeName: "DetectedIssue",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DetectedIssue",
             elementsFactory: () => DetectedIssue_Elements()
         ),
         ["DetectedIssue.Evidence"] = new GeneratedStructureDefinitionSummary(
             typeName: "DetectedIssue.Evidence",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DetectedIssue.Evidence",
             elementsFactory: () => DetectedIssue_Evidence_Elements()
         ),
         ["DetectedIssue.Mitigation"] = new GeneratedStructureDefinitionSummary(
             typeName: "DetectedIssue.Mitigation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DetectedIssue.Mitigation",
             elementsFactory: () => DetectedIssue_Mitigation_Elements()
         ),
         ["Device"] = new GeneratedStructureDefinitionSummary(
             typeName: "Device",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Device",
             elementsFactory: () => Device_Elements()
         ),
         ["Device.ConformsTo"] = new GeneratedStructureDefinitionSummary(
             typeName: "Device.ConformsTo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Device.ConformsTo",
             elementsFactory: () => Device_ConformsTo_Elements()
         ),
         ["Device.Name"] = new GeneratedStructureDefinitionSummary(
             typeName: "Device.Name",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Device.Name",
             elementsFactory: () => Device_Name_Elements()
         ),
         ["Device.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "Device.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Device.Property",
             elementsFactory: () => Device_Property_Elements()
         ),
         ["Device.UdiCarrier"] = new GeneratedStructureDefinitionSummary(
             typeName: "Device.UdiCarrier",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Device.UdiCarrier",
             elementsFactory: () => Device_UdiCarrier_Elements()
         ),
         ["Device.Version"] = new GeneratedStructureDefinitionSummary(
             typeName: "Device.Version",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Device.Version",
             elementsFactory: () => Device_Version_Elements()
         ),
         ["DeviceAssociation"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceAssociation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceAssociation",
             elementsFactory: () => DeviceAssociation_Elements()
         ),
         ["DeviceAssociation.Operation"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceAssociation.Operation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceAssociation.Operation",
             elementsFactory: () => DeviceAssociation_Operation_Elements()
         ),
         ["DeviceDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition",
             elementsFactory: () => DeviceDefinition_Elements()
         ),
         ["DeviceDefinition.ChargeItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.ChargeItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.ChargeItem",
             elementsFactory: () => DeviceDefinition_ChargeItem_Elements()
         ),
         ["DeviceDefinition.Classification"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Classification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Classification",
             elementsFactory: () => DeviceDefinition_Classification_Elements()
         ),
         ["DeviceDefinition.ConformsTo"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.ConformsTo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.ConformsTo",
             elementsFactory: () => DeviceDefinition_ConformsTo_Elements()
         ),
         ["DeviceDefinition.CorrectiveAction"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.CorrectiveAction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.CorrectiveAction",
             elementsFactory: () => DeviceDefinition_CorrectiveAction_Elements()
         ),
         ["DeviceDefinition.DeviceName"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.DeviceName",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.DeviceName",
             elementsFactory: () => DeviceDefinition_DeviceName_Elements()
         ),
         ["DeviceDefinition.Guideline"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Guideline",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Guideline",
             elementsFactory: () => DeviceDefinition_Guideline_Elements()
         ),
         ["DeviceDefinition.HasPart"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.HasPart",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.HasPart",
             elementsFactory: () => DeviceDefinition_HasPart_Elements()
         ),
         ["DeviceDefinition.Link"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Link",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Link",
             elementsFactory: () => DeviceDefinition_Link_Elements()
         ),
         ["DeviceDefinition.Material"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Material",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Material",
             elementsFactory: () => DeviceDefinition_Material_Elements()
         ),
         ["DeviceDefinition.Packaging"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Packaging",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Packaging",
             elementsFactory: () => DeviceDefinition_Packaging_Elements()
         ),
         ["DeviceDefinition.packaging.Distributor"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.packaging.Distributor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.packaging.Distributor",
             elementsFactory: () => DeviceDefinition_packaging_Distributor_Elements()
         ),
         ["DeviceDefinition.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Property",
             elementsFactory: () => DeviceDefinition_Property_Elements()
         ),
         ["DeviceDefinition.RegulatoryIdentifier"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.RegulatoryIdentifier",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.RegulatoryIdentifier",
             elementsFactory: () => DeviceDefinition_RegulatoryIdentifier_Elements()
         ),
         ["DeviceDefinition.UdiDeviceIdentifier"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.UdiDeviceIdentifier",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.UdiDeviceIdentifier",
             elementsFactory: () => DeviceDefinition_UdiDeviceIdentifier_Elements()
         ),
         ["DeviceDefinition.udiDeviceIdentifier.MarketDistribution"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.udiDeviceIdentifier.MarketDistribution",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.udiDeviceIdentifier.MarketDistribution",
             elementsFactory: () => DeviceDefinition_udiDeviceIdentifier_MarketDistribution_Elements()
         ),
         ["DeviceDefinition.Version"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDefinition.Version",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDefinition.Version",
             elementsFactory: () => DeviceDefinition_Version_Elements()
         ),
         ["DeviceDispense"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDispense",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDispense",
             elementsFactory: () => DeviceDispense_Elements()
         ),
         ["DeviceDispense.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceDispense.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceDispense.Performer",
             elementsFactory: () => DeviceDispense_Performer_Elements()
         ),
         ["DeviceMetric"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceMetric",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceMetric",
             elementsFactory: () => DeviceMetric_Elements()
         ),
         ["DeviceMetric.Calibration"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceMetric.Calibration",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceMetric.Calibration",
             elementsFactory: () => DeviceMetric_Calibration_Elements()
         ),
         ["DeviceRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceRequest",
             elementsFactory: () => DeviceRequest_Elements()
         ),
         ["DeviceRequest.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceRequest.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceRequest.Parameter",
             elementsFactory: () => DeviceRequest_Parameter_Elements()
         ),
         ["DeviceUsage"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceUsage",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceUsage",
             elementsFactory: () => DeviceUsage_Elements()
         ),
         ["DeviceUsage.Adherence"] = new GeneratedStructureDefinitionSummary(
             typeName: "DeviceUsage.Adherence",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DeviceUsage.Adherence",
             elementsFactory: () => DeviceUsage_Adherence_Elements()
         ),
         ["DiagnosticReport"] = new GeneratedStructureDefinitionSummary(
             typeName: "DiagnosticReport",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DiagnosticReport",
             elementsFactory: () => DiagnosticReport_Elements()
         ),
         ["DiagnosticReport.Media"] = new GeneratedStructureDefinitionSummary(
             typeName: "DiagnosticReport.Media",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DiagnosticReport.Media",
             elementsFactory: () => DiagnosticReport_Media_Elements()
         ),
         ["DiagnosticReport.SupportingInfo"] = new GeneratedStructureDefinitionSummary(
             typeName: "DiagnosticReport.SupportingInfo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DiagnosticReport.SupportingInfo",
             elementsFactory: () => DiagnosticReport_SupportingInfo_Elements()
         ),
         ["Distance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Distance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Distance",
             elementsFactory: () => Distance_Elements()
         ),
         ["DocumentReference"] = new GeneratedStructureDefinitionSummary(
             typeName: "DocumentReference",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DocumentReference",
             elementsFactory: () => DocumentReference_Elements()
         ),
         ["DocumentReference.Attester"] = new GeneratedStructureDefinitionSummary(
             typeName: "DocumentReference.Attester",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DocumentReference.Attester",
             elementsFactory: () => DocumentReference_Attester_Elements()
         ),
         ["DocumentReference.Content"] = new GeneratedStructureDefinitionSummary(
             typeName: "DocumentReference.Content",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DocumentReference.Content",
             elementsFactory: () => DocumentReference_Content_Elements()
         ),
         ["DocumentReference.content.Profile"] = new GeneratedStructureDefinitionSummary(
             typeName: "DocumentReference.content.Profile",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DocumentReference.content.Profile",
             elementsFactory: () => DocumentReference_content_Profile_Elements()
         ),
         ["DocumentReference.RelatesTo"] = new GeneratedStructureDefinitionSummary(
             typeName: "DocumentReference.RelatesTo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/DocumentReference.RelatesTo",
             elementsFactory: () => DocumentReference_RelatesTo_Elements()
         ),
         ["DomainResource"] = new GeneratedStructureDefinitionSummary(
             typeName: "DomainResource",
             isAbstract: true,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/DomainResource",
             elementsFactory: () => DomainResource_Elements()
         ),
         ["Dosage"] = new GeneratedStructureDefinitionSummary(
             typeName: "Dosage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Dosage",
             elementsFactory: () => Dosage_Elements()
         ),
         ["Duration"] = new GeneratedStructureDefinitionSummary(
             typeName: "Duration",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Duration",
             elementsFactory: () => Duration_Elements()
         ),
         ["Element"] = new GeneratedStructureDefinitionSummary(
             typeName: "Element",
             isAbstract: true,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Element",
             elementsFactory: () => Element_Elements()
         ),
         ["ElementDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ElementDefinition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ElementDefinition",
             elementsFactory: () => ElementDefinition_Elements()
         ),
         ["Encounter"] = new GeneratedStructureDefinitionSummary(
             typeName: "Encounter",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Encounter",
             elementsFactory: () => Encounter_Elements()
         ),
         ["Encounter.Admission"] = new GeneratedStructureDefinitionSummary(
             typeName: "Encounter.Admission",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Encounter.Admission",
             elementsFactory: () => Encounter_Admission_Elements()
         ),
         ["Encounter.Diagnosis"] = new GeneratedStructureDefinitionSummary(
             typeName: "Encounter.Diagnosis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Encounter.Diagnosis",
             elementsFactory: () => Encounter_Diagnosis_Elements()
         ),
         ["Encounter.Location"] = new GeneratedStructureDefinitionSummary(
             typeName: "Encounter.Location",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Encounter.Location",
             elementsFactory: () => Encounter_Location_Elements()
         ),
         ["Encounter.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "Encounter.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Encounter.Participant",
             elementsFactory: () => Encounter_Participant_Elements()
         ),
         ["Encounter.Reason"] = new GeneratedStructureDefinitionSummary(
             typeName: "Encounter.Reason",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Encounter.Reason",
             elementsFactory: () => Encounter_Reason_Elements()
         ),
         ["EncounterHistory"] = new GeneratedStructureDefinitionSummary(
             typeName: "EncounterHistory",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EncounterHistory",
             elementsFactory: () => EncounterHistory_Elements()
         ),
         ["EncounterHistory.Location"] = new GeneratedStructureDefinitionSummary(
             typeName: "EncounterHistory.Location",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EncounterHistory.Location",
             elementsFactory: () => EncounterHistory_Location_Elements()
         ),
         ["Endpoint"] = new GeneratedStructureDefinitionSummary(
             typeName: "Endpoint",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Endpoint",
             elementsFactory: () => Endpoint_Elements()
         ),
         ["Endpoint.Payload"] = new GeneratedStructureDefinitionSummary(
             typeName: "Endpoint.Payload",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Endpoint.Payload",
             elementsFactory: () => Endpoint_Payload_Elements()
         ),
         ["EnrollmentRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "EnrollmentRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EnrollmentRequest",
             elementsFactory: () => EnrollmentRequest_Elements()
         ),
         ["EnrollmentResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "EnrollmentResponse",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EnrollmentResponse",
             elementsFactory: () => EnrollmentResponse_Elements()
         ),
         ["EpisodeOfCare"] = new GeneratedStructureDefinitionSummary(
             typeName: "EpisodeOfCare",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EpisodeOfCare",
             elementsFactory: () => EpisodeOfCare_Elements()
         ),
         ["EpisodeOfCare.Diagnosis"] = new GeneratedStructureDefinitionSummary(
             typeName: "EpisodeOfCare.Diagnosis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EpisodeOfCare.Diagnosis",
             elementsFactory: () => EpisodeOfCare_Diagnosis_Elements()
         ),
         ["EpisodeOfCare.Reason"] = new GeneratedStructureDefinitionSummary(
             typeName: "EpisodeOfCare.Reason",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EpisodeOfCare.Reason",
             elementsFactory: () => EpisodeOfCare_Reason_Elements()
         ),
         ["EpisodeOfCare.StatusHistory"] = new GeneratedStructureDefinitionSummary(
             typeName: "EpisodeOfCare.StatusHistory",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EpisodeOfCare.StatusHistory",
             elementsFactory: () => EpisodeOfCare_StatusHistory_Elements()
         ),
         ["EventDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "EventDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EventDefinition",
             elementsFactory: () => EventDefinition_Elements()
         ),
         ["Evidence"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence",
             elementsFactory: () => Evidence_Elements()
         ),
         ["Evidence.Certainty"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.Certainty",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.Certainty",
             elementsFactory: () => Evidence_Certainty_Elements()
         ),
         ["Evidence.Statistic"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.Statistic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.Statistic",
             elementsFactory: () => Evidence_Statistic_Elements()
         ),
         ["Evidence.statistic.AttributeEstimate"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.statistic.AttributeEstimate",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.statistic.AttributeEstimate",
             elementsFactory: () => Evidence_statistic_AttributeEstimate_Elements()
         ),
         ["Evidence.statistic.ModelCharacteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.statistic.ModelCharacteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.statistic.ModelCharacteristic",
             elementsFactory: () => Evidence_statistic_ModelCharacteristic_Elements()
         ),
         ["Evidence.statistic.modelCharacteristic.Variable"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.statistic.modelCharacteristic.Variable",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.statistic.modelCharacteristic.Variable",
             elementsFactory: () => Evidence_statistic_modelCharacteristic_Variable_Elements()
         ),
         ["Evidence.statistic.SampleSize"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.statistic.SampleSize",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.statistic.SampleSize",
             elementsFactory: () => Evidence_statistic_SampleSize_Elements()
         ),
         ["Evidence.VariableDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "Evidence.VariableDefinition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Evidence.VariableDefinition",
             elementsFactory: () => Evidence_VariableDefinition_Elements()
         ),
         ["EvidenceReport"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceReport",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceReport",
             elementsFactory: () => EvidenceReport_Elements()
         ),
         ["EvidenceReport.RelatesTo"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceReport.RelatesTo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceReport.RelatesTo",
             elementsFactory: () => EvidenceReport_RelatesTo_Elements()
         ),
         ["EvidenceReport.relatesTo.Target"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceReport.relatesTo.Target",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceReport.relatesTo.Target",
             elementsFactory: () => EvidenceReport_relatesTo_Target_Elements()
         ),
         ["EvidenceReport.Section"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceReport.Section",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceReport.Section",
             elementsFactory: () => EvidenceReport_Section_Elements()
         ),
         ["EvidenceReport.Subject"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceReport.Subject",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceReport.Subject",
             elementsFactory: () => EvidenceReport_Subject_Elements()
         ),
         ["EvidenceReport.subject.Characteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceReport.subject.Characteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceReport.subject.Characteristic",
             elementsFactory: () => EvidenceReport_subject_Characteristic_Elements()
         ),
         ["EvidenceVariable"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceVariable",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceVariable",
             elementsFactory: () => EvidenceVariable_Elements()
         ),
         ["EvidenceVariable.Category"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceVariable.Category",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceVariable.Category",
             elementsFactory: () => EvidenceVariable_Category_Elements()
         ),
         ["EvidenceVariable.Characteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceVariable.Characteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceVariable.Characteristic",
             elementsFactory: () => EvidenceVariable_Characteristic_Elements()
         ),
         ["EvidenceVariable.characteristic.DefinitionByCombination"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceVariable.characteristic.DefinitionByCombination",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceVariable.characteristic.DefinitionByCombination",
             elementsFactory: () => EvidenceVariable_characteristic_DefinitionByCombination_Elements()
         ),
         ["EvidenceVariable.characteristic.DefinitionByTypeAndValue"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceVariable.characteristic.DefinitionByTypeAndValue",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceVariable.characteristic.DefinitionByTypeAndValue",
             elementsFactory: () => EvidenceVariable_characteristic_DefinitionByTypeAndValue_Elements()
         ),
         ["EvidenceVariable.characteristic.TimeFromEvent"] = new GeneratedStructureDefinitionSummary(
             typeName: "EvidenceVariable.characteristic.TimeFromEvent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/EvidenceVariable.characteristic.TimeFromEvent",
             elementsFactory: () => EvidenceVariable_characteristic_TimeFromEvent_Elements()
         ),
         ["ExampleScenario"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario",
             elementsFactory: () => ExampleScenario_Elements()
         ),
         ["ExampleScenario.Actor"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.Actor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.Actor",
             elementsFactory: () => ExampleScenario_Actor_Elements()
         ),
         ["ExampleScenario.Instance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.Instance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.Instance",
             elementsFactory: () => ExampleScenario_Instance_Elements()
         ),
         ["ExampleScenario.instance.ContainedInstance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.instance.ContainedInstance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.instance.ContainedInstance",
             elementsFactory: () => ExampleScenario_instance_ContainedInstance_Elements()
         ),
         ["ExampleScenario.instance.Version"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.instance.Version",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.instance.Version",
             elementsFactory: () => ExampleScenario_instance_Version_Elements()
         ),
         ["ExampleScenario.Process"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.Process",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.Process",
             elementsFactory: () => ExampleScenario_Process_Elements()
         ),
         ["ExampleScenario.process.Step"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.process.Step",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.process.Step",
             elementsFactory: () => ExampleScenario_process_Step_Elements()
         ),
         ["ExampleScenario.process.step.Alternative"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.process.step.Alternative",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.process.step.Alternative",
             elementsFactory: () => ExampleScenario_process_step_Alternative_Elements()
         ),
         ["ExampleScenario.process.step.Operation"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExampleScenario.process.step.Operation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExampleScenario.process.step.Operation",
             elementsFactory: () => ExampleScenario_process_step_Operation_Elements()
         ),
         ["ExplanationOfBenefit"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit",
             elementsFactory: () => ExplanationOfBenefit_Elements()
         ),
         ["ExplanationOfBenefit.Accident"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Accident",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Accident",
             elementsFactory: () => ExplanationOfBenefit_Accident_Elements()
         ),
         ["ExplanationOfBenefit.AddItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.AddItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.AddItem",
             elementsFactory: () => ExplanationOfBenefit_AddItem_Elements()
         ),
         ["ExplanationOfBenefit.addItem.BodySite"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.addItem.BodySite",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.addItem.BodySite",
             elementsFactory: () => ExplanationOfBenefit_addItem_BodySite_Elements()
         ),
         ["ExplanationOfBenefit.addItem.Detail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.addItem.Detail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.addItem.Detail",
             elementsFactory: () => ExplanationOfBenefit_addItem_Detail_Elements()
         ),
         ["ExplanationOfBenefit.addItem.detail.SubDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.addItem.detail.SubDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.addItem.detail.SubDetail",
             elementsFactory: () => ExplanationOfBenefit_addItem_detail_SubDetail_Elements()
         ),
         ["ExplanationOfBenefit.BenefitBalance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.BenefitBalance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.BenefitBalance",
             elementsFactory: () => ExplanationOfBenefit_BenefitBalance_Elements()
         ),
         ["ExplanationOfBenefit.benefitBalance.Financial"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.benefitBalance.Financial",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.benefitBalance.Financial",
             elementsFactory: () => ExplanationOfBenefit_benefitBalance_Financial_Elements()
         ),
         ["ExplanationOfBenefit.CareTeam"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.CareTeam",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.CareTeam",
             elementsFactory: () => ExplanationOfBenefit_CareTeam_Elements()
         ),
         ["ExplanationOfBenefit.Diagnosis"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Diagnosis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Diagnosis",
             elementsFactory: () => ExplanationOfBenefit_Diagnosis_Elements()
         ),
         ["ExplanationOfBenefit.Event"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Event",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Event",
             elementsFactory: () => ExplanationOfBenefit_Event_Elements()
         ),
         ["ExplanationOfBenefit.Insurance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Insurance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Insurance",
             elementsFactory: () => ExplanationOfBenefit_Insurance_Elements()
         ),
         ["ExplanationOfBenefit.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Item",
             elementsFactory: () => ExplanationOfBenefit_Item_Elements()
         ),
         ["ExplanationOfBenefit.item.Adjudication"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.item.Adjudication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.item.Adjudication",
             elementsFactory: () => ExplanationOfBenefit_item_Adjudication_Elements()
         ),
         ["ExplanationOfBenefit.item.BodySite"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.item.BodySite",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.item.BodySite",
             elementsFactory: () => ExplanationOfBenefit_item_BodySite_Elements()
         ),
         ["ExplanationOfBenefit.item.Detail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.item.Detail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.item.Detail",
             elementsFactory: () => ExplanationOfBenefit_item_Detail_Elements()
         ),
         ["ExplanationOfBenefit.item.detail.SubDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.item.detail.SubDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.item.detail.SubDetail",
             elementsFactory: () => ExplanationOfBenefit_item_detail_SubDetail_Elements()
         ),
         ["ExplanationOfBenefit.item.ReviewOutcome"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.item.ReviewOutcome",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.item.ReviewOutcome",
             elementsFactory: () => ExplanationOfBenefit_item_ReviewOutcome_Elements()
         ),
         ["ExplanationOfBenefit.Payee"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Payee",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Payee",
             elementsFactory: () => ExplanationOfBenefit_Payee_Elements()
         ),
         ["ExplanationOfBenefit.Payment"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Payment",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Payment",
             elementsFactory: () => ExplanationOfBenefit_Payment_Elements()
         ),
         ["ExplanationOfBenefit.Procedure"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Procedure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Procedure",
             elementsFactory: () => ExplanationOfBenefit_Procedure_Elements()
         ),
         ["ExplanationOfBenefit.ProcessNote"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.ProcessNote",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.ProcessNote",
             elementsFactory: () => ExplanationOfBenefit_ProcessNote_Elements()
         ),
         ["ExplanationOfBenefit.Related"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Related",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Related",
             elementsFactory: () => ExplanationOfBenefit_Related_Elements()
         ),
         ["ExplanationOfBenefit.SupportingInfo"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.SupportingInfo",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.SupportingInfo",
             elementsFactory: () => ExplanationOfBenefit_SupportingInfo_Elements()
         ),
         ["ExplanationOfBenefit.Total"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExplanationOfBenefit.Total",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit.Total",
             elementsFactory: () => ExplanationOfBenefit_Total_Elements()
         ),
         ["Expression"] = new GeneratedStructureDefinitionSummary(
             typeName: "Expression",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Expression",
             elementsFactory: () => Expression_Elements()
         ),
         ["ExtendedContactDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ExtendedContactDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ExtendedContactDetail",
             elementsFactory: () => ExtendedContactDetail_Elements()
         ),
         ["Extension"] = new GeneratedStructureDefinitionSummary(
             typeName: "Extension",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Extension",
             elementsFactory: () => Extension_Elements()
         ),
         ["FamilyMemberHistory"] = new GeneratedStructureDefinitionSummary(
             typeName: "FamilyMemberHistory",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/FamilyMemberHistory",
             elementsFactory: () => FamilyMemberHistory_Elements()
         ),
         ["FamilyMemberHistory.Condition"] = new GeneratedStructureDefinitionSummary(
             typeName: "FamilyMemberHistory.Condition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/FamilyMemberHistory.Condition",
             elementsFactory: () => FamilyMemberHistory_Condition_Elements()
         ),
         ["FamilyMemberHistory.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "FamilyMemberHistory.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/FamilyMemberHistory.Participant",
             elementsFactory: () => FamilyMemberHistory_Participant_Elements()
         ),
         ["FamilyMemberHistory.Procedure"] = new GeneratedStructureDefinitionSummary(
             typeName: "FamilyMemberHistory.Procedure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/FamilyMemberHistory.Procedure",
             elementsFactory: () => FamilyMemberHistory_Procedure_Elements()
         ),
         ["Flag"] = new GeneratedStructureDefinitionSummary(
             typeName: "Flag",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Flag",
             elementsFactory: () => Flag_Elements()
         ),
         ["FormularyItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "FormularyItem",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/FormularyItem",
             elementsFactory: () => FormularyItem_Elements()
         ),
         ["GenomicStudy"] = new GeneratedStructureDefinitionSummary(
             typeName: "GenomicStudy",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/GenomicStudy",
             elementsFactory: () => GenomicStudy_Elements()
         ),
         ["GenomicStudy.Analysis"] = new GeneratedStructureDefinitionSummary(
             typeName: "GenomicStudy.Analysis",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GenomicStudy.Analysis",
             elementsFactory: () => GenomicStudy_Analysis_Elements()
         ),
         ["GenomicStudy.analysis.Device"] = new GeneratedStructureDefinitionSummary(
             typeName: "GenomicStudy.analysis.Device",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GenomicStudy.analysis.Device",
             elementsFactory: () => GenomicStudy_analysis_Device_Elements()
         ),
         ["GenomicStudy.analysis.Input"] = new GeneratedStructureDefinitionSummary(
             typeName: "GenomicStudy.analysis.Input",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GenomicStudy.analysis.Input",
             elementsFactory: () => GenomicStudy_analysis_Input_Elements()
         ),
         ["GenomicStudy.analysis.Output"] = new GeneratedStructureDefinitionSummary(
             typeName: "GenomicStudy.analysis.Output",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GenomicStudy.analysis.Output",
             elementsFactory: () => GenomicStudy_analysis_Output_Elements()
         ),
         ["GenomicStudy.analysis.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "GenomicStudy.analysis.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GenomicStudy.analysis.Performer",
             elementsFactory: () => GenomicStudy_analysis_Performer_Elements()
         ),
         ["Goal"] = new GeneratedStructureDefinitionSummary(
             typeName: "Goal",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Goal",
             elementsFactory: () => Goal_Elements()
         ),
         ["Goal.Target"] = new GeneratedStructureDefinitionSummary(
             typeName: "Goal.Target",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Goal.Target",
             elementsFactory: () => Goal_Target_Elements()
         ),
         ["GraphDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "GraphDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/GraphDefinition",
             elementsFactory: () => GraphDefinition_Elements()
         ),
         ["GraphDefinition.Link"] = new GeneratedStructureDefinitionSummary(
             typeName: "GraphDefinition.Link",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GraphDefinition.Link",
             elementsFactory: () => GraphDefinition_Link_Elements()
         ),
         ["GraphDefinition.link.Compartment"] = new GeneratedStructureDefinitionSummary(
             typeName: "GraphDefinition.link.Compartment",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GraphDefinition.link.Compartment",
             elementsFactory: () => GraphDefinition_link_Compartment_Elements()
         ),
         ["GraphDefinition.Node"] = new GeneratedStructureDefinitionSummary(
             typeName: "GraphDefinition.Node",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/GraphDefinition.Node",
             elementsFactory: () => GraphDefinition_Node_Elements()
         ),
         ["Group"] = new GeneratedStructureDefinitionSummary(
             typeName: "Group",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Group",
             elementsFactory: () => Group_Elements()
         ),
         ["Group.Characteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "Group.Characteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Group.Characteristic",
             elementsFactory: () => Group_Characteristic_Elements()
         ),
         ["Group.Member"] = new GeneratedStructureDefinitionSummary(
             typeName: "Group.Member",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Group.Member",
             elementsFactory: () => Group_Member_Elements()
         ),
         ["GuidanceResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "GuidanceResponse",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/GuidanceResponse",
             elementsFactory: () => GuidanceResponse_Elements()
         ),
         ["HealthcareService"] = new GeneratedStructureDefinitionSummary(
             typeName: "HealthcareService",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/HealthcareService",
             elementsFactory: () => HealthcareService_Elements()
         ),
         ["HealthcareService.Eligibility"] = new GeneratedStructureDefinitionSummary(
             typeName: "HealthcareService.Eligibility",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/HealthcareService.Eligibility",
             elementsFactory: () => HealthcareService_Eligibility_Elements()
         ),
         ["HumanName"] = new GeneratedStructureDefinitionSummary(
             typeName: "HumanName",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/HumanName",
             elementsFactory: () => HumanName_Elements()
         ),
         ["id"] = new GeneratedStructureDefinitionSummary(
             typeName: "id",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/id",
             elementsFactory: () => id_Elements()
         ),
         ["Identifier"] = new GeneratedStructureDefinitionSummary(
             typeName: "Identifier",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Identifier",
             elementsFactory: () => Identifier_Elements()
         ),
         ["ImagingSelection"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingSelection",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingSelection",
             elementsFactory: () => ImagingSelection_Elements()
         ),
         ["ImagingSelection.Instance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingSelection.Instance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingSelection.Instance",
             elementsFactory: () => ImagingSelection_Instance_Elements()
         ),
         ["ImagingSelection.instance.ImageRegion2D"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingSelection.instance.ImageRegion2D",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingSelection.instance.ImageRegion2D",
             elementsFactory: () => ImagingSelection_instance_ImageRegion2D_Elements()
         ),
         ["ImagingSelection.instance.ImageRegion3D"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingSelection.instance.ImageRegion3D",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingSelection.instance.ImageRegion3D",
             elementsFactory: () => ImagingSelection_instance_ImageRegion3D_Elements()
         ),
         ["ImagingSelection.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingSelection.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingSelection.Performer",
             elementsFactory: () => ImagingSelection_Performer_Elements()
         ),
         ["ImagingStudy"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingStudy",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingStudy",
             elementsFactory: () => ImagingStudy_Elements()
         ),
         ["ImagingStudy.Series"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingStudy.Series",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingStudy.Series",
             elementsFactory: () => ImagingStudy_Series_Elements()
         ),
         ["ImagingStudy.series.Instance"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingStudy.series.Instance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingStudy.series.Instance",
             elementsFactory: () => ImagingStudy_series_Instance_Elements()
         ),
         ["ImagingStudy.series.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImagingStudy.series.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImagingStudy.series.Performer",
             elementsFactory: () => ImagingStudy_series_Performer_Elements()
         ),
         ["Immunization"] = new GeneratedStructureDefinitionSummary(
             typeName: "Immunization",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Immunization",
             elementsFactory: () => Immunization_Elements()
         ),
         ["Immunization.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Immunization.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Immunization.Performer",
             elementsFactory: () => Immunization_Performer_Elements()
         ),
         ["Immunization.ProgramEligibility"] = new GeneratedStructureDefinitionSummary(
             typeName: "Immunization.ProgramEligibility",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Immunization.ProgramEligibility",
             elementsFactory: () => Immunization_ProgramEligibility_Elements()
         ),
         ["Immunization.ProtocolApplied"] = new GeneratedStructureDefinitionSummary(
             typeName: "Immunization.ProtocolApplied",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Immunization.ProtocolApplied",
             elementsFactory: () => Immunization_ProtocolApplied_Elements()
         ),
         ["Immunization.Reaction"] = new GeneratedStructureDefinitionSummary(
             typeName: "Immunization.Reaction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Immunization.Reaction",
             elementsFactory: () => Immunization_Reaction_Elements()
         ),
         ["ImmunizationEvaluation"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImmunizationEvaluation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ImmunizationEvaluation",
             elementsFactory: () => ImmunizationEvaluation_Elements()
         ),
         ["ImmunizationRecommendation"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImmunizationRecommendation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ImmunizationRecommendation",
             elementsFactory: () => ImmunizationRecommendation_Elements()
         ),
         ["ImmunizationRecommendation.Recommendation"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImmunizationRecommendation.Recommendation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImmunizationRecommendation.Recommendation",
             elementsFactory: () => ImmunizationRecommendation_Recommendation_Elements()
         ),
         ["ImmunizationRecommendation.recommendation.DateCriterion"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImmunizationRecommendation.recommendation.DateCriterion",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImmunizationRecommendation.recommendation.DateCriterion",
             elementsFactory: () => ImmunizationRecommendation_recommendation_DateCriterion_Elements()
         ),
         ["ImplementationGuide"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide",
             elementsFactory: () => ImplementationGuide_Elements()
         ),
         ["ImplementationGuide.Definition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.Definition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.Definition",
             elementsFactory: () => ImplementationGuide_Definition_Elements()
         ),
         ["ImplementationGuide.definition.Grouping"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.definition.Grouping",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.definition.Grouping",
             elementsFactory: () => ImplementationGuide_definition_Grouping_Elements()
         ),
         ["ImplementationGuide.definition.Page"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.definition.Page",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.definition.Page",
             elementsFactory: () => ImplementationGuide_definition_Page_Elements()
         ),
         ["ImplementationGuide.definition.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.definition.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.definition.Parameter",
             elementsFactory: () => ImplementationGuide_definition_Parameter_Elements()
         ),
         ["ImplementationGuide.definition.Resource"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.definition.Resource",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.definition.Resource",
             elementsFactory: () => ImplementationGuide_definition_Resource_Elements()
         ),
         ["ImplementationGuide.definition.Template"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.definition.Template",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.definition.Template",
             elementsFactory: () => ImplementationGuide_definition_Template_Elements()
         ),
         ["ImplementationGuide.DependsOn"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.DependsOn",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.DependsOn",
             elementsFactory: () => ImplementationGuide_DependsOn_Elements()
         ),
         ["ImplementationGuide.Global"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.Global",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.Global",
             elementsFactory: () => ImplementationGuide_Global_Elements()
         ),
         ["ImplementationGuide.Manifest"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.Manifest",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.Manifest",
             elementsFactory: () => ImplementationGuide_Manifest_Elements()
         ),
         ["ImplementationGuide.manifest.Page"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.manifest.Page",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.manifest.Page",
             elementsFactory: () => ImplementationGuide_manifest_Page_Elements()
         ),
         ["ImplementationGuide.manifest.Resource"] = new GeneratedStructureDefinitionSummary(
             typeName: "ImplementationGuide.manifest.Resource",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ImplementationGuide.manifest.Resource",
             elementsFactory: () => ImplementationGuide_manifest_Resource_Elements()
         ),
         ["Ingredient"] = new GeneratedStructureDefinitionSummary(
             typeName: "Ingredient",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Ingredient",
             elementsFactory: () => Ingredient_Elements()
         ),
         ["Ingredient.Manufacturer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Ingredient.Manufacturer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Ingredient.Manufacturer",
             elementsFactory: () => Ingredient_Manufacturer_Elements()
         ),
         ["Ingredient.Substance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Ingredient.Substance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Ingredient.Substance",
             elementsFactory: () => Ingredient_Substance_Elements()
         ),
         ["Ingredient.substance.Strength"] = new GeneratedStructureDefinitionSummary(
             typeName: "Ingredient.substance.Strength",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Ingredient.substance.Strength",
             elementsFactory: () => Ingredient_substance_Strength_Elements()
         ),
         ["Ingredient.substance.strength.ReferenceStrength"] = new GeneratedStructureDefinitionSummary(
             typeName: "Ingredient.substance.strength.ReferenceStrength",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Ingredient.substance.strength.ReferenceStrength",
             elementsFactory: () => Ingredient_substance_strength_ReferenceStrength_Elements()
         ),
         ["instant"] = new GeneratedStructureDefinitionSummary(
             typeName: "instant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/instant",
             elementsFactory: () => instant_Elements()
         ),
         ["InsurancePlan"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan",
             elementsFactory: () => InsurancePlan_Elements()
         ),
         ["InsurancePlan.Coverage"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.Coverage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.Coverage",
             elementsFactory: () => InsurancePlan_Coverage_Elements()
         ),
         ["InsurancePlan.coverage.Benefit"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.coverage.Benefit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.coverage.Benefit",
             elementsFactory: () => InsurancePlan_coverage_Benefit_Elements()
         ),
         ["InsurancePlan.coverage.benefit.Limit"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.coverage.benefit.Limit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.coverage.benefit.Limit",
             elementsFactory: () => InsurancePlan_coverage_benefit_Limit_Elements()
         ),
         ["InsurancePlan.Plan"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.Plan",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.Plan",
             elementsFactory: () => InsurancePlan_Plan_Elements()
         ),
         ["InsurancePlan.plan.GeneralCost"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.plan.GeneralCost",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.plan.GeneralCost",
             elementsFactory: () => InsurancePlan_plan_GeneralCost_Elements()
         ),
         ["InsurancePlan.plan.SpecificCost"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.plan.SpecificCost",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.plan.SpecificCost",
             elementsFactory: () => InsurancePlan_plan_SpecificCost_Elements()
         ),
         ["InsurancePlan.plan.specificCost.Benefit"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.plan.specificCost.Benefit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.plan.specificCost.Benefit",
             elementsFactory: () => InsurancePlan_plan_specificCost_Benefit_Elements()
         ),
         ["InsurancePlan.plan.specificCost.benefit.Cost"] = new GeneratedStructureDefinitionSummary(
             typeName: "InsurancePlan.plan.specificCost.benefit.Cost",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InsurancePlan.plan.specificCost.benefit.Cost",
             elementsFactory: () => InsurancePlan_plan_specificCost_benefit_Cost_Elements()
         ),
         ["integer"] = new GeneratedStructureDefinitionSummary(
             typeName: "integer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/integer",
             elementsFactory: () => integer_Elements()
         ),
         ["integer64"] = new GeneratedStructureDefinitionSummary(
             typeName: "integer64",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/integer64",
             elementsFactory: () => integer64_Elements()
         ),
         ["InventoryItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem",
             elementsFactory: () => InventoryItem_Elements()
         ),
         ["InventoryItem.Association"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem.Association",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem.Association",
             elementsFactory: () => InventoryItem_Association_Elements()
         ),
         ["InventoryItem.Characteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem.Characteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem.Characteristic",
             elementsFactory: () => InventoryItem_Characteristic_Elements()
         ),
         ["InventoryItem.Description"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem.Description",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem.Description",
             elementsFactory: () => InventoryItem_Description_Elements()
         ),
         ["InventoryItem.Instance"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem.Instance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem.Instance",
             elementsFactory: () => InventoryItem_Instance_Elements()
         ),
         ["InventoryItem.Name"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem.Name",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem.Name",
             elementsFactory: () => InventoryItem_Name_Elements()
         ),
         ["InventoryItem.ResponsibleOrganization"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryItem.ResponsibleOrganization",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryItem.ResponsibleOrganization",
             elementsFactory: () => InventoryItem_ResponsibleOrganization_Elements()
         ),
         ["InventoryReport"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryReport",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryReport",
             elementsFactory: () => InventoryReport_Elements()
         ),
         ["InventoryReport.InventoryListing"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryReport.InventoryListing",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryReport.InventoryListing",
             elementsFactory: () => InventoryReport_InventoryListing_Elements()
         ),
         ["InventoryReport.inventoryListing.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "InventoryReport.inventoryListing.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/InventoryReport.inventoryListing.Item",
             elementsFactory: () => InventoryReport_inventoryListing_Item_Elements()
         ),
         ["Invoice"] = new GeneratedStructureDefinitionSummary(
             typeName: "Invoice",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Invoice",
             elementsFactory: () => Invoice_Elements()
         ),
         ["Invoice.LineItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "Invoice.LineItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Invoice.LineItem",
             elementsFactory: () => Invoice_LineItem_Elements()
         ),
         ["Invoice.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "Invoice.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Invoice.Participant",
             elementsFactory: () => Invoice_Participant_Elements()
         ),
         ["Library"] = new GeneratedStructureDefinitionSummary(
             typeName: "Library",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Library",
             elementsFactory: () => Library_Elements()
         ),
         ["Linkage"] = new GeneratedStructureDefinitionSummary(
             typeName: "Linkage",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Linkage",
             elementsFactory: () => Linkage_Elements()
         ),
         ["Linkage.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "Linkage.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Linkage.Item",
             elementsFactory: () => Linkage_Item_Elements()
         ),
         ["List"] = new GeneratedStructureDefinitionSummary(
             typeName: "List",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/List",
             elementsFactory: () => List_Elements()
         ),
         ["List.Entry"] = new GeneratedStructureDefinitionSummary(
             typeName: "List.Entry",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/List.Entry",
             elementsFactory: () => List_Entry_Elements()
         ),
         ["Location"] = new GeneratedStructureDefinitionSummary(
             typeName: "Location",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Location",
             elementsFactory: () => Location_Elements()
         ),
         ["Location.Position"] = new GeneratedStructureDefinitionSummary(
             typeName: "Location.Position",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Location.Position",
             elementsFactory: () => Location_Position_Elements()
         ),
         ["ManufacturedItemDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ManufacturedItemDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ManufacturedItemDefinition",
             elementsFactory: () => ManufacturedItemDefinition_Elements()
         ),
         ["ManufacturedItemDefinition.Component"] = new GeneratedStructureDefinitionSummary(
             typeName: "ManufacturedItemDefinition.Component",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ManufacturedItemDefinition.Component",
             elementsFactory: () => ManufacturedItemDefinition_Component_Elements()
         ),
         ["ManufacturedItemDefinition.component.Constituent"] = new GeneratedStructureDefinitionSummary(
             typeName: "ManufacturedItemDefinition.component.Constituent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ManufacturedItemDefinition.component.Constituent",
             elementsFactory: () => ManufacturedItemDefinition_component_Constituent_Elements()
         ),
         ["ManufacturedItemDefinition.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "ManufacturedItemDefinition.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ManufacturedItemDefinition.Property",
             elementsFactory: () => ManufacturedItemDefinition_Property_Elements()
         ),
         ["markdown"] = new GeneratedStructureDefinitionSummary(
             typeName: "markdown",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/markdown",
             elementsFactory: () => markdown_Elements()
         ),
         ["MarketingStatus"] = new GeneratedStructureDefinitionSummary(
             typeName: "MarketingStatus",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MarketingStatus",
             elementsFactory: () => MarketingStatus_Elements()
         ),
         ["Measure"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure",
             elementsFactory: () => Measure_Elements()
         ),
         ["Measure.Group"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure.Group",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure.Group",
             elementsFactory: () => Measure_Group_Elements()
         ),
         ["Measure.group.Population"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure.group.Population",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure.group.Population",
             elementsFactory: () => Measure_group_Population_Elements()
         ),
         ["Measure.group.Stratifier"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure.group.Stratifier",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure.group.Stratifier",
             elementsFactory: () => Measure_group_Stratifier_Elements()
         ),
         ["Measure.group.stratifier.Component"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure.group.stratifier.Component",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure.group.stratifier.Component",
             elementsFactory: () => Measure_group_stratifier_Component_Elements()
         ),
         ["Measure.SupplementalData"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure.SupplementalData",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure.SupplementalData",
             elementsFactory: () => Measure_SupplementalData_Elements()
         ),
         ["Measure.Term"] = new GeneratedStructureDefinitionSummary(
             typeName: "Measure.Term",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Measure.Term",
             elementsFactory: () => Measure_Term_Elements()
         ),
         ["MeasureReport"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport",
             elementsFactory: () => MeasureReport_Elements()
         ),
         ["MeasureReport.Group"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport.Group",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport.Group",
             elementsFactory: () => MeasureReport_Group_Elements()
         ),
         ["MeasureReport.group.Population"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport.group.Population",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport.group.Population",
             elementsFactory: () => MeasureReport_group_Population_Elements()
         ),
         ["MeasureReport.group.Stratifier"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport.group.Stratifier",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport.group.Stratifier",
             elementsFactory: () => MeasureReport_group_Stratifier_Elements()
         ),
         ["MeasureReport.group.stratifier.Stratum"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport.group.stratifier.Stratum",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport.group.stratifier.Stratum",
             elementsFactory: () => MeasureReport_group_stratifier_Stratum_Elements()
         ),
         ["MeasureReport.group.stratifier.stratum.Component"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport.group.stratifier.stratum.Component",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport.group.stratifier.stratum.Component",
             elementsFactory: () => MeasureReport_group_stratifier_stratum_Component_Elements()
         ),
         ["MeasureReport.group.stratifier.stratum.Population"] = new GeneratedStructureDefinitionSummary(
             typeName: "MeasureReport.group.stratifier.stratum.Population",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MeasureReport.group.stratifier.stratum.Population",
             elementsFactory: () => MeasureReport_group_stratifier_stratum_Population_Elements()
         ),
         ["Medication"] = new GeneratedStructureDefinitionSummary(
             typeName: "Medication",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Medication",
             elementsFactory: () => Medication_Elements()
         ),
         ["Medication.Batch"] = new GeneratedStructureDefinitionSummary(
             typeName: "Medication.Batch",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Medication.Batch",
             elementsFactory: () => Medication_Batch_Elements()
         ),
         ["Medication.Ingredient"] = new GeneratedStructureDefinitionSummary(
             typeName: "Medication.Ingredient",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Medication.Ingredient",
             elementsFactory: () => Medication_Ingredient_Elements()
         ),
         ["MedicationAdministration"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationAdministration",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationAdministration",
             elementsFactory: () => MedicationAdministration_Elements()
         ),
         ["MedicationAdministration.Dosage"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationAdministration.Dosage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationAdministration.Dosage",
             elementsFactory: () => MedicationAdministration_Dosage_Elements()
         ),
         ["MedicationAdministration.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationAdministration.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationAdministration.Performer",
             elementsFactory: () => MedicationAdministration_Performer_Elements()
         ),
         ["MedicationDispense"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationDispense",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationDispense",
             elementsFactory: () => MedicationDispense_Elements()
         ),
         ["MedicationDispense.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationDispense.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationDispense.Performer",
             elementsFactory: () => MedicationDispense_Performer_Elements()
         ),
         ["MedicationDispense.Substitution"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationDispense.Substitution",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationDispense.Substitution",
             elementsFactory: () => MedicationDispense_Substitution_Elements()
         ),
         ["MedicationKnowledge"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge",
             elementsFactory: () => MedicationKnowledge_Elements()
         ),
         ["MedicationKnowledge.Cost"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.Cost",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.Cost",
             elementsFactory: () => MedicationKnowledge_Cost_Elements()
         ),
         ["MedicationKnowledge.Definitional"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.Definitional",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.Definitional",
             elementsFactory: () => MedicationKnowledge_Definitional_Elements()
         ),
         ["MedicationKnowledge.definitional.DrugCharacteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.definitional.DrugCharacteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.definitional.DrugCharacteristic",
             elementsFactory: () => MedicationKnowledge_definitional_DrugCharacteristic_Elements()
         ),
         ["MedicationKnowledge.definitional.Ingredient"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.definitional.Ingredient",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.definitional.Ingredient",
             elementsFactory: () => MedicationKnowledge_definitional_Ingredient_Elements()
         ),
         ["MedicationKnowledge.IndicationGuideline"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.IndicationGuideline",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.IndicationGuideline",
             elementsFactory: () => MedicationKnowledge_IndicationGuideline_Elements()
         ),
         ["MedicationKnowledge.indicationGuideline.DosingGuideline"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.indicationGuideline.DosingGuideline",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.indicationGuideline.DosingGuideline",
             elementsFactory: () => MedicationKnowledge_indicationGuideline_DosingGuideline_Elements()
         ),
         ["MedicationKnowledge.indicationGuideline.dosingGuideline.Dosage"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.indicationGuideline.dosingGuideline.Dosage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.indicationGuideline.dosingGuideline.Dosage",
             elementsFactory: () => MedicationKnowledge_indicationGuideline_dosingGuideline_Dosage_Elements()
         ),
         ["MedicationKnowledge.indicationGuideline.dosingGuideline.PatientCharacteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.indicationGuideline.dosingGuideline.PatientCharacteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.indicationGuideline.dosingGuideline.PatientCharacteristic",
             elementsFactory: () => MedicationKnowledge_indicationGuideline_dosingGuideline_PatientCharacteristic_Elements()
         ),
         ["MedicationKnowledge.MedicineClassification"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.MedicineClassification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.MedicineClassification",
             elementsFactory: () => MedicationKnowledge_MedicineClassification_Elements()
         ),
         ["MedicationKnowledge.MonitoringProgram"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.MonitoringProgram",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.MonitoringProgram",
             elementsFactory: () => MedicationKnowledge_MonitoringProgram_Elements()
         ),
         ["MedicationKnowledge.Monograph"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.Monograph",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.Monograph",
             elementsFactory: () => MedicationKnowledge_Monograph_Elements()
         ),
         ["MedicationKnowledge.Packaging"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.Packaging",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.Packaging",
             elementsFactory: () => MedicationKnowledge_Packaging_Elements()
         ),
         ["MedicationKnowledge.Regulatory"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.Regulatory",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.Regulatory",
             elementsFactory: () => MedicationKnowledge_Regulatory_Elements()
         ),
         ["MedicationKnowledge.regulatory.MaxDispense"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.regulatory.MaxDispense",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.regulatory.MaxDispense",
             elementsFactory: () => MedicationKnowledge_regulatory_MaxDispense_Elements()
         ),
         ["MedicationKnowledge.regulatory.Substitution"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.regulatory.Substitution",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.regulatory.Substitution",
             elementsFactory: () => MedicationKnowledge_regulatory_Substitution_Elements()
         ),
         ["MedicationKnowledge.RelatedMedicationKnowledge"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.RelatedMedicationKnowledge",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.RelatedMedicationKnowledge",
             elementsFactory: () => MedicationKnowledge_RelatedMedicationKnowledge_Elements()
         ),
         ["MedicationKnowledge.StorageGuideline"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.StorageGuideline",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.StorageGuideline",
             elementsFactory: () => MedicationKnowledge_StorageGuideline_Elements()
         ),
         ["MedicationKnowledge.storageGuideline.EnvironmentalSetting"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationKnowledge.storageGuideline.EnvironmentalSetting",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge.storageGuideline.EnvironmentalSetting",
             elementsFactory: () => MedicationKnowledge_storageGuideline_EnvironmentalSetting_Elements()
         ),
         ["MedicationRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationRequest",
             elementsFactory: () => MedicationRequest_Elements()
         ),
         ["MedicationRequest.DispenseRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationRequest.DispenseRequest",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationRequest.DispenseRequest",
             elementsFactory: () => MedicationRequest_DispenseRequest_Elements()
         ),
         ["MedicationRequest.dispenseRequest.InitialFill"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationRequest.dispenseRequest.InitialFill",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationRequest.dispenseRequest.InitialFill",
             elementsFactory: () => MedicationRequest_dispenseRequest_InitialFill_Elements()
         ),
         ["MedicationRequest.Substitution"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationRequest.Substitution",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationRequest.Substitution",
             elementsFactory: () => MedicationRequest_Substitution_Elements()
         ),
         ["MedicationStatement"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationStatement",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationStatement",
             elementsFactory: () => MedicationStatement_Elements()
         ),
         ["MedicationStatement.Adherence"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicationStatement.Adherence",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicationStatement.Adherence",
             elementsFactory: () => MedicationStatement_Adherence_Elements()
         ),
         ["MedicinalProductDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition",
             elementsFactory: () => MedicinalProductDefinition_Elements()
         ),
         ["MedicinalProductDefinition.Characteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.Characteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.Characteristic",
             elementsFactory: () => MedicinalProductDefinition_Characteristic_Elements()
         ),
         ["MedicinalProductDefinition.Contact"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.Contact",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.Contact",
             elementsFactory: () => MedicinalProductDefinition_Contact_Elements()
         ),
         ["MedicinalProductDefinition.CrossReference"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.CrossReference",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.CrossReference",
             elementsFactory: () => MedicinalProductDefinition_CrossReference_Elements()
         ),
         ["MedicinalProductDefinition.Name"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.Name",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.Name",
             elementsFactory: () => MedicinalProductDefinition_Name_Elements()
         ),
         ["MedicinalProductDefinition.name.Part"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.name.Part",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.name.Part",
             elementsFactory: () => MedicinalProductDefinition_name_Part_Elements()
         ),
         ["MedicinalProductDefinition.name.Usage"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.name.Usage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.name.Usage",
             elementsFactory: () => MedicinalProductDefinition_name_Usage_Elements()
         ),
         ["MedicinalProductDefinition.Operation"] = new GeneratedStructureDefinitionSummary(
             typeName: "MedicinalProductDefinition.Operation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MedicinalProductDefinition.Operation",
             elementsFactory: () => MedicinalProductDefinition_Operation_Elements()
         ),
         ["MessageDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageDefinition",
             elementsFactory: () => MessageDefinition_Elements()
         ),
         ["MessageDefinition.AllowedResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageDefinition.AllowedResponse",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageDefinition.AllowedResponse",
             elementsFactory: () => MessageDefinition_AllowedResponse_Elements()
         ),
         ["MessageDefinition.Focus"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageDefinition.Focus",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageDefinition.Focus",
             elementsFactory: () => MessageDefinition_Focus_Elements()
         ),
         ["MessageHeader"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageHeader",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageHeader",
             elementsFactory: () => MessageHeader_Elements()
         ),
         ["MessageHeader.Destination"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageHeader.Destination",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageHeader.Destination",
             elementsFactory: () => MessageHeader_Destination_Elements()
         ),
         ["MessageHeader.Response"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageHeader.Response",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageHeader.Response",
             elementsFactory: () => MessageHeader_Response_Elements()
         ),
         ["MessageHeader.Source"] = new GeneratedStructureDefinitionSummary(
             typeName: "MessageHeader.Source",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MessageHeader.Source",
             elementsFactory: () => MessageHeader_Source_Elements()
         ),
         ["Meta"] = new GeneratedStructureDefinitionSummary(
             typeName: "Meta",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Meta",
             elementsFactory: () => Meta_Elements()
         ),
         ["MolecularSequence"] = new GeneratedStructureDefinitionSummary(
             typeName: "MolecularSequence",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/MolecularSequence",
             elementsFactory: () => MolecularSequence_Elements()
         ),
         ["MolecularSequence.Relative"] = new GeneratedStructureDefinitionSummary(
             typeName: "MolecularSequence.Relative",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MolecularSequence.Relative",
             elementsFactory: () => MolecularSequence_Relative_Elements()
         ),
         ["MolecularSequence.relative.Edit"] = new GeneratedStructureDefinitionSummary(
             typeName: "MolecularSequence.relative.Edit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MolecularSequence.relative.Edit",
             elementsFactory: () => MolecularSequence_relative_Edit_Elements()
         ),
         ["MolecularSequence.relative.StartingSequence"] = new GeneratedStructureDefinitionSummary(
             typeName: "MolecularSequence.relative.StartingSequence",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MolecularSequence.relative.StartingSequence",
             elementsFactory: () => MolecularSequence_relative_StartingSequence_Elements()
         ),
         ["MonetaryComponent"] = new GeneratedStructureDefinitionSummary(
             typeName: "MonetaryComponent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/MonetaryComponent",
             elementsFactory: () => MonetaryComponent_Elements()
         ),
         ["Money"] = new GeneratedStructureDefinitionSummary(
             typeName: "Money",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Money",
             elementsFactory: () => Money_Elements()
         ),
         ["NamingSystem"] = new GeneratedStructureDefinitionSummary(
             typeName: "NamingSystem",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/NamingSystem",
             elementsFactory: () => NamingSystem_Elements()
         ),
         ["NamingSystem.UniqueId"] = new GeneratedStructureDefinitionSummary(
             typeName: "NamingSystem.UniqueId",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NamingSystem.UniqueId",
             elementsFactory: () => NamingSystem_UniqueId_Elements()
         ),
         ["Narrative"] = new GeneratedStructureDefinitionSummary(
             typeName: "Narrative",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Narrative",
             elementsFactory: () => Narrative_Elements()
         ),
         ["NutritionIntake"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionIntake",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionIntake",
             elementsFactory: () => NutritionIntake_Elements()
         ),
         ["NutritionIntake.ConsumedItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionIntake.ConsumedItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionIntake.ConsumedItem",
             elementsFactory: () => NutritionIntake_ConsumedItem_Elements()
         ),
         ["NutritionIntake.IngredientLabel"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionIntake.IngredientLabel",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionIntake.IngredientLabel",
             elementsFactory: () => NutritionIntake_IngredientLabel_Elements()
         ),
         ["NutritionIntake.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionIntake.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionIntake.Performer",
             elementsFactory: () => NutritionIntake_Performer_Elements()
         ),
         ["NutritionOrder"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder",
             elementsFactory: () => NutritionOrder_Elements()
         ),
         ["NutritionOrder.EnteralFormula"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.EnteralFormula",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.EnteralFormula",
             elementsFactory: () => NutritionOrder_EnteralFormula_Elements()
         ),
         ["NutritionOrder.enteralFormula.Additive"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.enteralFormula.Additive",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.enteralFormula.Additive",
             elementsFactory: () => NutritionOrder_enteralFormula_Additive_Elements()
         ),
         ["NutritionOrder.enteralFormula.Administration"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.enteralFormula.Administration",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.enteralFormula.Administration",
             elementsFactory: () => NutritionOrder_enteralFormula_Administration_Elements()
         ),
         ["NutritionOrder.enteralFormula.administration.Schedule"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.enteralFormula.administration.Schedule",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.enteralFormula.administration.Schedule",
             elementsFactory: () => NutritionOrder_enteralFormula_administration_Schedule_Elements()
         ),
         ["NutritionOrder.OralDiet"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.OralDiet",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.OralDiet",
             elementsFactory: () => NutritionOrder_OralDiet_Elements()
         ),
         ["NutritionOrder.oralDiet.Nutrient"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.oralDiet.Nutrient",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.oralDiet.Nutrient",
             elementsFactory: () => NutritionOrder_oralDiet_Nutrient_Elements()
         ),
         ["NutritionOrder.oralDiet.Schedule"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.oralDiet.Schedule",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.oralDiet.Schedule",
             elementsFactory: () => NutritionOrder_oralDiet_Schedule_Elements()
         ),
         ["NutritionOrder.oralDiet.Texture"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.oralDiet.Texture",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.oralDiet.Texture",
             elementsFactory: () => NutritionOrder_oralDiet_Texture_Elements()
         ),
         ["NutritionOrder.Supplement"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.Supplement",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.Supplement",
             elementsFactory: () => NutritionOrder_Supplement_Elements()
         ),
         ["NutritionOrder.supplement.Schedule"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionOrder.supplement.Schedule",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionOrder.supplement.Schedule",
             elementsFactory: () => NutritionOrder_supplement_Schedule_Elements()
         ),
         ["NutritionProduct"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionProduct",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionProduct",
             elementsFactory: () => NutritionProduct_Elements()
         ),
         ["NutritionProduct.Characteristic"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionProduct.Characteristic",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionProduct.Characteristic",
             elementsFactory: () => NutritionProduct_Characteristic_Elements()
         ),
         ["NutritionProduct.Ingredient"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionProduct.Ingredient",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionProduct.Ingredient",
             elementsFactory: () => NutritionProduct_Ingredient_Elements()
         ),
         ["NutritionProduct.Instance"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionProduct.Instance",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionProduct.Instance",
             elementsFactory: () => NutritionProduct_Instance_Elements()
         ),
         ["NutritionProduct.Nutrient"] = new GeneratedStructureDefinitionSummary(
             typeName: "NutritionProduct.Nutrient",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/NutritionProduct.Nutrient",
             elementsFactory: () => NutritionProduct_Nutrient_Elements()
         ),
         ["Observation"] = new GeneratedStructureDefinitionSummary(
             typeName: "Observation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Observation",
             elementsFactory: () => Observation_Elements()
         ),
         ["Observation.Component"] = new GeneratedStructureDefinitionSummary(
             typeName: "Observation.Component",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Observation.Component",
             elementsFactory: () => Observation_Component_Elements()
         ),
         ["Observation.ReferenceRange"] = new GeneratedStructureDefinitionSummary(
             typeName: "Observation.ReferenceRange",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Observation.ReferenceRange",
             elementsFactory: () => Observation_ReferenceRange_Elements()
         ),
         ["Observation.TriggeredBy"] = new GeneratedStructureDefinitionSummary(
             typeName: "Observation.TriggeredBy",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Observation.TriggeredBy",
             elementsFactory: () => Observation_TriggeredBy_Elements()
         ),
         ["ObservationDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ObservationDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ObservationDefinition",
             elementsFactory: () => ObservationDefinition_Elements()
         ),
         ["ObservationDefinition.Component"] = new GeneratedStructureDefinitionSummary(
             typeName: "ObservationDefinition.Component",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ObservationDefinition.Component",
             elementsFactory: () => ObservationDefinition_Component_Elements()
         ),
         ["ObservationDefinition.QualifiedValue"] = new GeneratedStructureDefinitionSummary(
             typeName: "ObservationDefinition.QualifiedValue",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ObservationDefinition.QualifiedValue",
             elementsFactory: () => ObservationDefinition_QualifiedValue_Elements()
         ),
         ["oid"] = new GeneratedStructureDefinitionSummary(
             typeName: "oid",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/oid",
             elementsFactory: () => oid_Elements()
         ),
         ["OperationDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationDefinition",
             elementsFactory: () => OperationDefinition_Elements()
         ),
         ["OperationDefinition.Overload"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationDefinition.Overload",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationDefinition.Overload",
             elementsFactory: () => OperationDefinition_Overload_Elements()
         ),
         ["OperationDefinition.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationDefinition.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationDefinition.Parameter",
             elementsFactory: () => OperationDefinition_Parameter_Elements()
         ),
         ["OperationDefinition.parameter.Binding"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationDefinition.parameter.Binding",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationDefinition.parameter.Binding",
             elementsFactory: () => OperationDefinition_parameter_Binding_Elements()
         ),
         ["OperationDefinition.parameter.ReferencedFrom"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationDefinition.parameter.ReferencedFrom",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationDefinition.parameter.ReferencedFrom",
             elementsFactory: () => OperationDefinition_parameter_ReferencedFrom_Elements()
         ),
         ["OperationOutcome"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationOutcome",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationOutcome",
             elementsFactory: () => OperationOutcome_Elements()
         ),
         ["OperationOutcome.Issue"] = new GeneratedStructureDefinitionSummary(
             typeName: "OperationOutcome.Issue",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/OperationOutcome.Issue",
             elementsFactory: () => OperationOutcome_Issue_Elements()
         ),
         ["Organization"] = new GeneratedStructureDefinitionSummary(
             typeName: "Organization",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Organization",
             elementsFactory: () => Organization_Elements()
         ),
         ["Organization.Qualification"] = new GeneratedStructureDefinitionSummary(
             typeName: "Organization.Qualification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Organization.Qualification",
             elementsFactory: () => Organization_Qualification_Elements()
         ),
         ["OrganizationAffiliation"] = new GeneratedStructureDefinitionSummary(
             typeName: "OrganizationAffiliation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/OrganizationAffiliation",
             elementsFactory: () => OrganizationAffiliation_Elements()
         ),
         ["PackagedProductDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "PackagedProductDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/PackagedProductDefinition",
             elementsFactory: () => PackagedProductDefinition_Elements()
         ),
         ["PackagedProductDefinition.LegalStatusOfSupply"] = new GeneratedStructureDefinitionSummary(
             typeName: "PackagedProductDefinition.LegalStatusOfSupply",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PackagedProductDefinition.LegalStatusOfSupply",
             elementsFactory: () => PackagedProductDefinition_LegalStatusOfSupply_Elements()
         ),
         ["PackagedProductDefinition.Packaging"] = new GeneratedStructureDefinitionSummary(
             typeName: "PackagedProductDefinition.Packaging",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PackagedProductDefinition.Packaging",
             elementsFactory: () => PackagedProductDefinition_Packaging_Elements()
         ),
         ["PackagedProductDefinition.packaging.ContainedItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "PackagedProductDefinition.packaging.ContainedItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PackagedProductDefinition.packaging.ContainedItem",
             elementsFactory: () => PackagedProductDefinition_packaging_ContainedItem_Elements()
         ),
         ["PackagedProductDefinition.packaging.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "PackagedProductDefinition.packaging.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PackagedProductDefinition.packaging.Property",
             elementsFactory: () => PackagedProductDefinition_packaging_Property_Elements()
         ),
         ["ParameterDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "ParameterDefinition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ParameterDefinition",
             elementsFactory: () => ParameterDefinition_Elements()
         ),
         ["Parameters"] = new GeneratedStructureDefinitionSummary(
             typeName: "Parameters",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Parameters",
             elementsFactory: () => Parameters_Elements()
         ),
         ["Parameters.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "Parameters.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Parameters.Parameter",
             elementsFactory: () => Parameters_Parameter_Elements()
         ),
         ["Patient"] = new GeneratedStructureDefinitionSummary(
             typeName: "Patient",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Patient",
             elementsFactory: () => Patient_Elements()
         ),
         ["Patient.Communication"] = new GeneratedStructureDefinitionSummary(
             typeName: "Patient.Communication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Patient.Communication",
             elementsFactory: () => Patient_Communication_Elements()
         ),
         ["Patient.Contact"] = new GeneratedStructureDefinitionSummary(
             typeName: "Patient.Contact",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Patient.Contact",
             elementsFactory: () => Patient_Contact_Elements()
         ),
         ["Patient.Link"] = new GeneratedStructureDefinitionSummary(
             typeName: "Patient.Link",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Patient.Link",
             elementsFactory: () => Patient_Link_Elements()
         ),
         ["PaymentNotice"] = new GeneratedStructureDefinitionSummary(
             typeName: "PaymentNotice",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/PaymentNotice",
             elementsFactory: () => PaymentNotice_Elements()
         ),
         ["PaymentReconciliation"] = new GeneratedStructureDefinitionSummary(
             typeName: "PaymentReconciliation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/PaymentReconciliation",
             elementsFactory: () => PaymentReconciliation_Elements()
         ),
         ["PaymentReconciliation.Allocation"] = new GeneratedStructureDefinitionSummary(
             typeName: "PaymentReconciliation.Allocation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PaymentReconciliation.Allocation",
             elementsFactory: () => PaymentReconciliation_Allocation_Elements()
         ),
         ["PaymentReconciliation.ProcessNote"] = new GeneratedStructureDefinitionSummary(
             typeName: "PaymentReconciliation.ProcessNote",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PaymentReconciliation.ProcessNote",
             elementsFactory: () => PaymentReconciliation_ProcessNote_Elements()
         ),
         ["Period"] = new GeneratedStructureDefinitionSummary(
             typeName: "Period",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Period",
             elementsFactory: () => Period_Elements()
         ),
         ["Permission"] = new GeneratedStructureDefinitionSummary(
             typeName: "Permission",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Permission",
             elementsFactory: () => Permission_Elements()
         ),
         ["Permission.Justification"] = new GeneratedStructureDefinitionSummary(
             typeName: "Permission.Justification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Permission.Justification",
             elementsFactory: () => Permission_Justification_Elements()
         ),
         ["Permission.Rule"] = new GeneratedStructureDefinitionSummary(
             typeName: "Permission.Rule",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Permission.Rule",
             elementsFactory: () => Permission_Rule_Elements()
         ),
         ["Permission.rule.Activity"] = new GeneratedStructureDefinitionSummary(
             typeName: "Permission.rule.Activity",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Permission.rule.Activity",
             elementsFactory: () => Permission_rule_Activity_Elements()
         ),
         ["Permission.rule.Data"] = new GeneratedStructureDefinitionSummary(
             typeName: "Permission.rule.Data",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Permission.rule.Data",
             elementsFactory: () => Permission_rule_Data_Elements()
         ),
         ["Permission.rule.data.Resource"] = new GeneratedStructureDefinitionSummary(
             typeName: "Permission.rule.data.Resource",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Permission.rule.data.Resource",
             elementsFactory: () => Permission_rule_data_Resource_Elements()
         ),
         ["Person"] = new GeneratedStructureDefinitionSummary(
             typeName: "Person",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Person",
             elementsFactory: () => Person_Elements()
         ),
         ["Person.Communication"] = new GeneratedStructureDefinitionSummary(
             typeName: "Person.Communication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Person.Communication",
             elementsFactory: () => Person_Communication_Elements()
         ),
         ["Person.Link"] = new GeneratedStructureDefinitionSummary(
             typeName: "Person.Link",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Person.Link",
             elementsFactory: () => Person_Link_Elements()
         ),
         ["PlanDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition",
             elementsFactory: () => PlanDefinition_Elements()
         ),
         ["PlanDefinition.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.Action",
             elementsFactory: () => PlanDefinition_Action_Elements()
         ),
         ["PlanDefinition.action.Condition"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.action.Condition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.action.Condition",
             elementsFactory: () => PlanDefinition_action_Condition_Elements()
         ),
         ["PlanDefinition.action.DynamicValue"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.action.DynamicValue",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.action.DynamicValue",
             elementsFactory: () => PlanDefinition_action_DynamicValue_Elements()
         ),
         ["PlanDefinition.action.Input"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.action.Input",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.action.Input",
             elementsFactory: () => PlanDefinition_action_Input_Elements()
         ),
         ["PlanDefinition.action.Output"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.action.Output",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.action.Output",
             elementsFactory: () => PlanDefinition_action_Output_Elements()
         ),
         ["PlanDefinition.action.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.action.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.action.Participant",
             elementsFactory: () => PlanDefinition_action_Participant_Elements()
         ),
         ["PlanDefinition.action.RelatedAction"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.action.RelatedAction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.action.RelatedAction",
             elementsFactory: () => PlanDefinition_action_RelatedAction_Elements()
         ),
         ["PlanDefinition.Actor"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.Actor",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.Actor",
             elementsFactory: () => PlanDefinition_Actor_Elements()
         ),
         ["PlanDefinition.actor.Option"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.actor.Option",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.actor.Option",
             elementsFactory: () => PlanDefinition_actor_Option_Elements()
         ),
         ["PlanDefinition.Goal"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.Goal",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.Goal",
             elementsFactory: () => PlanDefinition_Goal_Elements()
         ),
         ["PlanDefinition.goal.Target"] = new GeneratedStructureDefinitionSummary(
             typeName: "PlanDefinition.goal.Target",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PlanDefinition.goal.Target",
             elementsFactory: () => PlanDefinition_goal_Target_Elements()
         ),
         ["positiveInt"] = new GeneratedStructureDefinitionSummary(
             typeName: "positiveInt",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/positiveInt",
             elementsFactory: () => positiveInt_Elements()
         ),
         ["Practitioner"] = new GeneratedStructureDefinitionSummary(
             typeName: "Practitioner",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Practitioner",
             elementsFactory: () => Practitioner_Elements()
         ),
         ["Practitioner.Communication"] = new GeneratedStructureDefinitionSummary(
             typeName: "Practitioner.Communication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Practitioner.Communication",
             elementsFactory: () => Practitioner_Communication_Elements()
         ),
         ["Practitioner.Qualification"] = new GeneratedStructureDefinitionSummary(
             typeName: "Practitioner.Qualification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Practitioner.Qualification",
             elementsFactory: () => Practitioner_Qualification_Elements()
         ),
         ["PractitionerRole"] = new GeneratedStructureDefinitionSummary(
             typeName: "PractitionerRole",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/PractitionerRole",
             elementsFactory: () => PractitionerRole_Elements()
         ),
         ["PrimitiveType"] = new GeneratedStructureDefinitionSummary(
             typeName: "PrimitiveType",
             isAbstract: true,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/PrimitiveType",
             elementsFactory: () => PrimitiveType_Elements()
         ),
         ["Procedure"] = new GeneratedStructureDefinitionSummary(
             typeName: "Procedure",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Procedure",
             elementsFactory: () => Procedure_Elements()
         ),
         ["Procedure.FocalDevice"] = new GeneratedStructureDefinitionSummary(
             typeName: "Procedure.FocalDevice",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Procedure.FocalDevice",
             elementsFactory: () => Procedure_FocalDevice_Elements()
         ),
         ["Procedure.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Procedure.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Procedure.Performer",
             elementsFactory: () => Procedure_Performer_Elements()
         ),
         ["ProductShelfLife"] = new GeneratedStructureDefinitionSummary(
             typeName: "ProductShelfLife",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ProductShelfLife",
             elementsFactory: () => ProductShelfLife_Elements()
         ),
         ["Provenance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Provenance",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Provenance",
             elementsFactory: () => Provenance_Elements()
         ),
         ["Provenance.Agent"] = new GeneratedStructureDefinitionSummary(
             typeName: "Provenance.Agent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Provenance.Agent",
             elementsFactory: () => Provenance_Agent_Elements()
         ),
         ["Provenance.Entity"] = new GeneratedStructureDefinitionSummary(
             typeName: "Provenance.Entity",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Provenance.Entity",
             elementsFactory: () => Provenance_Entity_Elements()
         ),
         ["Quantity"] = new GeneratedStructureDefinitionSummary(
             typeName: "Quantity",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Quantity",
             elementsFactory: () => Quantity_Elements()
         ),
         ["Questionnaire"] = new GeneratedStructureDefinitionSummary(
             typeName: "Questionnaire",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Questionnaire",
             elementsFactory: () => Questionnaire_Elements()
         ),
         ["Questionnaire.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "Questionnaire.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Questionnaire.Item",
             elementsFactory: () => Questionnaire_Item_Elements()
         ),
         ["Questionnaire.item.AnswerOption"] = new GeneratedStructureDefinitionSummary(
             typeName: "Questionnaire.item.AnswerOption",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Questionnaire.item.AnswerOption",
             elementsFactory: () => Questionnaire_item_AnswerOption_Elements()
         ),
         ["Questionnaire.item.EnableWhen"] = new GeneratedStructureDefinitionSummary(
             typeName: "Questionnaire.item.EnableWhen",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Questionnaire.item.EnableWhen",
             elementsFactory: () => Questionnaire_item_EnableWhen_Elements()
         ),
         ["Questionnaire.item.Initial"] = new GeneratedStructureDefinitionSummary(
             typeName: "Questionnaire.item.Initial",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Questionnaire.item.Initial",
             elementsFactory: () => Questionnaire_item_Initial_Elements()
         ),
         ["QuestionnaireResponse"] = new GeneratedStructureDefinitionSummary(
             typeName: "QuestionnaireResponse",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse",
             elementsFactory: () => QuestionnaireResponse_Elements()
         ),
         ["QuestionnaireResponse.Item"] = new GeneratedStructureDefinitionSummary(
             typeName: "QuestionnaireResponse.Item",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse.Item",
             elementsFactory: () => QuestionnaireResponse_Item_Elements()
         ),
         ["QuestionnaireResponse.item.Answer"] = new GeneratedStructureDefinitionSummary(
             typeName: "QuestionnaireResponse.item.Answer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse.item.Answer",
             elementsFactory: () => QuestionnaireResponse_item_Answer_Elements()
         ),
         ["Range"] = new GeneratedStructureDefinitionSummary(
             typeName: "Range",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Range",
             elementsFactory: () => Range_Elements()
         ),
         ["Ratio"] = new GeneratedStructureDefinitionSummary(
             typeName: "Ratio",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Ratio",
             elementsFactory: () => Ratio_Elements()
         ),
         ["RatioRange"] = new GeneratedStructureDefinitionSummary(
             typeName: "RatioRange",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RatioRange",
             elementsFactory: () => RatioRange_Elements()
         ),
         ["Reference"] = new GeneratedStructureDefinitionSummary(
             typeName: "Reference",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Reference",
             elementsFactory: () => Reference_Elements()
         ),
         ["RegulatedAuthorization"] = new GeneratedStructureDefinitionSummary(
             typeName: "RegulatedAuthorization",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/RegulatedAuthorization",
             elementsFactory: () => RegulatedAuthorization_Elements()
         ),
         ["RegulatedAuthorization.Case"] = new GeneratedStructureDefinitionSummary(
             typeName: "RegulatedAuthorization.Case",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RegulatedAuthorization.Case",
             elementsFactory: () => RegulatedAuthorization_Case_Elements()
         ),
         ["RelatedArtifact"] = new GeneratedStructureDefinitionSummary(
             typeName: "RelatedArtifact",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RelatedArtifact",
             elementsFactory: () => RelatedArtifact_Elements()
         ),
         ["RelatedPerson"] = new GeneratedStructureDefinitionSummary(
             typeName: "RelatedPerson",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/RelatedPerson",
             elementsFactory: () => RelatedPerson_Elements()
         ),
         ["RelatedPerson.Communication"] = new GeneratedStructureDefinitionSummary(
             typeName: "RelatedPerson.Communication",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RelatedPerson.Communication",
             elementsFactory: () => RelatedPerson_Communication_Elements()
         ),
         ["RequestOrchestration"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration",
             elementsFactory: () => RequestOrchestration_Elements()
         ),
         ["RequestOrchestration.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.Action",
             elementsFactory: () => RequestOrchestration_Action_Elements()
         ),
         ["RequestOrchestration.action.Condition"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.action.Condition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.action.Condition",
             elementsFactory: () => RequestOrchestration_action_Condition_Elements()
         ),
         ["RequestOrchestration.action.DynamicValue"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.action.DynamicValue",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.action.DynamicValue",
             elementsFactory: () => RequestOrchestration_action_DynamicValue_Elements()
         ),
         ["RequestOrchestration.action.Input"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.action.Input",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.action.Input",
             elementsFactory: () => RequestOrchestration_action_Input_Elements()
         ),
         ["RequestOrchestration.action.Output"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.action.Output",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.action.Output",
             elementsFactory: () => RequestOrchestration_action_Output_Elements()
         ),
         ["RequestOrchestration.action.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.action.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.action.Participant",
             elementsFactory: () => RequestOrchestration_action_Participant_Elements()
         ),
         ["RequestOrchestration.action.RelatedAction"] = new GeneratedStructureDefinitionSummary(
             typeName: "RequestOrchestration.action.RelatedAction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RequestOrchestration.action.RelatedAction",
             elementsFactory: () => RequestOrchestration_action_RelatedAction_Elements()
         ),
         ["Requirements"] = new GeneratedStructureDefinitionSummary(
             typeName: "Requirements",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Requirements",
             elementsFactory: () => Requirements_Elements()
         ),
         ["Requirements.Statement"] = new GeneratedStructureDefinitionSummary(
             typeName: "Requirements.Statement",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Requirements.Statement",
             elementsFactory: () => Requirements_Statement_Elements()
         ),
         ["ResearchStudy"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy",
             elementsFactory: () => ResearchStudy_Elements()
         ),
         ["ResearchStudy.AssociatedParty"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.AssociatedParty",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.AssociatedParty",
             elementsFactory: () => ResearchStudy_AssociatedParty_Elements()
         ),
         ["ResearchStudy.ComparisonGroup"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.ComparisonGroup",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.ComparisonGroup",
             elementsFactory: () => ResearchStudy_ComparisonGroup_Elements()
         ),
         ["ResearchStudy.Label"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.Label",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.Label",
             elementsFactory: () => ResearchStudy_Label_Elements()
         ),
         ["ResearchStudy.Objective"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.Objective",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.Objective",
             elementsFactory: () => ResearchStudy_Objective_Elements()
         ),
         ["ResearchStudy.OutcomeMeasure"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.OutcomeMeasure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.OutcomeMeasure",
             elementsFactory: () => ResearchStudy_OutcomeMeasure_Elements()
         ),
         ["ResearchStudy.ProgressStatus"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.ProgressStatus",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.ProgressStatus",
             elementsFactory: () => ResearchStudy_ProgressStatus_Elements()
         ),
         ["ResearchStudy.Recruitment"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchStudy.Recruitment",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchStudy.Recruitment",
             elementsFactory: () => ResearchStudy_Recruitment_Elements()
         ),
         ["ResearchSubject"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchSubject",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchSubject",
             elementsFactory: () => ResearchSubject_Elements()
         ),
         ["ResearchSubject.Progress"] = new GeneratedStructureDefinitionSummary(
             typeName: "ResearchSubject.Progress",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ResearchSubject.Progress",
             elementsFactory: () => ResearchSubject_Progress_Elements()
         ),
         ["Resource"] = new GeneratedStructureDefinitionSummary(
             typeName: "Resource",
             isAbstract: true,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Resource",
             elementsFactory: () => Resource_Elements()
         ),
         ["RiskAssessment"] = new GeneratedStructureDefinitionSummary(
             typeName: "RiskAssessment",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/RiskAssessment",
             elementsFactory: () => RiskAssessment_Elements()
         ),
         ["RiskAssessment.Prediction"] = new GeneratedStructureDefinitionSummary(
             typeName: "RiskAssessment.Prediction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/RiskAssessment.Prediction",
             elementsFactory: () => RiskAssessment_Prediction_Elements()
         ),
         ["SampledData"] = new GeneratedStructureDefinitionSummary(
             typeName: "SampledData",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SampledData",
             elementsFactory: () => SampledData_Elements()
         ),
         ["Schedule"] = new GeneratedStructureDefinitionSummary(
             typeName: "Schedule",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Schedule",
             elementsFactory: () => Schedule_Elements()
         ),
         ["SearchParameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "SearchParameter",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SearchParameter",
             elementsFactory: () => SearchParameter_Elements()
         ),
         ["SearchParameter.Component"] = new GeneratedStructureDefinitionSummary(
             typeName: "SearchParameter.Component",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SearchParameter.Component",
             elementsFactory: () => SearchParameter_Component_Elements()
         ),
         ["ServiceRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "ServiceRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ServiceRequest",
             elementsFactory: () => ServiceRequest_Elements()
         ),
         ["ServiceRequest.OrderDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "ServiceRequest.OrderDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ServiceRequest.OrderDetail",
             elementsFactory: () => ServiceRequest_OrderDetail_Elements()
         ),
         ["ServiceRequest.orderDetail.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "ServiceRequest.orderDetail.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ServiceRequest.orderDetail.Parameter",
             elementsFactory: () => ServiceRequest_orderDetail_Parameter_Elements()
         ),
         ["ServiceRequest.PatientInstruction"] = new GeneratedStructureDefinitionSummary(
             typeName: "ServiceRequest.PatientInstruction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ServiceRequest.PatientInstruction",
             elementsFactory: () => ServiceRequest_PatientInstruction_Elements()
         ),
         ["Signature"] = new GeneratedStructureDefinitionSummary(
             typeName: "Signature",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Signature",
             elementsFactory: () => Signature_Elements()
         ),
         ["Slot"] = new GeneratedStructureDefinitionSummary(
             typeName: "Slot",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Slot",
             elementsFactory: () => Slot_Elements()
         ),
         ["Specimen"] = new GeneratedStructureDefinitionSummary(
             typeName: "Specimen",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Specimen",
             elementsFactory: () => Specimen_Elements()
         ),
         ["Specimen.Collection"] = new GeneratedStructureDefinitionSummary(
             typeName: "Specimen.Collection",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Specimen.Collection",
             elementsFactory: () => Specimen_Collection_Elements()
         ),
         ["Specimen.Container"] = new GeneratedStructureDefinitionSummary(
             typeName: "Specimen.Container",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Specimen.Container",
             elementsFactory: () => Specimen_Container_Elements()
         ),
         ["Specimen.Feature"] = new GeneratedStructureDefinitionSummary(
             typeName: "Specimen.Feature",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Specimen.Feature",
             elementsFactory: () => Specimen_Feature_Elements()
         ),
         ["Specimen.Processing"] = new GeneratedStructureDefinitionSummary(
             typeName: "Specimen.Processing",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Specimen.Processing",
             elementsFactory: () => Specimen_Processing_Elements()
         ),
         ["SpecimenDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "SpecimenDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SpecimenDefinition",
             elementsFactory: () => SpecimenDefinition_Elements()
         ),
         ["SpecimenDefinition.TypeTested"] = new GeneratedStructureDefinitionSummary(
             typeName: "SpecimenDefinition.TypeTested",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SpecimenDefinition.TypeTested",
             elementsFactory: () => SpecimenDefinition_TypeTested_Elements()
         ),
         ["SpecimenDefinition.typeTested.Container"] = new GeneratedStructureDefinitionSummary(
             typeName: "SpecimenDefinition.typeTested.Container",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SpecimenDefinition.typeTested.Container",
             elementsFactory: () => SpecimenDefinition_typeTested_Container_Elements()
         ),
         ["SpecimenDefinition.typeTested.container.Additive"] = new GeneratedStructureDefinitionSummary(
             typeName: "SpecimenDefinition.typeTested.container.Additive",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SpecimenDefinition.typeTested.container.Additive",
             elementsFactory: () => SpecimenDefinition_typeTested_container_Additive_Elements()
         ),
         ["SpecimenDefinition.typeTested.Handling"] = new GeneratedStructureDefinitionSummary(
             typeName: "SpecimenDefinition.typeTested.Handling",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SpecimenDefinition.typeTested.Handling",
             elementsFactory: () => SpecimenDefinition_typeTested_Handling_Elements()
         ),
         ["string"] = new GeneratedStructureDefinitionSummary(
             typeName: "string",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/string",
             elementsFactory: () => string_Elements()
         ),
         ["StructureDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureDefinition",
             elementsFactory: () => StructureDefinition_Elements()
         ),
         ["StructureDefinition.Context"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureDefinition.Context",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureDefinition.Context",
             elementsFactory: () => StructureDefinition_Context_Elements()
         ),
         ["StructureDefinition.Differential"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureDefinition.Differential",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureDefinition.Differential",
             elementsFactory: () => StructureDefinition_Differential_Elements()
         ),
         ["StructureDefinition.Mapping"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureDefinition.Mapping",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureDefinition.Mapping",
             elementsFactory: () => StructureDefinition_Mapping_Elements()
         ),
         ["StructureDefinition.Snapshot"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureDefinition.Snapshot",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureDefinition.Snapshot",
             elementsFactory: () => StructureDefinition_Snapshot_Elements()
         ),
         ["StructureMap"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap",
             elementsFactory: () => StructureMap_Elements()
         ),
         ["StructureMap.Const"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.Const",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.Const",
             elementsFactory: () => StructureMap_Const_Elements()
         ),
         ["StructureMap.Group"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.Group",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.Group",
             elementsFactory: () => StructureMap_Group_Elements()
         ),
         ["StructureMap.group.Input"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.group.Input",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.group.Input",
             elementsFactory: () => StructureMap_group_Input_Elements()
         ),
         ["StructureMap.group.Rule"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.group.Rule",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.group.Rule",
             elementsFactory: () => StructureMap_group_Rule_Elements()
         ),
         ["StructureMap.group.rule.Dependent"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.group.rule.Dependent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.group.rule.Dependent",
             elementsFactory: () => StructureMap_group_rule_Dependent_Elements()
         ),
         ["StructureMap.group.rule.Source"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.group.rule.Source",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.group.rule.Source",
             elementsFactory: () => StructureMap_group_rule_Source_Elements()
         ),
         ["StructureMap.group.rule.Target"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.group.rule.Target",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.group.rule.Target",
             elementsFactory: () => StructureMap_group_rule_Target_Elements()
         ),
         ["StructureMap.group.rule.target.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.group.rule.target.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.group.rule.target.Parameter",
             elementsFactory: () => StructureMap_group_rule_target_Parameter_Elements()
         ),
         ["StructureMap.Structure"] = new GeneratedStructureDefinitionSummary(
             typeName: "StructureMap.Structure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/StructureMap.Structure",
             elementsFactory: () => StructureMap_Structure_Elements()
         ),
         ["Subscription"] = new GeneratedStructureDefinitionSummary(
             typeName: "Subscription",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Subscription",
             elementsFactory: () => Subscription_Elements()
         ),
         ["Subscription.FilterBy"] = new GeneratedStructureDefinitionSummary(
             typeName: "Subscription.FilterBy",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Subscription.FilterBy",
             elementsFactory: () => Subscription_FilterBy_Elements()
         ),
         ["Subscription.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "Subscription.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Subscription.Parameter",
             elementsFactory: () => Subscription_Parameter_Elements()
         ),
         ["SubscriptionStatus"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionStatus",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionStatus",
             elementsFactory: () => SubscriptionStatus_Elements()
         ),
         ["SubscriptionStatus.NotificationEvent"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionStatus.NotificationEvent",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionStatus.NotificationEvent",
             elementsFactory: () => SubscriptionStatus_NotificationEvent_Elements()
         ),
         ["SubscriptionTopic"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionTopic",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionTopic",
             elementsFactory: () => SubscriptionTopic_Elements()
         ),
         ["SubscriptionTopic.CanFilterBy"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionTopic.CanFilterBy",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionTopic.CanFilterBy",
             elementsFactory: () => SubscriptionTopic_CanFilterBy_Elements()
         ),
         ["SubscriptionTopic.EventTrigger"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionTopic.EventTrigger",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionTopic.EventTrigger",
             elementsFactory: () => SubscriptionTopic_EventTrigger_Elements()
         ),
         ["SubscriptionTopic.NotificationShape"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionTopic.NotificationShape",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionTopic.NotificationShape",
             elementsFactory: () => SubscriptionTopic_NotificationShape_Elements()
         ),
         ["SubscriptionTopic.ResourceTrigger"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionTopic.ResourceTrigger",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionTopic.ResourceTrigger",
             elementsFactory: () => SubscriptionTopic_ResourceTrigger_Elements()
         ),
         ["SubscriptionTopic.resourceTrigger.QueryCriteria"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubscriptionTopic.resourceTrigger.QueryCriteria",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubscriptionTopic.resourceTrigger.QueryCriteria",
             elementsFactory: () => SubscriptionTopic_resourceTrigger_QueryCriteria_Elements()
         ),
         ["Substance"] = new GeneratedStructureDefinitionSummary(
             typeName: "Substance",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Substance",
             elementsFactory: () => Substance_Elements()
         ),
         ["Substance.Ingredient"] = new GeneratedStructureDefinitionSummary(
             typeName: "Substance.Ingredient",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Substance.Ingredient",
             elementsFactory: () => Substance_Ingredient_Elements()
         ),
         ["SubstanceDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition",
             elementsFactory: () => SubstanceDefinition_Elements()
         ),
         ["SubstanceDefinition.Characterization"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Characterization",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Characterization",
             elementsFactory: () => SubstanceDefinition_Characterization_Elements()
         ),
         ["SubstanceDefinition.Code"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Code",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Code",
             elementsFactory: () => SubstanceDefinition_Code_Elements()
         ),
         ["SubstanceDefinition.Moiety"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Moiety",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Moiety",
             elementsFactory: () => SubstanceDefinition_Moiety_Elements()
         ),
         ["SubstanceDefinition.MolecularWeight"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.MolecularWeight",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.MolecularWeight",
             elementsFactory: () => SubstanceDefinition_MolecularWeight_Elements()
         ),
         ["SubstanceDefinition.Name"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Name",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Name",
             elementsFactory: () => SubstanceDefinition_Name_Elements()
         ),
         ["SubstanceDefinition.name.Official"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.name.Official",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.name.Official",
             elementsFactory: () => SubstanceDefinition_name_Official_Elements()
         ),
         ["SubstanceDefinition.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Property",
             elementsFactory: () => SubstanceDefinition_Property_Elements()
         ),
         ["SubstanceDefinition.Relationship"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Relationship",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Relationship",
             elementsFactory: () => SubstanceDefinition_Relationship_Elements()
         ),
         ["SubstanceDefinition.SourceMaterial"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.SourceMaterial",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.SourceMaterial",
             elementsFactory: () => SubstanceDefinition_SourceMaterial_Elements()
         ),
         ["SubstanceDefinition.Structure"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.Structure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.Structure",
             elementsFactory: () => SubstanceDefinition_Structure_Elements()
         ),
         ["SubstanceDefinition.structure.Representation"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceDefinition.structure.Representation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceDefinition.structure.Representation",
             elementsFactory: () => SubstanceDefinition_structure_Representation_Elements()
         ),
         ["SubstanceNucleicAcid"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceNucleicAcid",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceNucleicAcid",
             elementsFactory: () => SubstanceNucleicAcid_Elements()
         ),
         ["SubstanceNucleicAcid.Subunit"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceNucleicAcid.Subunit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceNucleicAcid.Subunit",
             elementsFactory: () => SubstanceNucleicAcid_Subunit_Elements()
         ),
         ["SubstanceNucleicAcid.subunit.Linkage"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceNucleicAcid.subunit.Linkage",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceNucleicAcid.subunit.Linkage",
             elementsFactory: () => SubstanceNucleicAcid_subunit_Linkage_Elements()
         ),
         ["SubstanceNucleicAcid.subunit.Sugar"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceNucleicAcid.subunit.Sugar",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceNucleicAcid.subunit.Sugar",
             elementsFactory: () => SubstanceNucleicAcid_subunit_Sugar_Elements()
         ),
         ["SubstancePolymer"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer",
             elementsFactory: () => SubstancePolymer_Elements()
         ),
         ["SubstancePolymer.MonomerSet"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer.MonomerSet",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer.MonomerSet",
             elementsFactory: () => SubstancePolymer_MonomerSet_Elements()
         ),
         ["SubstancePolymer.monomerSet.StartingMaterial"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer.monomerSet.StartingMaterial",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer.monomerSet.StartingMaterial",
             elementsFactory: () => SubstancePolymer_monomerSet_StartingMaterial_Elements()
         ),
         ["SubstancePolymer.Repeat"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer.Repeat",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer.Repeat",
             elementsFactory: () => SubstancePolymer_Repeat_Elements()
         ),
         ["SubstancePolymer.repeat.RepeatUnit"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer.repeat.RepeatUnit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer.repeat.RepeatUnit",
             elementsFactory: () => SubstancePolymer_repeat_RepeatUnit_Elements()
         ),
         ["SubstancePolymer.repeat.repeatUnit.DegreeOfPolymerisation"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer.repeat.repeatUnit.DegreeOfPolymerisation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer.repeat.repeatUnit.DegreeOfPolymerisation",
             elementsFactory: () => SubstancePolymer_repeat_repeatUnit_DegreeOfPolymerisation_Elements()
         ),
         ["SubstancePolymer.repeat.repeatUnit.StructuralRepresentation"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstancePolymer.repeat.repeatUnit.StructuralRepresentation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstancePolymer.repeat.repeatUnit.StructuralRepresentation",
             elementsFactory: () => SubstancePolymer_repeat_repeatUnit_StructuralRepresentation_Elements()
         ),
         ["SubstanceProtein"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceProtein",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceProtein",
             elementsFactory: () => SubstanceProtein_Elements()
         ),
         ["SubstanceProtein.Subunit"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceProtein.Subunit",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceProtein.Subunit",
             elementsFactory: () => SubstanceProtein_Subunit_Elements()
         ),
         ["SubstanceReferenceInformation"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceReferenceInformation",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceReferenceInformation",
             elementsFactory: () => SubstanceReferenceInformation_Elements()
         ),
         ["SubstanceReferenceInformation.Gene"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceReferenceInformation.Gene",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceReferenceInformation.Gene",
             elementsFactory: () => SubstanceReferenceInformation_Gene_Elements()
         ),
         ["SubstanceReferenceInformation.GeneElement"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceReferenceInformation.GeneElement",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceReferenceInformation.GeneElement",
             elementsFactory: () => SubstanceReferenceInformation_GeneElement_Elements()
         ),
         ["SubstanceReferenceInformation.Target"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceReferenceInformation.Target",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceReferenceInformation.Target",
             elementsFactory: () => SubstanceReferenceInformation_Target_Elements()
         ),
         ["SubstanceSourceMaterial"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial",
             elementsFactory: () => SubstanceSourceMaterial_Elements()
         ),
         ["SubstanceSourceMaterial.FractionDescription"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial.FractionDescription",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial.FractionDescription",
             elementsFactory: () => SubstanceSourceMaterial_FractionDescription_Elements()
         ),
         ["SubstanceSourceMaterial.Organism"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial.Organism",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial.Organism",
             elementsFactory: () => SubstanceSourceMaterial_Organism_Elements()
         ),
         ["SubstanceSourceMaterial.organism.Author"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial.organism.Author",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial.organism.Author",
             elementsFactory: () => SubstanceSourceMaterial_organism_Author_Elements()
         ),
         ["SubstanceSourceMaterial.organism.Hybrid"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial.organism.Hybrid",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial.organism.Hybrid",
             elementsFactory: () => SubstanceSourceMaterial_organism_Hybrid_Elements()
         ),
         ["SubstanceSourceMaterial.organism.OrganismGeneral"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial.organism.OrganismGeneral",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial.organism.OrganismGeneral",
             elementsFactory: () => SubstanceSourceMaterial_organism_OrganismGeneral_Elements()
         ),
         ["SubstanceSourceMaterial.PartDescription"] = new GeneratedStructureDefinitionSummary(
             typeName: "SubstanceSourceMaterial.PartDescription",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial.PartDescription",
             elementsFactory: () => SubstanceSourceMaterial_PartDescription_Elements()
         ),
         ["SupplyDelivery"] = new GeneratedStructureDefinitionSummary(
             typeName: "SupplyDelivery",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SupplyDelivery",
             elementsFactory: () => SupplyDelivery_Elements()
         ),
         ["SupplyDelivery.SuppliedItem"] = new GeneratedStructureDefinitionSummary(
             typeName: "SupplyDelivery.SuppliedItem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SupplyDelivery.SuppliedItem",
             elementsFactory: () => SupplyDelivery_SuppliedItem_Elements()
         ),
         ["SupplyRequest"] = new GeneratedStructureDefinitionSummary(
             typeName: "SupplyRequest",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/SupplyRequest",
             elementsFactory: () => SupplyRequest_Elements()
         ),
         ["SupplyRequest.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "SupplyRequest.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/SupplyRequest.Parameter",
             elementsFactory: () => SupplyRequest_Parameter_Elements()
         ),
         ["Task"] = new GeneratedStructureDefinitionSummary(
             typeName: "Task",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Task",
             elementsFactory: () => Task_Elements()
         ),
         ["Task.Input"] = new GeneratedStructureDefinitionSummary(
             typeName: "Task.Input",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Task.Input",
             elementsFactory: () => Task_Input_Elements()
         ),
         ["Task.Output"] = new GeneratedStructureDefinitionSummary(
             typeName: "Task.Output",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Task.Output",
             elementsFactory: () => Task_Output_Elements()
         ),
         ["Task.Performer"] = new GeneratedStructureDefinitionSummary(
             typeName: "Task.Performer",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Task.Performer",
             elementsFactory: () => Task_Performer_Elements()
         ),
         ["Task.Restriction"] = new GeneratedStructureDefinitionSummary(
             typeName: "Task.Restriction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Task.Restriction",
             elementsFactory: () => Task_Restriction_Elements()
         ),
         ["TerminologyCapabilities"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities",
             elementsFactory: () => TerminologyCapabilities_Elements()
         ),
         ["TerminologyCapabilities.Closure"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.Closure",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.Closure",
             elementsFactory: () => TerminologyCapabilities_Closure_Elements()
         ),
         ["TerminologyCapabilities.CodeSystem"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.CodeSystem",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.CodeSystem",
             elementsFactory: () => TerminologyCapabilities_CodeSystem_Elements()
         ),
         ["TerminologyCapabilities.codeSystem.Version"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.codeSystem.Version",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.codeSystem.Version",
             elementsFactory: () => TerminologyCapabilities_codeSystem_Version_Elements()
         ),
         ["TerminologyCapabilities.codeSystem.version.Filter"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.codeSystem.version.Filter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.codeSystem.version.Filter",
             elementsFactory: () => TerminologyCapabilities_codeSystem_version_Filter_Elements()
         ),
         ["TerminologyCapabilities.Expansion"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.Expansion",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.Expansion",
             elementsFactory: () => TerminologyCapabilities_Expansion_Elements()
         ),
         ["TerminologyCapabilities.expansion.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.expansion.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.expansion.Parameter",
             elementsFactory: () => TerminologyCapabilities_expansion_Parameter_Elements()
         ),
         ["TerminologyCapabilities.Implementation"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.Implementation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.Implementation",
             elementsFactory: () => TerminologyCapabilities_Implementation_Elements()
         ),
         ["TerminologyCapabilities.Software"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.Software",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.Software",
             elementsFactory: () => TerminologyCapabilities_Software_Elements()
         ),
         ["TerminologyCapabilities.Translation"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.Translation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.Translation",
             elementsFactory: () => TerminologyCapabilities_Translation_Elements()
         ),
         ["TerminologyCapabilities.ValidateCode"] = new GeneratedStructureDefinitionSummary(
             typeName: "TerminologyCapabilities.ValidateCode",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities.ValidateCode",
             elementsFactory: () => TerminologyCapabilities_ValidateCode_Elements()
         ),
         ["TestPlan"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan",
             elementsFactory: () => TestPlan_Elements()
         ),
         ["TestPlan.Dependency"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.Dependency",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.Dependency",
             elementsFactory: () => TestPlan_Dependency_Elements()
         ),
         ["TestPlan.TestCase"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.TestCase",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.TestCase",
             elementsFactory: () => TestPlan_TestCase_Elements()
         ),
         ["TestPlan.testCase.Assertion"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.testCase.Assertion",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.testCase.Assertion",
             elementsFactory: () => TestPlan_testCase_Assertion_Elements()
         ),
         ["TestPlan.testCase.Dependency"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.testCase.Dependency",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.testCase.Dependency",
             elementsFactory: () => TestPlan_testCase_Dependency_Elements()
         ),
         ["TestPlan.testCase.TestData"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.testCase.TestData",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.testCase.TestData",
             elementsFactory: () => TestPlan_testCase_TestData_Elements()
         ),
         ["TestPlan.testCase.TestRun"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.testCase.TestRun",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.testCase.TestRun",
             elementsFactory: () => TestPlan_testCase_TestRun_Elements()
         ),
         ["TestPlan.testCase.testRun.Script"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestPlan.testCase.testRun.Script",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestPlan.testCase.testRun.Script",
             elementsFactory: () => TestPlan_testCase_testRun_Script_Elements()
         ),
         ["TestReport"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport",
             elementsFactory: () => TestReport_Elements()
         ),
         ["TestReport.Participant"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.Participant",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.Participant",
             elementsFactory: () => TestReport_Participant_Elements()
         ),
         ["TestReport.Setup"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.Setup",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.Setup",
             elementsFactory: () => TestReport_Setup_Elements()
         ),
         ["TestReport.setup.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.setup.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.setup.Action",
             elementsFactory: () => TestReport_setup_Action_Elements()
         ),
         ["TestReport.setup.action.Assert"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.setup.action.Assert",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.setup.action.Assert",
             elementsFactory: () => TestReport_setup_action_Assert_Elements()
         ),
         ["TestReport.setup.action.assert.Requirement"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.setup.action.assert.Requirement",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.setup.action.assert.Requirement",
             elementsFactory: () => TestReport_setup_action_assert_Requirement_Elements()
         ),
         ["TestReport.setup.action.Operation"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.setup.action.Operation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.setup.action.Operation",
             elementsFactory: () => TestReport_setup_action_Operation_Elements()
         ),
         ["TestReport.Teardown"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.Teardown",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.Teardown",
             elementsFactory: () => TestReport_Teardown_Elements()
         ),
         ["TestReport.teardown.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.teardown.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.teardown.Action",
             elementsFactory: () => TestReport_teardown_Action_Elements()
         ),
         ["TestReport.Test"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.Test",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.Test",
             elementsFactory: () => TestReport_Test_Elements()
         ),
         ["TestReport.test.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestReport.test.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestReport.test.Action",
             elementsFactory: () => TestReport_test_Action_Elements()
         ),
         ["TestScript"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript",
             elementsFactory: () => TestScript_Elements()
         ),
         ["TestScript.Destination"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Destination",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Destination",
             elementsFactory: () => TestScript_Destination_Elements()
         ),
         ["TestScript.Fixture"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Fixture",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Fixture",
             elementsFactory: () => TestScript_Fixture_Elements()
         ),
         ["TestScript.Metadata"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Metadata",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Metadata",
             elementsFactory: () => TestScript_Metadata_Elements()
         ),
         ["TestScript.metadata.Capability"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.metadata.Capability",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.metadata.Capability",
             elementsFactory: () => TestScript_metadata_Capability_Elements()
         ),
         ["TestScript.metadata.Link"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.metadata.Link",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.metadata.Link",
             elementsFactory: () => TestScript_metadata_Link_Elements()
         ),
         ["TestScript.Origin"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Origin",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Origin",
             elementsFactory: () => TestScript_Origin_Elements()
         ),
         ["TestScript.Scope"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Scope",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Scope",
             elementsFactory: () => TestScript_Scope_Elements()
         ),
         ["TestScript.Setup"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Setup",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Setup",
             elementsFactory: () => TestScript_Setup_Elements()
         ),
         ["TestScript.setup.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.setup.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.setup.Action",
             elementsFactory: () => TestScript_setup_Action_Elements()
         ),
         ["TestScript.setup.action.Assert"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.setup.action.Assert",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.setup.action.Assert",
             elementsFactory: () => TestScript_setup_action_Assert_Elements()
         ),
         ["TestScript.setup.action.assert.Requirement"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.setup.action.assert.Requirement",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.setup.action.assert.Requirement",
             elementsFactory: () => TestScript_setup_action_assert_Requirement_Elements()
         ),
         ["TestScript.setup.action.Operation"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.setup.action.Operation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.setup.action.Operation",
             elementsFactory: () => TestScript_setup_action_Operation_Elements()
         ),
         ["TestScript.setup.action.operation.RequestHeader"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.setup.action.operation.RequestHeader",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.setup.action.operation.RequestHeader",
             elementsFactory: () => TestScript_setup_action_operation_RequestHeader_Elements()
         ),
         ["TestScript.Teardown"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Teardown",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Teardown",
             elementsFactory: () => TestScript_Teardown_Elements()
         ),
         ["TestScript.teardown.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.teardown.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.teardown.Action",
             elementsFactory: () => TestScript_teardown_Action_Elements()
         ),
         ["TestScript.Test"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Test",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Test",
             elementsFactory: () => TestScript_Test_Elements()
         ),
         ["TestScript.test.Action"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.test.Action",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.test.Action",
             elementsFactory: () => TestScript_test_Action_Elements()
         ),
         ["TestScript.Variable"] = new GeneratedStructureDefinitionSummary(
             typeName: "TestScript.Variable",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TestScript.Variable",
             elementsFactory: () => TestScript_Variable_Elements()
         ),
         ["time"] = new GeneratedStructureDefinitionSummary(
             typeName: "time",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/time",
             elementsFactory: () => time_Elements()
         ),
         ["Timing"] = new GeneratedStructureDefinitionSummary(
             typeName: "Timing",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Timing",
             elementsFactory: () => Timing_Elements()
         ),
         ["Transport"] = new GeneratedStructureDefinitionSummary(
             typeName: "Transport",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/Transport",
             elementsFactory: () => Transport_Elements()
         ),
         ["Transport.Input"] = new GeneratedStructureDefinitionSummary(
             typeName: "Transport.Input",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Transport.Input",
             elementsFactory: () => Transport_Input_Elements()
         ),
         ["Transport.Output"] = new GeneratedStructureDefinitionSummary(
             typeName: "Transport.Output",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Transport.Output",
             elementsFactory: () => Transport_Output_Elements()
         ),
         ["Transport.Restriction"] = new GeneratedStructureDefinitionSummary(
             typeName: "Transport.Restriction",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/Transport.Restriction",
             elementsFactory: () => Transport_Restriction_Elements()
         ),
         ["TriggerDefinition"] = new GeneratedStructureDefinitionSummary(
             typeName: "TriggerDefinition",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/TriggerDefinition",
             elementsFactory: () => TriggerDefinition_Elements()
         ),
         ["unsignedInt"] = new GeneratedStructureDefinitionSummary(
             typeName: "unsignedInt",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/unsignedInt",
             elementsFactory: () => unsignedInt_Elements()
         ),
         ["uri"] = new GeneratedStructureDefinitionSummary(
             typeName: "uri",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/uri",
             elementsFactory: () => uri_Elements()
         ),
         ["url"] = new GeneratedStructureDefinitionSummary(
             typeName: "url",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/url",
             elementsFactory: () => url_Elements()
         ),
         ["UsageContext"] = new GeneratedStructureDefinitionSummary(
             typeName: "UsageContext",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/UsageContext",
             elementsFactory: () => UsageContext_Elements()
         ),
         ["uuid"] = new GeneratedStructureDefinitionSummary(
             typeName: "uuid",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/uuid",
             elementsFactory: () => uuid_Elements()
         ),
         ["ValueSet"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet",
             elementsFactory: () => ValueSet_Elements()
         ),
         ["ValueSet.Compose"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.Compose",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.Compose",
             elementsFactory: () => ValueSet_Compose_Elements()
         ),
         ["ValueSet.compose.Include"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.compose.Include",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.compose.Include",
             elementsFactory: () => ValueSet_compose_Include_Elements()
         ),
         ["ValueSet.compose.include.Concept"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.compose.include.Concept",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.compose.include.Concept",
             elementsFactory: () => ValueSet_compose_include_Concept_Elements()
         ),
         ["ValueSet.compose.include.concept.Designation"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.compose.include.concept.Designation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.compose.include.concept.Designation",
             elementsFactory: () => ValueSet_compose_include_concept_Designation_Elements()
         ),
         ["ValueSet.compose.include.Filter"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.compose.include.Filter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.compose.include.Filter",
             elementsFactory: () => ValueSet_compose_include_Filter_Elements()
         ),
         ["ValueSet.Expansion"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.Expansion",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.Expansion",
             elementsFactory: () => ValueSet_Expansion_Elements()
         ),
         ["ValueSet.expansion.Contains"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.expansion.Contains",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.expansion.Contains",
             elementsFactory: () => ValueSet_expansion_Contains_Elements()
         ),
         ["ValueSet.expansion.contains.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.expansion.contains.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.expansion.contains.Property",
             elementsFactory: () => ValueSet_expansion_contains_Property_Elements()
         ),
         ["ValueSet.expansion.contains.property.SubProperty"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.expansion.contains.property.SubProperty",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.expansion.contains.property.SubProperty",
             elementsFactory: () => ValueSet_expansion_contains_property_SubProperty_Elements()
         ),
         ["ValueSet.expansion.Parameter"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.expansion.Parameter",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.expansion.Parameter",
             elementsFactory: () => ValueSet_expansion_Parameter_Elements()
         ),
         ["ValueSet.expansion.Property"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.expansion.Property",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.expansion.Property",
             elementsFactory: () => ValueSet_expansion_Property_Elements()
         ),
         ["ValueSet.Scope"] = new GeneratedStructureDefinitionSummary(
             typeName: "ValueSet.Scope",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/ValueSet.Scope",
             elementsFactory: () => ValueSet_Scope_Elements()
         ),
         ["VerificationResult"] = new GeneratedStructureDefinitionSummary(
             typeName: "VerificationResult",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/VerificationResult",
             elementsFactory: () => VerificationResult_Elements()
         ),
         ["VerificationResult.Attestation"] = new GeneratedStructureDefinitionSummary(
             typeName: "VerificationResult.Attestation",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/VerificationResult.Attestation",
             elementsFactory: () => VerificationResult_Attestation_Elements()
         ),
         ["VerificationResult.PrimarySource"] = new GeneratedStructureDefinitionSummary(
             typeName: "VerificationResult.PrimarySource",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/VerificationResult.PrimarySource",
             elementsFactory: () => VerificationResult_PrimarySource_Elements()
         ),
         ["VerificationResult.Validator"] = new GeneratedStructureDefinitionSummary(
             typeName: "VerificationResult.Validator",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/VerificationResult.Validator",
             elementsFactory: () => VerificationResult_Validator_Elements()
         ),
         ["VirtualServiceDetail"] = new GeneratedStructureDefinitionSummary(
             typeName: "VirtualServiceDetail",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/VirtualServiceDetail",
             elementsFactory: () => VirtualServiceDetail_Elements()
         ),
         ["VisionPrescription"] = new GeneratedStructureDefinitionSummary(
             typeName: "VisionPrescription",
             isAbstract: false,
             isResource: true,
+            url: "http://hl7.org/fhir/StructureDefinition/VisionPrescription",
             elementsFactory: () => VisionPrescription_Elements()
         ),
         ["VisionPrescription.LensSpecification"] = new GeneratedStructureDefinitionSummary(
             typeName: "VisionPrescription.LensSpecification",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/VisionPrescription.LensSpecification",
             elementsFactory: () => VisionPrescription_LensSpecification_Elements()
         ),
         ["VisionPrescription.lensSpecification.Prism"] = new GeneratedStructureDefinitionSummary(
             typeName: "VisionPrescription.lensSpecification.Prism",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/VisionPrescription.lensSpecification.Prism",
             elementsFactory: () => VisionPrescription_lensSpecification_Prism_Elements()
         ),
         ["xhtml"] = new GeneratedStructureDefinitionSummary(
             typeName: "xhtml",
             isAbstract: false,
             isResource: false,
+            url: "http://hl7.org/fhir/StructureDefinition/xhtml",
             elementsFactory: () => xhtml_Elements()
         ),
     };
@@ -232549,17 +233391,20 @@ public sealed partial class R5StructureDefinitionSummaryProvider : IStructureDef
             string typeName,
             bool isAbstract,
             bool isResource,
+            string url,
             Func<IReadOnlyCollection<IElementDefinitionSummary>> elementsFactory)
         {
             TypeName = typeName;
             IsAbstract = isAbstract;
             IsResource = isResource;
+            Url = url;
             _elementsFactory = elementsFactory;
         }
 
         public string TypeName { get; }
         public bool IsAbstract { get; }
         public bool IsResource { get; }
+        public string Url { get; }
 
         // IStructureDefinitionReference implementation
         // ReferredType returns the type name for choice type validation
