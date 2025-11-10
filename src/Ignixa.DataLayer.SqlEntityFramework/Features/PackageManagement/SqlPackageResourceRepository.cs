@@ -85,10 +85,13 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         {
             // Handle race condition: another thread may have inserted the same resource
             // between the time we checked for existing resources and when we tried to insert.
-            // In this case, treat it as idempotent success.
-            _logger.LogDebug(
+            // The entire transaction was rolled back, but the other thread will commit successfully.
+            // Treat as idempotent success - the resource WILL be in the database after the other thread commits.
+            _logger.LogWarning(
                 ex,
-                "Package resource {Canonical} from package {PackageId}@{PackageVersion} was inserted by another thread. Treating as idempotent success.",
+                "Package resource {Canonical} from package {PackageId}@{PackageVersion} encountered duplicate key. " +
+                "Another thread is loading this package. Transaction rolled back (expected). " +
+                "Resource will be committed by the other thread.",
                 packageResource.Canonical,
                 packageResource.PackageId,
                 packageResource.PackageVersion);
@@ -170,12 +173,17 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique index", StringComparison.OrdinalIgnoreCase) == true)
         {
-            // Handle race condition: another thread may have inserted the same package resources
+            // Handle race condition: another thread may have started inserting the same resources
             // between the time we checked for existing resources and when we tried to insert.
-            // In this case, treat it as idempotent success.
-            _logger.LogDebug(
+            // The ENTIRE batch transaction was rolled back, but the other thread will commit successfully.
+            // This is expected during concurrent loading attempts (e.g., TenantPackagePreloadService
+            // and EmbeddedPackagePreloadService running simultaneously).
+            // Treat as success - the resources WILL be in the database after the other thread commits.
+            _logger.LogWarning(
                 ex,
-                "Package {PackageId}@{PackageVersion} resources were inserted by another thread. Treating as idempotent success.",
+                "Package {PackageId}@{PackageVersion}: Batch insert encountered duplicate key constraint. " +
+                "Another thread is loading the same package. Transaction rolled back (expected race condition). " +
+                "Resources will be committed by the other thread.",
                 packageId,
                 packageVersion);
         }
