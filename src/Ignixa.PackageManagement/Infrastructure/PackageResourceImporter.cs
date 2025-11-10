@@ -68,6 +68,28 @@ public class PackageResourceImporter : IPackageResourceImporter
                 "Mapped {Count} extracted resources to domain models",
                 packageResources.Count);
 
+            // Deduplicate by (ResourceType, ResourceId) - packages may contain the same resource in multiple files
+            var deduplicated = packageResources
+                .GroupBy(r => new { r.ResourceType, r.ResourceId })
+                .Select(g =>
+                {
+                    if (g.Count() > 1)
+                    {
+                        _logger.LogWarning(
+                            "Found {Count} duplicate resources for {ResourceType}/{ResourceId} in package {PackageId}@{Version}. Using first occurrence.",
+                            g.Count(), g.Key.ResourceType, g.Key.ResourceId,
+                            extraction.Manifest.Name, extraction.Manifest.Version);
+                    }
+                    return g.First();
+                })
+                .ToList();
+
+            _logger.LogDebug(
+                "After deduplication: {Count} unique resources (removed {Duplicates} duplicates)",
+                deduplicated.Count, packageResources.Count - deduplicated.Count);
+
+            packageResources = deduplicated;
+
             // Count by resource type for reporting
             var resourcesByType = new Dictionary<string, int>();
             foreach (var group in extraction.Resources.GroupBy(r => r.ResourceType))
