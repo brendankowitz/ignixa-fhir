@@ -675,7 +675,6 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
             throw new InvalidOperationException("Tenant 1 connection string is required for global package resource repository");
         }
 
-        // Create DbContext options for global package repository
         var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<FhirDbContext>();
         optionsBuilder.UseSqlServer(
             tenantConfig.Storage.ConnectionString,
@@ -686,13 +685,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
             });
 
         var dbContext = new FhirDbContext(optionsBuilder.Options);
-
         return new Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository(
             dbContext,
             loggerFactory.CreateLogger<Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository>());
     })
-    .As<IPackageResourceRepository>()
-    .SingleInstance();
+    .InstancePerDependency();
 
     containerBuilder.Register<Ignixa.PackageManagement.Abstractions.IImplementationGuideProvider>(c =>
         new Ignixa.PackageManagement.Infrastructure.ImplementationGuideProvider(
