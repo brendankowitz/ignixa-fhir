@@ -90,11 +90,10 @@ builder.Services.AddHttpContextAccessor();
 // Register IndexLoaderService as hosted service
 builder.Services.AddHostedService<IndexLoaderService>();
 
-// Register TenantPackagePreloadService for tenant package preloading at startup
+// Register TenantPackagePreloadService for package preloading at startup
+// Loads packages configured in TenantConfiguration.Packages.PreloadPackages
+// Embedded packages are loaded via EmbeddedPackageLoader when referenced in PreloadPackages
 builder.Services.AddHostedService<TenantPackagePreloadService>();
-
-// Register EmbeddedPackagePreloadService for auto-loading embedded packages (SQL-on-FHIR, etc.)
-builder.Services.AddHostedService<EmbeddedPackagePreloadService>();
 
 // Register HTTP client factory for background operations (Import activities need this)
 builder.Services.AddHttpClient();

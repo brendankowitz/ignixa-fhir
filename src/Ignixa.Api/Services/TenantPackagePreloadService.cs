@@ -15,7 +15,9 @@ namespace Ignixa.Api.Services;
 
 /// <summary>
 /// Hosted service that preloads FHIR packages for all tenants at startup.
-/// Reads package configuration from each tenant's TenantConfiguration.Packages.PreloadPackages.
+/// Loads packages configured in TenantConfiguration.Packages.PreloadPackages for each tenant.
+/// Embedded packages (like SQL-on-FHIR ViewDefinition) are handled by EmbeddedPackageLoader
+/// when referenced via "local.{packageId}@{version}" format in PreloadPackages configuration.
 /// Runs after all other services are initialized.
 /// </summary>
 public class TenantPackagePreloadService : BackgroundService
@@ -35,7 +37,7 @@ public class TenantPackagePreloadService : BackgroundService
     {
         try
         {
-            _logger.LogInformation("Starting tenant package preload service...");
+            _logger.LogInformation("Starting package preload service...");
 
             using var scope = _serviceProvider.CreateScope();
             var configStore = scope.ServiceProvider.GetRequiredService<ITenantConfigurationStore>();
@@ -62,26 +64,13 @@ public class TenantPackagePreloadService : BackgroundService
 
             foreach (var tenant in allTenants)
             {
-                if (!tenant.Packages.EnableAutoLoad || tenant.Packages.PreloadPackages.Count == 0)
-                {
-                    _logger.LogDebug(
-                        "Tenant {TenantId} ({DisplayName}) has no packages to preload (EnableAutoLoad={EnableAutoLoad}, Count={Count})",
-                        tenant.TenantId,
-                        tenant.DisplayName,
-                        tenant.Packages.EnableAutoLoad,
-                        tenant.Packages.PreloadPackages.Count);
-                    continue;
-                }
+                // Build list of packages to load for this tenant
+                var packagesToLoad = new List<(string PackageId, string Version)>();
 
-                _logger.LogInformation(
-                    "Preloading {Count} package(s) for tenant {TenantId} ({DisplayName})",
-                    tenant.Packages.PreloadPackages.Count,
-                    tenant.TenantId,
-                    tenant.DisplayName);
-
-                foreach (var packageRef in tenant.Packages.PreloadPackages)
+                // Add configured packages from tenant configuration
+                if (tenant.Packages.EnableAutoLoad && tenant.Packages.PreloadPackages.Count > 0)
                 {
-                    try
+                    foreach (var packageRef in tenant.Packages.PreloadPackages)
                     {
                         // Parse "packageId@version" format
                         var parts = packageRef.Split('@', StringSplitOptions.RemoveEmptyEntries);
@@ -96,7 +85,31 @@ public class TenantPackagePreloadService : BackgroundService
 
                         var packageId = parts[0].Trim();
                         var version = parts[1].Trim();
+                        packagesToLoad.Add((packageId, version));
+                    }
+                }
 
+                // Skip if no packages to load
+                if (packagesToLoad.Count == 0)
+                {
+                    _logger.LogDebug(
+                        "Tenant {TenantId} ({DisplayName}) has no packages to preload",
+                        tenant.TenantId,
+                        tenant.DisplayName);
+                    continue;
+                }
+
+                _logger.LogInformation(
+                    "Preloading {Count} package(s) for tenant {TenantId} ({DisplayName})",
+                    packagesToLoad.Count,
+                    tenant.TenantId,
+                    tenant.DisplayName);
+
+                // Load all packages for this tenant
+                foreach (var (packageId, version) in packagesToLoad)
+                {
+                    try
+                    {
                         _logger.LogInformation(
                             "Loading package {PackageId}@{Version} for tenant {TenantId}",
                             packageId,
@@ -113,30 +126,40 @@ public class TenantPackagePreloadService : BackgroundService
                             tenant.TenantId,
                             result.ImportedResources);
                     }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("already loaded", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogDebug(
+                            "Package {PackageId}@{Version} already loaded for tenant {TenantId}",
+                            packageId,
+                            version,
+                            tenant.TenantId);
+                    }
                     catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
                     {
                         _logger.LogWarning(
                             ex,
-                            "Package {PackageRef} not found in NPM registry for tenant {TenantId}. Skipping.",
-                            packageRef,
+                            "Package {PackageId}@{Version} not found in NPM registry for tenant {TenantId}. Skipping.",
+                            packageId,
+                            version,
                             tenant.TenantId);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(
                             ex,
-                            "Error loading package {PackageRef} for tenant {TenantId}. Continuing with next package.",
-                            packageRef,
+                            "Error loading package {PackageId}@{Version} for tenant {TenantId}. Continuing with next package.",
+                            packageId,
+                            version,
                             tenant.TenantId);
                     }
                 }
             }
 
-            _logger.LogInformation("Tenant package preload service completed successfully");
+            _logger.LogInformation("Package preload service completed successfully");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fatal error in tenant package preload service");
+            _logger.LogError(ex, "Fatal error in package preload service");
             // Don't rethrow - allow server to continue even if package preload fails
         }
     }
