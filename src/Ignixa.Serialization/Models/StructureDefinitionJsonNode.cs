@@ -115,6 +115,13 @@ public sealed class StructureDefinitionJsonNode
     public string? BaseDefinition => GetString("baseDefinition");
 
     /// <summary>
+    /// Gets the derivation type (specialization|constraint).
+    /// "specialization" = defines a new resource type (custom resource).
+    /// "constraint" = profiles an existing resource type (standard profile).
+    /// </summary>
+    public string? Derivation => GetString("derivation");
+
+    /// <summary>
     /// Gets the description.
     /// </summary>
     public string? Description => GetString("description");

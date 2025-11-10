@@ -42,8 +42,8 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
     {
         _logger.LogDebug("Applying resource interaction capability segment for {FhirVersion}", context.FhirVersion);
 
-        // Get schema provider for this FHIR version
-        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
+        // Get schema provider for this FHIR version and tenant (includes custom resource types)
+        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
 
         // Get all resource types from schema provider
         // (ResourceTypeNames contains all concrete FHIR resource types for this version)
@@ -97,8 +97,8 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
-        // Hash is based on FHIR version + sorted resource type list
-        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
+        // Hash is based on FHIR version + sorted resource type list (includes custom resource types)
+        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
 
         var resourceTypes = schemaProvider.ResourceTypeNames
             .OrderBy(rt => rt)

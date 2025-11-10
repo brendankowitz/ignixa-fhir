@@ -409,8 +409,13 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Register FhirVersionContext (provides version-specific schema providers, search indexers, etc.)
     // Similar to HAPI FHIR's FhirContext pattern - caches instances per FHIR version
     // Moved to Ignixa.Search layer for proper dependency management
-    containerBuilder.RegisterType<FhirVersionContext>()
-        .As<IFhirVersionContext>()
+    // Now supports tenant-aware composite providers for custom resource types
+    containerBuilder.Register<IFhirVersionContext>(c =>
+        new FhirVersionContext(
+            c.Resolve<ILoggerFactory>(),
+            c.Resolve<IPackageResourceRepository>(),
+            c.Resolve<Ignixa.Abstractions.IPackageResourceProvider>(),
+            c.Resolve<Ignixa.Specification.ICompositeSchemaProviderRegistry>()))
         .SingleInstance();
 
     // Register SearchOptionsBuilderFactory for version-aware search options builders
@@ -487,6 +492,9 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<Ignixa.Application.Features.Metadata.Segments.ICapabilitySegment>()
         .SingleInstance();
 
+    // NOTE: CustomResourceTypeCapabilitySegment removed - custom resource types now included
+    // via FhirVersionContext.GetSchemaProvider(version, tenantId) in ResourceInteractionCapabilitySegment
+
     // Register CapabilityStatementService (orchestrates segments + caching)
     containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.CapabilityStatementService>()
         .AsSelf()
@@ -545,34 +553,18 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Register ValidationSchemaResolver FACTORY (creates version+tenant-specific cached resolvers)
     // New signature: Func<FhirSpecification, int, IValidationSchemaResolver>
     // Usage: var resolver = factory(FhirSpecification.R4, tenantId)
-    // Creates composite providers that combine base FHIR spec + loaded IG packages per tenant
+    // Uses FhirVersionContext.GetSchemaProvider(version, tenantId) for composite provider
     containerBuilder.Register<Func<FhirSpecification, int, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
         {
             var versionContext = c.Resolve<Ignixa.Search.Infrastructure.IFhirVersionContext>();
-            var packageRepository = c.Resolve<IPackageResourceRepository>();
-            var packageProvider = c.Resolve<Ignixa.Abstractions.IPackageResourceProvider>();
             var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();
-            var loggerFactory = c.Resolve<ILoggerFactory>();
-            var providerRegistry = c.Resolve<Ignixa.Specification.ICompositeSchemaProviderRegistry>();
 
             return (version, tenantId) =>
             {
-                // Get base FHIR spec provider for this version
-                var baseProvider = versionContext.GetSchemaProvider(version);
+                // Get tenant-aware schema provider (includes custom resource types from loaded packages)
+                var schemaProvider = versionContext.GetSchemaProvider(version, tenantId);
 
-                // Create composite provider that combines base spec + tenant packages
-                var fhirVersionString = version.ToVersionString();
-                var compositeProvider = new Ignixa.Specification.CompositeStructureDefinitionSummaryProvider(
-                    baseProvider,
-                    packageRepository,
-                    packageProvider,
-                    fhirVersionString,
-                    loggerFactory.CreateLogger<Ignixa.Specification.CompositeStructureDefinitionSummaryProvider>());
-
-                // Register provider for cache invalidation
-                providerRegistry.RegisterProvider(tenantId, compositeProvider);
-
-                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(compositeProvider, builder);
+                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(schemaProvider, builder);
                 return new Ignixa.Validation.Schema.CachedValidationSchemaResolver(resolver);
             };
         })

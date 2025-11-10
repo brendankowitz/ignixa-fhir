@@ -26,6 +26,15 @@ public interface IFhirVersionContext
     IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion);
 
     /// <summary>
+    /// Gets the schema provider for the specified FHIR version and tenant.
+    /// When tenantId is provided, returns a composite provider that includes custom resource types from loaded packages.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <param name="tenantId">Tenant ID for custom resource type resolution (null for base provider only).</param>
+    /// <returns>Schema provider for the specified version and tenant.</returns>
+    IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion, Nullable<int> tenantId);
+
+    /// <summary>
     /// Gets the search indexer for the specified FHIR version.
     /// Initializes synchronously using pre-generated search parameters.
     /// </summary>
