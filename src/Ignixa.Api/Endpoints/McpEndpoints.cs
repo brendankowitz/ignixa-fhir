@@ -20,16 +20,15 @@ public static class McpEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapMcpEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // Phase 1: Direct MCP endpoint (no tenant routing via MapGroup)
-        // MapMcp() creates /sse endpoint automatically
+        // Phase 1: MCP endpoint with explicit path to avoid conflicts with bundle processing
+        // MapMcp("/mcp") creates /mcp endpoint for SSE-based Model Context Protocol
+        // MCP streamable HTTP is accessed at POST /mcp (SSE transport)
         // For tenant-aware operation, tools will use tenant resolution from TenantAwareMcpTool
-        endpoints.MapMcp();
+        endpoints.MapMcp("/mcp");
 
-        // Note: MapMcp() doesn't work well with MapGroup() for tenant routing
-        // Instead, tenant context is resolved in tools via:
-        // 1. Explicit tenantId parameter
-        // 2. Single-tenant auto-detection
-        // This creates /sse endpoint (not /tenant/{id}/mcp/sse)
+        // Note: MapMcp() without a path defaults to "/" which conflicts with bundle processing
+        // Using explicit "/mcp" path prevents the "AmbiguousMatchException" error where both
+        // "MCP Streamable HTTP | HTTP: POST /" and "HTTP: POST /" matched the same route.
 
         return endpoints;
     }
