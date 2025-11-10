@@ -154,10 +154,23 @@ public interface IPackageResourceRepository
     /// </summary>
     /// <param name="packageId">NPM package identifier (e.g., "hl7.fhir.us.core").</param>
     /// <param name="packageVersion">NPM package version (e.g., "5.0.1").</param>
+    /// <param name="tenantId">Tenant ID for multi-tenant queries (currently Phase 1 limitation - global repository).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if package version exists and has active resources, false otherwise.</returns>
     Task<bool> PackageVersionExistsAsync(
         string packageId,
         string packageVersion,
+        int tenantId = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Extracts custom resource types from loaded packages.
+    /// Returns resource types referenced by ViewDefinition and custom StructureDefinitions.
+    /// </summary>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1"). If null, returns all versions.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Set of custom resource type names defined in packages (e.g., "PatientView" from ViewDefinitions).</returns>
+    Task<IReadOnlySet<string>> GetCustomResourceTypesAsync(
+        string? fhirVersion = null,
         CancellationToken cancellationToken = default);
 }

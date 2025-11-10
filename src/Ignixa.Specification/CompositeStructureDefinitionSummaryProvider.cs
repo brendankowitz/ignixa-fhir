@@ -158,16 +158,76 @@ public class CompositeStructureDefinitionSummaryProvider : IFhirSchemaProvider
             // Start with base FHIR spec resource types
             var resourceTypes = new HashSet<string>(baseProvider.ResourceTypeNames, StringComparer.OrdinalIgnoreCase);
 
-            // Phase 1: Empty set of custom types from packages
-            // Phase 2: Query PackageResourceRepository for custom profile resource types
-            // For now, we just return base spec types since PackageResourceProvider returns null
+            // Add custom resource types from loaded packages
+            try
+            {
+                // Query package resources for custom types (profiles, logical models, etc.)
+                // These are StructureDefinitions with kind != "resource" or type that's not in base spec
+                var packageResourceTypes = GetCustomResourceTypesFromPackages();
+                foreach (var customType in packageResourceTypes)
+                {
+                    resourceTypes.Add(customType);
+                }
 
-            _logger.LogDebug(
-                "Resource type names resolved for FHIR {Version} + {PackageCount} packages",
-                baseProvider.FullVersion,
-                0); // TODO: count loaded packages
+                _logger.LogDebug(
+                    "Resource type names resolved for FHIR {Version} + {PackageCount} custom types",
+                    baseProvider.FullVersion,
+                    packageResourceTypes.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading custom resource types from packages");
+                // Fallback to base spec types only
+            }
 
             return resourceTypes;
+        }
+    }
+
+    /// <summary>
+    /// Extracts custom resource types from loaded packages.
+    /// Returns resource types referenced by:
+    /// - StructureDefinitions with kind='logical' (custom logical models)
+    /// - StructureDefinitions with type not in base spec (custom complex types)
+    /// - ViewDefinition resources from SQL on FHIR packages (defines custom resources)
+    /// </summary>
+    private IReadOnlySet<string> GetCustomResourceTypesFromPackages()
+    {
+        var customTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            // Phase 2 enhancement: Query package resources for custom resource types
+            // This extracts types from ViewDefinition resources (SQL on FHIR v2)
+            // which explicitly declare which resource types they operate on.
+            // Also extracts StructureDefinitions with custom kinds/types.
+            //
+            // Design: Uses blocking Task.Run to bridge async/sync gap (like TryGetFromPackages)
+            // Phase 3: Will make this async when ResourceTypeNames property becomes async
+            var packageTypes = Task.Run(async () =>
+                await _packageRepository.GetCustomResourceTypesAsync(_fhirVersion, CancellationToken.None))
+                .GetAwaiter()
+                .GetResult();
+
+            foreach (var type in packageTypes)
+            {
+                customTypes.Add(type);
+            }
+
+            if (customTypes.Count > 0)
+            {
+                _logger.LogDebug(
+                    "Extracted {Count} custom resource types from packages (FHIR version: {FhirVersion})",
+                    customTypes.Count,
+                    _fhirVersion ?? "any");
+            }
+
+            return customTypes;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting custom resource types from packages");
+            return new HashSet<string>();
         }
     }
 

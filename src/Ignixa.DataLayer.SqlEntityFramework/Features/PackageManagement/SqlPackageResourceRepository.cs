@@ -6,6 +6,7 @@
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -35,16 +36,20 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         // Check if resource already exists (by unique constraint: PackageId + PackageVersion + Canonical)
         var existing = await _dbContext.PackageResources
+            .AsNoTracking()
             .FirstOrDefaultAsync(
                 pr => pr.PackageId == packageResource.PackageId
                     && pr.PackageVersion == packageResource.PackageVersion
                     && pr.Canonical == packageResource.Canonical,
-                cancellationToken);
+                cancellationToken)
+            .ConfigureAwait(false);
 
         if (existing != null)
         {
             // Update existing resource
-            UpdateEntityFromModel(existing, packageResource);
+            // Note: Must re-attach to DbContext for changes to be tracked
+            var attached = _dbContext.PackageResources.Attach(existing).Entity;
+            UpdateEntityFromModel(attached, packageResource);
             _logger.LogDebug(
                 "Updating package resource {Canonical} from package {PackageId}@{PackageVersion}",
                 packageResource.Canonical,
@@ -65,7 +70,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         try
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (DbUpdateException ex)
         {
@@ -104,10 +109,12 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         // Load existing resources for this package version
         var canonicals = packageResources.Select(pr => pr.Canonical).ToHashSet();
         var existingResources = await _dbContext.PackageResources
+            .AsNoTracking()
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
                 && canonicals.Contains(pr.Canonical))
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         var existingDict = existingResources
             .ToDictionary(pr => pr.Canonical, StringComparer.Ordinal);
@@ -117,7 +124,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
             if (existingDict.TryGetValue(packageResource.Canonical, out var existing))
             {
                 // Update existing
-                UpdateEntityFromModel(existing, packageResource);
+                // Note: Must re-attach to DbContext for changes to be tracked
+                var attached = _dbContext.PackageResources.Attach(existing).Entity;
+                UpdateEntityFromModel(attached, packageResource);
             }
             else
             {
@@ -129,7 +138,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         try
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogInformation(
                 "Successfully upserted {Count} resources from package {PackageId}@{PackageVersion}",
                 packageResources.Count,
@@ -156,6 +165,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
         var query = _dbContext.PackageResources
+            .AsNoTracking()
             .Where(pr => pr.Canonical == canonical && pr.IsActive);
 
         if (!string.IsNullOrEmpty(version))
@@ -163,7 +173,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
             query = query.Where(pr => pr.Version == version);
         }
 
-        var entity = await query.FirstOrDefaultAsync(cancellationToken);
+        var entity = await query
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         return entity != null ? MapEntityToModel(entity) : null;
     }
@@ -179,12 +191,14 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
         var entity = await _dbContext.PackageResources
+            .AsNoTracking()
             .FirstOrDefaultAsync(
                 pr => pr.PackageId == packageId
                     && pr.PackageVersion == packageVersion
                     && pr.Canonical == canonical
                     && pr.IsActive,
-                cancellationToken);
+                cancellationToken)
+            .ConfigureAwait(false);
 
         return entity != null ? MapEntityToModel(entity) : null;
     }
@@ -198,6 +212,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         // Query for all active versions of this canonical
         var query = _dbContext.PackageResources
+            .AsNoTracking()
             .Where(pr => pr.Canonical == canonical && pr.IsActive);
 
         if (!string.IsNullOrEmpty(resourceType))
@@ -209,7 +224,8 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         // Note: This uses SQL Server PARSENAME function to parse semantic versions
         var entity = await query
             .OrderByDescending(pr => pr.PackageVersion)
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         return entity != null ? MapEntityToModel(entity) : null;
     }
@@ -224,6 +240,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
         var query = _dbContext.PackageResources
+            .AsNoTracking()
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
                 && pr.IsActive);
@@ -236,7 +253,8 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         var entities = await query
             .OrderBy(pr => pr.ResourceType)
             .ThenBy(pr => pr.Canonical)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         return entities.Select(MapEntityToModel).ToList().AsReadOnly();
     }
@@ -245,12 +263,14 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         CancellationToken cancellationToken = default)
     {
         var packages = await _dbContext.PackageResources
+            .AsNoTracking()
             .Where(pr => pr.IsActive)
             .Select(pr => new { pr.PackageId, pr.PackageVersion })
             .Distinct()
             .OrderBy(p => p.PackageId)
             .ThenBy(p => p.PackageVersion)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         return packages
             .Select(p => (p.PackageId, p.PackageVersion))
@@ -338,6 +358,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         // Query for all active StructureDefinitions matching canonical URL
         var query = _dbContext.PackageResources
+            .AsNoTracking()
             .Where(pr => pr.Canonical == canonical
                 && pr.ResourceType == "StructureDefinition"
                 && pr.IsActive);
@@ -351,7 +372,8 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         // Order by PackageVersion DESC so newest version is first
         var entities = await query
             .OrderByDescending(pr => pr.PackageVersion)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         return entities.Select(MapEntityToModel).ToList().AsReadOnly();
     }
@@ -359,18 +381,98 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     public async Task<bool> PackageVersionExistsAsync(
         string packageId,
         string packageVersion,
+        int tenantId = 0,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
+        // Use ConfigureAwait(false) to prevent DbContext deadlocks in multi-threaded scenarios
+        // This ensures the query completes fully before returning to the caller
         var exists = await _dbContext.PackageResources
+            .AsNoTracking()  // Optimize read-only query - reduces DbContext overhead
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
                 && pr.IsActive)
-            .AnyAsync(cancellationToken);
+            .AnyAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Package {PackageId}@{PackageVersion} exists: {Exists}",
+            packageId, packageVersion, exists);
 
         return exists;
+    }
+
+    public async Task<IReadOnlySet<string>> GetCustomResourceTypesAsync(
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        var customTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            // Query for ViewDefinition resources (SQL on FHIR v2)
+            // These resources explicitly declare which resource type they operate on via the 'Resource' field
+            // Stored in ResourceJson as a structured property we can extract
+            var viewDefinitions = await _dbContext.PackageResources
+                .AsNoTracking()
+                .Where(pr => pr.ResourceType == "ViewDefinition"
+                    && pr.IsActive
+                    && (fhirVersion == null || pr.FhirVersion == fhirVersion))
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            // Extract resource types from ViewDefinition JSON
+            // ViewDefinition has a 'resource' property that specifies the resource type
+            foreach (var viewDef in viewDefinitions)
+            {
+                try
+                {
+                    // Parse JSON synchronously - wrap stream in memory
+                    using var stream = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(viewDef.ResourceJson));
+                    var json = await JsonSourceNodeFactory.Parse(stream).ConfigureAwait(false);
+
+                    if (json?.MutableNode != null && json.MutableNode.TryGetPropertyValue("resource", out var resourceNode))
+                    {
+                        // Extract the "resource" property which indicates what resource type this view is for
+                        var resourceType = resourceNode?.GetValue<string>();
+                        if (!string.IsNullOrWhiteSpace(resourceType))
+                        {
+                            customTypes.Add(resourceType);
+                            _logger.LogDebug(
+                                "Extracted custom resource type '{ResourceType}' from ViewDefinition in package {PackageId}@{PackageVersion}",
+                                resourceType, viewDef.PackageId, viewDef.PackageVersion);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to parse ViewDefinition from package {PackageId}@{PackageVersion}",
+                        viewDef.PackageId, viewDef.PackageVersion);
+                }
+            }
+
+            // TODO Phase 3: Also extract types from StructureDefinitions with kind='logical'
+            // These represent custom logical models that define new resource types beyond base spec
+
+            if (customTypes.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Extracted {Count} custom resource types from {PackageCount} ViewDefinition resources",
+                    customTypes.Count,
+                    viewDefinitions.Count);
+            }
+
+            return customTypes;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting custom resource types from packages");
+            return new HashSet<string>();
+        }
     }
 
     /// <summary>

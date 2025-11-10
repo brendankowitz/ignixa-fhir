@@ -67,6 +67,30 @@ public class ImplementationGuideProvider : IImplementationGuideProvider
 
         try
         {
+            // Step 0: Check if package already loaded (idempotent operation)
+            // Convert tenantId string to int for repository query
+            var tenantIdInt = int.Parse(tenantId);
+            var alreadyLoaded = await _packageRepository.PackageVersionExistsAsync(
+                packageId, version, tenantIdInt, cancellationToken);
+
+            if (alreadyLoaded)
+            {
+                _logger.LogInformation(
+                    "Package {PackageId}@{Version} already loaded for tenant {TenantId}, skipping import (idempotent)",
+                    packageId, version, tenantId);
+
+                // Return success with zero imports - idempotent behavior
+                return new PackageImportResult
+                {
+                    PackageId = packageId,
+                    PackageVersion = version,
+                    TotalResources = 0,
+                    ImportedResources = 0,
+                    Duration = TimeSpan.Zero,
+                    ResourcesByType = new Dictionary<string, int>()
+                };
+            }
+
             // Step 1: Download package
             _logger.LogDebug("Step 1/3: Downloading package {PackageId}@{Version}", packageId, version);
             using var packageStream = await _packageLoader.DownloadPackageAsync(
