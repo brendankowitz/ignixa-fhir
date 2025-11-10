@@ -15,7 +15,7 @@ public interface IPackageResourceRepository
 {
     /// <summary>
     /// Stores a conformance resource from a FHIR NPM package.
-    /// Idempotent: Upserts based on unique constraint (PackageId + PackageVersion + Canonical).
+    /// Idempotent: Upserts based on unique constraint (PackageId + PackageVersion + ResourceType + ResourceId).
     /// </summary>
     /// <param name="packageResource">The package resource to store.</param>
     /// <param name="cancellationToken">Cancellation token.</param>

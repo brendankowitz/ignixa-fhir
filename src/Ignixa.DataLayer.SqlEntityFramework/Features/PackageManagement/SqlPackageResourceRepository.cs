@@ -43,13 +43,14 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         using var dbContext = _dbContextFactory.CreateDbContext();
 
-        // Check if resource already exists (by unique constraint: PackageId + PackageVersion + Canonical)
+        // Check if resource already exists (by unique constraint: PackageId + PackageVersion + ResourceType + ResourceId)
         var existing = await dbContext.PackageResources
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 pr => pr.PackageId == packageResource.PackageId
                     && pr.PackageVersion == packageResource.PackageVersion
-                    && pr.Canonical == packageResource.Canonical,
+                    && pr.ResourceType == packageResource.ResourceType
+                    && pr.ResourceId == packageResource.ResourceId,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -133,21 +134,23 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
             packageVersion);
 
         // Load existing resources for this package version
-        var canonicals = packageResources.Select(pr => pr.Canonical).ToHashSet();
+        var resourceKeys = packageResources
+            .Select(pr => new { pr.ResourceType, pr.ResourceId })
+            .ToHashSet();
         var existingResources = await dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.PackageId == packageId
-                && pr.PackageVersion == packageVersion
-                && canonicals.Contains(pr.Canonical))
+                && pr.PackageVersion == packageVersion)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         var existingDict = existingResources
-            .ToDictionary(pr => pr.Canonical, StringComparer.Ordinal);
+            .ToDictionary(pr => new { pr.ResourceType, pr.ResourceId });
 
         foreach (var packageResource in packageResources)
         {
-            if (existingDict.TryGetValue(packageResource.Canonical, out var existing))
+            var key = new { packageResource.ResourceType, packageResource.ResourceId };
+            if (existingDict.TryGetValue(key, out var existing))
             {
                 // Update existing
                 // Note: Must re-attach to DbContext for changes to be tracked

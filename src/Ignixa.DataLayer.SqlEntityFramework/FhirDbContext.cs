@@ -404,11 +404,14 @@ public class FhirDbContext : DbContext
         entity.HasKey(pr => pr.PackageResourceId)
             .HasName("PK_PackageResource");
 
-        // Unique index on PackageId + PackageVersion + Canonical (per ADR-2532)
-        // Ensures one canonical per package version
-        entity.HasIndex(pr => new { pr.PackageId, pr.PackageVersion, pr.Canonical })
+        // Unique index on PackageId + PackageVersion + ResourceType + ResourceId (per ADR-2532)
+        // Ensures one specific resource per package version.
+        // Note: Cannot use Canonical alone because multiple resources can share the same canonical
+        // (e.g., ImplementationGuide canonical appears in multiple resources within the same package).
+        // ResourceType + ResourceId uniquely identifies a FHIR resource.
+        entity.HasIndex(pr => new { pr.PackageId, pr.PackageVersion, pr.ResourceType, pr.ResourceId })
             .IsUnique()
-            .HasDatabaseName("UQ_PackageResource_Canonical");
+            .HasDatabaseName("UQ_PackageResource_Identity");
 
         // Index on Canonical + Version for fast canonical URL lookups
         entity.HasIndex(pr => new { pr.Canonical, pr.Version })

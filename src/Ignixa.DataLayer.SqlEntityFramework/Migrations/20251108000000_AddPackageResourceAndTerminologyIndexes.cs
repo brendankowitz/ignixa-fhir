@@ -38,11 +38,13 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                 });
 
             // PackageResource indexes
+            // Unique constraint on PackageId + PackageVersion + ResourceType + ResourceId
+            // Multiple resources can share the same canonical URL within a package
             migrationBuilder.CreateIndex(
-                name: "UQ_PackageResource_Canonical",
+                name: "UQ_PackageResource_Identity",
                 schema: "dbo",
                 table: "PackageResource",
-                columns: new[] { "PackageId", "PackageVersion", "Canonical" },
+                columns: new[] { "PackageId", "PackageVersion", "ResourceType", "ResourceId" },
                 unique: true);
 
             migrationBuilder.CreateIndex(

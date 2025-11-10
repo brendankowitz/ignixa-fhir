@@ -172,6 +172,97 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                     b.ToTable("NumberSearchParam", "dbo");
                 });
 
+            modelBuilder.Entity("Ignixa.DataLayer.SqlEntityFramework.Entities.PackageResourceEntity", b =>
+                {
+                    b.Property<long>("PackageResourceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("PackageResourceId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("PackageResourceId"));
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .HasColumnName("Canonical");
+
+                    b.Property<string>("FhirVersion")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("FhirVersion");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("IsActive");
+
+                    b.Property<DateTimeOffset>("LoadedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("LoadedDate")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("PackageId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("PackageId");
+
+                    b.Property<string>("PackageVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("PackageVersion");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("ResourceId");
+
+                    b.Property<string>("ResourceJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ResourceJson");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("ResourceType");
+
+                    b.Property<string>("Version")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("Version");
+
+                    b.HasKey("PackageResourceId")
+                        .HasName("PK_PackageResource");
+
+                    b.HasIndex("LoadedDate")
+                        .HasDatabaseName("IX_PackageResource_LoadedDate");
+
+                    b.HasIndex("Canonical", "Version")
+                        .HasDatabaseName("IX_PackageResource_Canonical_Version")
+                        .HasFilter("[IsActive] = 1");
+
+                    b.HasIndex("PackageId", "PackageVersion")
+                        .HasDatabaseName("IX_PackageResource_Package");
+
+                    b.HasIndex("ResourceType", "Canonical")
+                        .HasDatabaseName("IX_PackageResource_ResourceType_Canonical")
+                        .HasFilter("[IsActive] = 1");
+
+                    b.HasIndex("PackageId", "PackageVersion", "ResourceType", "ResourceId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_PackageResource_Identity");
+
+                    b.ToTable("PackageResource", "dbo");
+                });
+
             modelBuilder.Entity("Ignixa.DataLayer.SqlEntityFramework.Entities.QuantityCodeEntity", b =>
                 {
                     b.Property<int>("QuantityCodeId")
@@ -509,6 +600,23 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                         .HasColumnName("SystemId");
 
                     b.HasKey("ResourceTypeId", "ResourceSurrogateId", "SearchParamId", "Code");
+
+                    b.HasIndex("ResourceTypeId", "SearchParamId")
+                        .HasDatabaseName("IX_TokenSearchParam_ResourceTypeId_SearchParamId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("ResourceTypeId", "SearchParamId"), new[] { "SystemId", "Code" });
+
+                    b.HasIndex("SystemId", "Code")
+                        .HasDatabaseName("IX_TokenSearchParam_SystemId_Code")
+                        .HasFilter("[SystemId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SystemId", "Code"), new[] { "ResourceTypeId", "ResourceSurrogateId" });
+
+                    b.HasIndex("SearchParamId", "SystemId", "Code")
+                        .HasDatabaseName("IX_TokenSearchParam_SearchParamId_SystemId_Code")
+                        .HasFilter("[SystemId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("SearchParamId", "SystemId", "Code"), new[] { "ResourceTypeId", "ResourceSurrogateId" });
 
                     b.ToTable("TokenSearchParam", "dbo", t =>
                         {
