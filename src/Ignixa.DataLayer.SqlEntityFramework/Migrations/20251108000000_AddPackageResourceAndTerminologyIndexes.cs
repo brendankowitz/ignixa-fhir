@@ -74,31 +74,36 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                 column: "LoadedDate");
 
             // Strategic Terminology Indexes on TokenSearchParam (ADR-2531)
-            // Index 1: Query all codes in a CodeSystem
-            migrationBuilder.CreateIndex(
-                name: "IX_TokenSearchParam_SearchParamId_SystemId_Code",
-                schema: "dbo",
-                table: "TokenSearchParam",
-                columns: new[] { "SearchParamId", "SystemId", "Code" })
-                .Annotation("SqlServer:Include", new[] { "ResourceTypeId", "ResourceSurrogateId" })
-                .Annotation("SqlServer:FilterDefinition", "[SystemId] IS NOT NULL");
+            // These indexes may already exist from previous migrations
+            // Check and create only if they don't exist
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TokenSearchParam_SearchParamId_SystemId_Code' AND object_id = OBJECT_ID('dbo.TokenSearchParam'))
+                BEGIN
+                    CREATE INDEX [IX_TokenSearchParam_SearchParamId_SystemId_Code]
+                    ON [dbo].[TokenSearchParam] ([SearchParamId], [SystemId], [Code])
+                    INCLUDE ([ResourceTypeId], [ResourceSurrogateId])
+                    WHERE [SystemId] IS NOT NULL;
+                END
+            ");
 
-            // Index 2: Fast code validation
-            migrationBuilder.CreateIndex(
-                name: "IX_TokenSearchParam_SystemId_Code",
-                schema: "dbo",
-                table: "TokenSearchParam",
-                columns: new[] { "SystemId", "Code" })
-                .Annotation("SqlServer:Include", new[] { "ResourceTypeId", "ResourceSurrogateId" })
-                .Annotation("SqlServer:FilterDefinition", "[SystemId] IS NOT NULL");
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TokenSearchParam_SystemId_Code' AND object_id = OBJECT_ID('dbo.TokenSearchParam'))
+                BEGIN
+                    CREATE INDEX [IX_TokenSearchParam_SystemId_Code]
+                    ON [dbo].[TokenSearchParam] ([SystemId], [Code])
+                    INCLUDE ([ResourceTypeId], [ResourceSurrogateId])
+                    WHERE [SystemId] IS NOT NULL;
+                END
+            ");
 
-            // Index 3: Resource-level token queries
-            migrationBuilder.CreateIndex(
-                name: "IX_TokenSearchParam_ResourceTypeId_SearchParamId",
-                schema: "dbo",
-                table: "TokenSearchParam",
-                columns: new[] { "ResourceTypeId", "SearchParamId" })
-                .Annotation("SqlServer:Include", new[] { "SystemId", "Code" });
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TokenSearchParam_ResourceTypeId_SearchParamId' AND object_id = OBJECT_ID('dbo.TokenSearchParam'))
+                BEGIN
+                    CREATE INDEX [IX_TokenSearchParam_ResourceTypeId_SearchParamId]
+                    ON [dbo].[TokenSearchParam] ([ResourceTypeId], [SearchParamId])
+                    INCLUDE ([SystemId], [Code]);
+                END
+            ");
         }
 
         /// <inheritdoc />
