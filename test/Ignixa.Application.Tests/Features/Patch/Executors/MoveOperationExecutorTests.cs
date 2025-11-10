@@ -32,7 +32,7 @@ public class MoveOperationExecutorTests
         var compiler = new Ignixa.FhirPath.FhirPathCompiler();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var versionContext = new FhirVersionContext(loggerFactory);
-        var structureProvider = versionContext.GetSchemaProvider(FhirSpecification.R4);
+        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
         var fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
 
         var deleteExecutor = new DeleteOperationExecutor(deleteLogger, fhirPathHelper);

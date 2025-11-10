@@ -7,6 +7,7 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Metadata;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Serialization;
 
@@ -64,6 +65,7 @@ public static class MetadataEndpoints
     private static async Task<IResult> HandleGetMetadata(
         HttpContext context,
         [FromServices] IMediator mediator,
+        [FromServices] ITenantConfigurationStore configStore,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -72,13 +74,17 @@ public static class MetadataEndpoints
         // Validate Accept header for content negotiation
         ValidateAcceptHeader(context);
 
-        // Check if TenantId was resolved by TenantResolutionMiddleware (single-tenant auto-detect)
+        // Resolve tenant ID: For /metadata endpoint, the TenantResolutionMiddleware doesn't
+        // auto-detect because it's not classified as a resource endpoint. We need to manually
+        // perform the same auto-detection logic here.
         int? tenantId = null;
+
+        // First check if middleware already resolved it (though unlikely for /metadata)
         if (context.Items.TryGetValue("TenantId", out var tenantIdObj) &&
             tenantIdObj is int resolvedTenantId)
         {
             tenantId = resolvedTenantId;
-            logger.LogDebug("Tenant auto-detected: {TenantId}", tenantId);
+            logger.LogDebug("Tenant auto-detected by middleware: {TenantId}", tenantId);
         }
 
         var query = new GetCapabilityStatementQuery(tenantId);

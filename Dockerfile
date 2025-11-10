@@ -19,10 +19,13 @@ COPY src/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj src/Igni
 COPY src/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj src/Ignixa.DataLayer.InMemoryIndex/
 COPY src/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj src/Ignixa.DataLayer.SqlEntityFramework/
 COPY src/Ignixa.Domain/Ignixa.Domain.csproj src/Ignixa.Domain/
+COPY src/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj src/Ignixa.FhirMappingLanguage/
 COPY src/Ignixa.FhirPath/Ignixa.FhirPath.csproj src/Ignixa.FhirPath/
+COPY src/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj src/Ignixa.PackageManagement/
 COPY src/Ignixa.Search/Ignixa.Search.csproj src/Ignixa.Search/
 COPY src/Ignixa.Serialization/Ignixa.Serialization.csproj src/Ignixa.Serialization/
 COPY src/Ignixa.Specification/Ignixa.Specification.csproj src/Ignixa.Specification/
+COPY src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj src/Ignixa.SqlOnFhir/
 COPY src/Ignixa.Validation/Ignixa.Validation.csproj src/Ignixa.Validation/
 
 # Restore dependencies for API project only (excludes test/bench projects)

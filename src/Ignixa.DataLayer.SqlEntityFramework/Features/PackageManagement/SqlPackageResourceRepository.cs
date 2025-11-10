@@ -7,6 +7,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -419,26 +420,47 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         using var dbContext = _dbContextFactory.CreateDbContext();
 
-        // Query for all active StructureDefinitions matching canonical URL
+        // Determine search strategy based on whether canonical contains "/"
+        // If it contains "/", it's a full canonical URL (exact match)
+        // If it doesn't contain "/", it's just a resource type name (EndsWith match)
+        bool isFullUrl = canonical.Contains('/', StringComparison.Ordinal);
+
+        // Query for all active StructureDefinitions
         var query = dbContext.PackageResources
             .AsNoTracking()
-            .Where(pr => pr.Canonical == canonical
-                && pr.ResourceType == "StructureDefinition"
-                && pr.IsActive);
+            .Where(pr => pr.ResourceType == "StructureDefinition" && pr.IsActive);
 
-        // Filter by FHIR version if specified
-        if (!string.IsNullOrEmpty(fhirVersion))
+        // Apply canonical matching strategy
+        if (isFullUrl)
         {
-            query = query.Where(pr => pr.FhirVersion == fhirVersion);
+            // Full URL: exact match only
+            query = query.Where(pr => pr.Canonical == canonical);
+        }
+        else
+        {
+            // Resource type name: EndsWith match (case-insensitive on server-side prefix)
+            // Will match "http://hl7.org/fhir/StructureDefinition/Patient" when searching for "Patient"
+            query = query.Where(pr => pr.Canonical.EndsWith("/" + canonical));
         }
 
-        // Order by PackageVersion DESC so newest version is first
+        // TODO: Investigate if this is a problem
+        // Filter by FHIR version if specified
+        // if (!string.IsNullOrEmpty(fhirVersion))
+        // {
+        //    query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        // }
+
+        // Load results into memory first (due to EF Core limitations with EndsWith overload)
         var entities = await query
-            .OrderByDescending(pr => pr.PackageVersion)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return entities.Select(MapEntityToModel).ToList().AsReadOnly();
+        // Order by PackageVersion DESC (in memory) so newest version is first
+        var ordered = entities
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToList();
+
+        return ordered.Select(MapEntityToModel).ToList().AsReadOnly();
     }
 
     public async Task<bool> PackageVersionExistsAsync(
@@ -477,39 +499,52 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         try
         {
-            using var dbContext = _dbContextFactory.CreateDbContext();
+            await using var dbContext = _dbContextFactory.CreateDbContext();
 
-            // Query for ViewDefinition resources (SQL on FHIR v2)
-            // These resources explicitly declare which resource type they operate on via the 'Resource' field
-            // Stored in ResourceJson as a structured property we can extract
-            var viewDefinitions = await dbContext.PackageResources
+            // Query ALL active StructureDefinitions (not limited to ViewDefinition)
+            // This will capture custom resources from ANY IG: sqlonfhir, custom IGs, future FHIR versions
+            List<PackageResourceEntity> structureDefinitions = await dbContext.PackageResources
                 .AsNoTracking()
-                .Where(pr => pr.ResourceType == "ViewDefinition"
-                    && pr.IsActive
-                    && (fhirVersion == null || pr.FhirVersion == fhirVersion))
+                .Where(pr => pr.ResourceType == "StructureDefinition"
+                    && pr.IsActive)
+                    //TODO investigate later: && (fhirVersion == null || pr.FhirVersion == fhirVersion))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            // Extract resource types from ViewDefinition JSON
-            // ViewDefinition has a 'resource' property that specifies the resource type
-            foreach (var viewDef in viewDefinitions)
+            int customResourceCount = 0;
+            foreach (var sd in structureDefinitions)
             {
                 try
                 {
-                    // Parse JSON synchronously - wrap stream in memory
-                    using var stream = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(viewDef.ResourceJson));
-                    var json = await JsonSourceNodeFactory.Parse(stream).ConfigureAwait(false);
+                    var sdNode = StructureDefinitionJsonNode.Parse(sd.ResourceJson, _logger);
+                    if (sdNode == null)
+                        continue;
 
-                    if (json?.MutableNode != null && json.MutableNode.TryGetPropertyValue("resource", out var resourceNode))
+                    // Case 1: kind='resource' AND derivation='specialization' = new custom resource type
+                    if (string.Equals(sdNode.Kind, "resource", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(sdNode.Derivation, "specialization", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Extract the "resource" property which indicates what resource type this view is for
-                        var resourceType = resourceNode?.GetValue<string>();
+                        var resourceType = sdNode.Name;
                         if (!string.IsNullOrWhiteSpace(resourceType))
                         {
                             customTypes.Add(resourceType);
+                            customResourceCount++;
                             _logger.LogDebug(
-                                "Extracted custom resource type '{ResourceType}' from ViewDefinition in package {PackageId}@{PackageVersion}",
-                                resourceType, viewDef.PackageId, viewDef.PackageVersion);
+                                "Extracted custom resource type '{ResourceType}' from specialized StructureDefinition in package {PackageId}@{PackageVersion}",
+                                resourceType, sd.PackageId, sd.PackageVersion);
+                        }
+                    }
+                    // Case 2: kind='logical' = logical model (custom data structure)
+                    else if (string.Equals(sdNode.Kind, "logical", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var resourceType = sdNode.Name;
+                        if (!string.IsNullOrWhiteSpace(resourceType))
+                        {
+                            customTypes.Add(resourceType);
+                            customResourceCount++;
+                            _logger.LogDebug(
+                                "Extracted custom logical model '{ResourceType}' from StructureDefinition in package {PackageId}@{PackageVersion}",
+                                resourceType, sd.PackageId, sd.PackageVersion);
                         }
                     }
                 }
@@ -517,20 +552,17 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
                 {
                     _logger.LogWarning(
                         ex,
-                        "Failed to parse ViewDefinition from package {PackageId}@{PackageVersion}",
-                        viewDef.PackageId, viewDef.PackageVersion);
+                        "Failed to parse StructureDefinition from package {PackageId}@{PackageVersion}",
+                        sd.PackageId, sd.PackageVersion);
                 }
             }
-
-            // TODO Phase 3: Also extract types from StructureDefinitions with kind='logical'
-            // These represent custom logical models that define new resource types beyond base spec
 
             if (customTypes.Count > 0)
             {
                 _logger.LogInformation(
-                    "Extracted {Count} custom resource types from {PackageCount} ViewDefinition resources",
+                    "Extracted {Count} custom resource types from {StructureDefinitionCount} StructureDefinition resources",
                     customTypes.Count,
-                    viewDefinitions.Count);
+                    structureDefinitions.Count);
             }
 
             return customTypes;

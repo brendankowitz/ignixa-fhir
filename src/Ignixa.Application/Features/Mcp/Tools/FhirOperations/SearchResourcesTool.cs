@@ -115,7 +115,7 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         var fhirVersion = await ResolveFhirVersionAsync(resolvedTenantId, cancellationToken);
 
         // Get the appropriate schema provider for this FHIR version
-        var schemaProvider = _versionContext.GetSchemaProvider(fhirVersion);
+        var schemaProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
 
         // Use SearchOptionsBuilder to parse all parameters and build expressions
         var builder = _builderFactory.Create(fhirVersion);

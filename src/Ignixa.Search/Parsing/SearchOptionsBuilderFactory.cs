@@ -72,7 +72,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
             }
 
             // Get version-specific components from context (cached and reused)
-            var schemaProvider = _versionContext.GetSchemaProvider(fhirVersion);
+            var schemaProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
             var searchParamDefinitionManager = _versionContext.GetSearchParameterDefinitionManager(fhirVersion);
 
             // Create resolver delegate for SearchParameterDefinitionManager

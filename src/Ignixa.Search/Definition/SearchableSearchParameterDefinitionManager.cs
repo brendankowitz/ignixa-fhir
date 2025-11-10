@@ -34,6 +34,19 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
             .Where(x => x.IsSearchable);
     }
 
+    public bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters)
+    {
+        searchParameters = null;
+
+        if (_inner.TryGetSearchParameters(resourceType, out IEnumerable<SearchParameterInfo> innerSearchParameters))
+        {
+            searchParameters = innerSearchParameters.Where(x => x.IsSearchable);
+            return true;
+        }
+
+        return false;
+    }
+
     public bool TryGetSearchParameter(string resourceType, string code, out SearchParameterInfo searchParameter)
     {
         searchParameter = null;

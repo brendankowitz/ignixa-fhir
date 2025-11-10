@@ -23,7 +23,7 @@ public interface IFhirVersionContext
     /// </summary>
     /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
     /// <returns>Schema provider for the specified version.</returns>
-    IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion);
+    IFhirSchemaProvider GetBaseSchemaProvider(FhirSpecification fhirVersion);
 
     /// <summary>
     /// Gets the schema provider for the specified FHIR version and tenant.

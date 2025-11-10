@@ -81,7 +81,7 @@ public class PostPutBenchmarks
 
         // Setup version context and schema provider
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance);
-        _schemaProvider = _versionContext.GetSchemaProvider(FhirSpecification.R4);
+        _schemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
         // Pre-parse for some benchmarks
         _patientNode = JsonSerializer.Deserialize<ResourceJsonNode>(_patientJson)!;

@@ -93,7 +93,7 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
             var fhirVersion = await ResolveFhirVersionAsync(resolvedTenantId, cancellationToken);
 
             // Get structure provider from version context
-            var structureProvider = _versionContext.GetSchemaProvider(fhirVersion);
+            var structureProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
 
             // Convert CapabilityStatement to ITypedElement for evaluation
             var typedElement = capabilityStatement.ToTypedElement(structureProvider);

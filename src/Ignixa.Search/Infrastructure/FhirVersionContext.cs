@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Domain.Constants;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Definition;
@@ -52,7 +53,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion)
+    public IFhirSchemaProvider GetBaseSchemaProvider(FhirSpecification fhirVersion)
     {
         return _schemaProviders.GetOrAdd(fhirVersion, version =>
         {
@@ -74,7 +75,10 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         // If no tenant ID provided, return base provider
         if (!tenantId.HasValue)
         {
-            return GetSchemaProvider(fhirVersion);
+            _logger.LogTrace(
+                "Tenant not available - returning base schema provider for {FhirVersion}",
+                fhirVersion);
+            return GetBaseSchemaProvider(fhirVersion);
         }
 
         // If package management dependencies not available, return base provider
@@ -83,7 +87,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             _logger.LogTrace(
                 "Package management dependencies not available - returning base schema provider for {FhirVersion}",
                 fhirVersion);
-            return GetSchemaProvider(fhirVersion);
+            return GetBaseSchemaProvider(fhirVersion);
         }
 
         // Return cached composite provider or create new one
@@ -97,7 +101,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 tenant);
 
             // Get base provider for this FHIR version
-            var baseProvider = GetSchemaProvider(version);
+            var baseProvider = GetBaseSchemaProvider(version);
 
             // Create composite provider that includes base spec + tenant packages
             var fhirVersionString = version.ToVersionString();
@@ -136,7 +140,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         // This prevents potential deadlock where:
         // - Thread A: holds _indexerLock, waits for _searchParamLock (in GetSearchParameterDefinitionManager)
         // - Thread B: holds _searchParamLock, waits for _indexerLock
-        var schemaProvider = GetSchemaProvider(fhirVersion);
+        var schemaProvider = GetBaseSchemaProvider(fhirVersion);
         var searchParamManager = GetSearchParameterDefinitionManager(fhirVersion);
 
         // Slow path: create new indexer (synchronous factory with lock)
@@ -184,7 +188,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 
             // Create new search parameter definition manager
             // Manager initializes synchronously using pre-generated search parameters
-            var schemaProvider = GetSchemaProvider(fhirVersion);
+            var schemaProvider = GetBaseSchemaProvider(fhirVersion);
             var logger = _loggerFactory.CreateLogger<SearchParameterDefinitionManager>();
             var manager = new SearchParameterDefinitionManager(schemaProvider, logger);
 

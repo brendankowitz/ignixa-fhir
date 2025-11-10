@@ -40,7 +40,7 @@ public class ReplaceOperationExecutorTests
         var compiler = new Ignixa.FhirPath.FhirPathCompiler();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var versionContext = new FhirVersionContext(loggerFactory);
-        var structureProvider = versionContext.GetSchemaProvider(FhirSpecification.R4);
+        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
         _fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
         _executor = new ReplaceOperationExecutor(_logger, _fhirPathHelper);

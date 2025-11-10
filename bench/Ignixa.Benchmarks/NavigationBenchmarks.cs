@@ -47,7 +47,7 @@ public class NavigationBenchmarks
         // Ignixa setup
         _ignixaObservation = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance);
-        _ignixaSchemaProvider = _versionContext.GetSchemaProvider(FhirSpecification.R4);
+        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
         var sourceNode = _ignixaObservation.ToSourceNode();
         _ignixaTypedElement = TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
 

@@ -64,7 +64,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
 
         // Extract FHIR version from headers (defaults to R4)
         var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
-        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum);
+        var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
 
         // Create wrapper (needed for both paths now)
         var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider);

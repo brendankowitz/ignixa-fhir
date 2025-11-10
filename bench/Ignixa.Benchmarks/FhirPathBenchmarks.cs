@@ -54,7 +54,7 @@ public class FhirPathBenchmarks
         _ignixaObservation = JsonSerializer.Deserialize<ResourceJsonNode>(observationJson)!;
 
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance);
-        _ignixaSchemaProvider = _versionContext.GetSchemaProvider(FhirSpecification.R4);
+        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
         _ignixaPatientTyped = TypedElementExtensions.ToTypedElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
         _ignixaObservationTyped = TypedElementExtensions.ToTypedElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);

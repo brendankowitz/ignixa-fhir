@@ -45,7 +45,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
 
         // Get manager and schema provider for this FHIR version
         var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
-        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
+        var schemaProvider = _versionContext.GetBaseSchemaProvider(context.FhirVersion);
 
         if (statement.Rest == null || statement.Rest.Count == 0)
         {
@@ -74,7 +74,12 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
                 continue;
             }
 
-            var searchParams = manager.GetSearchParameters(resource.Type).ToList();
+            if (!manager.TryGetSearchParameters(resource.Type, out var searchParamsEnumerable))
+            {
+                continue;
+            }
+
+            var searchParams = searchParamsEnumerable.ToList();
 
             // Build searchInclude list from reference parameters
             var includeList = BuildSearchIncludes(resource.Type, searchParams);
@@ -164,7 +169,12 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         // For each resource type, find reference parameters that target this resource
         foreach (var sourceResourceType in allResourceTypes)
         {
-            var searchParams = manager.GetSearchParameters(sourceResourceType);
+            if (!manager.TryGetSearchParameters(sourceResourceType, out var searchParamsEnumerable))
+            {
+                continue;
+            }
+
+            var searchParams = searchParamsEnumerable;
 
             var referenceParams = searchParams
                 .Where(sp => sp.IsSupported &&

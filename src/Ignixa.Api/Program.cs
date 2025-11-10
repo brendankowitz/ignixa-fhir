@@ -362,7 +362,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
         // Use R4 as default structure provider (Phase 1)
         // TODO Phase 2+: Extract version from tenant context
-        var structureProvider = versionContext.GetSchemaProvider(FhirSpecification.R4);
+        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
         return new Ignixa.Application.Features.Patch.FhirPathPatchHelper(
             evaluator,
@@ -432,7 +432,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     containerBuilder.Register<FhirSchemaProviderResolver>(c =>
     {
         var versionContext = c.Resolve<IFhirVersionContext>();
-        return (FhirSpecification version) => versionContext.GetSchemaProvider(version);
+        return (FhirSpecification version) => versionContext.GetBaseSchemaProvider(version);
     }).SingleInstance();
 
     // DEPRECATED: VersionAwareSearchParameterDefinitionManager replaced by FhirVersionContext.GetSearchParameterDefinitionManager()

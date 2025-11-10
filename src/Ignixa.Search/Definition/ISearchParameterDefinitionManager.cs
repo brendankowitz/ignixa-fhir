@@ -36,6 +36,14 @@ public interface ISearchParameterDefinitionManager
     IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType);
 
     /// <summary>
+    /// Tries to get the list of search parameters for the given <paramref name="resourceType"/>.
+    /// </summary>
+    /// <param name="resourceType">The resource type whose list of search parameters should be returned.</param>
+    /// <param name="searchParameters">When this method returns, contains the search parameters if the resource type is found; otherwise, an empty collection.</param>
+    /// <returns><c>true</c> if search parameters are found for the resource type; otherwise, <c>false</c>.</returns>
+    bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters);
+
+    /// <summary>
     /// Retrieves the search parameter with <paramref name="code"/> associated with <paramref name="resourceType"/>.
     /// </summary>
     /// <param name="resourceType">The resource type.</param>

@@ -185,7 +185,7 @@ public class TenantResolutionMiddleware : IDisposable
     }
 
     /// <summary>
-    /// Determines if the current request is a FHIR resource endpoint (vs metadata, health check, etc.)
+    /// Determines if the current request is a FHIR resource endpoint (vs health check, etc.)
     /// </summary>
     private static bool IsResourceEndpoint(HttpContext context)
     {
@@ -197,8 +197,7 @@ public class TenantResolutionMiddleware : IDisposable
         }
 
         // Exclude known non-resource endpoints
-        if (path.StartsWith("/metadata", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
+        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/.well-known", StringComparison.OrdinalIgnoreCase))
         {
             return false;

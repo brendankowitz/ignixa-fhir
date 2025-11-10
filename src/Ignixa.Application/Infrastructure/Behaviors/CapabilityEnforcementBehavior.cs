@@ -92,7 +92,7 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
         var capabilityStatement = await _capabilityService.GetCapabilityStatementAsync(capabilityContext, cancellationToken);
 
         // Get schema provider for FHIRPath evaluation
-        var provider = _versionContext.GetSchemaProvider(fhirVersion);
+        var provider = _versionContext.GetBaseSchemaProvider(fhirVersion);
 
         // Convert CapabilityStatement to ITypedElement for FHIRPath queries
         var typedElement = capabilityStatement.ToTypedElement(provider);

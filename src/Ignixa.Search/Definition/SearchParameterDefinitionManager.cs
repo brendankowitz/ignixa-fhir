@@ -202,6 +202,19 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
         throw new ResourceNotSupportedException(resourceType);
     }
 
+    public bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters)
+    {
+        searchParameters = null;
+
+        if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> value))
+        {
+            searchParameters = value.Values;
+            return true;
+        }
+
+        return false;
+    }
+
     public SearchParameterInfo GetSearchParameter(string resourceType, string code)
     {
         if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> lookup) &&

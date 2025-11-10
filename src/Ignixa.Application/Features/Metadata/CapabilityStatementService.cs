@@ -137,7 +137,7 @@ public class CapabilityStatementService
         statement.Date = DateTimeOffset.UtcNow.ToString("O");
 
         // Use FullVersion from schema provider to include ballot/patch versions (e.g., "6.0.0-ballot2" for R6)
-        var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion);
+        var schemaProvider = _versionContext.GetBaseSchemaProvider(context.FhirVersion);
         statement.FhirVersionString = schemaProvider.FullVersion;
 
         // Set name based on tenant

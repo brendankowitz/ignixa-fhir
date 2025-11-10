@@ -64,8 +64,12 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         // Populate search parameters for each resource
         foreach (var resource in restComponent.Resource)
         {
-            var searchParams = manager.GetSearchParameters(resource.Type).ToList();
+            if (!manager.TryGetSearchParameters(resource.Type, out var searchParamsEnumerable))
+            {
+                continue;
+            }
 
+            var searchParams = searchParamsEnumerable.ToList();
             if (searchParams.Count == 0)
             {
                 continue;
