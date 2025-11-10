@@ -667,7 +667,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Sharing a single DbContext across threads causes: "A second operation was started on this context
     // instance before a previous operation completed"
     // See: https://learn.microsoft.com/en-us/ef/core/dbcontext-configuration/
-    containerBuilder.Register<IPackageResourceRepository>(c =>
+    // Register PackageRepositoryDbContextFactory as SingleInstance (thread-safe factory)
+    containerBuilder.Register<Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.PackageRepositoryDbContextFactory>(c =>
     {
         var tenantStore = c.Resolve<ITenantConfigurationStore>();
         var loggerFactory = c.Resolve<ILoggerFactory>();
@@ -680,20 +681,17 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
             throw new InvalidOperationException("Tenant 1 connection string is required for global package resource repository");
         }
 
-        var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<FhirDbContext>();
-        optionsBuilder.UseSqlServer(
+        return new Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.PackageRepositoryDbContextFactory(
             tenantConfig.Storage.ConnectionString,
-            sqlOptions =>
-            {
-                sqlOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                sqlOptions.CommandTimeout(30);
-            });
-
-        var dbContext = new FhirDbContext(optionsBuilder.Options);
-        return new Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository(
-            dbContext,
-            loggerFactory.CreateLogger<Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository>());
+            loggerFactory);
     })
+    .SingleInstance();
+
+    // Register SqlPackageResourceRepository (creates fresh DbContext per operation via factory)
+    containerBuilder.Register<IPackageResourceRepository>(c =>
+        new Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository(
+            c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.PackageRepositoryDbContextFactory>(),
+            c.Resolve<ILogger<Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement.SqlPackageResourceRepository>>()))
     .InstancePerDependency();
 
     containerBuilder.Register<Ignixa.PackageManagement.Abstractions.IImplementationGuideProvider>(c =>

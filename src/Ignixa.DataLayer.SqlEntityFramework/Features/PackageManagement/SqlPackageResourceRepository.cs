@@ -16,17 +16,24 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
 /// Entity Framework Core implementation of IPackageResourceRepository for SQL Server.
 /// Provides storage and retrieval of FHIR conformance resources from NPM packages (IGs).
 /// Supports multi-version package loading, semantic version resolution, and canonical URL lookups.
+///
+/// Threading Model:
+/// Uses factory pattern to create a fresh DbContext for EACH operation to ensure thread safety.
+/// DbContext is not thread-safe; even with InstancePerDependency, concurrent operations from
+/// multiple threads can cause "A second operation was started on this context instance before
+/// a previous operation completed" errors. This implementation creates a new DbContext per
+/// method call, ensuring complete isolation between concurrent operations.
 /// </summary>
 public class SqlPackageResourceRepository : IPackageResourceRepository
 {
-    private readonly FhirDbContext _dbContext;
+    private readonly PackageRepositoryDbContextFactory _dbContextFactory;
     private readonly ILogger<SqlPackageResourceRepository> _logger;
 
     public SqlPackageResourceRepository(
-        FhirDbContext dbContext,
+        PackageRepositoryDbContextFactory dbContextFactory,
         ILogger<SqlPackageResourceRepository> logger)
     {
-        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException(nameof(dbContextFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -34,8 +41,10 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     {
         ArgumentNullException.ThrowIfNull(packageResource);
 
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
         // Check if resource already exists (by unique constraint: PackageId + PackageVersion + Canonical)
-        var existing = await _dbContext.PackageResources
+        var existing = await dbContext.PackageResources
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 pr => pr.PackageId == packageResource.PackageId
@@ -48,7 +57,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         {
             // Update existing resource
             // Note: Must re-attach to DbContext for changes to be tracked
-            var attached = _dbContext.PackageResources.Attach(existing).Entity;
+            var attached = dbContext.PackageResources.Attach(existing).Entity;
             UpdateEntityFromModel(attached, packageResource);
             _logger.LogDebug(
                 "Updating package resource {Canonical} from package {PackageId}@{PackageVersion}",
@@ -60,7 +69,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         {
             // Insert new resource
             var entity = MapModelToEntity(packageResource);
-            _dbContext.PackageResources.Add(entity);
+            dbContext.PackageResources.Add(entity);
             _logger.LogDebug(
                 "Inserting package resource {Canonical} from package {PackageId}@{PackageVersion}",
                 packageResource.Canonical,
@@ -70,7 +79,19 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         try
         {
-            await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique index", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            // Handle race condition: another thread may have inserted the same resource
+            // between the time we checked for existing resources and when we tried to insert.
+            // In this case, treat it as idempotent success.
+            _logger.LogDebug(
+                ex,
+                "Package resource {Canonical} from package {PackageId}@{PackageVersion} was inserted by another thread. Treating as idempotent success.",
+                packageResource.Canonical,
+                packageResource.PackageId,
+                packageResource.PackageVersion);
         }
         catch (DbUpdateException ex)
         {
@@ -95,6 +116,8 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
             return;
         }
 
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
         // Group by package for logging
         var firstResource = packageResources[0];
         var packageId = firstResource.PackageId;
@@ -108,7 +131,7 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         // Load existing resources for this package version
         var canonicals = packageResources.Select(pr => pr.Canonical).ToHashSet();
-        var existingResources = await _dbContext.PackageResources
+        var existingResources = await dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
@@ -125,23 +148,34 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
             {
                 // Update existing
                 // Note: Must re-attach to DbContext for changes to be tracked
-                var attached = _dbContext.PackageResources.Attach(existing).Entity;
+                var attached = dbContext.PackageResources.Attach(existing).Entity;
                 UpdateEntityFromModel(attached, packageResource);
             }
             else
             {
                 // Insert new
                 var entity = MapModelToEntity(packageResource);
-                _dbContext.PackageResources.Add(entity);
+                dbContext.PackageResources.Add(entity);
             }
         }
 
         try
         {
-            await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogInformation(
                 "Successfully upserted {Count} resources from package {PackageId}@{PackageVersion}",
                 packageResources.Count,
+                packageId,
+                packageVersion);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique index", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            // Handle race condition: another thread may have inserted the same package resources
+            // between the time we checked for existing resources and when we tried to insert.
+            // In this case, treat it as idempotent success.
+            _logger.LogDebug(
+                ex,
+                "Package {PackageId}@{PackageVersion} resources were inserted by another thread. Treating as idempotent success.",
                 packageId,
                 packageVersion);
         }
@@ -164,7 +198,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
-        var query = _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var query = dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.Canonical == canonical && pr.IsActive);
 
@@ -190,7 +226,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
-        var entity = await _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var entity = await dbContext.PackageResources
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 pr => pr.PackageId == packageId
@@ -210,8 +248,10 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
         // Query for all active versions of this canonical
-        var query = _dbContext.PackageResources
+        var query = dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.Canonical == canonical && pr.IsActive);
 
@@ -239,7 +279,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
-        var query = _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var query = dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
@@ -262,7 +304,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     public async Task<IReadOnlyList<(string PackageId, string PackageVersion)>> ListLoadedPackagesAsync(
         CancellationToken cancellationToken = default)
     {
-        var packages = await _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var packages = await dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.IsActive)
             .Select(pr => new { pr.PackageId, pr.PackageVersion })
@@ -286,7 +330,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
-        var count = await _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var count = await dbContext.PackageResources
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
                 && pr.IsActive)
@@ -311,7 +357,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
-        var count = await _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var count = await dbContext.PackageResources
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
                 && !pr.IsActive)
@@ -336,7 +384,9 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
-        var count = await _dbContext.PackageResources
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var count = await dbContext.PackageResources
             .Where(pr => pr.PackageId == packageId && pr.PackageVersion == packageVersion)
             .ExecuteDeleteAsync(cancellationToken);
 
@@ -356,8 +406,10 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
         // Query for all active StructureDefinitions matching canonical URL
-        var query = _dbContext.PackageResources
+        var query = dbContext.PackageResources
             .AsNoTracking()
             .Where(pr => pr.Canonical == canonical
                 && pr.ResourceType == "StructureDefinition"
@@ -387,9 +439,11 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
         // Use ConfigureAwait(false) to prevent DbContext deadlocks in multi-threaded scenarios
         // This ensures the query completes fully before returning to the caller
-        var exists = await _dbContext.PackageResources
+        var exists = await dbContext.PackageResources
             .AsNoTracking()  // Optimize read-only query - reduces DbContext overhead
             .Where(pr => pr.PackageId == packageId
                 && pr.PackageVersion == packageVersion
@@ -412,10 +466,12 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
 
         try
         {
+            using var dbContext = _dbContextFactory.CreateDbContext();
+
             // Query for ViewDefinition resources (SQL on FHIR v2)
             // These resources explicitly declare which resource type they operate on via the 'Resource' field
             // Stored in ResourceJson as a structured property we can extract
-            var viewDefinitions = await _dbContext.PackageResources
+            var viewDefinitions = await dbContext.PackageResources
                 .AsNoTracking()
                 .Where(pr => pr.ResourceType == "ViewDefinition"
                     && pr.IsActive

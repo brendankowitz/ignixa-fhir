@@ -1,11 +1,15 @@
 // -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation.All rights reserved.
-// Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Medino;
-using Ignixa.Domain.Abstractions;
 using Ignixa.Application.Features.Admin;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
+using Medino;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Api.Services;
 
@@ -39,7 +43,7 @@ public class TenantPackagePreloadService : BackgroundService
 
             // Get all tenants (includes system partition and regular tenants)
             var tenants = await configStore.GetAllTenantsAsync(stoppingToken);
-            var systemTenant = await configStore.GetTenantConfigurationAsync(0, stoppingToken);
+            var systemTenant = await configStore.GetTenantConfigurationAsync(SystemConstants.SystemPartitionId, stoppingToken);
 
             // Add system tenant to the list if it exists and is active
             var allTenants = tenants.ToList();

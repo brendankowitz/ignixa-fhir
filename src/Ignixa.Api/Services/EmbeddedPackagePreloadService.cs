@@ -1,5 +1,7 @@
 using Ignixa.Application.Features.Admin;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Medino;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -35,53 +37,59 @@ public class EmbeddedPackagePreloadService : BackgroundService
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
             // Get system partition (packages are shared across all tenants)
-            var systemTenant = await configStore.GetTenantConfigurationAsync(0, stoppingToken);
+            var systemTenant = await configStore.GetTenantConfigurationAsync(SystemConstants.SystemPartitionId, stoppingToken);
             if (systemTenant == null || !systemTenant.IsActive)
             {
-                _logger.LogWarning("System partition (TenantId=0) not configured or inactive. Skipping embedded package preload.");
+                _logger.LogWarning("System partition (TenantId={SystemPartitionId}) not configured or inactive. Skipping embedded package preload.", SystemConstants.SystemPartitionId);
                 return;
             }
 
             _logger.LogInformation("System partition found, preloading embedded packages...");
 
-            // List of embedded packages to auto-load
-            var embeddedPackages = new[]
+            // Dynamically discover embedded packages via IEmbeddedPackage interface
+            var embeddedPackages = scope.ServiceProvider.GetServices<IEmbeddedPackage>();
+            if (embeddedPackages == null || !embeddedPackages.Any())
             {
-                ("local.ignixa.sqlonfhir", "2.1.0")
-            };
+                _logger.LogInformation("No embedded packages configured for preload");
+                return;
+            }
 
-            foreach (var (packageId, version) in embeddedPackages)
+            // Assume embedded packages are version 0.0.0 (local development version)
+            const string embeddedPackageVersion = "0.0.0";
+
+            foreach (var embeddedPackage in embeddedPackages)
             {
                 try
                 {
                     _logger.LogInformation(
-                        "Loading embedded package {PackageId}@{Version} for system partition",
-                        packageId,
-                        version);
-
-                    var command = new LoadPackageCommand("0", packageId, version);
+                        "Loading embedded package {PackageId} for system partition",
+                        embeddedPackage.PackageId);
+                    var command = new LoadPackageCommand(
+                        SystemConstants.SystemPartitionId.ToString(),
+                        embeddedPackage.PackageId,
+                        embeddedPackageVersion);
                     var result = await mediator.SendAsync(command, stoppingToken);
 
                     _logger.LogInformation(
                         "Successfully preloaded {PackageId}@{Version}. Imported {Count} resources",
-                        packageId,
-                        version,
+                        embeddedPackage.PackageId,
+                        embeddedPackageVersion,
                         result.ImportedResources);
                 }
                 catch (InvalidOperationException ex) when (ex.Message.Contains("already loaded", StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogDebug(
                         "Package {PackageId}@{Version} already loaded",
-                        packageId,
-                        version);
+                        embeddedPackage.PackageId,
+                        embeddedPackageVersion);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(
                         ex,
                         "Error preloading embedded package {PackageId}@{Version}. Continuing with startup.",
-                        packageId,
-                        version);
+                        embeddedPackage.PackageId,
+                        embeddedPackageVersion);
                     // Don't fail startup if embedded package loading fails
                 }
             }
