@@ -9,7 +9,7 @@ namespace Ignixa.FhirMappingLanguage.Terminology;
 /// <summary>
 /// Interface for loading ConceptMap resources.
 /// </summary>
-public interface IConceptMapLoader
+internal interface IConceptMapLoader
 {
     /// <summary>
     /// Loads a ConceptMap by its canonical URL.
@@ -30,7 +30,7 @@ public interface IConceptMapLoader
 /// Dictionary-based ConceptMap loader for testing and simple scenarios.
 /// Stores ConceptMaps in memory.
 /// </summary>
-public class DictionaryConceptMapLoader : IConceptMapLoader
+internal class DictionaryConceptMapLoader : IConceptMapLoader
 {
     private readonly Dictionary<string, string> _conceptMaps = new(StringComparer.OrdinalIgnoreCase);
 
@@ -59,7 +59,7 @@ public class DictionaryConceptMapLoader : IConceptMapLoader
 /// Composite ConceptMap loader that chains multiple loaders.
 /// Tries each loader in order until one succeeds.
 /// </summary>
-public class CompositeConceptMapLoader : IConceptMapLoader
+internal class CompositeConceptMapLoader : IConceptMapLoader
 {
     private readonly List<IConceptMapLoader> _loaders = new();
 

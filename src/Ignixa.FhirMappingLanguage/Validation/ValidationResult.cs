@@ -9,7 +9,7 @@ namespace Ignixa.FhirMappingLanguage.Validation;
 /// <summary>
 /// Represents the result of validating a FHIR mapping.
 /// </summary>
-public class ValidationResult
+internal class ValidationResult
 {
     private readonly List<ValidationError> _errors = new();
     private readonly List<ValidationWarning> _warnings = new();
@@ -78,7 +78,7 @@ public class ValidationResult
 /// <summary>
 /// Represents a validation error.
 /// </summary>
-public class ValidationError
+internal class ValidationError
 {
     public ValidationError(string message, string? location = null, string? code = null)
     {
@@ -111,7 +111,7 @@ public class ValidationError
 /// <summary>
 /// Represents a validation warning.
 /// </summary>
-public class ValidationWarning
+internal class ValidationWarning
 {
     public ValidationWarning(string message, string? location = null, string? code = null)
     {

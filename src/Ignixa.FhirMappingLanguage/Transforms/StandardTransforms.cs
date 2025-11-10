@@ -80,7 +80,7 @@ public static class StandardTransforms
 /// <summary>
 /// create(type) - Creates a new FHIR resource or element of the specified type.
 /// </summary>
-public class CreateTransform : ITransformFunction
+internal class CreateTransform : ITransformFunction
 {
     public string Name => "create";
 
@@ -101,7 +101,7 @@ public class CreateTransform : ITransformFunction
 /// <summary>
 /// copy(source) - Copies the source value to the target.
 /// </summary>
-public class CopyTransform : ITransformFunction
+internal class CopyTransform : ITransformFunction
 {
     public string Name => "copy";
 
@@ -118,7 +118,7 @@ public class CopyTransform : ITransformFunction
 /// <summary>
 /// uuid() - Generates a new UUID.
 /// </summary>
-public class UuidTransform : ITransformFunction
+internal class UuidTransform : ITransformFunction
 {
     public string Name => "uuid";
 
@@ -135,7 +135,7 @@ public class UuidTransform : ITransformFunction
 /// <summary>
 /// truncate(source, length) - Truncates a string to the specified length.
 /// </summary>
-public class TruncateTransform : ITransformFunction
+internal class TruncateTransform : ITransformFunction
 {
     public string Name => "truncate";
 
@@ -154,7 +154,7 @@ public class TruncateTransform : ITransformFunction
 /// <summary>
 /// escape(source, format) - Escapes a string for the specified format (url, json, xml).
 /// </summary>
-public class EscapeTransform : ITransformFunction
+internal class EscapeTransform : ITransformFunction
 {
     public string Name => "escape";
 
@@ -192,7 +192,7 @@ public class EscapeTransform : ITransformFunction
 /// <summary>
 /// append(source, suffix) - Appends suffix to source string.
 /// </summary>
-public class AppendTransform : ITransformFunction
+internal class AppendTransform : ITransformFunction
 {
     public string Name => "append";
 
@@ -215,7 +215,7 @@ public class AppendTransform : ITransformFunction
 /// <summary>
 /// cast(source, type) - Casts source to the specified type.
 /// </summary>
-public class CastTransform : ITransformFunction
+internal class CastTransform : ITransformFunction
 {
     public string Name => "cast";
 
@@ -243,7 +243,7 @@ public class CastTransform : ITransformFunction
 /// <summary>
 /// evaluate(source, path) - Evaluates a FHIRPath expression against the source.
 /// </summary>
-public class EvaluateTransform : ITransformFunction
+internal class EvaluateTransform : ITransformFunction
 {
     public string Name => "evaluate";
 
@@ -274,7 +274,7 @@ public class EvaluateTransform : ITransformFunction
 /// <summary>
 /// cc(system, code, [display]) - Creates a CodeableConcept.
 /// </summary>
-public class CodeableConceptTransform : ITransformFunction
+internal class CodeableConceptTransform : ITransformFunction
 {
     public string Name => "cc";
 
@@ -308,7 +308,7 @@ public class CodeableConceptTransform : ITransformFunction
 /// <summary>
 /// c(system, code, [display]) - Creates a Coding.
 /// </summary>
-public class CodingTransform : ITransformFunction
+internal class CodingTransform : ITransformFunction
 {
     public string Name => "c";
 
@@ -339,7 +339,7 @@ public class CodingTransform : ITransformFunction
 /// <summary>
 /// qty(value, unit, [system]) - Creates a Quantity.
 /// </summary>
-public class QuantityTransform : ITransformFunction
+internal class QuantityTransform : ITransformFunction
 {
     public string Name => "qty";
 
@@ -367,7 +367,7 @@ public class QuantityTransform : ITransformFunction
 /// <summary>
 /// id(value, [system]) - Creates an Identifier.
 /// </summary>
-public class IdentifierTransform : ITransformFunction
+internal class IdentifierTransform : ITransformFunction
 {
     public string Name => "id";
 
@@ -396,7 +396,7 @@ public class IdentifierTransform : ITransformFunction
 /// <summary>
 /// cp(system, value, [use]) - Creates a ContactPoint.
 /// </summary>
-public class ContactPointTransform : ITransformFunction
+internal class ContactPointTransform : ITransformFunction
 {
     public string Name => "cp";
 
@@ -427,7 +427,7 @@ public class ContactPointTransform : ITransformFunction
 /// <summary>
 /// reference(source) - Creates a Reference to the source.
 /// </summary>
-public class ReferenceTransform : ITransformFunction
+internal class ReferenceTransform : ITransformFunction
 {
     public string Name => "reference";
 
@@ -473,7 +473,7 @@ public class ReferenceTransform : ITransformFunction
 /// <summary>
 /// translate(source, map_uri, output) - Translates a code using a ConceptMap.
 /// </summary>
-public class TranslateTransform : ITransformFunction
+internal class TranslateTransform : ITransformFunction
 {
     public string Name => "translate";
 
@@ -502,7 +502,7 @@ public class TranslateTransform : ITransformFunction
 /// <summary>
 /// pointer(source) - Returns a JSON Pointer to the source element.
 /// </summary>
-public class PointerTransform : ITransformFunction
+internal class PointerTransform : ITransformFunction
 {
     public string Name => "pointer";
 
@@ -525,7 +525,7 @@ public class PointerTransform : ITransformFunction
 /// <summary>
 /// dateOp(value, [operation], [params]) - Performs date operations.
 /// </summary>
-public class DateOpTransform : ITransformFunction
+internal class DateOpTransform : ITransformFunction
 {
     public string Name => "dateOp";
 

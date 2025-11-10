@@ -10,7 +10,7 @@ namespace Ignixa.FhirMappingLanguage.Lexer;
 /// <summary>
 /// Token types for FHIR Mapping Language tokenization.
 /// </summary>
-public enum MappingTokenKind
+internal enum MappingTokenKind
 {
     // Keywords
     Map,

@@ -13,7 +13,7 @@ namespace Ignixa.FhirMappingLanguage.TypeSystem;
 /// Basic implementation of type validation for mapping language.
 /// Validates primitive types and basic type compatibility.
 /// </summary>
-public class BasicTypeValidator : ITypeValidator
+internal class BasicTypeValidator : ITypeValidator
 {
     // FHIR primitive types
     private static readonly HashSet<string> PrimitiveTypes = new(StringComparer.OrdinalIgnoreCase)

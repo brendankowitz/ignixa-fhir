@@ -14,7 +14,7 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// <summary>
 /// Provides FHIRPath evaluation capabilities for mapping expressions.
 /// </summary>
-public class FhirPathIntegration
+internal class FhirPathIntegration
 {
     private readonly FhirPathCompiler _compiler;
     private readonly FhirPathEvaluator _evaluator;

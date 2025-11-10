@@ -11,7 +11,7 @@ namespace Ignixa.FhirMappingLanguage.Terminology;
 /// <summary>
 /// Resolves terminology translations using FHIR ConceptMap resources.
 /// </summary>
-public class ConceptMapResolver
+internal class ConceptMapResolver
 {
     private readonly Dictionary<string, JsonDocument> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly IConceptMapLoader? _loader;

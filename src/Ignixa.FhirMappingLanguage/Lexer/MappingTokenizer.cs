@@ -15,7 +15,7 @@ namespace Ignixa.FhirMappingLanguage.Lexer;
 /// Tokenizer for FHIR Mapping Language expressions using Superpower.
 /// Provides two modes: standard (for evaluation) and with-trivia (for round-tripping).
 /// </summary>
-public static class MappingTokenizer
+internal static class MappingTokenizer
 {
     /// <summary>
     /// Creates a tokenizer that preserves whitespace and comments for round-tripping.

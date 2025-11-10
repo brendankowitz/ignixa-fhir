@@ -12,7 +12,7 @@ namespace Ignixa.FhirMappingLanguage.Registry;
 /// Resolves imports in FHIR mapping definitions.
 /// Handles loading imported maps and detecting circular dependencies.
 /// </summary>
-public class ImportResolver
+internal class ImportResolver
 {
     private readonly IMapRegistry _registry;
     private readonly IMapLoader? _loader;
