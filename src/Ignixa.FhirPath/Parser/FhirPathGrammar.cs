@@ -17,7 +17,7 @@ namespace Ignixa.FhirPath.Parser;
 /// Parser grammar for FhirPath expressions.
 /// Converts token streams into Expression abstract syntax trees.
 /// </summary>
-public static class FhirPathGrammar
+internal static class FhirPathGrammar
 {
     // Helper: Create position info from token
     private static ISourcePositionInfo CreatePosition(Token<FhirPathTokenKind> token) =>

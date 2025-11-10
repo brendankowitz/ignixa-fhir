@@ -11,7 +11,7 @@ namespace Ignixa.FhirPath.Lexer;
 /// Token kinds for FhirPath expressions.
 /// Defines all lexical elements recognized by the FhirPath tokenizer.
 /// </summary>
-public enum FhirPathTokenKind
+internal enum FhirPathTokenKind
     {
         // Literals
         /// <summary>'hello world' - Single-quoted string with escape sequences</summary>

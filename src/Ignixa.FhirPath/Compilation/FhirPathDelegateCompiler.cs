@@ -21,7 +21,7 @@ namespace Ignixa.FhirPath.Compilation;
 ///
 /// Unsupported expressions fall back to interpreted execution.
 /// </summary>
-public class FhirPathDelegateCompiler
+internal class FhirPathDelegateCompiler
 {
     private readonly FhirPathEvaluator _fallbackEvaluator;
 

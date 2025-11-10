@@ -15,7 +15,7 @@ namespace Ignixa.FhirPath.Lexer;
 /// Tokenizer for FhirPath expressions using Superpower.
 /// Provides two modes: standard (for evaluation) and with-trivia (for round-tripping).
 /// </summary>
-public static class FhirPathTokenizer
+internal static class FhirPathTokenizer
 {
         /// <summary>
         /// Creates a tokenizer that preserves whitespace and comments for round-tripping.

@@ -19,7 +19,7 @@ namespace Ignixa.SqlOnFhir.Parsing;
 /// Compiles FHIRPath expressions during parsing for better performance.
 /// This replaces both ViewDefinitionParser and ViewDefinitionModelParser with a single clean path.
 /// </summary>
-public static class ViewDefinitionExpressionParser
+internal static class ViewDefinitionExpressionParser
 {
     private static readonly FhirPathCompiler _compiler = new();
 
