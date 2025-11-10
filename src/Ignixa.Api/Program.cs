@@ -662,6 +662,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // Register global IPackageResourceRepository (shared across all tenants for conformance resources)
     // NOTE: Package resources are tenant-agnostic. Phase 2: will be tenant-scoped.
+    // CRITICAL: Registered as InstancePerDependency (NOT SingleInstance) because DbContext is not thread-safe.
+    // Each concurrent request MUST get its own DbContext instance.
+    // Sharing a single DbContext across threads causes: "A second operation was started on this context
+    // instance before a previous operation completed"
+    // See: https://learn.microsoft.com/en-us/ef/core/dbcontext-configuration/
     containerBuilder.Register<IPackageResourceRepository>(c =>
     {
         var tenantStore = c.Resolve<ITenantConfigurationStore>();
