@@ -164,7 +164,7 @@ public class TenantPackagePreloadService : BackgroundService
 
             var fhirVersionContext = scope.ServiceProvider.GetRequiredService<IFhirVersionContext>();
 
-            foreach (var tenant in allTenants)
+            foreach (var tenant in allTenants.Where(x => x.IsActive))
             {
                 try
                 {

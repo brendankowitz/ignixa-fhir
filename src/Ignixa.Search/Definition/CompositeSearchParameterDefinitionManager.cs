@@ -679,9 +679,10 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     }
 
     /// <summary>
-    /// Merges all base and package search parameters with conflict resolution.
+    /// Merges all base and package search parameters with per-resource-type conflict resolution.
     /// Used during eager loading to create a complete merged list of all search parameters.
-    /// Similar to MergeSearchParameters but operates on ALL parameters at once.
+    /// CRITICAL: Resolves conflicts PER RESOURCE TYPE (not globally) to match FHIR semantics.
+    /// Example: "identifier" conflict on Patient is resolved independently from "identifier" conflict on Organization.
     /// </summary>
     private IEnumerable<SearchParameterInfo> MergeAllSearchParameters(
         IReadOnlyList<SearchParameterInfo> baseParameters,
@@ -692,19 +693,30 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             return baseParameters;
         }
 
-        // Build lookup: code -> List<SearchParameterInfo> (for conflict detection)
-        var parametersByCode = new Dictionary<string, List<SearchParameterInfo>>(StringComparer.OrdinalIgnoreCase);
+        // Build lookup: (code, resourceType) -> List<SearchParameterInfo>
+        // This ensures conflicts are resolved independently per resource type
+        var parametersByCodeAndResourceType =
+            new Dictionary<(string code, string resourceType), List<SearchParameterInfo>>(
+                new CodeResourceTypeTupleComparer());
 
         // Start with base parameters
         foreach (var baseParam in baseParameters)
         {
-            if (!parametersByCode.TryGetValue(baseParam.Code, out var list))
+            // Base parameters can apply to multiple resource types via BaseResourceTypes
+            // Add them for each resource type they apply to
+            if (baseParam.BaseResourceTypes != null && baseParam.BaseResourceTypes.Count > 0)
             {
-                list = new List<SearchParameterInfo>();
-                parametersByCode[baseParam.Code] = list;
+                foreach (var resourceType in baseParam.BaseResourceTypes)
+                {
+                    var key = (baseParam.Code, resourceType);
+                    if (!parametersByCodeAndResourceType.TryGetValue(key, out var list))
+                    {
+                        list = new List<SearchParameterInfo>();
+                        parametersByCodeAndResourceType[key] = list;
+                    }
+                    list.Add(baseParam);
+                }
             }
-
-            list.Add(baseParam);
 
             // Ensure base parameters have metadata for conflict resolution logging
             if (baseParam.Url != null && !_packageMetadataCache.ContainsKey(baseParam.Url.ToString()))
@@ -721,32 +733,41 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         // Add package parameters
         foreach (var packageParam in packageParameters)
         {
-            if (!parametersByCode.TryGetValue(packageParam.Code, out var list))
+            // Package parameters can also apply to multiple resource types
+            if (packageParam.BaseResourceTypes != null && packageParam.BaseResourceTypes.Count > 0)
             {
-                list = new List<SearchParameterInfo>();
-                parametersByCode[packageParam.Code] = list;
+                foreach (var resourceType in packageParam.BaseResourceTypes)
+                {
+                    var key = (packageParam.Code, resourceType);
+                    if (!parametersByCodeAndResourceType.TryGetValue(key, out var list))
+                    {
+                        list = new List<SearchParameterInfo>();
+                        parametersByCodeAndResourceType[key] = list;
+                    }
+
+                    // Check for exact URL match (duplicate)
+                    var duplicate = list.FirstOrDefault(p =>
+                        p.Url != null && packageParam.Url != null && p.Url.Equals(packageParam.Url));
+
+                    if (duplicate != null)
+                    {
+                        _logger.LogDebug(
+                            "Skipping duplicate SearchParameter {Code} for {ResourceType} (URL: {Url})",
+                            packageParam.Code,
+                            resourceType,
+                            packageParam.Url);
+                        continue;
+                    }
+
+                    list.Add(packageParam);
+                }
             }
-
-            // Check for exact URL match (duplicate)
-            var duplicate = list.FirstOrDefault(p =>
-                p.Url != null && packageParam.Url != null && p.Url.Equals(packageParam.Url));
-
-            if (duplicate != null)
-            {
-                _logger.LogDebug(
-                    "Skipping duplicate SearchParameter {Code} (URL: {Url})",
-                    packageParam.Code,
-                    packageParam.Url);
-                continue;
-            }
-
-            list.Add(packageParam);
         }
 
-        // Resolve conflicts for each code
-        var result = new List<SearchParameterInfo>(parametersByCode.Count);
+        // Resolve conflicts per (code, resourceType) tuple
+        var result = new List<SearchParameterInfo>(parametersByCodeAndResourceType.Count);
 
-        foreach (var (code, candidates) in parametersByCode)
+        foreach (var ((code, resourceType), candidates) in parametersByCodeAndResourceType)
         {
             if (candidates.Count == 1)
             {
@@ -754,12 +775,12 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             }
             else
             {
-                // Conflict: multiple parameters with same code
-                // Use intelligent conflict resolution
+                // Conflict: multiple parameters with same code for same resource type
+                // Use intelligent conflict resolution (per-resource-type)
                 var winner = _conflictResolver.ResolveConflict(
                     candidates,
                     code,
-                    "All", // Resource type not known for global merge
+                    resourceType,  // ✅ PER-RESOURCE-TYPE resolution (not global "All")
                     _packageMetadataCache);
 
                 result.Add(winner);
@@ -767,6 +788,25 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Helper comparer for (code, resourceType) tuples with case-insensitive comparison.
+    /// </summary>
+    private class CodeResourceTypeTupleComparer : EqualityComparer<(string code, string resourceType)>
+    {
+        public override bool Equals((string code, string resourceType) x, (string code, string resourceType) y)
+        {
+            return string.Equals(x.code, y.code, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(x.resourceType, y.resourceType, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public override int GetHashCode((string code, string resourceType) obj)
+        {
+            return HashCode.Combine(
+                obj.code.ToUpperInvariant(),
+                obj.resourceType.ToUpperInvariant());
+        }
     }
 
     /// <summary>

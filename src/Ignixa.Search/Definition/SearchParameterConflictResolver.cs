@@ -34,10 +34,13 @@ public class SearchParameterConflictResolver
     /// <summary>
     /// Resolves conflicts among multiple SearchParameters with the same code.
     /// Returns the winning parameter based on priority or semantic version.
+    ///
+    /// CRITICAL: All candidates MUST apply to the specified resourceType via their BaseResourceTypes.
+    /// This ensures per-resource-type conflict resolution as required by FHIR semantics.
     /// </summary>
-    /// <param name="candidates">List of SearchParameters with the same code (from different IGs).</param>
+    /// <param name="candidates">List of SearchParameters with the same code (from different IGs), all applying to the same resource type.</param>
     /// <param name="code">Search parameter code (for logging).</param>
-    /// <param name="resourceType">Resource type (for logging).</param>
+    /// <param name="resourceType">Resource type that all candidates MUST apply to.</param>
     /// <param name="packageMetadata">Metadata mapping (canonical URL -> package info).</param>
     /// <returns>The winning SearchParameter.</returns>
     public SearchParameterInfo ResolveConflict(
@@ -55,6 +58,10 @@ public class SearchParameterConflictResolver
         {
             return candidates[0];
         }
+
+        // VALIDATION: Ensure all candidates apply to this resource type
+        // This catches bugs in the grouping logic and ensures per-resource-type resolution semantics
+        ValidateCandidatesApplyToResourceType(candidates, code, resourceType);
 
         // Enrich candidates with package metadata
         var enrichedCandidates = candidates
@@ -235,6 +242,51 @@ public class SearchParameterConflictResolver
             PackageVersion = "0.0.0",
             LoadedDate = DateTimeOffset.MinValue
         };
+    }
+
+    /// <summary>
+    /// Validates that all candidates apply to the specified resource type.
+    /// This ensures per-resource-type conflict resolution semantics per FHIR spec.
+    ///
+    /// IMPORTANT: This is a defensive check that catches bugs in grouping logic.
+    /// All candidates passed to ResolveConflict should have been selected because they
+    /// apply to the specified resourceType. If this validation fails, there's a bug
+    /// in the caller's grouping logic (e.g., MergeAllSearchParameters).
+    /// </summary>
+    /// <remarks>
+    /// FHIR Semantics: Search parameters are scoped to resource types via BaseResourceTypes.
+    /// Example: "identifier" on Patient is a different parameter than "identifier" on Organization.
+    /// Conflicts should be resolved independently per resource type.
+    /// </remarks>
+    private void ValidateCandidatesApplyToResourceType(
+        IReadOnlyList<SearchParameterInfo> candidates,
+        string code,
+        string resourceType)
+    {
+        var invalidCandidates = candidates
+            .Where(c => c.BaseResourceTypes == null ||
+                       c.BaseResourceTypes.Count == 0 ||
+                       !c.BaseResourceTypes.Contains(resourceType, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (invalidCandidates.Count > 0)
+        {
+            // This is a bug in the grouping logic - log it as an error
+            var invalidDetails = string.Join(", ", invalidCandidates.Select(c =>
+                $"URL:{c.Url} BaseResourceTypes:[{string.Join(",", c.BaseResourceTypes ?? Array.Empty<string>())}]"));
+
+            _logger.LogError(
+                "INTERNAL ERROR: SearchParameter '{Code}' for {ResourceType}: " +
+                "{Count} candidates do not apply to this resource type. " +
+                "Invalid candidates: [{InvalidDetails}]. " +
+                "This indicates a bug in the grouping/merging logic.",
+                code,
+                resourceType,
+                invalidCandidates.Count,
+                invalidDetails);
+
+            // Note: We continue anyway to avoid breaking resolution, but this is a serious bug indicator
+        }
     }
 
     /// <summary>
