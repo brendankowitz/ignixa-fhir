@@ -44,7 +44,18 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     [JsonIgnore]
     public string ResourceType
     {
-        get => MutableNode["resourceType"]?.GetValue<string>() ?? string.Empty;
+        get
+        {
+            var type = MutableNode["resourceType"]?.GetValue<string>() ?? string.Empty;
+            
+            if (type.Contains('/', StringComparison.Ordinal))
+            {
+                // get last part of the type
+                return type.Substring(type.LastIndexOf('/') + 1);
+            }
+            
+            return type;
+        }
         set => MutableNode["resourceType"] = value;
     }
 

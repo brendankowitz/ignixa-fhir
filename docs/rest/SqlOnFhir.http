@@ -5,6 +5,7 @@
 PUT {{hostname}}/ViewDefinition/ShareablePatientDemographics
 Prefer: validation=full
 Content-Type: application/json
+
 {
   "resourceType": "https://sql-on-fhir.org/ig/StructureDefinition/ViewDefinition",
   "id": "ShareablePatientDemographics",

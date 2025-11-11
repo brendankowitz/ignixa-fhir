@@ -21,6 +21,7 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Utilities;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -122,8 +123,8 @@ public static class FhirEndpoints
         // GET /{resourceType} - Search resources
         tenantGroup.MapGet("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] FhirSchemaProviderResolver schemaProviderResolver, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, schemaProviderResolver, logger, ct))
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, logger, ct))
             .WithName("SearchResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
@@ -131,8 +132,8 @@ public static class FhirEndpoints
         // POST /{resourceType}/_search - Search with form-urlencoded
         tenantGroup.MapPost("/{resourceType}/_search", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] FhirSchemaProviderResolver schemaProviderResolver, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandlePostSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, schemaProviderResolver, logger, ct))
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePostSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, logger, ct))
             .WithName("PostSearchResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
@@ -225,8 +226,8 @@ public static class FhirEndpoints
         // GET /{resourceType} - Search resources (agnostic)
         agnosticGroup.MapGet("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] FhirSchemaProviderResolver schemaProviderResolver, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandleSearchResource(context, context.GetTenantId(), resourceType, mediator, queryParser, searchOptionsBuilderFactory, schemaProviderResolver, logger, ct))
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleSearchResource(context, context.GetTenantId(), resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, logger, ct))
             .WithName("SearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
@@ -507,7 +508,7 @@ public static class FhirEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
-        [FromServices] FhirSchemaProviderResolver schemaProviderResolver,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -524,7 +525,7 @@ public static class FhirEndpoints
         // Get version-specific search options builder and schema provider
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
-        var schemaProvider = schemaProviderResolver(fhirSpec);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
 
         // Parse query parameters
         var queryParameters = queryParser.Parse(context.Request.Query);
@@ -571,7 +572,7 @@ public static class FhirEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
-        [FromServices] FhirSchemaProviderResolver schemaProviderResolver,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -597,7 +598,7 @@ public static class FhirEndpoints
 
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
-        var schemaProvider = schemaProviderResolver(fhirSpec);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Send search query

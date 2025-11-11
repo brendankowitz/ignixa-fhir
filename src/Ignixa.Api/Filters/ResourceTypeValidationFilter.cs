@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Models;
+using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -22,14 +23,14 @@ namespace Ignixa.Api.Filters;
 /// </summary>
 public class ResourceTypeValidationFilter : IEndpointFilter
 {
-    private readonly FhirSchemaProviderResolver _schemaProviderResolver;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<ResourceTypeValidationFilter> _logger;
 
     public ResourceTypeValidationFilter(
-        FhirSchemaProviderResolver schemaProviderResolver,
+        IFhirVersionContext versionContext,
         ILogger<ResourceTypeValidationFilter> logger)
     {
-        _schemaProviderResolver = schemaProviderResolver;
+        _versionContext = versionContext;
         _logger = logger;
     }
 
@@ -62,7 +63,7 @@ public class ResourceTypeValidationFilter : IEndpointFilter
 
         // Resolve FHIR schema provider for tenant's version
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-        var schemaProvider = _schemaProviderResolver(fhirSpec);
+        var schemaProvider = _versionContext.GetSchemaProvider(fhirSpec, tenantConfig.TenantId);
 
         // Validate resource type is supported by this FHIR version
         if (!schemaProvider.ResourceTypeNames.Contains(resourceType))

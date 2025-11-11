@@ -440,14 +440,6 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<ISearchOptionsBuilderFactory>()
         .SingleInstance();
 
-    // Register FhirSchemaProviderResolver - enables version-aware components to resolve
-    // the correct provider at runtime based on request FHIR version
-    containerBuilder.Register<FhirSchemaProviderResolver>(c =>
-    {
-        var versionContext = c.Resolve<IFhirVersionContext>();
-        return (FhirSpecification version) => versionContext.GetBaseSchemaProvider(version);
-    }).SingleInstance();
-
     // DEPRECATED: VersionAwareSearchParameterDefinitionManager replaced by FhirVersionContext.GetSearchParameterDefinitionManager()
     // Multi-version support now provided via FhirVersionContext pattern (same as SearchIndexer and SchemaProvider)
     // For single-tenant mode (Phase 1), default to R4 for backward compatibility

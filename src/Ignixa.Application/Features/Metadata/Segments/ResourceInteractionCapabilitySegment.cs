@@ -85,11 +85,11 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
                 Profile = ReferenceOrCanonicalJsonNode.FromCanonical(canonicalUrl),
                 Interaction = BuildResourceInteractions(resourceType),
                 Versioning = ResourceComponentJsonNode.ResourceVersionPolicy.Versioned,
-                ReadHistory = false,
+                ReadHistory = true,
                 UpdateCreate = true,
-                ConditionalCreate = false,
-                ConditionalUpdate = false,
-                ConditionalDelete = ConditionalDeleteStatus.NotSupported,
+                ConditionalCreate = true,
+                ConditionalUpdate = true,
+                ConditionalDelete = ConditionalDeleteStatus.Single,
                 SearchParam = new List<SearchParamJsonNode>(), // Will be populated by SearchParameterCapabilitySegment
             };
 
