@@ -88,7 +88,9 @@ public class PackageExtractor : IPackageExtractor
                 // Extract FHIR resource JSON files
                 if (entry.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && entry.EntryType == TarEntryType.RegularFile)
                 {
-                    var resource = await ExtractResourceAsync(entry, cancellationToken);
+                    // Use manifest FHIR version if available, otherwise default to 4.0.1
+                    var fhirVersion = manifest?.FhirVersion ?? "4.0.1";
+                    var resource = await ExtractResourceAsync(entry, fhirVersion, cancellationToken);
                     if (resource != null)
                     {
                         resources.Add(resource);
@@ -170,8 +172,12 @@ public class PackageExtractor : IPackageExtractor
     /// <summary>
     /// Extracts a FHIR resource from a tar entry if it's a conformance resource.
     /// </summary>
+    /// <param name="entry">Tar entry containing the resource</param>
+    /// <param name="fhirVersion">FHIR version from package manifest</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     private async Task<ExtractedResource?> ExtractResourceAsync(
         TarEntry entry,
+        string fhirVersion,
         CancellationToken cancellationToken)
     {
         try
@@ -210,9 +216,6 @@ public class PackageExtractor : IPackageExtractor
 
             if (string.IsNullOrEmpty(resourceId))
                 return null;
-
-            // Get FHIR version (default to 4.0.1)
-            var fhirVersion = "4.0.1";
 
             return new ExtractedResource
             {
