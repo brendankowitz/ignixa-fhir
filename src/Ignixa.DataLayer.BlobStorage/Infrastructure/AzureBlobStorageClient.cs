@@ -24,6 +24,10 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     private readonly Dictionary<string, BlobContainerClient> _containerClientCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _cacheSync = new();
 
+    // Tracks which containers have been initialized (lazy initialization on first use)
+    private readonly HashSet<string> _initializedContainers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _initSync = new();
+
     private static partial class Log
     {
         [LoggerMessage(Level = LogLevel.Debug, Message = "Writing blob to {Path}")]
@@ -108,6 +112,55 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
     }
 
     /// <summary>
+    /// Ensures the specified container exists, with lazy initialization on first use.
+    /// Defers container creation to first actual blob operation to avoid blocking startup.
+    /// </summary>
+    private Task EnsureContainerExistsAsync(string containerName, CancellationToken cancellationToken)
+    {
+        // Fast path: container already initialized
+        if (_initializedContainers.Contains(containerName))
+        {
+            return Task.CompletedTask;
+        }
+
+        // Slow path: initialize container (synchronous inside lock, then return Task)
+        lock (_initSync)
+        {
+            // Double-check after acquiring lock
+            if (_initializedContainers.Contains(containerName))
+            {
+                return Task.CompletedTask;
+            }
+
+            try
+            {
+                _logger.LogDebug("Ensuring container '{ContainerName}' exists (first use)", containerName);
+                var containerClient = GetContainerClient(containerName);
+
+                // Use synchronous CreateIfNotExists inside lock to avoid async in lock
+#pragma warning disable CA1849 // Intentionally synchronous to avoid async inside lock
+                containerClient.CreateIfNotExists(cancellationToken: cancellationToken);
+#pragma warning restore CA1849
+
+                _initializedContainers.Add(containerName);
+                _logger.LogInformation("Container '{ContainerName}' initialized successfully", containerName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to initialize container '{ContainerName}'. Container may already exist or you may lack permissions. Will retry on next operation.",
+                    containerName);
+
+                // Still mark as attempted to avoid retrying on every operation
+                _initializedContainers.Add(containerName);
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
     /// Parses a blob path to extract container name and blob name.
     /// Supports both:
     /// - Full blob URLs: https://account.blob.core.windows.net/container/blob/path
@@ -158,6 +211,8 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         Log.WritingBlob(_logger, path);
 
         var (containerName, blobName) = ParseBlobPath(path);
+        await EnsureContainerExistsAsync(containerName, cancellationToken).ConfigureAwait(false);
+
         var containerClient = GetContainerClient(containerName);
         var blobClient = containerClient.GetBlobClient(blobName);
         await blobClient.UploadAsync(content, overwrite: true, cancellationToken).ConfigureAwait(false);
@@ -174,6 +229,8 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         Log.AppendingToBlob(_logger, path);
 
         var (containerName, blobName) = ParseBlobPath(path);
+        await EnsureContainerExistsAsync(containerName, cancellationToken).ConfigureAwait(false);
+
         var containerClient = GetContainerClient(containerName);
         var appendBlobClient = containerClient.GetAppendBlobClient(blobName);
 
@@ -201,6 +258,8 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         Log.ReadingBlob(_logger, path);
 
         var (containerName, blobName) = ParseBlobPath(path);
+        await EnsureContainerExistsAsync(containerName, cancellationToken).ConfigureAwait(false);
+
         var containerClient = GetContainerClient(containerName);
         var blobClient = containerClient.GetBlobClient(blobName);
         var download = await blobClient.DownloadAsync(cancellationToken).ConfigureAwait(false);
@@ -214,6 +273,8 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         var (containerName, blobName) = ParseBlobPath(path);
+        await EnsureContainerExistsAsync(containerName, cancellationToken).ConfigureAwait(false);
+
         var containerClient = GetContainerClient(containerName);
         var blobClient = containerClient.GetBlobClient(blobName);
 
@@ -235,6 +296,8 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         var (containerName, blobName) = ParseBlobPath(path);
+        await EnsureContainerExistsAsync(containerName, cancellationToken).ConfigureAwait(false);
+
         var containerClient = GetContainerClient(containerName);
 
         var blobClient = containerClient.GetBlobClient(blobName);
@@ -251,6 +314,8 @@ public partial class AzureBlobStorageClient : IBlobStorageClient
         var blobs = new List<string>();
 
         var (containerName, blobPrefix) = ParseBlobPath(pathPrefix);
+        await EnsureContainerExistsAsync(containerName, cancellationToken).ConfigureAwait(false);
+
         var containerClient = GetContainerClient(containerName);
 
         await foreach (var blobItem in containerClient.GetBlobsAsync(

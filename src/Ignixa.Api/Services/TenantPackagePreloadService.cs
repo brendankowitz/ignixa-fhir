@@ -6,6 +6,8 @@
 using Ignixa.Application.Features.Admin;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using Ignixa.Search.Infrastructure;
+using Ignixa.Serialization;
 using Medino;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -18,6 +20,8 @@ namespace Ignixa.Api.Services;
 /// Loads packages configured in TenantConfiguration.Packages.PreloadPackages for each tenant.
 /// Embedded packages (like SQL-on-FHIR ViewDefinition) are handled by EmbeddedPackageLoader
 /// when referenced via "local.{packageId}@{version}" format in PreloadPackages configuration.
+/// After loading packages, warms IFhirSchemaProvider and ISearchParameterDefinitionManager
+/// for each tenant and FHIR version to ensure predictable first-request performance.
 /// Runs after all other services are initialized.
 /// </summary>
 public class TenantPackagePreloadService : BackgroundService
@@ -152,6 +156,41 @@ public class TenantPackagePreloadService : BackgroundService
                             version,
                             tenant.TenantId);
                     }
+                }
+            }
+
+            // Warm schema providers and search parameter managers for all tenants
+            _logger.LogInformation("Warming schema providers and search parameter managers for {Count} tenant(s)", allTenants.Count);
+
+            var fhirVersionContext = scope.ServiceProvider.GetRequiredService<IFhirVersionContext>();
+
+            foreach (var tenant in allTenants)
+            {
+                try
+                {
+                    _logger.LogDebug("Warming providers for tenant {TenantId}", tenant.TenantId);
+
+                    // Warm schema providers for tenant's default FHIR version only
+                    var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
+
+                    // Accessing the provider triggers eager loading of package StructureDefinitions
+                    var schemaProvider = fhirVersionContext.GetSchemaProvider(fhirVersion, tenant.TenantId);
+
+                    // Accessing the manager triggers eager loading of package SearchParameters
+                    var searchParamManager = fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenant.TenantId);
+
+                    _logger.LogInformation(
+                        "Warmed schema providers and search parameter managers for tenant {TenantId} ({DisplayName}) - FHIR {FhirVersion}",
+                        tenant.TenantId,
+                        tenant.DisplayName,
+                        tenant.FhirVersion);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to warm providers for tenant {TenantId}. Providers will be loaded lazily on first request.",
+                        tenant.TenantId);
                 }
             }
 

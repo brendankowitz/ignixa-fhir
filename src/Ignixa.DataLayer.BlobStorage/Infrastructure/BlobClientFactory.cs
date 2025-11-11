@@ -63,9 +63,9 @@ public class BlobClientFactory
     }
 
     /// <summary>
-    /// Creates an Azure Blob Storage client with container auto-initialization.
+    /// Creates an Azure Blob Storage client. Container initialization is deferred to first use.
     /// </summary>
-    private async Task<IBlobStorageClient> CreateAzureClientAsync()
+    private Task<IBlobStorageClient> CreateAzureClientAsync()
     {
         _logger.LogInformation("Creating Azure Blob Storage client");
 
@@ -130,22 +130,15 @@ public class BlobClientFactory
             blobServiceClient = new BlobServiceClient(options.ConnectionString, clientOptions);
         }
 
-        // Ensure container exists (idempotent operation)
-        var containerClient = blobServiceClient.GetBlobContainerClient(options.ContainerName);
-        try
-        {
-            _logger.LogInformation("Ensuring container '{ContainerName}' exists", options.ContainerName);
-            await containerClient.CreateIfNotExistsAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
-            _logger.LogInformation("Container '{ContainerName}' is ready", options.ContainerName);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to create container '{ContainerName}'. It may already exist or you may lack permissions", options.ContainerName);
-        }
+        // Container existence check is deferred to first use (lazy initialization)
+        // This avoids blocking startup if blob storage is temporarily unavailable
+        _logger.LogInformation("Azure Blob Storage client created. Container '{ContainerName}' will be initialized on first use", options.ContainerName);
 
         var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<AzureBlobStorageClient>();
-        return new AzureBlobStorageClient(blobServiceClient, Microsoft.Extensions.Options.Options.Create(options), logger);
+        var client = new AzureBlobStorageClient(blobServiceClient, Microsoft.Extensions.Options.Options.Create(options), logger);
+
+        return Task.FromResult<IBlobStorageClient>(client);
     }
 
     /// <summary>
