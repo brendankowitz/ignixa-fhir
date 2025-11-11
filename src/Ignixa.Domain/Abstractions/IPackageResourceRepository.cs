@@ -173,4 +173,46 @@ public interface IPackageResourceRepository
     Task<IReadOnlySet<string>> GetCustomResourceTypesAsync(
         string? fhirVersion = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all active SearchParameter resources for a specific resource type.
+    /// Returns SearchParameters that apply to the given resource type (from base[] field).
+    /// Used by composite search parameter manager to merge IG-provided parameters with base spec.
+    /// Ordered by PackageVersion DESC so newest version is first.
+    /// </summary>
+    /// <param name="resourceType">Resource type name (e.g., "Patient", "Observation").</param>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of active SearchParameters for the resource type, newest first.</returns>
+    Task<IReadOnlyList<PackageResource>> GetSearchParametersByResourceTypeAsync(
+        string resourceType,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a SearchParameter by its canonical URL.
+    /// Supports multiple versions of the same IG (e.g., US Core 5.0.1 and 6.1.0).
+    /// Ordered by PackageVersion DESC so newest version is first.
+    /// Used by composite search parameter manager for exact URL lookups.
+    /// </summary>
+    /// <param name="canonical">Canonical URL of the SearchParameter.</param>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of active SearchParameters matching the canonical URL, newest first.</returns>
+    Task<IReadOnlyList<PackageResource>> GetSearchParametersByCanonicalAsync(
+        string canonical,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all active SearchParameter resources across all loaded packages.
+    /// Used for eager loading of search parameters at startup.
+    /// Ordered by PackageVersion DESC so newest version is first.
+    /// </summary>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of all active SearchParameters, newest first.</returns>
+    Task<IReadOnlyList<PackageResource>> GetAllSearchParametersAsync(
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default);
 }

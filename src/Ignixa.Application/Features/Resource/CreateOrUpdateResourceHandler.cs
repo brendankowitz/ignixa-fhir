@@ -66,8 +66,18 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
         var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
 
+        // Extract tenant ID early for tenant-aware search indexing
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("HttpContext is null");
+
+        int? tenantId = null;
+        if (httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) && tenantIdObj is int tid)
+        {
+            tenantId = tid;
+        }
+
         // Create wrapper (needed for both paths now)
-        var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider);
+        var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider, tenantId);
 
         UpdateResult result;
 
@@ -118,11 +128,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         else
         {
             // Standalone path - write immediately to repository via multi-tenant factory
-            // 1. Extract tenant context from HttpContext.Items
-            var httpContext = _httpContextAccessor.HttpContext
-                ?? throw new InvalidOperationException("HttpContext is null");
-
-            if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+            // 1. Validate tenant context (already extracted earlier)
+            if (!tenantId.HasValue)
             {
                 throw new InvalidOperationException("TenantId not found in HttpContext.Items");
             }
@@ -132,7 +139,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // Create partition resolution context
             var partitionContext = new PartitionResolutionContext
             {
-                TenantId = tenantId,
+                TenantId = tenantId.Value,
                 TenantConfiguration = tenantConfig
             };
 
@@ -179,17 +186,20 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// Creates a ResourceWrapper from the command.
     /// Single place for wrapper construction logic.
     /// Uses provided FHIR version and schema provider to extract search indices from resource.
+    /// When tenantId is provided, uses tenant-aware search indexer with IG-specific search parameters.
     /// </summary>
     private ResourceWrapper CreateResourceWrapper(
         CreateOrUpdateResourceCommand command,
         FhirSpecification fhirVersionEnum,
-        IFhirSchemaProvider schemaProvider)
+        IFhirSchemaProvider schemaProvider,
+        int? tenantId)
     {
         var request = new ResourceRequest(command.HttpMethod.Method, $"{command.ResourceType}/{command.Id}");
 
-        // Get version-specific search indexer from context
-        // Factory initializes synchronously using pre-generated search parameters
-        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersionEnum);
+        // Get tenant-aware search indexer from context if tenantId available
+        // When tenantId is provided, indexer uses IG-specific search parameters from loaded packages
+        // When no tenantId, indexer uses base FHIR spec search parameters only
+        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersionEnum, tenantId);
 
         // Extract search indices using version-specific indexer
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;

@@ -43,12 +43,30 @@ public interface IFhirVersionContext
     ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion);
 
     /// <summary>
+    /// Gets the search indexer for the specified FHIR version and tenant.
+    /// When tenantId is provided, returns an indexer that uses IG-provided search parameters.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <param name="tenantId">Tenant ID for IG-specific search parameters (null for base indexer only).</param>
+    /// <returns>Search indexer for the specified version and tenant.</returns>
+    ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion, Nullable<int> tenantId);
+
+    /// <summary>
     /// Gets the search parameter definition manager for the specified FHIR version.
     /// Initializes synchronously using pre-generated search parameters.
     /// </summary>
     /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
     /// <returns>Search parameter definition manager for the specified version.</returns>
     ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion);
+
+    /// <summary>
+    /// Gets the search parameter definition manager for the specified FHIR version and tenant.
+    /// When tenantId is provided, returns a composite manager that includes IG-provided search parameters.
+    /// </summary>
+    /// <param name="fhirVersion">FHIR version enum (e.g., FhirSpecification.R4).</param>
+    /// <param name="tenantId">Tenant ID for IG-specific search parameters (null for base manager only).</param>
+    /// <returns>Search parameter definition manager for the specified version and tenant.</returns>
+    ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
     /// Gets the compartment definition manager for the specified FHIR version.

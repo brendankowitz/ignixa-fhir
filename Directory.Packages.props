@@ -72,5 +72,7 @@
     <PackageVersion Include="Polly" Version="8.4.1" />
     <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
     <PackageVersion Include="System.Text.Json" Version="8.0.0" />
+    <!-- SearchParameter Conflict Resolution -->
+    <PackageVersion Include="NuGet.Versioning" Version="6.8.0" />
   </ItemGroup>
 </Project>

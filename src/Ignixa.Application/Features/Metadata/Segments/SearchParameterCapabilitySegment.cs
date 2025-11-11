@@ -43,8 +43,8 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
     {
         _logger.LogDebug("Applying search parameter capability segment for {FhirVersion}", context.FhirVersion);
 
-        // Get manager for this FHIR version
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
+        // Get manager for this FHIR version (tenant-aware to include custom search parameters from packages)
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion, context.TenantId);
 
         if (statement.Rest == null || statement.Rest.Count == 0)
         {
@@ -90,8 +90,8 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
-        // Hash is based on all search parameter URLs
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
+        // Hash is based on all search parameter URLs (tenant-aware to detect package changes)
+        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion, context.TenantId);
 
         var allSearchParams = manager.AllSearchParameters
             .Where(sp => sp.IsSupported)

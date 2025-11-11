@@ -111,8 +111,8 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
 
             // Get FHIR schema and indexer using tenant's configured FHIR version
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersion);
-            var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion);
+            var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
+            var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, input.TenantId);
 
             // Read global configuration for consumer count
             var consumerCount = _configuration.GetValue<int>("Import:ConsumerCount", 8);

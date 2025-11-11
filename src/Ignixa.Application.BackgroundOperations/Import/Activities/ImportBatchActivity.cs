@@ -112,8 +112,8 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
         var errors = new List<ImportErrorLogEntry>();
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
 
-        var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersion);
-        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion);
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
+        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, input.TenantId);
 
         for (int entryIndex = 0; entryIndex < input.Resources.Count; entryIndex++)
         {

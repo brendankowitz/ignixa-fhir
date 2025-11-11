@@ -80,7 +80,8 @@ public class PostPutBenchmarks
         _patientJsonBytes = Encoding.UTF8.GetBytes(_patientJson);
 
         // Setup version context and schema provider
-        _versionContext = new FhirVersionContext(NullLoggerFactory.Instance);
+        var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
+        _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
         _schemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
         // Pre-parse for some benchmarks
@@ -128,7 +129,7 @@ public class PostPutBenchmarks
             node = await JsonSourceNodeFactory.Parse(stream);
         }
 
-        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4);
+        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
         var typedElement = node.ToTypedElement(_schemaProvider);
         return searchIndexer.Extract(typedElement);
     }
@@ -150,7 +151,7 @@ public class PostPutBenchmarks
         var typedElement = node.ToTypedElement(_schemaProvider);
 
         // Step 3: Extract search indices
-        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4);
+        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
         var searchIndices = searchIndexer.Extract(typedElement);
 
         // Step 4: Set meta (simulating handler logic)
@@ -178,7 +179,7 @@ public class PostPutBenchmarks
         }
 
         var typedElement = node.ToTypedElement(_schemaProvider);
-        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4);
+        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
         var searchIndices = searchIndexer.Extract(typedElement);
 
         // Simulate wrapper creation

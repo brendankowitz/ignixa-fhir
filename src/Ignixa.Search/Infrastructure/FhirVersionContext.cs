@@ -27,7 +27,9 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConcurrentDictionary<FhirSpecification, IFhirSchemaProvider> _schemaProviders = new();
     private readonly ConcurrentDictionary<(FhirSpecification, int), CompositeStructureDefinitionSummaryProvider> _compositeProviders = new();
     private readonly ConcurrentDictionary<FhirSpecification, ISearchIndexer> _searchIndexers = new();
+    private readonly ConcurrentDictionary<(FhirSpecification, int), ISearchIndexer> _tenantSearchIndexers = new();
     private readonly ConcurrentDictionary<FhirSpecification, ISearchParameterDefinitionManager> _searchParamManagers = new();
+    private readonly ConcurrentDictionary<(FhirSpecification, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
     private readonly ConcurrentDictionary<FhirSpecification, ICompartmentDefinitionManager> _compartmentManagers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
     private readonly SemaphoreSlim _searchParamLock = new(1, 1);
@@ -36,16 +38,19 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly IPackageResourceRepository _packageResourceRepository;
     private readonly IPackageResourceProvider _packageResourceProvider;
     private readonly ICompositeSchemaProviderRegistry _compositeProviderRegistry;
+    private readonly SearchParameterResolutionOptions _searchParameterResolutionOptions;
     private readonly ILogger<FhirVersionContext> _logger;
     private bool _disposed;
 
     public FhirVersionContext(
         ILoggerFactory loggerFactory,
+        SearchParameterResolutionOptions searchParameterResolutionOptions,
         IPackageResourceRepository packageResourceRepository = null,
         IPackageResourceProvider packageResourceProvider = null,
         ICompositeSchemaProviderRegistry compositeProviderRegistry = null)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _searchParameterResolutionOptions = searchParameterResolutionOptions ?? throw new ArgumentNullException(nameof(searchParameterResolutionOptions));
         _packageResourceRepository = packageResourceRepository;
         _packageResourceProvider = packageResourceProvider;
         _compositeProviderRegistry = compositeProviderRegistry;
@@ -168,6 +173,72 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
+    public ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion, Nullable<int> tenantId)
+    {
+        // If no tenant ID provided, return base indexer
+        if (!tenantId.HasValue)
+        {
+            _logger.LogTrace(
+                "Tenant not available - returning base search indexer for {FhirVersion}",
+                fhirVersion);
+            return GetSearchIndexer(fhirVersion);
+        }
+
+        // If package management dependencies not available, return base indexer
+        if (_packageResourceRepository == null)
+        {
+            _logger.LogTrace(
+                "Package management dependencies not available - returning base search indexer for {FhirVersion}",
+                fhirVersion);
+            return GetSearchIndexer(fhirVersion);
+        }
+
+        // Fast path: check if already cached
+        if (_tenantSearchIndexers.TryGetValue((fhirVersion, tenantId.Value), out var cachedIndexer))
+        {
+            return cachedIndexer;
+        }
+
+        // IMPORTANT: Call dependency methods BEFORE acquiring lock to avoid nested lock acquisition
+        var schemaProvider = GetSchemaProvider(fhirVersion, tenantId);
+        var searchParamManager = GetSearchParameterDefinitionManager(fhirVersion, tenantId);
+
+        // Slow path: create new tenant-specific indexer (synchronous factory with lock)
+        _indexerLock.Wait();
+        try
+        {
+            // Double-check after acquiring lock
+            if (_tenantSearchIndexers.TryGetValue((fhirVersion, tenantId.Value), out cachedIndexer))
+            {
+                return cachedIndexer;
+            }
+
+            _logger.LogDebug(
+                "Creating tenant-aware search indexer for {FhirVersion}, tenant {TenantId}",
+                fhirVersion,
+                tenantId.Value);
+
+            // Create new search indexer with tenant-specific search parameter manager
+            // This indexer will use IG-provided search parameters from loaded packages
+            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager);
+
+            // Cache and return
+            _tenantSearchIndexers.TryAdd((fhirVersion, tenantId.Value), indexer);
+
+            _logger.LogDebug(
+                "Tenant-aware search indexer created and cached for {FhirVersion}, tenant {TenantId}",
+                fhirVersion,
+                tenantId.Value);
+
+            return indexer;
+        }
+        finally
+        {
+            _indexerLock.Release();
+        }
+    }
+
+    /// <inheritdoc/>
     public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion)
     {
         // Fast path: check if already cached
@@ -200,6 +271,92 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         {
             _searchParamLock.Release();
         }
+    }
+
+    /// <inheritdoc/>
+    public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion, Nullable<int> tenantId)
+    {
+        // If no tenant ID provided, return base manager
+        if (!tenantId.HasValue)
+        {
+            _logger.LogTrace(
+                "Tenant not available - returning base search parameter manager for {FhirVersion}",
+                fhirVersion);
+            return GetSearchParameterDefinitionManager(fhirVersion);
+        }
+
+        // If package management dependencies not available, return base manager
+        if (_packageResourceRepository == null)
+        {
+            _logger.LogTrace(
+                "Package management dependencies not available - returning base search parameter manager for {FhirVersion}",
+                fhirVersion);
+            return GetSearchParameterDefinitionManager(fhirVersion);
+        }
+
+        // Return cached composite manager or create new one
+        var compositeManager = _compositeSearchParamManagers.GetOrAdd((fhirVersion, tenantId.Value), key =>
+        {
+            var (version, tenant) = key;
+
+            _logger.LogDebug(
+                "Creating composite search parameter manager for {FhirVersion}, tenant {TenantId}",
+                version,
+                tenant);
+
+            // Get base manager for this FHIR version
+            var baseManager = GetSearchParameterDefinitionManager(version);
+
+            // Get base schema provider for JSON parsing
+            var baseSchemaProvider = GetBaseSchemaProvider(version);
+
+            // Create conflict resolver with configured options
+            var conflictResolver = new SearchParameterConflictResolver(
+                _searchParameterResolutionOptions,
+                _loggerFactory.CreateLogger<SearchParameterConflictResolver>());
+
+            // Create composite manager that includes base spec + tenant packages
+            var fhirVersionString = version.ToVersionString();
+            var manager = new CompositeSearchParameterDefinitionManager(
+                baseManager,
+                _packageResourceRepository,
+                baseSchemaProvider,
+                fhirVersionString,
+                _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
+                conflictResolver,
+                _searchParameterResolutionOptions);
+
+            // Initialize eagerly if configured
+            if (_searchParameterResolutionOptions.EagerLoadPackageSearchParameters)
+            {
+                try
+                {
+                    // Use Task.Run to safely execute async initialization in sync context
+                    Task.Run(async () => await manager.InitializeAsync(CancellationToken.None)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Failed to eagerly load package search parameters for {FhirVersion}, tenant {TenantId}",
+                        version,
+                        tenant);
+
+                    if (_searchParameterResolutionOptions.FailStartupOnEagerLoadError)
+                    {
+                        throw;
+                    }
+                }
+            }
+
+            _logger.LogDebug(
+                "Composite search parameter manager created and cached for {FhirVersion}, tenant {TenantId}",
+                version,
+                tenant);
+
+            return manager;
+        });
+
+        return compositeManager;
     }
 
     /// <inheritdoc/>

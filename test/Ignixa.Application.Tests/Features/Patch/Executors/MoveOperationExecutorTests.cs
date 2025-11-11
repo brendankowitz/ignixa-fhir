@@ -31,7 +31,8 @@ public class MoveOperationExecutorTests
         var evaluator = new Ignixa.FhirPath.Evaluation.FhirPathEvaluator();
         var compiler = new Ignixa.FhirPath.FhirPathCompiler();
         var loggerFactory = Substitute.For<ILoggerFactory>();
-        var versionContext = new FhirVersionContext(loggerFactory);
+        var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
+        var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);
         var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
         var fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
 

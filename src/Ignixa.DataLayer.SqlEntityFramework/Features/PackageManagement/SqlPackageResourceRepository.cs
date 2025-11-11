@@ -574,6 +574,156 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         }
     }
 
+    public async Task<IReadOnlyList<PackageResource>> GetSearchParametersByResourceTypeAsync(
+        string resourceType,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceType);
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        // Query for all active SearchParameters that apply to this resource type
+        // SearchParameter.base[] field contains the resource types this parameter applies to
+        // We need to parse the JSON to check if resourceType is in the base[] array
+        var query = dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.ResourceType == "SearchParameter" && pr.IsActive);
+
+        // TODO: FHIR version matching - commented out pending resolution of exact matching strategy
+        // Filter by FHIR version if specified
+        // if (!string.IsNullOrEmpty(fhirVersion))
+        // {
+        //     query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        // }
+
+        // Fetch all SearchParameters and filter by base[] in memory (JSON query limitation)
+        // Order by PackageVersion DESC so newest version is first
+        var allSearchParameters = await query
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Filter by resource type using JSON parsing
+        var matchingSearchParameters = allSearchParameters
+            .Where(pr => SearchParameterAppliesToResourceType(pr.ResourceJson, resourceType))
+            .Select(MapEntityToModel)
+            .ToList()
+            .AsReadOnly();
+
+        _logger.LogDebug(
+            "Found {Count} SearchParameters for resource type {ResourceType} (FHIR version: {FhirVersion})",
+            matchingSearchParameters.Count,
+            resourceType,
+            fhirVersion ?? "any");
+
+        return matchingSearchParameters;
+    }
+
+    public async Task<IReadOnlyList<PackageResource>> GetSearchParametersByCanonicalAsync(
+        string canonical,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        // Query for all active SearchParameters with matching canonical URL
+        var query = dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.ResourceType == "SearchParameter"
+                && pr.Canonical == canonical
+                && pr.IsActive);
+
+        // TODO: FHIR version matching - commented out pending resolution of exact matching strategy
+        // Filter by FHIR version if specified
+        // if (!string.IsNullOrEmpty(fhirVersion))
+        // {
+        //     query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        // }
+
+        // Order by PackageVersion DESC so newest version is first
+        var entities = await query
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Found {Count} SearchParameters with canonical {Canonical} (FHIR version: {FhirVersion})",
+            entities.Count,
+            canonical,
+            fhirVersion ?? "any");
+
+        return entities.Select(MapEntityToModel).ToList().AsReadOnly();
+    }
+
+    public async Task<IReadOnlyList<PackageResource>> GetAllSearchParametersAsync(
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        // Query for all active SearchParameters across all packages
+        var query = dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.ResourceType == "SearchParameter" && pr.IsActive);
+
+        // TODO: FHIR version matching - commented out pending resolution of exact matching strategy
+        // if (!string.IsNullOrEmpty(fhirVersion))
+        // {
+        //     query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        // }
+
+        // Order by PackageVersion DESC so newest version is first
+        var entities = await query
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Retrieved {Count} SearchParameters from packages (FHIR version: {FhirVersion})",
+            entities.Count,
+            fhirVersion ?? "any");
+
+        return entities.Select(MapEntityToModel).ToList().AsReadOnly();
+    }
+
+    /// <summary>
+    /// Checks if a SearchParameter applies to a given resource type by parsing the base[] field.
+    /// </summary>
+    private bool SearchParameterAppliesToResourceType(string resourceJson, string resourceType)
+    {
+        try
+        {
+            var jsonNode = System.Text.Json.JsonDocument.Parse(resourceJson);
+            if (jsonNode.RootElement.TryGetProperty("base", out var baseElement))
+            {
+                if (baseElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var baseItem in baseElement.EnumerateArray())
+                    {
+                        if (baseItem.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var baseValue = baseItem.GetString();
+                            if (string.Equals(baseValue, resourceType, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse SearchParameter JSON to check base[] field");
+            return false;
+        }
+    }
+
     /// <summary>
     /// Maps database entity to domain model.
     /// </summary>
