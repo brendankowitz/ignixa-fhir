@@ -6,6 +6,7 @@
 using System.ComponentModel;
 using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
+using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Domain.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
 
@@ -86,45 +87,4 @@ Returns the number of resources deactivated.")]
                 : $"Package {packageId}@{version} was not found or already uninstalled"
         };
     }
-}
-
-/// <summary>
-/// Result of uninstalling a package.
-/// </summary>
-public record UninstallPackageResultDto
-{
-    /// <summary>
-    /// Whether the uninstallation was successful.
-    /// </summary>
-    public required bool Success { get; init; }
-
-    /// <summary>
-    /// Tenant ID where package was uninstalled.
-    /// </summary>
-    public required int TenantId { get; init; }
-
-    /// <summary>
-    /// Tenant name.
-    /// </summary>
-    public required string TenantName { get; init; }
-
-    /// <summary>
-    /// Package ID that was uninstalled.
-    /// </summary>
-    public required string PackageId { get; init; }
-
-    /// <summary>
-    /// Package version that was uninstalled.
-    /// </summary>
-    public required string PackageVersion { get; init; }
-
-    /// <summary>
-    /// Number of resources deactivated.
-    /// </summary>
-    public required int DeactivatedResources { get; init; }
-
-    /// <summary>
-    /// Human-readable message summarizing the uninstallation.
-    /// </summary>
-    public required string Message { get; init; }
 }
