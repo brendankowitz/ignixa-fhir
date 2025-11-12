@@ -689,6 +689,47 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         return entities.Select(MapEntityToModel).ToList().AsReadOnly();
     }
 
+    public async Task<IReadOnlyList<PackageResource>> GetOperationDefinitionsAsync(
+        IReadOnlyList<string> operationNames,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operationNames);
+
+        if (operationNames.Count == 0)
+        {
+            return Array.Empty<PackageResource>();
+        }
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        // Query for all active OperationDefinitions with matching resource IDs
+        var query = dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.ResourceType == "OperationDefinition"
+                && pr.IsActive
+                && operationNames.Contains(pr.ResourceId));
+
+        // TODO: FHIR version matching - commented out pending resolution of exact matching strategy
+        // if (!string.IsNullOrEmpty(fhirVersion))
+        // {
+        //     query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        // }
+
+        // Order by PackageVersion DESC so newest version is first
+        var entities = await query
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Retrieved {Count} OperationDefinitions from packages (FHIR version: {FhirVersion})",
+            entities.Count,
+            fhirVersion ?? "any");
+
+        return entities.Select(MapEntityToModel).ToList().AsReadOnly();
+    }
+
     /// <summary>
     /// Checks if a SearchParameter applies to a given resource type by parsing the base[] field.
     /// </summary>

@@ -497,8 +497,20 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<Ignixa.Application.Features.Metadata.Segments.ICapabilitySegment>()
         .SingleInstance();
 
+    containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.Segments.OperationsSegment>()
+        .As<Ignixa.Application.Features.Metadata.Segments.ICapabilitySegment>()
+        .InstancePerLifetimeScope();
+
     // NOTE: CustomResourceTypeCapabilitySegment removed - custom resource types now included
     // via FhirVersionContext.GetSchemaProvider(version, tenantId) in ResourceInteractionCapabilitySegment
+
+    // PACKAGE FEATURES REGISTRATION
+    // Register package features that declare implementation of loaded FHIR packages
+    // Each feature declares what operations it implements from a package
+    // OperationsSegment uses these to conditionally expose operations in CapabilityStatement
+    containerBuilder.RegisterType<Ignixa.Application.Features.Export.BulkDataExportFeature>()
+        .As<Ignixa.Domain.Abstractions.IPackageFeature>()
+        .SingleInstance();
 
     // Register CapabilityStatementService (orchestrates segments + caching)
     containerBuilder.RegisterType<Ignixa.Application.Features.Metadata.CapabilityStatementService>()

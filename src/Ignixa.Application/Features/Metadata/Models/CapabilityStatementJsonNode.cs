@@ -292,6 +292,124 @@ public class CapabilityStatementJsonNode : ResourceJsonNode
     }
 
     /// <summary>
+    /// Helper method to add a system-level operation to the first REST component.
+    /// Creates the REST component if it doesn't exist.
+    /// </summary>
+    public void AddSystemOperation(string operationName, string definition, string? documentation = null)
+    {
+        if (string.IsNullOrEmpty(operationName))
+        {
+            throw new ArgumentException("Operation name cannot be null or empty", nameof(operationName));
+        }
+
+        if (string.IsNullOrEmpty(definition))
+        {
+            throw new ArgumentException("Definition cannot be null or empty", nameof(definition));
+        }
+
+        // Get or create first REST component
+        var restComponents = Rest?.ToList() ?? new List<RestComponentJsonNode>();
+        if (restComponents.Count == 0)
+        {
+            var newRest = new RestComponentJsonNode
+            {
+                FhirVersion = FhirVersion,
+                Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
+            };
+            AddRest(newRest);
+            restComponents.Add(newRest);
+        }
+
+        var restComponent = restComponents[0];
+
+        // Add operation to the REST component
+        var operation = new OperationJsonNode
+        {
+            Name = operationName,
+            Definition = definition,
+            Documentation = documentation,
+        };
+
+        // Get or create operation array
+        if (!restComponent.MutableNode.TryGetPropertyValue("operation", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            restComponent.MutableNode["operation"] = array;
+        }
+
+        array.Add(operation.MutableNode);
+    }
+
+    /// <summary>
+    /// Helper method to add a resource-level operation to a specific resource type.
+    /// Adds the operation to the resource component in the first REST component.
+    /// Creates the REST and resource components if they don't exist.
+    /// </summary>
+    public void AddResourceOperation(string resourceType, string operationName, string definition, string? documentation = null)
+    {
+        if (string.IsNullOrEmpty(resourceType))
+        {
+            throw new ArgumentException("Resource type cannot be null or empty", nameof(resourceType));
+        }
+
+        if (string.IsNullOrEmpty(operationName))
+        {
+            throw new ArgumentException("Operation name cannot be null or empty", nameof(operationName));
+        }
+
+        if (string.IsNullOrEmpty(definition))
+        {
+            throw new ArgumentException("Definition cannot be null or empty", nameof(definition));
+        }
+
+        // Get or create first REST component
+        var restComponents = Rest?.ToList() ?? new List<RestComponentJsonNode>();
+        if (restComponents.Count == 0)
+        {
+            var newRest = new RestComponentJsonNode
+            {
+                FhirVersion = FhirVersion,
+                Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
+            };
+            AddRest(newRest);
+            restComponents.Add(newRest);
+        }
+
+        var restComponent = restComponents[0];
+
+        // Get or create resource array
+        var resources = restComponent.Resource?.ToList() ?? new List<ResourceComponentJsonNode>();
+        var resourceComponent = resources.FirstOrDefault(r => r.Type == resourceType);
+
+        if (resourceComponent == null)
+        {
+            resourceComponent = new ResourceComponentJsonNode
+            {
+                FhirVersion = FhirVersion,
+                Type = resourceType,
+            };
+            restComponent.AddResource(resourceComponent);
+        }
+
+        // Add operation to the resource component
+        var operation = new OperationJsonNode
+        {
+            Name = operationName,
+            Definition = definition,
+            Documentation = documentation,
+        };
+
+        // Get or create operation array on the resource component
+        if (!resourceComponent.MutableNode.TryGetPropertyValue("operation", out var node) || node is not JsonArray array)
+        {
+            array = new JsonArray();
+            resourceComponent.MutableNode["operation"] = array;
+        }
+
+        array.Add(operation.MutableNode);
+    }
+
+    /// <summary>
     /// The status of the capability statement (FHIR PublicationStatus value set).
     /// </summary>
     public enum PublicationStatus

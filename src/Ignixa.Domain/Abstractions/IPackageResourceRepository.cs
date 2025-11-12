@@ -215,4 +215,18 @@ public interface IPackageResourceRepository
     Task<IReadOnlyList<PackageResource>> GetAllSearchParametersAsync(
         string? fhirVersion = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets OperationDefinition resources by their resource IDs (operation names).
+    /// Used by OperationsSegment to retrieve operation definitions for registered features.
+    /// Ordered by PackageVersion DESC so newest version is first.
+    /// </summary>
+    /// <param name="operationNames">List of operation names (resource IDs without $ prefix).</param>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of active OperationDefinitions matching the operation names.</returns>
+    Task<IReadOnlyList<PackageResource>> GetOperationDefinitionsAsync(
+        IReadOnlyList<string> operationNames,
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default);
 }
