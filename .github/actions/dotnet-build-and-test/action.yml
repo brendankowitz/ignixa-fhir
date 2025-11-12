@@ -5,7 +5,7 @@ inputs:
   dotnet-version:
     description: '.NET SDK version'
     required: false
-    default: '9.0.x'
+    default: '10.0.x'
   solution-file:
     description: 'Path to solution file'
     required: false
