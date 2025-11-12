@@ -1,24 +1,21 @@
 using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
+using Ignixa.PackageManagement.DTOs;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.PackageManagement.Infrastructure;
 
 /// <summary>
-/// Service for searching FHIR packages in the NPM registry.
-/// Uses fuzzy matching to help users find packages with partial or approximate names.
+/// Service for searching FHIR packages using the Simplifier.net FHIR Package API.
+/// Uses server-side filtering with the /catalog?name= endpoint for better search results.
 /// </summary>
 public class NpmPackageSearchService : INpmPackageSearchService
 {
     private readonly HttpClient _httpClient;
     private readonly NpmPackageLoaderOptions _options;
     private readonly ILogger<NpmPackageSearchService> _logger;
-
-    // Cache for catalog entries to reduce HTTP calls
-    private CatalogEntry[]? _cachedCatalog;
-    private DateTime? _catalogCacheTime;
-    private readonly TimeSpan _catalogCacheDuration = TimeSpan.FromMinutes(15);
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public NpmPackageSearchService(
         HttpClient httpClient,
@@ -32,7 +29,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
 
     /// <summary>
     /// Searches for FHIR packages matching the query string.
-    /// Performs fuzzy matching against package names and descriptions.
+    /// Uses server-side filtering via the /catalog?name= endpoint.
     /// </summary>
     public async Task<IReadOnlyList<PackageSearchResult>> SearchPackagesAsync(
         string query,
@@ -51,11 +48,11 @@ public class NpmPackageSearchService : INpmPackageSearchService
 
         _logger.LogDebug("Searching for packages with query: {Query}", query);
 
-        // Step 1: Get catalog
-        var catalog = await GetCatalogAsync(cancellationToken);
+        // Step 1: Get catalog with server-side filtering
+        var catalog = await GetCatalogAsync(query, cancellationToken);
 
         // Step 2: Score and filter matches
-        var queryLower = query.ToLowerInvariant();
+        var queryLower = query.ToUpperInvariant();
         var scoredResults = catalog
             .Select(entry => new
             {
@@ -110,7 +107,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
         try
         {
             var url = $"{_options.RegistryUrl.TrimEnd('/')}/{packageId}";
-            var response = await _httpClient.GetAsync(url, cancellationToken);
+            var response = await _httpClient.GetAsync(new Uri(url), cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -124,7 +121,7 @@ public class NpmPackageSearchService : INpmPackageSearchService
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var metadata = JsonSerializer.Deserialize<PackageMetadata>(json);
+            var metadata = JsonSerializer.Deserialize<PackageMetadata>(json, JsonOptions);
 
             if (metadata == null)
             {
@@ -159,34 +156,30 @@ public class NpmPackageSearchService : INpmPackageSearchService
     }
 
     /// <summary>
-    /// Fetches the package catalog from the NPM registry.
-    /// Uses caching to reduce HTTP requests.
+    /// Fetches the package catalog from the registry with optional server-side filtering.
+    /// When using Simplifier.net API, the ?name= parameter enables server-side partial name matching.
+    /// Uses caching to reduce HTTP requests (cache key includes query for filtered results).
     /// </summary>
-    private async Task<CatalogEntry[]> GetCatalogAsync(CancellationToken cancellationToken)
+    private async Task<CatalogEntry[]> GetCatalogAsync(string? nameFilter, CancellationToken cancellationToken)
     {
-        // Check cache
-        if (_cachedCatalog != null &&
-            _catalogCacheTime.HasValue &&
-            DateTime.UtcNow - _catalogCacheTime.Value < _catalogCacheDuration)
-        {
-            _logger.LogDebug("Using cached catalog");
-            return _cachedCatalog;
-        }
-
-        _logger.LogDebug("Fetching catalog from registry");
+        _logger.LogDebug("Fetching catalog from registry with filter: {Filter}", nameFilter ?? "(none)");
 
         try
         {
-            var url = $"{_options.RegistryUrl.TrimEnd('/')}/catalog";
-            var response = await _httpClient.GetAsync(url, cancellationToken);
+            var urlBuilder = new System.Text.StringBuilder($"{_options.RegistryUrl.TrimEnd('/')}/catalog");
+
+            // Add name filter parameter if provided (Simplifier.net API supports this)
+            if (!string.IsNullOrWhiteSpace(nameFilter))
+            {
+                urlBuilder.Append($"?name={Uri.EscapeDataString(nameFilter)}");
+            }
+
+            var url = urlBuilder.ToString();
+            var response = await _httpClient.GetAsync(new Uri(url), cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var catalog = JsonSerializer.Deserialize<CatalogEntry[]>(json) ?? Array.Empty<CatalogEntry>();
-
-            // Update cache
-            _cachedCatalog = catalog;
-            _catalogCacheTime = DateTime.UtcNow;
+            var catalog = JsonSerializer.Deserialize<CatalogEntry[]>(json, JsonOptions) ?? Array.Empty<CatalogEntry>();
 
             _logger.LogInformation("Fetched catalog with {Count} packages", catalog.Length);
             return catalog;
@@ -218,12 +211,13 @@ public class NpmPackageSearchService : INpmPackageSearchService
 
     /// <summary>
     /// Calculates relevance score for a catalog entry against a search query.
+    /// Since Simplifier.net API already filters by name, we only need simple scoring.
     /// Higher scores indicate better matches.
     /// </summary>
     private static int CalculateRelevanceScore(CatalogEntry entry, string queryLower)
     {
-        var nameLower = entry.Name?.ToLowerInvariant() ?? string.Empty;
-        var descriptionLower = entry.Description?.ToLowerInvariant() ?? string.Empty;
+        var nameLower = entry.Name?.ToUpperInvariant() ?? string.Empty;
+        var descriptionLower = entry.Description?.ToUpperInvariant() ?? string.Empty;
 
         var score = 0;
 
@@ -233,147 +227,22 @@ public class NpmPackageSearchService : INpmPackageSearchService
             score += 100;
         }
         // Starts with query
-        else if (nameLower.StartsWith(queryLower))
+        else if (nameLower.StartsWith(queryLower, StringComparison.OrdinalIgnoreCase))
         {
             score += 80;
         }
-        // Contains query as word
-        else if (nameLower.Contains($".{queryLower}.") || nameLower.Contains($".{queryLower}") || nameLower.Contains($"{queryLower}."))
-        {
-            score += 60;
-        }
         // Contains query anywhere
-        else if (nameLower.Contains(queryLower))
+        else if (nameLower.Contains(queryLower, StringComparison.OrdinalIgnoreCase))
         {
             score += 40;
         }
 
         // Description matching (bonus points)
-        if (descriptionLower.Contains(queryLower))
+        if (descriptionLower.Contains(queryLower, StringComparison.OrdinalIgnoreCase))
         {
             score += 20;
         }
 
-        // Fuzzy matching for common abbreviations and variations
-        score += CalculateFuzzyScore(nameLower, queryLower);
-
         return score;
-    }
-
-    /// <summary>
-    /// Calculates fuzzy matching score for common patterns.
-    /// Handles abbreviations like "uscore" -> "us.core" or "uscdi" variations.
-    /// </summary>
-    private static int CalculateFuzzyScore(string name, string query)
-    {
-        var score = 0;
-
-        // Remove common separators for fuzzy comparison
-        var nameNormalized = name.Replace(".", "").Replace("-", "").Replace("_", "");
-        var queryNormalized = query.Replace(".", "").Replace("-", "").Replace("_", "");
-
-        if (nameNormalized.Contains(queryNormalized))
-        {
-            score += 30;
-        }
-
-        // Handle common abbreviations
-        if (query.Contains("uscore") && name.Contains("us.core"))
-        {
-            score += 50;
-        }
-
-        if (query.Contains("uscdi") && name.Contains("us.core"))
-        {
-            score += 30;
-        }
-
-        // Levenshtein distance for short queries (3+ chars)
-        if (query.Length >= 3)
-        {
-            var distance = LevenshteinDistance(nameNormalized, queryNormalized);
-            if (distance <= 3)
-            {
-                score += (10 - distance);
-            }
-        }
-
-        return score;
-    }
-
-    /// <summary>
-    /// Calculates Levenshtein distance between two strings.
-    /// Returns the minimum number of single-character edits needed to transform one string into another.
-    /// </summary>
-    private static int LevenshteinDistance(string source, string target)
-    {
-        if (string.IsNullOrEmpty(source))
-        {
-            return target?.Length ?? 0;
-        }
-
-        if (string.IsNullOrEmpty(target))
-        {
-            return source.Length;
-        }
-
-        var sourceLength = source.Length;
-        var targetLength = target.Length;
-        var distance = new int[sourceLength + 1, targetLength + 1];
-
-        for (var i = 0; i <= sourceLength; i++)
-        {
-            distance[i, 0] = i;
-        }
-
-        for (var j = 0; j <= targetLength; j++)
-        {
-            distance[0, j] = j;
-        }
-
-        for (var i = 1; i <= sourceLength; i++)
-        {
-            for (var j = 1; j <= targetLength; j++)
-            {
-                var cost = target[j - 1] == source[i - 1] ? 0 : 1;
-                distance[i, j] = Math.Min(
-                    Math.Min(distance[i - 1, j] + 1, distance[i, j - 1] + 1),
-                    distance[i - 1, j - 1] + cost);
-            }
-        }
-
-        return distance[sourceLength, targetLength];
-    }
-
-    // JSON deserialization models
-    private class CatalogEntry
-    {
-        public string Name { get; set; } = string.Empty;
-        public string? Description { get; set; }
-        public string? FhirVersion { get; set; }
-    }
-
-    private class PackageMetadata
-    {
-        public string? Name { get; set; }
-        public string? Description { get; set; }
-
-        [System.Text.Json.Serialization.JsonPropertyName("dist-tags")]
-        public DistTags? DistTags { get; set; }
-
-        public Dictionary<string, VersionMetadata>? Versions { get; set; }
-    }
-
-    private class DistTags
-    {
-        public string? Latest { get; set; }
-    }
-
-    private class VersionMetadata
-    {
-        public string? Version { get; set; }
-        public string? Description { get; set; }
-        public string? FhirVersion { get; set; }
-        public string? Url { get; set; }
     }
 }
