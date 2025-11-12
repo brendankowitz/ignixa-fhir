@@ -87,7 +87,7 @@ Ignixa is a next-generation FHIR server implementation built from the ground up 
 
 ```bash
 # Build the solution
-dotnet build All.sln
+dotnet build All.slnx
 
 # Run the API
 cd src/Ignixa.Api
@@ -208,7 +208,7 @@ fhir-server-contrib/
 ├── docs/
 │   ├── adr/                           # Architecture Decision Records
 │   └── investigations/                # Research and design docs
-└── All.sln                            # Main solution file
+└── All.slnx                            # Main solution file
 ```
 
 ## Configuration
@@ -293,11 +293,11 @@ See `Directory.Packages.props` for complete package list (centralized package ma
 
 ```bash
 # Clean build
-dotnet clean All.sln
-dotnet build All.sln
+dotnet clean All.slnx
+dotnet build All.slnx
 
 # Run tests
-dotnet test All.sln
+dotnet test All.slnx
 ```
 
 ### Code Generation

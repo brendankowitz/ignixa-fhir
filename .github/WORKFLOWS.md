@@ -26,7 +26,7 @@ Encapsulates common build, test, and reporting steps used by multiple workflows.
 ### Inputs
 
 - `dotnet-version` (default: `9.0.x`) - .NET SDK version
-- `solution-file` (default: `All.sln`) - Path to solution file
+- `solution-file` (default: `All.slnx`) - Path to solution file
 - `build-configuration` (default: `Release`) - Build configuration
 
 ### Steps
@@ -45,7 +45,7 @@ Encapsulates common build, test, and reporting steps used by multiple workflows.
   uses: ./.github/actions/dotnet-build-and-test
   with:
     dotnet-version: '9.0.x'
-    solution-file: 'All.sln'
+    solution-file: 'All.slnx'
     build-configuration: 'Release'
 ```
 
@@ -58,7 +58,7 @@ Triggered on pull requests targeting `main` or `fhir-v2` branches.
 ### Triggers
 
 - Pull request created/updated
-- Paths: `src/**`, `test/**`, `bench/**`, `All.sln`, workflow files
+- Paths: `src/**`, `test/**`, `bench/**`, `All.slnx`, workflow files
 
 ### Features
 
@@ -86,7 +86,7 @@ Triggered on pushes to main branch (merge commits from PRs).
 ### Triggers
 
 - Push to `main` or `fhir-v2`
-- Paths: `src/**`, `test/**`, `bench/**`, `All.sln`, workflow files
+- Paths: `src/**`, `test/**`, `bench/**`, `All.slnx`, workflow files
 
 ### Jobs
 

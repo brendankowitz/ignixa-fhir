@@ -657,10 +657,10 @@ var baseUrl = $"{protocol}://{host}";
 
 ```bash
 # Build
-dotnet build All.sln  # Must be 0 warnings, 0 errors
+dotnet build All.slnx  # Must be 0 warnings, 0 errors
 
 # Test
-dotnet test All.sln   # All tests passing
+dotnet test All.slnx   # All tests passing
 
 # Run compatibility suite
 cd test/Ignixa.*.Tests/

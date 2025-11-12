@@ -7,7 +7,7 @@ on:
       - 'src/**'
       - 'test/**'
       - 'bench/**'
-      - 'All.sln'
+      - 'All.slnx'
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/pr-build.yml'
@@ -35,7 +35,7 @@ jobs:
         uses: ./.github/actions/dotnet-build-and-test
         with:
           dotnet-version: ${{ matrix.dotnet-version }}
-          solution-file: 'All.sln'
+          solution-file: 'All.slnx'
           build-configuration: 'Release'
 
   validate-docker:

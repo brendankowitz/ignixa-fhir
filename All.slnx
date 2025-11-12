@@ -1,0 +1,85 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/bench/">
+    <Project Path="bench/Ignixa.Benchmarks/Ignixa.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/Docs/" />
+  <Folder Name="/Docs/Rest/">
+    <File Path="docs/rest/import.http" />
+    <File Path="docs/rest/SearchExamples.http" />
+    <File Path="docs/rest/SqlOnFhir.http" />
+  </Folder>
+  <Folder Name="/Project Items/">
+    <File Path=".gitignore" />
+    <File Path="CLAUDE.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="GlobalSuppressions.Test.cs" />
+    <File Path="README.md" />
+    <File Path="stylecop.json" />
+  </Folder>
+  <Folder Name="/Project Items/Agents/">
+    <File Path=".claude/agents/adr-analyzer.md" />
+    <File Path=".claude/agents/coding-agent.md" />
+    <File Path=".claude/agents/ef.md" />
+    <File Path=".claude/agents/fast-coding-agent.md" />
+    <File Path=".claude/agents/fhir-agent.md" />
+    <File Path=".claude/agents/fhir-coordinator.md" />
+  </Folder>
+  <Folder Name="/Project Items/Compatibility/">
+    <File Path="run-compat-tests.ps1" />
+  </Folder>
+  <Folder Name="/Project Items/Setup/">
+    <File Path="deploy/azure/main.bicep" />
+    <File Path="deploy/azure/modules/app-service.bicep" />
+    <File Path="deploy/azure/modules/key-vault.bicep" />
+    <File Path="deploy/azure/modules/monitoring.bicep" />
+    <File Path="deploy/azure/modules/role-assignments.bicep" />
+    <File Path="deploy/azure/modules/sql-database.bicep" />
+    <File Path="deploy/azure/modules/storage.bicep" />
+    <File Path="deploy/azure/parameters/dev.bicepparam" />
+    <File Path="deploy/azure/parameters/production.bicepparam" />
+    <File Path="deploy/azure/README.md" />
+    <File Path="deploy/azure/scripts/deploy.ps1" />
+    <File Path="deploy/azure/scripts/setup-sql-mi.sql" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Application/">
+    <Project Path="src/Ignixa.Api/Ignixa.Api.csproj" />
+    <Project Path="src/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj" />
+    <Project Path="src/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj" />
+    <Project Path="src/Ignixa.Application/Ignixa.Application.csproj" />
+    <Project Path="src/Ignixa.Domain/Ignixa.Domain.csproj" />
+  </Folder>
+  <Folder Name="/src/Core/">
+    <Project Path="src/Ignixa.Abstractions/Ignixa.Abstractions.csproj" />
+    <Project Path="src/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj" />
+    <Project Path="src/Ignixa.FhirPath/Ignixa.FhirPath.csproj" />
+    <Project Path="src/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj" />
+    <Project Path="src/Ignixa.Search/Ignixa.Search.csproj" />
+    <Project Path="src/Ignixa.Serialization/Ignixa.Serialization.csproj" />
+    <Project Path="src/Ignixa.Specification/Ignixa.Specification.csproj" />
+    <Project Path="src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj" />
+    <Project Path="src/Ignixa.Validation/Ignixa.Validation.csproj" />
+  </Folder>
+  <Folder Name="/src/DataLayer/">
+    <Project Path="src/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj" />
+    <Project Path="src/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj" />
+    <Project Path="src/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj" />
+    <Project Path="src/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Ignixa.Api.Tests/Ignixa.Api.Tests.csproj" />
+    <Project Path="test/Ignixa.Application.Tests/Ignixa.Application.Tests.csproj" />
+    <Project Path="test/Ignixa.FhirMappingLanguage.Tests/Ignixa.FhirMappingLanguage.Tests.csproj" />
+    <Project Path="test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj" />
+    <Project Path="test/Ignixa.PackageManagement.Tests/Ignixa.PackageManagement.Tests.csproj" />
+    <Project Path="test/Ignixa.Serialization.Tests/Ignixa.Serialization.Tests.csproj" />
+    <Project Path="test/Ignixa.SqlOnFhir.Tests/Ignixa.SqlOnFhir.Tests.csproj" />
+    <Project Path="test/Ignixa.Validation.Tests/Ignixa.Validation.Tests.csproj" />
+  </Folder>
+</Solution>

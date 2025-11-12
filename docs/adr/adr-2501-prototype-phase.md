@@ -51,7 +51,7 @@ This is a **side project** called **"Ignixa"**, not "Microsoft.Health". Project 
 **Implemented Architecture: Layered Projects** (organized by architectural layer):
 
 ```
-All.sln (9 projects)
+All.slnx (9 projects)
 ├── 1. Ignixa.Domain              # Domain models and abstractions (no dependencies)
 │   ├── Abstractions/
 │   │   └── IFhirRepository.cs
@@ -201,7 +201,7 @@ Implement a complete vertical slice with **only** `PUT /Patient/{id}` and `GET /
 **Layered Project Organization** (separation by architectural layer):
 
 ```
-All.sln
+All.slnx
 src/
   Ignixa.Domain/                     # Core domain (no dependencies)
     Abstractions/

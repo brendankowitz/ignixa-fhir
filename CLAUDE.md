@@ -74,7 +74,7 @@ Guidance for Claude Code to deliver high-quality output on **featurework**, **de
 - **Preview mode**: Test changes before applying
 - **Zero-based indexing**: VS line 14 = `line=13`
 
-**Load solution once per session**: `roslyn_load_solution All.sln`
+**Load solution once per session**: `roslyn_load_solution All.slnx`
 
 ---
 
@@ -200,7 +200,7 @@ curl http://localhost:5000/Patient/123
 
 **4. Verify Regression**:
 ```bash
-dotnet test All.sln
+dotnet test All.slnx
 ```
 
 ### Refactoring Code
@@ -216,15 +216,15 @@ roslyn_semantic_query for unused    # Dead code
 1. Find all usages with Roslyn
 2. Write/update tests
 3. Refactor locally
-4. Run `dotnet test All.sln`
+4. Run `dotnet test All.slnx`
 5. Commit only after tests pass
 
 ### Maintenance Tasks
 
 | Task | Command | Output |
 |------|---------|--------|
-| **Build** | `dotnet build All.sln` | Must be 0 warnings, 0 errors |
-| **Test** | `dotnet test All.sln` | All tests passing |
+| **Build** | `dotnet build All.slnx` | Must be 0 warnings, 0 errors |
+| **Test** | `dotnet test All.slnx` | All tests passing |
 | **Code analysis** | `dotnet analyze` (via Roslyn) | Check CA/SA violations |
 | **Format** | `roslyn_format_document_batch` | Consistent style |
 | **Cleanup usings** | `roslyn_organize_usings` | Remove unused imports |
@@ -279,8 +279,8 @@ public void GivenAPatient_WhenGettingById_ThenReturnsPatient() {
 
 Before committing, verify:
 
-- [ ] ✅ Build: `dotnet build All.sln` → 0 warnings, 0 errors
-- [ ] ✅ Tests: `dotnet test All.sln` → All passing
+- [ ] ✅ Build: `dotnet build All.slnx` → 0 warnings, 0 errors
+- [ ] ✅ Tests: `dotnet test All.slnx` → All passing
 - [ ] ✅ New code has tests (AAA pattern)
 - [ ] ✅ Follows architecture (layer rules)
 - [ ] ✅ ONE type per file
@@ -375,7 +375,7 @@ if (resource.MutableNode.TryGetPropertyValue("active", out var node)) {
 ## Project Structure
 
 ```
-All.sln
+All.slnx
 ├── Ignixa.Domain              # Interfaces, pure models
 ├── Ignixa.Application         # Medino handlers, business logic
 ├── Ignixa.Application.BackgroundOperations  # DurableTask orchestrations
@@ -394,10 +394,10 @@ All.sln
 
 ```bash
 # Build (must be 0 warnings/errors)
-dotnet build All.sln
+dotnet build All.slnx
 
 # Test (all must pass)
-dotnet test All.sln
+dotnet test All.slnx
 
 # Run API locally
 dotnet run --project src/Ignixa.Api/Ignixa.Api.csproj

@@ -393,7 +393,7 @@ Passed!  - Failed: 0, Passed: 1, Skipped: 0, Total: 1, Duration: 1 ms
 ### Prerequisites
 ```powershell
 cd E:\data\src\fhir-server-contrib
-dotnet build All.sln
+dotnet build All.slnx
 ```
 
 ### Test Scenario 1: Create Patient Resource

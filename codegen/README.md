@@ -21,7 +21,7 @@ codegen/
 
 ### Why a Separate Solution?
 
-The main `All.sln` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `IgnixaCodegen.sln`, we:
+The main `All.slnx` uses Central Package Management (CPM), which conflicts with the fhir-codegen submodule's explicit package versions. By isolating code generation in `IgnixaCodegen.sln`, we:
 
 1. Keep the main solution simple and fast to build
 2. Avoid CPM conflicts with third-party dependencies

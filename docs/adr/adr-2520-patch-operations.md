@@ -1136,8 +1136,8 @@ public class FhirPatchOperationExecutor
    - Memory profiling (ensure no ITypedElement leaks)
 
 4. **Build Verification** (1 hour)
-   - Run `dotnet build All.sln` (0 warnings, 0 errors)
-   - Run `dotnet test All.sln` (all tests pass)
+   - Run `dotnet build All.slnx` (0 warnings, 0 errors)
+   - Run `dotnet test All.slnx` (all tests pass)
 
 5. **Documentation** (1 hour)
    - Update CLAUDE.md with PATCH endpoint details

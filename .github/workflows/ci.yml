@@ -27,7 +27,7 @@ jobs:
         uses: ./.github/actions/dotnet-build-and-test
         with:
           dotnet-version: ${{ matrix.dotnet-version }}
-          solution-file: 'All.sln'
+          solution-file: 'All.slnx'
           build-configuration: 'Release'
 
   check-code-quality:
@@ -48,15 +48,15 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore All.sln
+        run: dotnet restore All.slnx
 
       - name: Run static analysis
-        run: dotnet build All.sln --configuration Release --no-restore --verbosity minimal /p:TreatWarningsAsErrors=true
+        run: dotnet build All.slnx --configuration Release --no-restore --verbosity minimal /p:TreatWarningsAsErrors=true
         continue-on-error: true
 
       - name: Check for code style violations
         run: |
-          dotnet format All.sln --verify-no-changes --verbosity diagnostic || \
+          dotnet format All.slnx --verify-no-changes --verbosity diagnostic || \
           (echo "⚠️ Code formatting issues detected. Run 'dotnet format' locally." && exit 0)
         continue-on-error: true
 

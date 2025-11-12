@@ -259,14 +259,14 @@ Validation is **intentionally skipped** for:
 ### Build Status
 
 ```bash
-dotnet build All.sln
+dotnet build All.slnx
 # Build succeeded. 0 Warning(s) 0 Error(s)
 ```
 
 ### Test Status
 
 ```bash
-dotnet test All.sln --no-build
+dotnet test All.slnx --no-build
 # Passed! - Failed: 0, Passed: 134, Skipped: 0, Total: 134
 ```
 

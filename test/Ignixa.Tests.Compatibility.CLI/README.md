@@ -2,14 +2,14 @@
 
 This project provides a command-line tool for running FHIR compatibility tests against the Ignixa server using Microsoft's FHIR Server E2E test suite.
 
-## Why is this project excluded from All.sln?
+## Why is this project excluded from All.slnx?
 
 The `Ignixa.Tests.Compatibility.CLI` project depends on `Microsoft.Health.Fhir.R4.Tests.E2E` package which:
 - Is hosted on Microsoft's **public** Azure DevOps feed: `https://microsofthealthoss.pkgs.visualstudio.com/FhirServer/_packaging/CI/nuget/v3/index.json`
 - Requires a project-specific `NuGet.Config` with custom PackageSourceMapping
 - Causes issues in CI/CD pipelines (GitHub Actions) when included in solution-level restore
 
-To keep CI builds simple and fast, this project is **excluded from `All.sln`** but can be built locally when needed.
+To keep CI builds simple and fast, this project is **excluded from `All.slnx`** but can be built locally when needed.
 
 ## How to Build Locally
 
@@ -88,7 +88,7 @@ dotnet restore
 
 To add this project back to the solution temporarily for development:
 
-1. Edit `All.sln` and add the project reference
+1. Edit `All.slnx` and add the project reference
 2. Build the solution
 3. **Before committing**: Remove it from the solution again to avoid CI issues
 

@@ -9,7 +9,7 @@ inputs:
   solution-file:
     description: 'Path to solution file'
     required: false
-    default: 'All.sln'
+    default: 'All.slnx'
   build-configuration:
     description: 'Build configuration (Debug/Release)'
     required: false
