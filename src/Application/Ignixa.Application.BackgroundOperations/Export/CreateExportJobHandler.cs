@@ -4,9 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Ignixa.DataLayer.BlobStorage;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.SqlOnFhir.Parsing;
 using Medino;
 
 namespace Ignixa.Application.BackgroundOperations.Export;
@@ -19,13 +24,16 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
 {
     private readonly TaskHubClient _taskHubClient;
     private readonly IBackgroundJobRepository<ExportJobDefinition> _jobRepository;
+    private readonly ViewDefinitionLoader? _viewDefinitionLoader;
 
     public CreateExportJobHandler(
         TaskHubClient taskHubClient,
-        IBackgroundJobRepository<ExportJobDefinition> jobRepository)
+        IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        ViewDefinitionLoader? viewDefinitionLoader = null)
     {
         _taskHubClient = taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
         _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
+        _viewDefinitionLoader = viewDefinitionLoader;
     }
 
     public async Task<CreateExportJobResult> HandleAsync(
@@ -33,11 +41,52 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
         CancellationToken cancellationToken)
     {
         // Validate output format
-        if (!string.IsNullOrEmpty(request.OutputFormat) && request.OutputFormat != "application/fhir+ndjson")
+        if (!string.IsNullOrEmpty(request.OutputFormat) &&
+            request.OutputFormat != ExportConstants.MediaTypeNdjson &&
+            request.OutputFormat != ExportConstants.MediaTypeParquet)
         {
             throw new ArgumentException(
-                $"Unsupported output format: {request.OutputFormat}. Only 'application/fhir+ndjson' is supported.",
+                $"Unsupported output format: {request.OutputFormat}. Supported formats: {ExportConstants.MediaTypeNdjson}, {ExportConstants.MediaTypeParquet}",
                 nameof(request));
+        }
+
+        // Validate and normalize ViewDefinition resource type
+        if (!string.IsNullOrEmpty(request.ViewDefinitionId) && _viewDefinitionLoader != null)
+        {
+            try
+            {
+                var viewDefinitionNode = await _viewDefinitionLoader.LoadViewDefinitionAsync(
+                    request.TenantId,
+                    request.ViewDefinitionId,
+                    cancellationToken);
+
+                var viewExpression = ViewDefinitionExpressionParser.Parse(viewDefinitionNode);
+                var viewResourceType = viewExpression.Resource;
+
+                if (request.ResourceTypes.Any())
+                {
+                    // If resource types were explicitly requested, ViewDefinition must match one of them
+                    if (!request.ResourceTypes.Contains(viewResourceType, StringComparer.OrdinalIgnoreCase))
+                    {
+                        throw new BadRequestException(
+                            $"ViewDefinition '{request.ViewDefinitionId}' targets resource type '{viewResourceType}', but export requests: {string.Join(", ", request.ResourceTypes)}. ViewDefinition resource type must be included in export request.");
+                    }
+                }
+                else
+                {
+                    // If no resource types specified, automatically use ViewDefinition's target resource type
+                    request = request with { ResourceTypes = new[] { viewResourceType } };
+                }
+            }
+            catch (BadRequestException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new BadRequestException(
+                    $"Failed to load or validate ViewDefinition '{request.ViewDefinitionId}': {ex.Message}", ex);
+            }
         }
 
         // Generate job ID
@@ -56,7 +105,8 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
                 Since = request.Since,
                 TypeFilters = request.TypeFilters,
                 OutputFormat = request.OutputFormat,
-                OutputPath = $"tenant/{request.TenantId}/export/{jobId}"
+                OutputPath = $"tenant/{request.TenantId}/export/{jobId}",
+                GroupId = request.GroupId
             },
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
@@ -65,20 +115,25 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
         await _jobRepository.CreateAsync(job, cancellationToken);
 
         // Start the orchestration
-        var orchestrationInput = new ExportOrchestrationInput(
+        var orchestrationInput = new ExportCoordinatorInput(
             JobId: jobId,
             TenantId: request.TenantId,
             ResourceTypes: request.ResourceTypes.ToArray(),
             Since: request.Since,
-            TypeFilters: request.TypeFilters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+            TypeFilters: request.TypeFilters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+            NumberOfRangesPerType: 6, // Default parallelism: 6 ranges per type
+            OutputFormat: request.OutputFormat ?? ExportConstants.MediaTypeNdjson,
+            ViewDefinitionId: request.ViewDefinitionId,
+            GroupId: request.GroupId);
 
         var instance = await _taskHubClient.CreateOrchestrationInstanceAsync(
             typeof(ExportOrchestration),
             jobId, // Use jobId as instance ID for easy lookup
             orchestrationInput);
 
-        // Update job with orchestration instance ID
+        // Update job with orchestration instance ID and mark when processing started
         job.OrchestrationInstanceId = instance.InstanceId;
+        job.StartDate = DateTimeOffset.UtcNow;
         await _jobRepository.UpdateAsync(job, request.TenantId, cancellationToken);
 
         return new CreateExportJobResult

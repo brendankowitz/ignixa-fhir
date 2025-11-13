@@ -29,14 +29,14 @@ public class ViewDefinitionLoader
     }
 
     /// <summary>
-    /// Loads a ViewDefinition resource from the datastore and converts it to ISourceNode for evaluation.
+    /// Loads a ViewDefinition resource from the datastore and converts it to ISourceNavigator for evaluation.
     /// </summary>
     /// <param name="tenantId">Tenant ID to fetch from</param>
     /// <param name="viewDefinitionId">ViewDefinition resource ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>ViewDefinition as ISourceNode for SqlOnFhirEvaluator</returns>
+    /// <returns>ViewDefinition as ISourceNavigator for SqlOnFhirEvaluator</returns>
     /// <exception cref="InvalidOperationException">Thrown if ViewDefinition not found</exception>
-    public async Task<ISourceNode> LoadViewDefinitionAsync(
+    public async Task<ISourceNavigator> LoadViewDefinitionAsync(
         int tenantId,
         string viewDefinitionId,
         CancellationToken cancellationToken)
@@ -72,6 +72,6 @@ public class ViewDefinitionLoader
             "Successfully loaded ViewDefinition: {ViewDefinitionId}",
             viewDefinitionId);
 
-        return resourceNode.ToSourceNode();
+        return resourceNode.ToSourceNavigator();
     }
 }

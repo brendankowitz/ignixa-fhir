@@ -56,3 +56,218 @@ Content-Type: application/json
   "status": "draft",
   "resource": "Patient"
 }
+
+###
+
+PUT {{hostname}}/ViewDefinition/patient-demographics
+Prefer: validation=full
+Content-Type: application/json
+
+{
+  "resourceType": "ViewDefinition",
+  "id": "patient-demographics",
+  "name": "patient_demographics",
+  "status": "active",
+  "resource": "Patient",
+  "select": [
+    {
+      "column": [
+        {
+          "name": "id",
+          "path": "id",
+          "type": "string"
+        },
+        {
+          "name": "family_name",
+          "path": "name.where(use='official').first().family",
+          "type": "string"
+        },
+        {
+          "name": "given_names",
+          "path": "name.where(use='official').first().given.join(', ')",
+          "type": "string"
+        },
+        {
+          "name": "birth_date",
+          "path": "birthDate",
+          "type": "date"
+        },
+        {
+          "name": "gender",
+          "path": "gender",
+          "type": "string"
+        },
+        {
+          "name": "active",
+          "path": "active",
+          "type": "boolean"
+        }
+      ]
+    }
+  ]
+}
+
+###
+# ViewDefinition Export - Observation Vitals
+# Export vital signs observations with specific columns (code, value, unit, date)
+POST {{hostname}}/$export?_type=Patient&_outputFormat=application/vnd.apache.parquet&_viewDefinition=patient-demographics
+Prefer: respond-async
+
+###
+# Create Test Bundle with 5 Patients and 1 Group
+# This transaction bundle creates sample data for testing ViewDefinition exports
+POST {{hostname}}/
+Content-Type: application/json
+
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "request": {
+        "method": "PUT",
+        "url": "Patient/test-patient-1"
+      },
+      "resource": {
+        "resourceType": "Patient",
+        "id": "test-patient-1",
+        "active": true,
+        "name": [
+          {
+            "use": "official",
+            "family": "Smith",
+            "given": ["John", "Michael"]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1990-01-15"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "Patient/test-patient-2"
+      },
+      "resource": {
+        "resourceType": "Patient",
+        "id": "test-patient-2",
+        "active": true,
+        "name": [
+          {
+            "use": "official",
+            "family": "Doe",
+            "given": ["Jane", "Marie"]
+          }
+        ],
+        "gender": "female",
+        "birthDate": "1985-06-22"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "Patient/test-patient-3"
+      },
+      "resource": {
+        "resourceType": "Patient",
+        "id": "test-patient-3",
+        "active": false,
+        "name": [
+          {
+            "use": "official",
+            "family": "Wilson",
+            "given": ["Robert"]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1978-11-30"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "Patient/test-patient-4"
+      },
+      "resource": {
+        "resourceType": "Patient",
+        "id": "test-patient-4",
+        "active": true,
+        "name": [
+          {
+            "use": "official",
+            "family": "Garcia Lopez",
+            "given": ["Maria", "Isabel", "Carmen"]
+          }
+        ],
+        "gender": "female",
+        "birthDate": "1992-03-08"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "Patient/test-patient-5"
+      },
+      "resource": {
+        "resourceType": "Patient",
+        "id": "test-patient-5",
+        "active": true,
+        "name": [
+          {
+            "use": "official",
+            "family": "Lee",
+            "given": ["David"]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1988-09-14"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "Group/test-group-demographics"
+      },
+      "resource": {
+        "resourceType": "Group",
+        "id": "test-group-demographics",
+        "type": "person",
+        "actual": true,
+        "name": "Test Patient Group",
+        "member": [
+          {
+            "entity": {
+              "reference": "Patient/test-patient-1"
+            }
+          },
+          {
+            "entity": {
+              "reference": "Patient/test-patient-2"
+            }
+          },
+          {
+            "entity": {
+              "reference": "Patient/test-patient-3"
+            }
+          },
+          {
+            "entity": {
+              "reference": "Patient/test-patient-4"
+            }
+          },
+          {
+            "entity": {
+              "reference": "Patient/test-patient-5"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+
+###
+# Export patients in the test group using ViewDefinition
+# This exports only the 5 patients that are members of the test-group-demographics
+POST {{hostname}}/Group/test-group-demographics/$export?_outputFormat=application/vnd.apache.parquet&_viewDefinition=patient-demographics
+Prefer: respond-async

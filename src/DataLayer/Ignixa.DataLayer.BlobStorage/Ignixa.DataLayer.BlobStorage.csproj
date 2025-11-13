@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
-    <ProjectReference Include="..\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
   </ItemGroup>
 
   <ItemGroup>

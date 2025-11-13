@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
 
@@ -23,9 +24,19 @@ public static class ExportEndpoints
     /// </summary>
     public static void MapExportEndpoints(this WebApplication app)
     {
+        // POST /$export - System-level export (single-tenant or auto-detected tenant)
+        app.MapPost("/$export", StartExportSystemLevelAsync)
+            .WithName("StartExportSystemLevel")
+            .WithOpenApi();
+
         // POST /tenant/{tenantId}/$export - Start a new export job
         app.MapPost("/tenant/{tenantId:int}/$export", StartExportAsync)
             .WithName("StartExport")
+            .WithOpenApi();
+
+        // POST /Group/{groupId}/$export - Group-scoped export
+        app.MapPost("/Group/{groupId}/$export", StartGroupExportAsync)
+            .WithName("StartGroupExport")
             .WithOpenApi();
 
         // GET /tenant/{tenantId}/_export/{jobId} - Poll export job status
@@ -40,11 +51,10 @@ public static class ExportEndpoints
     }
 
     /// <summary>
-    /// Starts a new bulk export operation.
+    /// Starts a new bulk export operation at the system level (auto-detects tenant).
     /// Returns 202 Accepted with Content-Location header pointing to the status endpoint.
     /// </summary>
-    private static async Task<IResult> StartExportAsync(
-        [FromRoute] int tenantId,
+    private static async Task<IResult> StartExportSystemLevelAsync(
         [FromQuery(Name = "_type")] string? resourceTypes,
         [FromQuery(Name = "_since")] DateTimeOffset? since,
         [FromQuery(Name = "_typeFilter")] string? typeFilter,
@@ -53,10 +63,64 @@ public static class ExportEndpoints
         [FromServices] IMediator mediator,
         HttpContext httpContext)
     {
+        // Extract tenant ID from HttpContext (set by TenantResolutionMiddleware)
+        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || !(tenantIdObj is int tenantId))
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "invalid",
+                        diagnostics = "Unable to determine tenant from request context"
+                    }
+                }
+            });
+        }
+
+        // Delegate to the tenant-explicit handler
+        return await StartExportAsync(tenantId, resourceTypes, since, typeFilter, outputFormat, viewDefinition, mediator, httpContext);
+    }
+
+    /// <summary>
+    /// Starts a Group-scoped bulk export operation.
+    /// Exports only resources for patients that are members of the specified Group.
+    /// </summary>
+    private static async Task<IResult> StartGroupExportAsync(
+        [FromRoute] string groupId,
+        [FromQuery(Name = "_type")] string? resourceTypes,
+        [FromQuery(Name = "_since")] DateTimeOffset? since,
+        [FromQuery(Name = "_typeFilter")] string? typeFilter,
+        [FromQuery(Name = "_outputFormat")] string? outputFormat,
+        [FromQuery(Name = "_viewDefinition")] string? viewDefinition,
+        [FromServices] IMediator mediator,
+        HttpContext httpContext)
+    {
+        // Extract tenant ID from HttpContext (set by TenantResolutionMiddleware)
+        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || !(tenantIdObj is int tenantId))
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "invalid",
+                        diagnostics = "Unable to determine tenant from request context"
+                    }
+                }
+            });
+        }
+
         // Validate _outputFormat (only application/fhir+ndjson and application/vnd.apache.parquet supported)
         if (!string.IsNullOrEmpty(outputFormat) &&
-            outputFormat != "application/fhir+ndjson" &&
-            outputFormat != "application/vnd.apache.parquet")
+            outputFormat != ExportConstants.MediaTypeNdjson &&
+            outputFormat != ExportConstants.MediaTypeParquet)
         {
             return Results.BadRequest(new
             {
@@ -67,7 +131,7 @@ public static class ExportEndpoints
                     {
                         severity = "error",
                         code = "not-supported",
-                        diagnostics = $"Unsupported _outputFormat: {outputFormat}. Supported formats: application/fhir+ndjson, application/vnd.apache.parquet"
+                        diagnostics = $"Unsupported _outputFormat: {outputFormat}. Supported formats: {ExportConstants.MediaTypeNdjson}, {ExportConstants.MediaTypeParquet}"
                     }
                 }
             });
@@ -77,7 +141,7 @@ public static class ExportEndpoints
         if (!string.IsNullOrEmpty(viewDefinition))
         {
             // ViewDefinition requires Parquet format
-            if (outputFormat != "application/vnd.apache.parquet")
+            if (outputFormat != ExportConstants.MediaTypeParquet)
             {
                 return Results.BadRequest(new
                 {
@@ -88,11 +152,29 @@ public static class ExportEndpoints
                         {
                             severity = "error",
                             code = "invalid",
-                            diagnostics = "_viewDefinition parameter requires _outputFormat=application/vnd.apache.parquet"
+                            diagnostics = $"_viewDefinition parameter requires _outputFormat={ExportConstants.MediaTypeParquet}"
                         }
                     }
                 });
             }
+        }
+
+        // Validate Parquet format requires ViewDefinition (for structured schema)
+        if (outputFormat == ExportConstants.MediaTypeParquet && string.IsNullOrEmpty(viewDefinition))
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "invalid",
+                        diagnostics = $"Parquet format (_outputFormat={ExportConstants.MediaTypeParquet}) requires _viewDefinition parameter for structured schema"
+                    }
+                }
+            });
         }
 
         // Parse resource types from comma-separated query parameter
@@ -111,7 +193,128 @@ public static class ExportEndpoints
                 ResourceTypes = types,
                 Since = since,
                 TypeFilters = typeFilters,
-                OutputFormat = outputFormat ?? "application/fhir+ndjson",
+                OutputFormat = outputFormat ?? ExportConstants.MediaTypeNdjson,
+                ViewDefinitionId = viewDefinition,
+                GroupId = groupId
+            };
+
+            var result = await mediator.SendAsync(command, httpContext.RequestAborted);
+
+            // Return 202 Accepted with Content-Location header
+            var statusUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/tenant/{tenantId}/_export/{result.JobId}";
+            httpContext.Response.Headers["Content-Location"] = statusUrl;
+
+            return Results.Accepted(statusUrl, new { jobId = result.JobId, status = "queued" });
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "not-supported",
+                        diagnostics = ex.Message
+                    }
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Starts a new bulk export operation.
+    /// Returns 202 Accepted with Content-Location header pointing to the status endpoint.
+    /// </summary>
+    private static async Task<IResult> StartExportAsync(
+        [FromRoute] int tenantId,
+        [FromQuery(Name = "_type")] string? resourceTypes,
+        [FromQuery(Name = "_since")] DateTimeOffset? since,
+        [FromQuery(Name = "_typeFilter")] string? typeFilter,
+        [FromQuery(Name = "_outputFormat")] string? outputFormat,
+        [FromQuery(Name = "_viewDefinition")] string? viewDefinition,
+        [FromServices] IMediator mediator,
+        HttpContext httpContext)
+    {
+        // Validate _outputFormat (only application/fhir+ndjson and application/vnd.apache.parquet supported)
+        if (!string.IsNullOrEmpty(outputFormat) &&
+            outputFormat != ExportConstants.MediaTypeNdjson &&
+            outputFormat != ExportConstants.MediaTypeParquet)
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "not-supported",
+                        diagnostics = $"Unsupported _outputFormat: {outputFormat}. Supported formats: {ExportConstants.MediaTypeNdjson}, {ExportConstants.MediaTypeParquet}"
+                    }
+                }
+            });
+        }
+
+        // Validate _viewDefinition parameter
+        if (!string.IsNullOrEmpty(viewDefinition))
+        {
+            // ViewDefinition requires Parquet format
+            if (outputFormat != ExportConstants.MediaTypeParquet)
+            {
+                return Results.BadRequest(new
+                {
+                    resourceType = "OperationOutcome",
+                    issue = new[]
+                    {
+                        new
+                        {
+                            severity = "error",
+                            code = "invalid",
+                            diagnostics = $"_viewDefinition parameter requires _outputFormat={ExportConstants.MediaTypeParquet}"
+                        }
+                    }
+                });
+            }
+        }
+
+        // Validate Parquet format requires ViewDefinition (for structured schema)
+        if (outputFormat == ExportConstants.MediaTypeParquet && string.IsNullOrEmpty(viewDefinition))
+        {
+            return Results.BadRequest(new
+            {
+                resourceType = "OperationOutcome",
+                issue = new[]
+                {
+                    new
+                    {
+                        severity = "error",
+                        code = "invalid",
+                        diagnostics = $"Parquet format (_outputFormat={ExportConstants.MediaTypeParquet}) requires _viewDefinition parameter for structured schema"
+                    }
+                }
+            });
+        }
+
+        // Parse resource types from comma-separated query parameter
+        var types = string.IsNullOrWhiteSpace(resourceTypes)
+            ? Array.Empty<string>()
+            : resourceTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        // Parse type filters from comma-separated query parameter
+        var typeFilters = ParseTypeFilters(typeFilter);
+
+        try
+        {
+            var command = new CreateExportJobCommand
+            {
+                TenantId = tenantId,
+                ResourceTypes = types,
+                Since = since,
+                TypeFilters = typeFilters,
+                OutputFormat = outputFormat ?? ExportConstants.MediaTypeNdjson,
                 ViewDefinitionId = viewDefinition
             };
 

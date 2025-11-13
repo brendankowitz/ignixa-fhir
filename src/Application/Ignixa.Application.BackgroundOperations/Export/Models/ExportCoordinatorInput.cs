@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Domain.Constants;
+
 namespace Ignixa.Application.BackgroundOperations.Export.Models;
 
 /// <summary>
@@ -48,13 +50,19 @@ public record ExportCoordinatorInput(
 
     /// <summary>
     /// Optional: Output format for export files.
-    /// Supported values: "application/fhir+ndjson" (default) or "application/vnd.apache.parquet".
+    /// Supported values: <see cref="ExportConstants.MediaTypeNdjson"/> (default) or <see cref="ExportConstants.MediaTypeParquet"/>.
     /// Determines the file extension (.ndjson or .parquet).
     /// </summary>
-    string OutputFormat = "application/fhir+ndjson",
+    string OutputFormat = ExportConstants.MediaTypeNdjson,
 
     /// <summary>
     /// Optional: ViewDefinition ID for Parquet export with schema transformation.
-    /// When specified, must be used with OutputFormat = "application/vnd.apache.parquet".
+    /// When specified, must be used with OutputFormat = <see cref="ExportConstants.MediaTypeParquet"/>.
     /// </summary>
-    string? ViewDefinitionId = null);
+    string? ViewDefinitionId = null,
+
+    /// <summary>
+    /// Optional: Group ID for Group-scoped export.
+    /// When specified, only exports resources for patients that are members of this Group.
+    /// </summary>
+    string? GroupId = null);

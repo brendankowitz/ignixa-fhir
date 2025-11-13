@@ -5,14 +5,16 @@
 
 using DurableTask.Core;
 using Microsoft.Extensions.Logging;
+using System.Threading.Channels;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Export.Models;
+using Ignixa.Application.Features.Search;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -158,6 +160,42 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                         queryStringBuilder.Append(Uri.EscapeDataString(input.Since.Value.ToString("O")));
                     }
 
+                    // If GroupId is specified, add _id filter to only export resources for Group members
+                    if (!string.IsNullOrEmpty(input.GroupId) && input.ResourceType == "Patient")
+                    {
+                        // Use search service to resolve Group members
+                        // Query: GET /Group/{id}?_include=Group:member&_include:iterate=Group:member
+                        // This resolves all members including nested groups
+                        var groupQueryString = $"_id={Uri.EscapeDataString(input.GroupId)}&_include=Group:member&_include:iterate=Group:member";
+                        var groupFilterParams = _parameterParser.Parse(groupQueryString);
+                        var groupSearchOptions = _searchOptionsBuilder.Build("Group", groupFilterParams);
+
+                        var patientIds = new List<string>();
+                        await foreach (var resource in searchService.SearchStreamAsync(groupSearchOptions, CancellationToken.None))
+                        {
+                            if (resource.ResourceType == "Patient")
+                            {
+                                patientIds.Add(resource.ResourceId);
+                            }
+                        }
+
+                        if (patientIds.Count == 0)
+                        {
+                            _logger.LogWarning("Group {GroupId} has no Patient members, export will be empty", input.GroupId);
+                            return new ExportWorkerOutput(input.ResourceType, input.StartSurrogateId, input.EndSurrogateId, 0, 0);
+                        }
+
+                        // Add _id filter for the patient IDs
+                        var idFilter = "_id=" + string.Join(",", patientIds.Select(Uri.EscapeDataString));
+                        if (queryStringBuilder.Length > 0)
+                        {
+                            queryStringBuilder.Append('&');
+                        }
+                        queryStringBuilder.Append(idFilter);
+
+                        _logger.LogInformation("Group export: Resolved {Count} patient members from Group {GroupId}", patientIds.Count, input.GroupId);
+                    }
+
                     // Parse all filter parameters and build SearchOptions with expression
                     var filterParams = _parameterParser.Parse(queryStringBuilder.ToString());
 
@@ -179,28 +217,76 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                             filterParams.Count);
                     }
 
-                    // Stream results directly from database to file
-                    // This single async enumeration runs until ALL resources in the range are processed
-                    // No continuation tokens, no checkpoints - just stream until done
-                    await foreach (var resource in searchService.SearchStreamAsync(searchOptions, CancellationToken.None))
-                    {
-                        // Write resource directly to file stream
-                        // (buffered internally by IExportStreamWriter, then flushed periodically)
-                        await writer.WriteResourceAsync(resource, CancellationToken.None);
-                        resourcesExported++;
-
-                        // Log progress periodically (every 10K resources)
-                        if (resourcesExported % 10_000 == 0)
+                    // Producer-consumer pattern: decouple database reading from writing/ViewDefinition evaluation
+                    // Producer reads from search service and writes to channel
+                    // Consumer(s) read from channel, evaluate ViewDefinition, and write to file sequentially
+                    var channel = Channel.CreateBounded<SearchEntryResult>(
+                        new BoundedChannelOptions(capacity: 500)
                         {
-                            _logger.LogInformation(
-                                "Export progress: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}], Count={Count}",
+                            FullMode = BoundedChannelFullMode.Wait
+                        });
+
+                    // Producer task: Read from search stream and write to channel
+                    var producerTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await foreach (var resource in searchService.SearchStreamAsync(searchOptions, CancellationToken.None))
+                            {
+                                await channel.Writer.WriteAsync(resource, CancellationToken.None);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(
+                                ex,
+                                "Producer task failed: Job={JobId}, Type={ResourceType}",
                                 input.JobId,
-                                input.ResourceType,
-                                input.StartSurrogateId,
-                                input.EndSurrogateId,
-                                resourcesExported);
+                                input.ResourceType);
+                            throw;
+                        }
+                        finally
+                        {
+                            channel.Writer.Complete();
+                        }
+                    });
+
+                    // Consumer: Process from channel, evaluate ViewDefinition, write sequentially
+                    try
+                    {
+                        await foreach (var resource in channel.Reader.ReadAllAsync(CancellationToken.None))
+                        {
+                            // Write resource directly to file stream
+                            // (buffered internally by IExportStreamWriter, then flushed periodically)
+                            // ViewDefinition evaluation happens inside WriteResourceAsync
+                            await writer.WriteResourceAsync(resource, CancellationToken.None);
+                            resourcesExported++;
+
+                            // Log progress periodically (every 10K resources)
+                            if (resourcesExported % 10_000 == 0)
+                            {
+                                _logger.LogInformation(
+                                    "Export progress: Job={JobId}, Type={ResourceType}, Range=[{StartId}..{EndId}], Count={Count}",
+                                    input.JobId,
+                                    input.ResourceType,
+                                    input.StartSurrogateId,
+                                    input.EndSurrogateId,
+                                    resourcesExported);
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Consumer task failed: Job={JobId}, Type={ResourceType}",
+                            input.JobId,
+                            input.ResourceType);
+                        throw;
+                    }
+
+                    // Wait for producer to complete (ensures all errors are propagated)
+                    await producerTask;
 
                     // Final flush ensures all remaining data is written to blob storage
                     await writer.FlushAsync(CancellationToken.None);

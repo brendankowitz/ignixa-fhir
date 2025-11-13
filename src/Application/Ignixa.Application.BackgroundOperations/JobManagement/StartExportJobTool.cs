@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Medino;
 using ModelContextProtocol.Server;
 
@@ -66,7 +67,7 @@ Example: resourceTypes=['Patient', 'Observation'], since='2024-01-01T00:00:00Z'"
             ResourceTypes = types,
             Since = since,
             TypeFilters = filters,
-            OutputFormat = "application/fhir+ndjson"
+            OutputFormat = ExportConstants.MediaTypeNdjson
         };
 
         var result = await _mediator.SendAsync(command, cancellationToken);

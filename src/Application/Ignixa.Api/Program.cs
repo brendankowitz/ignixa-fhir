@@ -175,12 +175,21 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .SingleInstance();
 
     // BACKGROUND OPERATIONS CONFIGURATION
-    // Auto-register all DurableTask activities from the BackgroundOperations assembly
-    // This scans for all classes inheriting from TaskActivity and registers them with DI
-    // New activities are automatically discovered without requiring manual registration updates
+    // Auto-register all DurableTask activities and orchestrations from the BackgroundOperations assembly
+    // This scans for all classes inheriting from TaskActivity or TaskOrchestration and registers them with DI
+    // New activities/orchestrations are automatically discovered without requiring manual registration updates
     var backgroundOpsAssembly = typeof(Ignixa.Application.BackgroundOperations.Export.Activities.ExportWorkerActivity).Assembly;
+
+    // Register all TaskActivity types (Export/Import workers, job completion, etc.)
     containerBuilder.RegisterAssemblyTypes(backgroundOpsAssembly)
         .Where(t => typeof(DurableTask.Core.TaskActivity).IsAssignableFrom(t) && !t.IsAbstract)
+        .AsSelf()
+        .InstancePerDependency();
+
+    // Register all TaskOrchestration types (ExportOrchestration, ImportOrchestration)
+    // CRITICAL: Orchestrations MUST be registered or DurableTask cannot find them when executing jobs
+    containerBuilder.RegisterAssemblyTypes(backgroundOpsAssembly)
+        .Where(t => typeof(DurableTask.Core.TaskOrchestration).IsAssignableFrom(t) && !t.IsAbstract)
         .AsSelf()
         .InstancePerDependency();
 
@@ -608,17 +617,17 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     containerBuilder.Register<ISearchOptionsBuilder>(c =>
     {
         var factory = c.Resolve<ISearchOptionsBuilderFactory>();
-        return factory.Create(FhirSpecification.R4);
+        return factory.Create(FhirVersion.R4);
     }).SingleInstance();
 
     // Register FhirSchemaProviderResolver - enables version-aware components to resolve
     // the correct provider at runtime based on request FHIR version
     // Note: GetSchemaProvider now requires tenantId parameter, so consumers should call it directly
     // This registration is kept for backward compatibility but defaults to tenant 1
-    containerBuilder.Register<Func<FhirSpecification, IFhirSchemaProvider>>(c =>
+    containerBuilder.Register<Func<FhirVersion, IFhirSchemaProvider>>(c =>
     {
         var versionContext = c.Resolve<IFhirVersionContext>();
-        return (FhirSpecification version) => versionContext.GetSchemaProvider(version, tenantId: null);
+        return (FhirVersion version) => versionContext.GetSchemaProvider(version, tenantId: null);
     }).SingleInstance();
 
     // DEPRECATED: VersionAwareSearchParameterDefinitionManager replaced by FhirVersionContext.GetSearchParameterDefinitionManager()
@@ -691,6 +700,15 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // NOTE: CustomResourceTypeCapabilitySegment removed - custom resource types now included
     // via FhirVersionContext.GetSchemaProvider(version, tenantId) in ResourceInteractionCapabilitySegment
+
+    // Background operations handlers (bulk export, bulk import)
+    containerBuilder.RegisterType<Ignixa.Application.BackgroundOperations.Export.CreateExportJobHandler>()
+        .As<IRequestHandler<Ignixa.Application.BackgroundOperations.Export.CreateExportJobCommand, Ignixa.Application.BackgroundOperations.Export.CreateExportJobResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.BackgroundOperations.Jobs.GetJobStatusHandler>()
+        .As<IRequestHandler<Ignixa.Application.BackgroundOperations.Jobs.GetJobStatusQuery, Ignixa.Application.BackgroundOperations.Jobs.GetJobStatusResult>>()
+        .InstancePerDependency();
 
     // PACKAGE FEATURES REGISTRATION
     // Register package features that declare implementation of loaded FHIR packages

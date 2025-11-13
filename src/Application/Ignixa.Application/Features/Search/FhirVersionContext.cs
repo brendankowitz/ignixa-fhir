@@ -292,8 +292,19 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchParameterDefinitionManager(fhirVersion);
         }
 
+        // Check if already cached (fast path)
+        var cacheKey = (fhirVersion, tenantId.Value);
+        if (_compositeSearchParamManagers.TryGetValue(cacheKey, out var cachedManager))
+        {
+            _logger.LogTrace(
+                "Returning cached composite search parameter manager for {FhirVersion}, tenant {TenantId}",
+                fhirVersion,
+                tenantId.Value);
+            return cachedManager;
+        }
+
         // Return cached composite manager or create new one
-        var compositeManager = _compositeSearchParamManagers.GetOrAdd((fhirVersion, tenantId.Value), key =>
+        var compositeManager = _compositeSearchParamManagers.GetOrAdd(cacheKey, key =>
         {
             var (version, tenant) = key;
 

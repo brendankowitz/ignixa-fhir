@@ -217,11 +217,7 @@ public class CompositeStructureDefinitionSummaryProvider : IFhirSchemaProvider
         var baseType = _baseProvider.GetTypeDefinition(typeName);
         _cache[typeName] = baseType; // Cache null results too
 
-        if (baseType != null)
-        {
-            _logger.LogDebug("Resolved {TypeName} from base FHIR spec (FHIR version: {FhirVersion})", typeName, _fhirVersion ?? "any");
-        }
-        else
+        if (baseType == null)
         {
             _logger.LogWarning("Could not resolve {TypeName} from packages or base spec (FHIR version: {FhirVersion})", typeName, _fhirVersion ?? "any");
         }

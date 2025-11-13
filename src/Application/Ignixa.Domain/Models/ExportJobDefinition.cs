@@ -51,4 +51,9 @@ public class ExportJobDefinition : IJobDefinition
     /// When specified, must be used with OutputFormat = "application/vnd.apache.parquet".
     /// </summary>
     public string? ViewDefinitionId { get; init; }
+
+    /// <summary>
+    /// Optional: Group ID for Group-scoped export.
+    /// </summary>
+    public string? GroupId { get; set; }
 }

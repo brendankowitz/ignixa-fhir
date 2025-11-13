@@ -224,13 +224,13 @@ public class OfficialSqlOnFhirTestRunner
     }
 
 
-    /// Loads test resources from JSON elements and converts them to ITypedElement.
-    /// Uses proper ResourceJsonNode with version-specific StructureDefinitionSummaryProvider.
+    /// Loads test resources from JSON elements and converts them to IElement.
+    /// Uses proper ResourceJsonNode with version-specific schema provider.
     /// </summary>
-    private static List<ITypedElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
+    private static List<IElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
     {
-        var resources = new List<ITypedElement>();
-        var provider = GetStructureDefinitionProvider(fhirVersion);
+        var resources = new List<IElement>();
+        var schemaProvider = GetSchemaProvider(fhirVersion);
 
         foreach (var jsonElement in jsonResources)
         {
@@ -244,10 +244,10 @@ public class OfficialSqlOnFhirTestRunner
 
             try
             {
-                // Parse JsonElement text directly to ResourceJsonNode, then convert to ITypedElement
+                // Parse JsonElement text directly to ResourceJsonNode, then convert to IElement
                 var resourceNode = ResourceJsonNode.Parse(jsonElement.GetRawText());
-                var typedElement = resourceNode.ToTypedElement(provider);
-                resources.Add(typedElement);
+                var element = resourceNode.ToElement(schemaProvider);
+                resources.Add(element);
             }
             catch (Exception ex)
             {
@@ -260,10 +260,10 @@ public class OfficialSqlOnFhirTestRunner
     }
 
     /// <summary>
-    /// Gets the appropriate IStructureDefinitionSummaryProvider for a FHIR version string.
+    /// Gets the appropriate ISchema for a FHIR version string.
     /// Uses existing FhirSpecification extensions to resolve the provider.
     /// </summary>
-    private static IStructureDefinitionSummaryProvider GetStructureDefinitionProvider(string fhirVersion)
+    private static ISchema GetSchemaProvider(string fhirVersion)
     {
         var spec = FhirSpecificationExtensions.FromVersionString(fhirVersion);
         return spec.GetSchemaProvider();

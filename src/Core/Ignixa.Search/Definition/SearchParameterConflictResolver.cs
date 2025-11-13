@@ -278,7 +278,8 @@ public class SearchParameterConflictResolver
         var invalidCandidates = candidates
             .Where(c => c.BaseResourceTypes == null ||
                        c.BaseResourceTypes.Count == 0 ||
-                       !c.BaseResourceTypes.Contains(resourceType, StringComparer.OrdinalIgnoreCase))
+                       (!c.BaseResourceTypes.Contains(resourceType, StringComparer.OrdinalIgnoreCase) &&
+                        !c.BaseResourceTypes.Contains("Resource", StringComparer.OrdinalIgnoreCase)))
             .ToList();
 
         if (invalidCandidates.Count > 0)

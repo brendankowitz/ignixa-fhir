@@ -1,6 +1,7 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Models;
+using Ignixa.Domain.Constants;
 
 namespace Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 
@@ -57,7 +58,7 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                 : GetDefaultResourceTypes();
 
             // Determine file extension based on output format (used for all worker outputs)
-            var fileExtension = input.OutputFormat == "application/vnd.apache.parquet"
+            var fileExtension = input.OutputFormat == ExportConstants.MediaTypeParquet
                 ? ".parquet"
                 : ".ndjson";
 
@@ -92,7 +93,8 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                             OutputPath: outputPath,
                             Since: input.Since,
                             TypeFilters: input.TypeFilters,
-                            ViewDefinitionId: input.ViewDefinitionId);
+                            ViewDefinitionId: input.ViewDefinitionId,
+                            GroupId: input.GroupId);
 
                         // Schedule worker task (doesn't wait - queues for parallel execution)
                         var workerTask = context.ScheduleTask<ExportWorkerOutput>(

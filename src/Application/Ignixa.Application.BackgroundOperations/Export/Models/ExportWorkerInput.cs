@@ -58,4 +58,9 @@ public record ExportWorkerInput(
     /// Optional: ViewDefinition ID for Parquet export with schema transformation.
     /// When specified, the worker will apply the ViewDefinition to transform resources.
     /// </summary>
-    string? ViewDefinitionId = null);
+    string? ViewDefinitionId = null,
+
+    /// <summary>
+    /// Optional: Group ID for filtering export to Group members.
+    /// </summary>
+    string? GroupId = null);

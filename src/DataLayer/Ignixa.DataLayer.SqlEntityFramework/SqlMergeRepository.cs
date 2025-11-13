@@ -3,14 +3,12 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Data;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
-using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
-using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.Server;
@@ -22,14 +20,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework;
 /// <summary>
 /// High-performance repository for bulk resource merging using stored procedures and TVPs.
 /// Provides 10-100x performance improvement over EF Core for batch operations.
-/// Uses tenant-specific SearchIndexReferenceDataCache for all reference data lookups.
 /// </summary>
-public class SqlMergeRepository
+public sealed class SqlMergeRepository
 {
     private readonly FhirDbContext _context;
     private readonly GzipResourceCompressor _compressor;
     private readonly ILogger<SqlMergeRepository> _logger;
-    private readonly SearchIndexReferenceDataCache _referenceDataCache;
     private readonly ResourceRowGenerator _resourceRowGenerator;
     private readonly ResourceWriteClaimRowGenerator _resourceWriteClaimRowGenerator;
     private readonly ISearchParameterRowGenerator _tokenRowGenerator;
@@ -47,23 +43,27 @@ public class SqlMergeRepository
     private readonly ISearchParameterRowGenerator _tokenStringCompositeRowGenerator;
     private readonly ISearchParameterRowGenerator _tokenNumberNumberCompositeRowGenerator;
 
+    // Static caching for database lookup mappings (shared across all instances, keyed by connection string)
+    // Mappings are tenant-specific (different databases have different IDs) but rarely change once loaded
+    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, short>> _resourceTypeIdMapCacheGlobal = new();
+    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, short>> _searchParameterIdMapCacheGlobal = new();
+    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, int>> _systemIdMapCacheGlobal = new();
+    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, int>> _quantityCodeIdMapCacheGlobal = new();
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SqlMergeRepository"/> class.
     /// </summary>
     /// <param name="context">The database context.</param>
     /// <param name="compressor">The Gzip resource compressor.</param>
     /// <param name="logger">The logger instance.</param>
-    /// <param name="referenceDataCache">The search index reference data cache.</param>
     public SqlMergeRepository(
         FhirDbContext context,
         GzipResourceCompressor compressor,
-        ILogger<SqlMergeRepository> logger,
-        SearchIndexReferenceDataCache referenceDataCache)
+        ILogger<SqlMergeRepository> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _compressor = compressor ?? throw new ArgumentNullException(nameof(compressor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _referenceDataCache = referenceDataCache ?? throw new ArgumentNullException(nameof(referenceDataCache));
 
         // Initialize row generators (will be injected in Phase 3 via DI container)
         _resourceRowGenerator = new ResourceRowGenerator(compressor);
@@ -163,31 +163,11 @@ public class SqlMergeRepository
             resources.Count,
             transactionId);
 
-        // Ensure cache is preloaded for small reference data (if not already done)
-        if (_referenceDataCache.ResourceTypeMappings.Count == 0)
-        {
-            _logger.LogInformation("Preloading resource type mappings");
-            await _referenceDataCache.PreloadResourceTypesAsync();
-        }
-
-        if (_referenceDataCache.SearchParameterMappings.Count == 0)
-        {
-            _logger.LogInformation("Preloading search parameter mappings (limited to 10,000 rows)");
-            await _referenceDataCache.PreloadSearchParamsAsync(maxRows: 10000);
-        }
-
-        // Access cache dictionaries directly (no method call overhead)
-        var resourceTypeIdMap = _referenceDataCache.ResourceTypeMappings;
-        var searchParameterIdMap = _referenceDataCache.SearchParameterMappings;
-        var systemIdMap = _referenceDataCache.SystemMappings;
-        var quantityCodeIdMap = _referenceDataCache.QuantityCodeMappings;
-
-        _logger.LogDebug(
-            "Using reference data mappings: {ResourceTypes} resource types, {SearchParams} search params, {Systems} systems, {QuantityCodes} quantity codes",
-            resourceTypeIdMap.Count,
-            searchParameterIdMap.Count,
-            systemIdMap.Count,
-            quantityCodeIdMap.Count);
+        // Phase 3: Load lookup tables from database
+        var resourceTypeIdMap = await GetResourceTypeIdMapAsync(cancellationToken);
+        var searchParameterIdMap = await GetSearchParameterIdMapAsync(cancellationToken);
+        var systemIdMap = await GetSystemIdMapAsync(cancellationToken);
+        var quantityCodeIdMap = await GetQuantityCodeIdMapAsync(cancellationToken);
 
         // Build surrogate ID map (transactionId + entryIndex for each resource)
         var resourceSurrogateIdMap = BuildResourceSurrogateIdMap(transactionId, resources, entryIndices);
@@ -317,32 +297,16 @@ public class SqlMergeRepository
         };
 
         // Execute merge stored procedure
-        try
-        {
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
-                "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
-                "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
-                "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
-                "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
-                "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
-                "@TokenNumberNumberCompositeSearchParams",
-                parameters,
-                cancellationToken);
-        }
-        catch (SqlException ex) when (ex.Number == 50409)
-        {
-            // SQL error 50409: Resource has been recently updated or added (version conflict)
-            // Convert to PreconditionFailedException (HTTP 412) instead of 500 Internal Server Error
-            _logger.LogWarning(
-                ex,
-                "Resource version conflict detected in transaction {TransactionId}: {Message}",
-                transactionId,
-                ex.Message);
-            throw new PreconditionFailedException(
-                "Resource has been recently updated or added. Please compare the resource content and retry.",
-                ex);
-        }
+        await _context.Database.ExecuteSqlRawAsync(
+            "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
+            "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
+            "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
+            "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
+            "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
+            "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
+            "@TokenNumberNumberCompositeSearchParams",
+            parameters,
+            cancellationToken);
 
         var affectedRows = Convert.ToInt32(affectedRowsParam.Value);
         Debug.Assert(affectedRows > 0);
@@ -421,16 +385,153 @@ public class SqlMergeRepository
         return list.Count > 0 ? list : null;
     }
 
-    #region Lookup Tables - Now handled by SearchIndexReferenceDataCache properties
+    #region Lookup Tables (Phase 3: Database lookup methods)
 
-    // NOTE: All lookup tables are now accessed directly via SearchIndexReferenceDataCache properties:
-    // - _referenceDataCache.ResourceTypeMappings
-    // - _referenceDataCache.SearchParameterMappings
-    // - _referenceDataCache.SystemMappings
-    // - _referenceDataCache.QuantityCodeMappings
-    //
-    // This eliminates the need for Get*Async methods and improves LRU/on-demand caching strategies.
-    // The cache owns and manages the dictionaries internally as a single source of truth.
+    /// <summary>
+    /// Gets the mapping from resource type name to resource type ID.
+    /// Phase 3: Queries ResourceType table and caches results in static cache (keyed by connection string).
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, short>> GetResourceTypeIdMapAsync(CancellationToken cancellationToken)
+    {
+        var cacheKey = _context.Database.GetConnectionString() ?? "default";
+
+        // Fast path: return cached value if available
+        if (_resourceTypeIdMapCacheGlobal.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        // Slow path: load from database and cache
+        var resourceTypes = await _context.ResourceTypes
+            .AsNoTracking()
+            .ToDictionaryAsync(rt => rt.Name, rt => rt.ResourceTypeId, cancellationToken);
+
+        _logger.LogDebug("Loaded {Count} resource type mappings from database for connection {ConnectionKey}",
+            resourceTypes.Count,
+            cacheKey.Substring(0, Math.Min(50, cacheKey.Length)));
+
+        _resourceTypeIdMapCacheGlobal.TryAdd(cacheKey, resourceTypes);
+        return resourceTypes;
+    }
+
+    /// <summary>
+    /// Gets the mapping from search parameter URI to search parameter ID.
+    /// Phase 3: Queries SearchParam table and uses full URI as key.
+    /// URIs are unique (e.g., "http://hl7.org/fhir/SearchParameter/Patient-name" vs "http://hl7.org/fhir/SearchParameter/Encounter-name").
+    /// NOTE: Codes alone are NOT unique - "subject" appears in 46 different resource-specific search parameters.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, short>> GetSearchParameterIdMapAsync(CancellationToken cancellationToken)
+    {
+        var cacheKey = _context.Database.GetConnectionString() ?? "default";
+
+        // Fast path: return cached value if available
+        if (_searchParameterIdMapCacheGlobal.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        // Slow path: load from database and cache
+        var searchParams = await _context.SearchParams
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        var map = new Dictionary<string, short>(searchParams.Count);
+
+        foreach (var param in searchParams)
+        {
+            if (!string.IsNullOrEmpty(param.Uri))
+            {
+                map[param.Uri] = param.SearchParamId;
+            }
+        }
+
+        _logger.LogDebug("Loaded {Count} search parameter mappings from database for connection {ConnectionKey}",
+            map.Count,
+            cacheKey.Substring(0, Math.Min(50, cacheKey.Length)));
+
+        _searchParameterIdMapCacheGlobal.TryAdd(cacheKey, map);
+        return map;
+    }
+
+    /// <summary>
+    /// Gets the mapping from system URI to system ID.
+    /// Phase 3: Queries System table and caches results in static cache (keyed by connection string).
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, int>> GetSystemIdMapAsync(CancellationToken cancellationToken)
+    {
+        var cacheKey = _context.Database.GetConnectionString() ?? "default";
+
+        // Fast path: return cached value if available
+        if (_systemIdMapCacheGlobal.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        // Slow path: load from database and cache
+        var systems = await _context.Systems
+            .AsNoTracking()
+            .ToDictionaryAsync(s => s.Value, s => s.SystemId, cancellationToken);
+
+        _logger.LogDebug("Loaded {Count} system mappings from database for connection {ConnectionKey}",
+            systems.Count,
+            cacheKey.Substring(0, Math.Min(50, cacheKey.Length)));
+
+        _systemIdMapCacheGlobal.TryAdd(cacheKey, systems);
+        return systems;
+    }
+
+    /// <summary>
+    /// Gets the mapping from quantity code to quantity code ID.
+    /// Phase 3: Queries QuantityCode table and caches results in static cache (keyed by connection string).
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, int>> GetQuantityCodeIdMapAsync(CancellationToken cancellationToken)
+    {
+        var cacheKey = _context.Database.GetConnectionString() ?? "default";
+
+        // Fast path: return cached value if available
+        if (_quantityCodeIdMapCacheGlobal.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        // Slow path: load from database and cache
+        var quantityCodes = await _context.QuantityCodes
+            .AsNoTracking()
+            .ToDictionaryAsync(qc => qc.Value, qc => qc.QuantityCodeId, cancellationToken);
+
+        _logger.LogDebug("Loaded {Count} quantity code mappings from database for connection {ConnectionKey}",
+            quantityCodes.Count,
+            cacheKey.Substring(0, Math.Min(50, cacheKey.Length)));
+
+        _quantityCodeIdMapCacheGlobal.TryAdd(cacheKey, quantityCodes);
+        return quantityCodes;
+    }
+
+    /// <summary>
+    /// Extracts the search parameter code from a FHIR search parameter URI.
+    /// Examples:
+    /// - "http://hl7.org/fhir/SearchParameter/Patient-name" → "name"
+    /// - "http://hl7.org/fhir/SearchParameter/name" → "name"
+    /// </summary>
+    private static string ExtractCodeFromSearchParameterUri(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return string.Empty;
+
+        // Get the last segment of the URI
+        var lastSegment = uri.Split('/').Last();
+
+        // If the last segment contains a hyphen, take everything after the last hyphen
+        // (e.g., "Patient-name" → "name")
+        var lastHyphenIndex = lastSegment.LastIndexOf('-');
+        if (lastHyphenIndex >= 0)
+        {
+            return lastSegment.Substring(lastHyphenIndex + 1);
+        }
+
+        // Otherwise, return the entire last segment (e.g., "name" → "name")
+        return lastSegment;
+    }
 
     #endregion
 

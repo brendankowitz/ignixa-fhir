@@ -327,20 +327,19 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Get or create cached definition managers (reused across tenants with same FHIR version)
         var (compartmentManager, parameterManager) = GetOrCreateDefinitionManagers(fhirSpec, schemaProvider);
 
+        // Get tenant-specific cache instance (reused across all requests for this tenant)
+        var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
+
         // Create factory delegate for Repository (accepts DbContext parameter)
         // Uses tenant-specific cache from multi-tenant cache manager
         Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
 
-            // Get tenant-specific cache instance (reused across all requests for this tenant)
-            var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
-
             var sqlMergeRepository = new SqlMergeRepository(
                 dbContext,
                 compressor,
-                _loggerFactory.CreateLogger<SqlMergeRepository>(),
-                searchIndexCache);
+                _loggerFactory.CreateLogger<SqlMergeRepository>());
 
             return new SqlEntityFrameworkRepository(
                 dbContext,
@@ -354,9 +353,6 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (dbContext, repository) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
-
-            // Get tenant-specific cache instance (same instance as used by repository)
-            var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
 
             var compositeQueryGenerator = new Search.CompositeSearchParameterQueryGenerator(
                 dbContext,
