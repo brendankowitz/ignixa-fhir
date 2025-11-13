@@ -1,0 +1,16 @@
+{
+  "name": "local.ignixa.sqlonfhir",
+  "version": "2.1.0",
+  "fhirVersions": ["4.0.1", "4.3.0", "5.0.0"],
+  "dependencies": {
+    "hl7.fhir.r4.core": "4.0.1"
+  },
+  "author": "Ignixa Team",
+  "description": "SQL-on-FHIR v2 ViewDefinition support for Ignixa",
+  "canonical": "http://ignixa.health/fhir/sqlonfhir",
+  "title": "Ignixa SQL-on-FHIR Package",
+  "type": "IG",
+  "date": "2024-11-09",
+  "license": "CC0-1.0",
+  "url": "http://ignixa.health/fhir/sqlonfhir/ImplementationGuide/local.ignixa.sqlonfhir"
+}
