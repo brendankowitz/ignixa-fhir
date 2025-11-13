@@ -92,6 +92,11 @@ builder.Services.Configure<SearchParameterResolutionOptions>(
 builder.Services.AddSingleton<IHttpContextFactory, DefaultHttpContextFactory>();
 builder.Services.AddHttpContextAccessor();
 
+// Register IFhirRequestContextAccessor for centralized FHIR request context (Phase 1 - IFhirRequestContext pattern)
+// Replaces scattered HttpContext.Items["TenantId"] extractions with strongly-typed context
+// Uses AsyncLocal for thread-safe bundle processing with isolated contexts per entry
+builder.Services.AddScoped<IFhirRequestContextAccessor, FhirRequestContextAccessor>();
+
 // Register IndexLoaderService as hosted service
 builder.Services.AddHostedService<IndexLoaderService>();
 
@@ -833,6 +838,12 @@ if (string.Equals(builder.Configuration["ASPNETCORE_FORWARDEDHEADERS_ENABLED"], 
 // Extracts tenantId from route, validates tenant exists and is active
 // Stores tenant context in HttpContext.Items for downstream handlers
 app.UseMiddleware<TenantResolutionMiddleware>();
+
+// FHIR REQUEST CONTEXT MIDDLEWARE (Phase 1 - IFhirRequestContext pattern)
+// Creates centralized IFhirRequestContext with tenant, FHIR version, resource type, and bundle state
+// Runs AFTER TenantResolutionMiddleware to access tenant information from HttpContext.Items
+// Provides strongly-typed context accessible via IFhirRequestContextAccessor throughout request pipeline
+app.UseMiddleware<FhirRequestContextMiddleware>();
 
 // CAPABILITY ENFORCEMENT (Phase 3 - ADR-2506)
 // Now handled by CapabilityEnforcementBehavior (Medino pipeline behavior)
