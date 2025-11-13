@@ -38,4 +38,10 @@ public record CreateExportJobCommand : IRequest<CreateExportJobResult>
     /// Output format for exported files (default: application/fhir+ndjson).
     /// </summary>
     public string OutputFormat { get; init; } = "application/fhir+ndjson";
+
+    /// <summary>
+    /// Optional ViewDefinition ID for Parquet export with schema transformation.
+    /// When specified, must be used with OutputFormat = "application/vnd.apache.parquet".
+    /// </summary>
+    public string? ViewDefinitionId { get; init; }
 }

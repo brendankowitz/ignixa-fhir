@@ -110,7 +110,7 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
 
                 // Get structure provider for tenant's FHIR version
                 var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-                var structureProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion);
+                var structureProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
 
                 // Create ViewDefinition export writer with schema derived from ViewDefinition
                 // This constructor builds the Parquet schema from ViewDefinition columns

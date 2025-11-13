@@ -613,10 +613,12 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // Register FhirSchemaProviderResolver - enables version-aware components to resolve
     // the correct provider at runtime based on request FHIR version
-    containerBuilder.Register<FhirSchemaProviderResolver>(c =>
+    // Note: GetSchemaProvider now requires tenantId parameter, so consumers should call it directly
+    // This registration is kept for backward compatibility but defaults to tenant 1
+    containerBuilder.Register<Func<FhirSpecification, IFhirSchemaProvider>>(c =>
     {
         var versionContext = c.Resolve<IFhirVersionContext>();
-        return (FhirSpecification version) => versionContext.GetSchemaProvider(version);
+        return (FhirSpecification version) => versionContext.GetSchemaProvider(version, tenantId: null);
     }).SingleInstance();
 
     // DEPRECATED: VersionAwareSearchParameterDefinitionManager replaced by FhirVersionContext.GetSearchParameterDefinitionManager()

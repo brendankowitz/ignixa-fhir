@@ -18,7 +18,6 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class ExportEndpoints
 {
-    private static readonly string[] AllResourcesArray = ["all"];
     /// <summary>
     /// Registers export-related endpoints with the application.
     /// </summary>

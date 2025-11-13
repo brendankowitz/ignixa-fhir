@@ -52,4 +52,10 @@ public record ExportWorkerInput(
     /// Key is resource type, value is query string of search parameters.
     /// If null or doesn't contain this resource type, no filters are applied.
     /// </summary>
-    IReadOnlyDictionary<string, string>? TypeFilters = null);
+    IReadOnlyDictionary<string, string>? TypeFilters = null,
+
+    /// <summary>
+    /// Optional: ViewDefinition ID for Parquet export with schema transformation.
+    /// When specified, the worker will apply the ViewDefinition to transform resources.
+    /// </summary>
+    string? ViewDefinitionId = null);

@@ -44,4 +44,17 @@ public record ExportCoordinatorInput(
     /// More ranges = more parallelism but higher DurableTask overhead.
     /// Example: 6 types × 6 ranges = 36 concurrent workers.
     /// </summary>
-    int NumberOfRangesPerType = 6);
+    int NumberOfRangesPerType = 6,
+
+    /// <summary>
+    /// Optional: Output format for export files.
+    /// Supported values: "application/fhir+ndjson" (default) or "application/vnd.apache.parquet".
+    /// Determines the file extension (.ndjson or .parquet).
+    /// </summary>
+    string OutputFormat = "application/fhir+ndjson",
+
+    /// <summary>
+    /// Optional: ViewDefinition ID for Parquet export with schema transformation.
+    /// When specified, must be used with OutputFormat = "application/vnd.apache.parquet".
+    /// </summary>
+    string? ViewDefinitionId = null);
