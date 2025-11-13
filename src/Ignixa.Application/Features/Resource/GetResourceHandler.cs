@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 
@@ -17,50 +17,44 @@ namespace Ignixa.Application.Features.Resource;
 /// Returns SearchEntryResult for zero-copy serialization (read path with raw bytes).
 ///
 /// Flow:
-/// 1. Determine partition using IPartitionStrategy (reads tenantId from HttpContext.Items)
-/// 2. Validate single partition (CRUD always targets one partition)
-/// 3. Get repository from IFhirRepositoryFactory
-/// 4. Execute GetAsync directly (no execution strategy for CRUD)
+/// 1. Get tenant context from IFhirRequestContextAccessor
+/// 2. Determine partition using IPartitionStrategy
+/// 3. Validate single partition (CRUD always targets one partition)
+/// 4. Get repository from IFhirRepositoryFactory
+/// 5. Execute GetAsync directly (no execution strategy for CRUD)
 /// </summary>
 public class GetResourceHandler : IRequestHandler<GetResourceQuery, SearchEntryResult?>
 {
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRepositoryFactory _repositoryFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<GetResourceHandler> _logger;
 
     public GetResourceHandler(
         IPartitionStrategy partitionStrategy,
         IFhirRepositoryFactory repositoryFactory,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<GetResourceHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<SearchEntryResult?> HandleAsync(GetResourceQuery query, CancellationToken cancellationToken)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is null");
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
 
         _logger.LogDebug("Processing GetResource for {ResourceType}/{Id}", query.ResourceType, query.Id);
 
-        // Extract tenant context from HttpContext.Items
-        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            throw new InvalidOperationException("TenantId not found in HttpContext.Items");
-        }
-
-        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
-
-        // Create partition resolution context
+        // Create partition resolution context from FHIR request context
         var partitionContext = new PartitionResolutionContext
         {
-            TenantId = tenantId,
-            TenantConfiguration = tenantConfig
+            TenantId = context.TenantId,
+            TenantConfiguration = context.TenantConfiguration
         };
 
         // 1. Determine partition using IPartitionStrategy

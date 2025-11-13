@@ -24,22 +24,26 @@ namespace Ignixa.Application.Features.Bundle;
 /// <summary>
 /// Executes a single bundle entry by routing through ASP.NET Core pipeline using mini HttpContext objects.
 /// This enables bundle entries to automatically access all FHIR endpoints without manual switch-statement routing.
+/// Creates isolated IFhirRequestContext per entry for thread-safe concurrent processing.
 /// </summary>
 public class BundleEntryExecutor
 {
     private readonly IPipelineExecutor _pipelineExecutor;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly ILogger<BundleEntryExecutor> _logger;
 
     public BundleEntryExecutor(
         IPipelineExecutor pipelineExecutor,
         IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirContextAccessor,
         RecyclableMemoryStreamManager memoryStreamManager,
         ILogger<BundleEntryExecutor> logger)
     {
         _pipelineExecutor = EnsureArg.IsNotNull(pipelineExecutor, nameof(pipelineExecutor));
         _httpContextAccessor = EnsureArg.IsNotNull(httpContextAccessor, nameof(httpContextAccessor));
+        _fhirContextAccessor = EnsureArg.IsNotNull(fhirContextAccessor, nameof(fhirContextAccessor));
         _memoryStreamManager = EnsureArg.IsNotNull(memoryStreamManager, nameof(memoryStreamManager));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
     }
@@ -69,6 +73,44 @@ public class BundleEntryExecutor
 
         try
         {
+            // Get parent FHIR request context and clone it for this bundle entry
+            // This creates an isolated context for thread-safe concurrent processing
+            var parentContext = _fhirContextAccessor.RequestContext
+                ?? throw new InvalidOperationException("No parent FHIR request context available for bundle entry execution");
+
+            // Create ISOLATED child context for this bundle entry
+            // AsyncLocal ensures concurrent entries don't interfere with each other
+            var entryContext = new FhirRequestContext
+            {
+                // ===== Inherited from Parent =====
+                TenantId = parentContext.TenantId,
+                TenantConfiguration = parentContext.TenantConfiguration,
+                FhirVersion = parentContext.FhirVersion,
+                VersionContext = parentContext.VersionContext,
+                DeferredWriteCoordinator = deferredWriteCoordinator ?? parentContext.DeferredWriteCoordinator,
+
+                // ===== Bundle-Specific (Shared) =====
+                ExecutingBatchOrTransaction = true,
+                IsBackgroundTask = parentContext.IsBackgroundTask,
+
+                // ===== Entry-Specific (Unique Per Entry) =====
+                BundleEntryIndex = entry.Index,
+                ResourceType = ExtractResourceTypeFromUrl(entry.RequestUrl),
+
+                // ===== Isolated Collections (Don't Share With Parent) =====
+                BundleIssues = new List<OperationOutcomeIssue>(),
+                Properties = new Dictionary<string, object>(parentContext.Properties) // Shallow copy
+            };
+
+            // Set isolated context for this async execution context (AsyncLocal)
+            _fhirContextAccessor.RequestContext = entryContext;
+
+            _logger.LogDebug(
+                "Created isolated context for bundle entry {EntryIndex}: ResourceType={ResourceType}, TenantId={TenantId}",
+                entry.Index,
+                entryContext.ResourceType,
+                entryContext.TenantId);
+
             // Create mini HttpContext for bundle entry
             var httpContext = new DefaultHttpContext();
             var responseBodyStream = _memoryStreamManager.GetStream("bundle-entry-response");
@@ -248,6 +290,25 @@ public class BundleEntryExecutor
                 LastModified = null
             };
         }
+    }
+
+    /// <summary>
+    /// Extracts resource type from bundle entry's request URL.
+    /// Examples: "Patient" from "Patient/123", "Observation" from "Observation?subject=Patient/123"
+    /// </summary>
+    private static string? ExtractResourceTypeFromUrl(string requestUrl)
+    {
+        if (string.IsNullOrWhiteSpace(requestUrl))
+        {
+            return null;
+        }
+
+        // Remove leading slash and split by / and ?
+        var url = requestUrl.TrimStart('/');
+        var segments = url.Split(new[] { '/', '?' }, StringSplitOptions.RemoveEmptyEntries);
+
+        // First segment is the resource type (e.g., "Patient/123" → "Patient")
+        return segments.Length > 0 ? segments[0] : null;
     }
 
     /// <summary>

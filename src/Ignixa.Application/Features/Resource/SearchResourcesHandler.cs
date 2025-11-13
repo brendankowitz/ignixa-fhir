@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
@@ -17,8 +17,9 @@ namespace Ignixa.Application.Features.Resource;
 /// Multi-tenant enabled: Uses IPartitionStrategy + IQueryExecutionStrategy.
 ///
 /// Flow:
-/// 1. Determine partition(s) using IPartitionStrategy (reads tenantId from HttpContext.Items)
-/// 2. Execute using IQueryExecutionStrategy
+/// 1. Get tenant context from IFhirRequestContextAccessor
+/// 2. Determine partition(s) using IPartitionStrategy
+/// 3. Execute using IQueryExecutionStrategy
 ///    - PassthroughExecutionStrategy: Validates single partition, direct search service call
 ///    - FanoutExecutionStrategy (future): Handles multiple partitions with fanout/merge
 /// </summary>
@@ -26,18 +27,18 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
 {
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IQueryExecutionStrategy _executionStrategy;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<SearchResourcesHandler> _logger;
 
     public SearchResourcesHandler(
         IPartitionStrategy partitionStrategy,
         IQueryExecutionStrategy executionStrategy,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<SearchResourcesHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -45,24 +46,17 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
         SearchResourcesQuery request,
         CancellationToken cancellationToken)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is null");
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
 
         _logger.LogInformation("Searching for {ResourceType} resources (streaming)", request.ResourceType);
 
-        // Extract tenant context from HttpContext.Items
-        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            throw new InvalidOperationException("TenantId not found in HttpContext.Items");
-        }
-
-        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
-
-        // Create partition resolution context
+        // Create partition resolution context from FHIR request context
         var partitionContext = new PartitionResolutionContext
         {
-            TenantId = tenantId,
-            TenantConfiguration = tenantConfig
+            TenantId = context.TenantId,
+            TenantConfiguration = context.TenantConfiguration
         };
 
         // 1. Determine partition(s) using IPartitionStrategy
