@@ -11,6 +11,7 @@ using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Infrastructure;
@@ -32,19 +33,22 @@ public class SearchResourcesTool : TenantAwareMcpTool
     private readonly ISearchOptionsBuilderFactory _builderFactory;
     private readonly IFhirVersionContext _versionContext;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
 
     public SearchResourcesTool(
         IHttpContextAccessor httpContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         ISearchOptionsBuilderFactory builderFactory,
-        IFhirVersionContext versionContext)
+        IFhirVersionContext versionContext,
+        IFhirRequestContextAccessor contextAccessor)
         : base(httpContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _builderFactory = builderFactory ?? throw new ArgumentNullException(nameof(builderFactory));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _tenantConfigurationStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
     }
 
     [McpServerTool(Name = "search_fhir_resources")]
@@ -121,11 +125,12 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         var builder = _builderFactory.Create(fhirVersion);
         var searchOptions = builder.Build(resourceType, queryParameters, schemaProvider);
 
-        // Set tenant context in HttpContext.Items for SearchResourcesHandler
-        var httpContext = HttpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext not available");
+        // Update the FHIR request context with the resolved tenant ID
+        // The middleware has already created the context, we just need to update the tenant
+        var requestContext = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available - middleware may not have run");
 
-        httpContext.Items["TenantId"] = resolvedTenantId;
+        requestContext.TenantId = resolvedTenantId;
 
         // Execute search via Medino handler
         var query = new SearchResourcesQuery(resourceType, searchOptions);

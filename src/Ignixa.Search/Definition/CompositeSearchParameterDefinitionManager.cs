@@ -51,6 +51,10 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     private IEnumerable<SearchParameterInfo>? _allSearchParametersCache;
     private bool _isInitialized;
 
+    // Lazy cache for SearchParameterHashMap to avoid repeated base manager queries
+    // Non-readonly to allow recreation in ClearCache()
+    private Lazy<IReadOnlyDictionary<string, string>> _searchParameterHashMapCache;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="CompositeSearchParameterDefinitionManager"/> class.
     /// </summary>
@@ -82,6 +86,11 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _packageSearchParametersByResourceType = new ConcurrentDictionary<string, IEnumerable<SearchParameterInfo>>();
         _parameterByCodeCache = new ConcurrentDictionary<(string, string), SearchParameterInfo?>();
         _packageMetadataCache = new ConcurrentDictionary<string, PackageMetadata>();
+
+        // Initialize lazy cache for SearchParameterHashMap
+        _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
+            () => _baseManager.SearchParameterHashMap,
+            LazyThreadSafetyMode.ExecutionAndPublication);
 
         _logger.LogInformation(
             "Created CompositeSearchParameterDefinitionManager for FHIR version {FhirVersion} with intelligent conflict resolution enabled (Eager loading: {EagerLoad})",
@@ -237,18 +246,35 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     }
 
     /// <inheritdoc/>
-    public IReadOnlyDictionary<string, string> SearchParameterHashMap => _baseManager.SearchParameterHashMap;
+    public IReadOnlyDictionary<string, string> SearchParameterHashMap => _searchParameterHashMapCache.Value;
 
     /// <inheritdoc/>
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
-        // Check cache first
+        // Check per-resource-type cache first
         if (_packageSearchParametersByResourceType.TryGetValue(resourceType, out var cached))
         {
             return cached;
         }
 
-        // Load from base + packages and merge
+        // If eager loading is enabled and initialization is complete, filter from pre-merged cache
+        // This avoids lazy loading and repeated conflict resolution logs
+        if (_options.EagerLoadPackageSearchParameters && _isInitialized && _allSearchParametersCache != null)
+        {
+            // IMPORTANT: Use Distinct() because MergeAllSearchParameters adds the same SearchParameterInfo
+            // multiple times (once per resource type it applies to via BaseResourceTypes).
+            // We need to return unique SearchParameterInfo objects, not duplicate references.
+            var filtered = _allSearchParametersCache
+                .Where(p => p.BaseResourceTypes != null &&
+                           p.BaseResourceTypes.Contains(resourceType, StringComparer.OrdinalIgnoreCase))
+                .Distinct()
+                .ToList();
+
+            _packageSearchParametersByResourceType[resourceType] = filtered;
+            return filtered;
+        }
+
+        // Fallback: lazy load (for lazy loading mode or not yet initialized)
         var baseParameters = _baseManager.GetSearchParameters(resourceType);
         var packageParameters = LoadPackageSearchParametersForResourceType(resourceType);
 
@@ -389,6 +415,15 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _packageSearchParametersByResourceType.Clear();
         _parameterByCodeCache.Clear();
         _packageMetadataCache.Clear();
+
+        // Reset lazy cache for SearchParameterHashMap
+        _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
+            () => _baseManager.SearchParameterHashMap,
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        // Reset eager loading state to force reinit if needed
+        _allSearchParametersCache = null;
+        _isInitialized = false;
 
         _logger.LogInformation(
             "Cleared CompositeSearchParameterDefinitionManager cache (FHIR version: {FhirVersion})",

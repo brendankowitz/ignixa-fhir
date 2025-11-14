@@ -142,16 +142,17 @@ public class SearchParameterConflictResolver
         if (_options.LogConflicts && candidates.Count > 1)
         {
             var conflictInfo = string.Join(", ", candidates.Select(c =>
-                $"{c.Metadata.PackageId}#{c.Metadata.PackageVersion} (rank {_options.GetPriorityRank(c.Metadata.PackageId)})"));
+                $"{c.Metadata.PackageId}#{c.Metadata.PackageVersion} (URL: {c.Parameter.Url}, rank {_options.GetPriorityRank(c.Metadata.PackageId)})"));
 
             _logger.LogWarning(
                 "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. " +
-                "Winner: {WinnerPackage}#{WinnerVersion} (priority rank {WinnerRank})",
+                "Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, priority rank {WinnerRank}, resolution: explicit priority)",
                 code,
                 resourceType,
                 conflictInfo,
                 winner.Candidate.Metadata.PackageId,
                 winner.Candidate.Metadata.PackageVersion,
+                winner.Candidate.Parameter.Url,
                 winner.Rank);
         }
 
@@ -183,16 +184,18 @@ public class SearchParameterConflictResolver
         if (_options.LogConflicts && candidates.Count > 1)
         {
             var conflictInfo = string.Join(", ", sorted.Select(s =>
-                $"{s.Candidate.Metadata.PackageId}#{s.Candidate.Metadata.PackageVersion}"));
+                $"{s.Candidate.Metadata.PackageId}#{s.Candidate.Metadata.PackageVersion} (URL: {s.Candidate.Parameter.Url})"));
 
             _logger.LogWarning(
                 "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. " +
-                "Winner: {WinnerPackage}#{WinnerVersion} (semantic version resolution)",
+                "Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, resolution: semantic version {WinnerSemanticVersion})",
                 code,
                 resourceType,
                 conflictInfo,
                 winner.Candidate.Metadata.PackageId,
-                winner.Candidate.Metadata.PackageVersion);
+                winner.Candidate.Metadata.PackageVersion,
+                winner.Candidate.Parameter.Url,
+                winner.Version ?? new SemanticVersion(0, 0, 0));
         }
 
         return winner.Candidate;

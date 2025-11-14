@@ -1,0 +1,67 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET Core Launch (Ignixa.Api)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Ignixa.Api/bin/Debug/net9.0/Ignixa.Api.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Ignixa.Api",
+      "stopAtEntry": false,
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      },
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_FORWARDEDHEADERS_ENABLED": "false",
+        "ASPNETCORE_URLS": "https://localhost:7058;http://localhost:5027",
+        "Logging__LogLevel__Default": "Debug",
+        "Logging__LogLevel__Microsoft.AspNetCore": "Information",
+        "Logging__LogLevel__Ignixa": "Trace",
+        "Logging__LogLevel__Ignixa.Api.Middleware.TenantResolutionMiddleware": "Debug",
+        "Logging__LogLevel__Ignixa.Application.Infrastructure": "Debug",
+        "Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command": "Debug",
+        "Logging__LogLevel__DurableTask": "Debug",
+        "Logging__LogLevel__DurableTask.AzureStorage": "Debug",
+        "FhirRepository__BaseDirectory": "fhir-data",
+        "BlobStorage__Provider": "Azure",
+        "BlobStorage__UseManagedIdentity": "false",
+        "BlobStorage__ConnectionString": "UseDevelopmentStorage=true",
+        "BlobStorage__ContainerName": "fhirstorage",
+        "DurableTask__Provider": "AzureStorage",
+        "DurableTask__AzureStorage__UseManagedIdentity": "false",
+        "DurableTask__AzureStorage__ConnectionString": "UseDevelopmentStorage=true",
+        "DurableTask__AzureStorage__TaskHubName": "ignixadev",
+        "BackgroundJobs__Repository": "InMemory",
+        "Tenants__Mode": "Isolated",
+        "Tenants__Configurations__0__TenantId": "0",
+        "Tenants__Configurations__0__DisplayName": "System Partition (Reserved)",
+        "Tenants__Configurations__0__FhirVersion": "4.0",
+        "Tenants__Configurations__0__IsActive": "true",
+        "Tenants__Configurations__0__IsSystemPartition": "true",
+        "Tenants__Configurations__0__Storage__Type": "SqlEntityFramework",
+        "Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant": "1",
+        "Tenants__Configurations__1__TenantId": "1",
+        "Tenants__Configurations__1__DisplayName": "MS Health SQL Server Clinic",
+        "Tenants__Configurations__1__FhirVersion": "4.3",
+        "Tenants__Configurations__1__IsActive": "true",
+        "Tenants__Configurations__1__Storage__Type": "SqlEntityFramework",
+        "Tenants__Configurations__1__Storage__ConnectionString": "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true",
+        "TransactionWatcher__Enabled": "true",
+        "TransactionWatcher__ScanInterval": "00:01:00",
+        "TransactionWatcher__StallThreshold": "00:05:00"
+      },
+      "sourceFileMap": {
+        "/Views": "${workspaceFolder}/Views"
+      }
+    },
+    {
+      "name": ".NET Core Attach",
+      "type": "coreclr",
+      "request": "attach"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections;
 using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -13,17 +14,25 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Indexing;
 /// <summary>
 /// Caches lookup IDs for search parameter indexing (SearchParamId, SystemId, QuantityCodeId, ResourceTypeId).
 /// Provides thread-safe get-or-create operations for reference data.
+/// Uses on-demand caching for large datasets (Systems, QuantityCodes) to prevent memory exhaustion.
 /// </summary>
-public class SearchIndexReferenceDataCache
+public class SearchIndexReferenceDataCache : IDisposable
 {
     private readonly FhirDbContext _context;
     private readonly ILogger<SearchIndexReferenceDataCache> _logger;
+    private bool _disposed;
 
     // Caches: Key -> ID
     private readonly ConcurrentDictionary<string, short> _searchParamCache = new();
     private readonly ConcurrentDictionary<string, int> _systemCache = new();
     private readonly ConcurrentDictionary<string, int> _quantityCodeCache = new();
     private readonly ConcurrentDictionary<string, short> _resourceTypeCache = new();
+
+    // Lazy-loading wrappers (initialized on-demand)
+    private LazyLoadingDictionary<string, short>? _resourceTypeMappingsWrapper;
+    private LazyLoadingDictionary<string, short>? _searchParameterMappingsWrapper;
+    private LazyLoadingDictionary<string, int>? _systemMappingsWrapper;
+    private LazyLoadingDictionary<string, int>? _quantityCodeMappingsWrapper;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SearchIndexReferenceDataCache"/> class.
@@ -209,21 +218,32 @@ public class SearchIndexReferenceDataCache
     }
 
     /// <summary>
-    /// Pre-loads all SearchParam entries into cache for better performance.
+    /// Pre-loads SearchParam entries into cache for better performance.
     /// Call this during initialization to avoid repeated database queries.
+    /// SAFETY: Use maxRows parameter to limit memory usage for large datasets.
+    /// For databases with 10K+ search parameters, rely on on-demand loading instead.
     /// </summary>
-    public async Task PreloadSearchParamsAsync()
+    /// <param name="maxRows">Optional maximum number of rows to load. Prevents memory exhaustion for large datasets.</param>
+    public async Task PreloadSearchParamsAsync(int? maxRows = null)
     {
-        var searchParams = await _context.SearchParams
-            .AsNoTracking()
-            .ToListAsync();
+        var query = _context.SearchParams.AsNoTracking();
+
+        if (maxRows.HasValue)
+        {
+            query = query.Take(maxRows.Value);
+        }
+
+        var searchParams = await query.ToListAsync();
 
         foreach (var sp in searchParams)
         {
             _searchParamCache.TryAdd(sp.Uri, sp.SearchParamId);
         }
 
-        _logger.LogInformation("Preloaded {Count} search parameters into cache", searchParams.Count);
+        _logger.LogInformation(
+            "Preloaded {Count} search parameters into cache{MaxRowsInfo}",
+            searchParams.Count,
+            maxRows.HasValue ? $" (limited to {maxRows.Value} rows)" : string.Empty);
     }
 
     /// <summary>
@@ -322,5 +342,284 @@ public class SearchIndexReferenceDataCache
 
         // Not in cache - return null
         return null;
+    }
+
+    /// <summary>
+    /// Gets all resource type mappings with lazy-loading support.
+    /// TryGetValue calls will automatically load missing entries from database.
+    /// Filters out sentinel values (-1 for "not found" entries).
+    /// Thread-safe and suitable for use in TVP row generators.
+    /// </summary>
+    public IReadOnlyDictionary<string, short> ResourceTypeMappings
+    {
+        get
+        {
+            if (_resourceTypeMappingsWrapper == null)
+            {
+                _resourceTypeMappingsWrapper = new LazyLoadingDictionary<string, short>(
+                    _resourceTypeCache,
+                    async key => await GetResourceTypeIdAsync(key) ?? -1,
+                    _logger,
+                    isValidValue: value => value > 0); // Filter out sentinel -1
+            }
+
+            return _resourceTypeMappingsWrapper;
+        }
+    }
+
+    /// <summary>
+    /// Gets all search parameter mappings with lazy-loading support.
+    /// TryGetValue calls will automatically load missing entries from database.
+    /// Filters out sentinel values (-1 for "not found" entries).
+    /// Thread-safe and suitable for use in TVP row generators.
+    /// </summary>
+    public IReadOnlyDictionary<string, short> SearchParameterMappings
+    {
+        get
+        {
+            if (_searchParameterMappingsWrapper == null)
+            {
+                _searchParameterMappingsWrapper = new LazyLoadingDictionary<string, short>(
+                    _searchParamCache,
+                    async key => await GetSearchParamIdAsync(key) ?? -1,
+                    _logger,
+                    isValidValue: value => value > 0); // Filter out sentinel -1
+            }
+
+            return _searchParameterMappingsWrapper;
+        }
+    }
+
+    /// <summary>
+    /// Gets all system mappings with lazy-loading support.
+    /// TryGetValue calls will automatically create missing entries in database.
+    /// GetOrCreateSystemIdAsync ensures all values are valid (no sentinel values).
+    /// Thread-safe and suitable for use in TVP row generators.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> SystemMappings
+    {
+        get
+        {
+            if (_systemMappingsWrapper == null)
+            {
+                _systemMappingsWrapper = new LazyLoadingDictionary<string, int>(
+                    _systemCache,
+                    async key => await GetOrCreateSystemIdAsync(key) ?? 0,
+                    _logger,
+                    isValidValue: value => value > 0); // Filter out 0
+            }
+
+            return _systemMappingsWrapper;
+        }
+    }
+
+    /// <summary>
+    /// Gets all quantity code mappings with lazy-loading support.
+    /// TryGetValue calls will automatically create missing entries in database.
+    /// GetOrCreateQuantityCodeIdAsync ensures all values are valid (no sentinel values).
+    /// Thread-safe and suitable for use in TVP row generators.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> QuantityCodeMappings
+    {
+        get
+        {
+            if (_quantityCodeMappingsWrapper == null)
+            {
+                _quantityCodeMappingsWrapper = new LazyLoadingDictionary<string, int>(
+                    _quantityCodeCache,
+                    async key => await GetOrCreateQuantityCodeIdAsync(key) ?? 0,
+                    _logger,
+                    isValidValue: value => value > 0); // Filter out 0
+            }
+
+            return _quantityCodeMappingsWrapper;
+        }
+    }
+
+    /// <summary>
+    /// Gets valid resource type mappings (filters out sentinel values).
+    /// Creates a NEW dictionary snapshot - use sparingly for operations that require sentinel filtering.
+    /// For row generation or lookups that work with the live cache, use ResourceTypeMappings property directly.
+    /// Row generators use TryGetValue which works correctly with sentinel values (cache miss vs. not found).
+    /// </summary>
+    public Dictionary<string, short> GetValidResourceTypeMappings()
+    {
+        return _resourceTypeCache
+            .Where(kvp => kvp.Value > 0) // Filter out sentinel value -1
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    /// <summary>
+    /// Gets valid search parameter mappings (filters out sentinel values).
+    /// Creates a NEW dictionary snapshot - use sparingly for operations that require sentinel filtering.
+    /// For row generation or lookups that work with the live cache, use SearchParameterMappings property directly.
+    /// Row generators use TryGetValue which works correctly with sentinel values (cache miss vs. not found).
+    /// </summary>
+    public Dictionary<string, short> GetValidSearchParameterMappings()
+    {
+        return _searchParamCache
+            .Where(kvp => kvp.Value > 0) // Filter out sentinel value -1
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    /// <summary>
+    /// Gets cache statistics for monitoring and diagnostics.
+    /// </summary>
+    /// <returns>Cache statistics including counts of cached entries.</returns>
+    public CacheStatistics GetStatistics()
+    {
+        return new CacheStatistics
+        {
+            SearchParamCount = _searchParamCache.Count(kvp => kvp.Value != -1),
+            ResourceTypeCount = _resourceTypeCache.Count(kvp => kvp.Value != -1),
+            SystemCount = _systemCache.Count,
+            QuantityCodeCount = _quantityCodeCache.Count
+        };
+    }
+
+    /// <summary>
+    /// Dictionary wrapper that lazy-loads missing values from database synchronously.
+    /// Used for bulk operations (TVP generation) where async/await is not available.
+    /// Intercepts TryGetValue calls and loads values on cache miss using blocking async.
+    /// </summary>
+    /// <typeparam name="TKey">The dictionary key type.</typeparam>
+    /// <typeparam name="TValue">The dictionary value type.</typeparam>
+    private class LazyLoadingDictionary<TKey, TValue> : IReadOnlyDictionary<TKey, TValue>
+        where TKey : notnull
+    {
+        private readonly ConcurrentDictionary<TKey, TValue> _cache;
+        private readonly Func<TKey, Task<TValue?>> _loadFunc;
+        private readonly ILogger _logger;
+        private readonly Func<TValue?, bool>? _isValidValue;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="LazyLoadingDictionary{TKey, TValue}"/> class.
+        /// </summary>
+        /// <param name="cache">The underlying cache dictionary.</param>
+        /// <param name="loadFunc">Function to load missing values from database.</param>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="isValidValue">Optional function to validate loaded values (e.g., filter sentinel values).</param>
+        public LazyLoadingDictionary(
+            ConcurrentDictionary<TKey, TValue> cache,
+            Func<TKey, Task<TValue?>> loadFunc,
+            ILogger logger,
+            Func<TValue?, bool>? isValidValue = null)
+        {
+            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _loadFunc = loadFunc ?? throw new ArgumentNullException(nameof(loadFunc));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _isValidValue = isValidValue;
+        }
+
+        /// <summary>
+        /// Attempts to get the value for the specified key, lazy-loading from database if not in cache.
+        /// Uses blocking async call to load missing values synchronously.
+        /// </summary>
+        /// <param name="key">The key to look up.</param>
+        /// <param name="value">The value if found.</param>
+        /// <returns>True if value was found or loaded successfully, false otherwise.</returns>
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            // Check cache first
+            if (_cache.TryGetValue(key, out value!))
+            {
+                // If we have a validation function, check if the cached value is valid
+                if (_isValidValue != null && !_isValidValue(value))
+                {
+                    // Invalid value (e.g., sentinel -1) - return false
+                    value = default!;
+                    return false;
+                }
+
+                return true;
+            }
+
+            // Cache miss - lazy load from database (blocking async call)
+            _logger.LogDebug("Cache miss for {Key} - lazy loading from database", key);
+
+            try
+            {
+                var loadedValue = _loadFunc(key).GetAwaiter().GetResult();
+
+                // Check if loaded value is valid
+                if (_isValidValue != null && !_isValidValue(loadedValue))
+                {
+                    // Loaded value is invalid (e.g., null or sentinel) - cache it but return false
+                    if (loadedValue != null && !EqualityComparer<TValue>.Default.Equals(loadedValue, default))
+                    {
+                        _cache.TryAdd(key, loadedValue);
+                    }
+
+                    value = default!;
+                    return false;
+                }
+
+                // Valid value loaded
+                if (loadedValue != null && !EqualityComparer<TValue>.Default.Equals(loadedValue, default))
+                {
+                    value = loadedValue;
+                    _cache.TryAdd(key, value); // Update cache
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to lazy load value for key {Key}", key);
+            }
+
+            value = default!;
+            return false;
+        }
+
+        // IReadOnlyDictionary implementation - delegates to underlying cache
+        public IEnumerable<TKey> Keys => _cache.Keys;
+        public IEnumerable<TValue> Values => _cache.Values;
+        public int Count => _cache.Count;
+        public bool ContainsKey(TKey key) => _cache.ContainsKey(key);
+
+        public TValue this[TKey key]
+        {
+            get
+            {
+                if (TryGetValue(key, out var value))
+                {
+                    return value;
+                }
+
+                throw new KeyNotFoundException($"The given key '{key}' was not present in the dictionary.");
+            }
+        }
+
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => _cache.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>
+    /// Disposes the cache and releases the underlying DbContext.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Protected implementation of Dispose pattern.
+    /// </summary>
+    /// <param name="disposing">True if called from Dispose(), false if called from finalizer.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                // Dispose managed resources
+                _context?.Dispose();
+            }
+
+            // No unmanaged resources to release
+
+            _disposed = true;
+        }
     }
 }

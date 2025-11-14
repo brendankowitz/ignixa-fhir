@@ -463,6 +463,37 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         return ordered.Select(MapEntityToModel).ToList().AsReadOnly();
     }
 
+    public async Task<IReadOnlyList<PackageResource>> GetAllStructureDefinitionsAsync(
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        // Query for all active StructureDefinitions across all packages
+        var query = dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.ResourceType == "StructureDefinition" && pr.IsActive);
+
+        // TODO: FHIR version matching - commented out pending resolution of exact matching strategy
+        // if (!string.IsNullOrEmpty(fhirVersion))
+        // {
+        //     query = query.Where(pr => pr.FhirVersion == fhirVersion);
+        // }
+
+        // Order by PackageVersion DESC so newest version is first
+        var entities = await query
+            .OrderByDescending(pr => pr.PackageVersion)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Retrieved {Count} StructureDefinitions from packages (FHIR version: {FhirVersion})",
+            entities.Count,
+            fhirVersion ?? "any");
+
+        return entities.Select(MapEntityToModel).ToList().AsReadOnly();
+    }
+
     public async Task<bool> PackageVersionExistsAsync(
         string packageId,
         string packageVersion,

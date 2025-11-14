@@ -2,14 +2,14 @@
 
 ### Setup test data
 # @name batch
-POST http://{{hostname}}
+POST {{hostname}}
 Prefer: validation=minimum
 Content-Type: application/json
 
 < ./data/SearchDataBatch.json
 
 ### Batch2
-POST http://{{hostname}}
+POST {{hostname}}
 Prefer: validation=minimum
 Content-Type: application/json
 

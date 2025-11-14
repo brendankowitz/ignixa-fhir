@@ -7,6 +7,7 @@ using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Infrastructure;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -77,6 +78,11 @@ public class FhirRequestContext : IFhirRequestContext
     /// Coordinator for deferred writes during bundle transaction processing.
     /// </summary>
     public DeferredWriteCoordinator? DeferredWriteCoordinator { get; set; }
+
+    /// <summary>
+    /// Pre-assigned resource ID for POST operations with urn:uuid fullUrls in bundles.
+    /// </summary>
+    public string? BundleAssignedResourceId { get; set; }
 
     /// <summary>
     /// List of issues to be returned in search bundle results.

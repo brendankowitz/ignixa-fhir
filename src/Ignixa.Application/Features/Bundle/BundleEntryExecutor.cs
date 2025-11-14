@@ -96,11 +96,18 @@ public class BundleEntryExecutor
                 // ===== Entry-Specific (Unique Per Entry) =====
                 BundleEntryIndex = entry.Index,
                 ResourceType = ExtractResourceTypeFromUrl(entry.RequestUrl),
+                BundleAssignedResourceId = entry.AssignedResourceId
 
-                // ===== Isolated Collections (Don't Share With Parent) =====
-                BundleIssues = new List<OperationOutcomeIssue>(),
-                Properties = new Dictionary<string, object>(parentContext.Properties) // Shallow copy
+                // Note: BundleIssues and Properties are read-only get-only properties
+                // They are auto-initialized in FhirRequestContext constructor
+                // We'll copy parent properties after initialization
             };
+
+            // Copy parent Properties to child context (shallow copy for isolation)
+            foreach (var kvp in parentContext.Properties)
+            {
+                entryContext.Properties[kvp.Key] = kvp.Value;
+            }
 
             // Set isolated context for this async execution context (AsyncLocal)
             _fhirContextAccessor.RequestContext = entryContext;
@@ -163,33 +170,11 @@ public class BundleEntryExecutor
                 httpContext.Request.ContentType = "application/fhir+json";
             }
 
-            // Pass coordinator via HttpContext.Items for deferred writes
-            // This enables handlers to detect bundle context and queue writes appropriately
-            if (deferredWriteCoordinator != null)
-            {
-                httpContext.Items["DeferredWriteCoordinator"] = deferredWriteCoordinator;
-
-                // Use AsyncLocal instead of HttpContext.Items to avoid race conditions
-                // when processing bundle entries concurrently
-                httpContext.SetBundleEntryIndex(entry.Index);
-
-                _logger.LogWarning(
-                    "EXECUTOR: Set entry index {EntryIndex} in AsyncLocal for {Verb} {Url}",
-                    entry.Index,
-                    entry.HttpVerb,
-                    entry.RequestUrl);
-            }
-
-            // Pass assigned resource ID for POST operations with urn:uuid fullUrls
-            // This ensures conditional creates use the pre-assigned ID for reference resolution
-            if (!string.IsNullOrWhiteSpace(entry.AssignedResourceId))
-            {
-                httpContext.Items["BundleAssignedResourceId"] = entry.AssignedResourceId;
-                _logger.LogDebug(
-                    "Passed assigned resource ID to entry {Index}: {AssignedId}",
-                    entry.Index,
-                    entry.AssignedResourceId);
-            }
+            // NOTE: Bundle processing context is now fully managed by IFhirRequestContext (AsyncLocal)
+            // No need to set HttpContext.Items - all context is already set in entryContext above (lines 83-104)
+            // - DeferredWriteCoordinator: Set in entryContext.DeferredWriteCoordinator
+            // - BundleAssignedResourceId: Set in entryContext.BundleAssignedResourceId
+            // - BundleEntryIndex: Set in entryContext.BundleEntryIndex
 
             // Execute through ASP.NET Core pipeline
             // This automatically routes to correct endpoint handler (FhirEndpoints)
@@ -268,6 +253,9 @@ public class BundleEntryExecutor
         }
     }
 
+    // CA1861: Prefer static readonly for repeated array arguments
+    private static readonly char[] UrlSeparators = { '/', '?' };
+
     /// <summary>
     /// Extracts resource type from bundle entry's request URL.
     /// Examples: "Patient" from "Patient/123", "Observation" from "Observation?subject=Patient/123"
@@ -281,7 +269,7 @@ public class BundleEntryExecutor
 
         // Remove leading slash and split by / and ?
         var url = requestUrl.TrimStart('/');
-        var segments = url.Split(new[] { '/', '?' }, StringSplitOptions.RemoveEmptyEntries);
+        var segments = url.Split(UrlSeparators, StringSplitOptions.RemoveEmptyEntries);
 
         // First segment is the resource type (e.g., "Patient/123" → "Patient")
         return segments.Length > 0 ? segments[0] : null;

@@ -9,6 +9,7 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
@@ -106,6 +107,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -142,6 +144,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            fhirContextAccessor,
             logger,
             cancellationToken);
     }
@@ -159,6 +162,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -178,6 +182,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            fhirContextAccessor,
             logger,
             cancellationToken);
     }
@@ -196,6 +201,7 @@ public static class CompartmentEndpoints
         IMediator mediator,
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        IFhirRequestContextAccessor fhirContextAccessor,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -218,13 +224,15 @@ public static class CompartmentEndpoints
             });
         }
 
-        // Get tenant configuration for FHIR version
-        if (!context.Items.TryGetValue("TenantConfiguration", out var tenantConfigObj) ||
-            tenantConfigObj is not TenantConfiguration tenantConfig)
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
         {
-            logger.LogError("TenantConfiguration not found in HttpContext.Items");
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for compartmentType '{CompartmentType}'", compartmentType);
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
 
         // Get version-specific search options builder
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
@@ -279,6 +287,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -314,6 +323,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            fhirContextAccessor,
             logger,
             cancellationToken);
     }
@@ -330,6 +340,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -348,6 +359,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            fhirContextAccessor,
             logger,
             cancellationToken);
     }

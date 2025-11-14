@@ -84,7 +84,7 @@ public class BundleProcessor
                 channelCapacity: options.ChannelCapacity,
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
-                httpContextAccessor: _contextAccessor,
+                contextAccessor: _contextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -191,7 +191,7 @@ public class BundleProcessor
                     channelCapacity: options.ChannelCapacity,
                     repositoryFactory: _repositoryFactory,
                     partitionStrategy: _partitionStrategy,
-                    httpContextAccessor: _contextAccessor,
+                    contextAccessor: _contextAccessor,
                     logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                     cancellationToken: cancellationToken);
 
@@ -316,7 +316,7 @@ public class BundleProcessor
                 channelCapacity: options.ChannelCapacity,
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
-                httpContextAccessor: _contextAccessor,
+                contextAccessor: _contextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -399,7 +399,7 @@ public class BundleProcessor
                 channelCapacity: options.ChannelCapacity,
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
-                httpContextAccessor: _contextAccessor,
+                contextAccessor: _contextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -600,7 +600,7 @@ public class BundleProcessor
             channelCapacity: options.ChannelCapacity,
             repositoryFactory: _repositoryFactory,
             partitionStrategy: _partitionStrategy,
-            httpContextAccessor: _contextAccessor,
+            contextAccessor: _contextAccessor,
             logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
             cancellationToken: cancellationToken);
 

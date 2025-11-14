@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
@@ -14,7 +15,7 @@ namespace Ignixa.Api.Filters;
 /// <summary>
 /// Endpoint filter that validates FHIR resource types against the tenant's supported FHIR version.
 ///
-/// Runs AFTER TenantResolutionMiddleware, so tenant context is already available in HttpContext.Items.
+/// Runs AFTER TenantResolutionMiddleware and FhirRequestContextMiddleware, so tenant context is available via IFhirRequestContext.
 /// Returns 404 Not Found with FHIR OperationOutcome if the resource type is not supported.
 ///
 /// Usage:
@@ -24,13 +25,16 @@ namespace Ignixa.Api.Filters;
 public class ResourceTypeValidationFilter : IEndpointFilter
 {
     private readonly IFhirVersionContext _versionContext;
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<ResourceTypeValidationFilter> _logger;
 
     public ResourceTypeValidationFilter(
         IFhirVersionContext versionContext,
+        IFhirRequestContextAccessor fhirContextAccessor,
         ILogger<ResourceTypeValidationFilter> logger)
     {
         _versionContext = versionContext;
+        _fhirContextAccessor = fhirContextAccessor;
         _logger = logger;
     }
 
@@ -53,13 +57,15 @@ public class ResourceTypeValidationFilter : IEndpointFilter
             return await next(context);
         }
 
-        // Get tenant configuration (already set by TenantResolutionMiddleware)
-        if (!httpContext.Items.TryGetValue("TenantConfiguration", out var tenantConfigObj) ||
-            tenantConfigObj is not TenantConfiguration tenantConfig)
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = _fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
         {
-            _logger.LogError("TenantConfiguration not found in HttpContext.Items");
+            _logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", resourceType);
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
 
         // Resolve FHIR schema provider for tenant's version
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);

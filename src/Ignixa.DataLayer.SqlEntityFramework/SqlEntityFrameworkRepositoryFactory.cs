@@ -32,6 +32,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly ILoggerFactory _loggerFactory;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
+    private readonly MultiTenantSearchIndexCache _multiTenantCache;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
@@ -54,14 +55,17 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// <param name="tenantStore">The tenant configuration store.</param>
     /// <param name="loggerFactory">The logger factory.</param>
     /// <param name="memoryStreamManager">The recyclable memory stream manager for efficient memory management.</param>
+    /// <param name="multiTenantCache">Singleton multi-tenant cache for search index reference data.</param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
         ILoggerFactory loggerFactory,
-        RecyclableMemoryStreamManager memoryStreamManager)
+        RecyclableMemoryStreamManager memoryStreamManager,
+        MultiTenantSearchIndexCache multiTenantCache)
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
+        _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
         _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
         _definitionManagersCache = new ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
@@ -287,19 +291,19 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         var (compartmentManager, parameterManager) = GetOrCreateDefinitionManagers(fhirSpec, schemaProvider);
 
         // Create factory delegate for Repository (accepts DbContext parameter)
-        // Note: Repository and SearchService share the same SearchIndexReferenceDataCache instance per request
+        // Uses tenant-specific cache from multi-tenant cache manager
         Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
 
+            // Get tenant-specific cache instance (reused across all requests for this tenant)
+            var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
+
             var sqlMergeRepository = new SqlMergeRepository(
                 dbContext,
                 compressor,
-                _loggerFactory.CreateLogger<SqlMergeRepository>());
-
-            var searchIndexCache = new SearchIndexReferenceDataCache(
-                dbContext,
-                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
+                _loggerFactory.CreateLogger<SqlMergeRepository>(),
+                searchIndexCache);
 
             return new SqlEntityFrameworkRepository(
                 dbContext,
@@ -313,9 +317,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (dbContext, repository) =>
         {
             var compressor = new GzipResourceCompressor(_memoryStreamManager);
-            var searchIndexCache = new SearchIndexReferenceDataCache(
-                dbContext,
-                _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
+
+            // Get tenant-specific cache instance (same instance as used by repository)
+            var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
 
             var parameterQueryGenerator = new Search.SearchParameterQueryGenerator(
                 dbContext,

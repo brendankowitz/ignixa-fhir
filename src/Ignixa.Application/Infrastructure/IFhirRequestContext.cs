@@ -7,6 +7,7 @@ using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Infrastructure;
+using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -79,6 +80,14 @@ public interface IFhirRequestContext
     /// Null for non-transaction requests and batch bundles.
     /// </summary>
     DeferredWriteCoordinator? DeferredWriteCoordinator { get; set; }
+
+    /// <summary>
+    /// Pre-assigned resource ID for POST operations with urn:uuid fullUrls in bundles.
+    /// Used for reference resolution in bundle processing - ensures consistent ID assignment
+    /// across bundle entries that reference each other via urn:uuid.
+    /// Null for regular POST operations outside bundles.
+    /// </summary>
+    string? BundleAssignedResourceId { get; set; }
 
     // ========== Operation Outcome Tracking ==========
 

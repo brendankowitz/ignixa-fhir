@@ -6,6 +6,7 @@
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Infrastructure;
+using Ignixa.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -76,11 +77,9 @@ public class FhirRequestContextMiddleware
         // Set version context reference for convenience (Option A)
         fhirContext.VersionContext = versionContext;
 
-        // Extract bundle processing state (if in bundle context)
-        // Note: These are set by BundleProcessor/BundleEntryExecutor, not middleware
-        // Middleware only reads existing state from HttpContext.Items for backwards compatibility
-        fhirContext.DeferredWriteCoordinator = httpContext.GetDeferredWriteCoordinator();
-        fhirContext.BundleEntryIndex = httpContext.GetBundleEntryIndex();
+        // Note: Bundle processing state (DeferredWriteCoordinator, BundleEntryIndex, BundleAssignedResourceId)
+        // is set directly by BundleEntryExecutor in isolated contexts, not by this middleware.
+        // ExecutingBatchOrTransaction will be set when DeferredWriteCoordinator is assigned.
         fhirContext.ExecutingBatchOrTransaction = fhirContext.DeferredWriteCoordinator != null;
 
         // Set context for downstream handlers

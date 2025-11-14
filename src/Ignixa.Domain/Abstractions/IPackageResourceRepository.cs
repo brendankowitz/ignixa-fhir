@@ -149,6 +149,18 @@ public interface IPackageResourceRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all active StructureDefinition resources across all loaded packages.
+    /// Used for eager loading of structure definitions at startup.
+    /// Ordered by PackageVersion DESC so newest version is first.
+    /// </summary>
+    /// <param name="fhirVersion">Optional: Filter by FHIR version (e.g., "4.0.1").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of all active StructureDefinitions, newest first.</returns>
+    Task<IReadOnlyList<PackageResource>> GetAllStructureDefinitionsAsync(
+        string? fhirVersion = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Checks if a package version has already been loaded (has active resources).
     /// Used to skip duplicate imports and enable idempotent package loading.
     /// </summary>

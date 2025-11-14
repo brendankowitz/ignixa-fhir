@@ -26,6 +26,10 @@ public class CapabilityStatementService
     private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<CapabilityStatementService> _logger;
 
+    // In-memory cache for version hashes to avoid recomputing on every request
+    // Key: cache key (e.g., "capability:R4:1"), Value: computed version hash
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _versionHashCache = new();
+
     public CapabilityStatementService(
         IEnumerable<ICapabilitySegment> segments,
         ICapabilityCache cache,
@@ -62,7 +66,19 @@ public class CapabilityStatementService
         if (cached != null)
         {
             // 2. Validate cached entry using version hash
-            var currentHash = await ComputeVersionHashAsync(context, cancellationToken);
+            // Try to get cached version hash first to avoid expensive recomputation
+            string currentHash;
+            if (_versionHashCache.TryGetValue(cacheKey, out var cachedHash))
+            {
+                currentHash = cachedHash;
+                _logger.LogTrace("Using cached version hash for {CacheKey}", cacheKey);
+            }
+            else
+            {
+                currentHash = await ComputeVersionHashAsync(context, cancellationToken);
+                _versionHashCache[cacheKey] = currentHash;
+                _logger.LogTrace("Computed and cached version hash for {CacheKey}", cacheKey);
+            }
 
             if (cached.VersionHash == currentHash)
             {
@@ -88,8 +104,19 @@ public class CapabilityStatementService
         // 3. Build new capability statement
         var statement = await BuildCapabilityStatementAsync(context, cancellationToken);
 
-        // 4. Compute version hash for caching
-        var versionHash = await ComputeVersionHashAsync(context, cancellationToken);
+        // 4. Compute version hash for caching (or use cached value if available)
+        string versionHash;
+        if (_versionHashCache.TryGetValue(cacheKey, out var cachedVersionHash))
+        {
+            versionHash = cachedVersionHash;
+            _logger.LogTrace("Using cached version hash for new capability statement {CacheKey}", cacheKey);
+        }
+        else
+        {
+            versionHash = await ComputeVersionHashAsync(context, cancellationToken);
+            _versionHashCache[cacheKey] = versionHash;
+            _logger.LogTrace("Computed and cached version hash for new capability statement {CacheKey}", cacheKey);
+        }
 
         // 5. Cache the new statement
         var cacheEntry = new CapabilityCacheEntry(statement, versionHash, DateTimeOffset.UtcNow);
@@ -203,6 +230,12 @@ public class CapabilityStatementService
         CancellationToken cancellationToken = default)
     {
         var cacheKey = context.ToCacheKey();
+
+        // Clear version hash cache for this context
+        _versionHashCache.TryRemove(cacheKey, out _);
+        _logger.LogDebug("Cleared version hash cache for {CacheKey}", cacheKey);
+
+        // Clear capability statement cache
         await _cache.RemoveAsync(cacheKey, cancellationToken);
 
         _logger.LogInformation("Invalidated capability cache for {CacheKey}", cacheKey);

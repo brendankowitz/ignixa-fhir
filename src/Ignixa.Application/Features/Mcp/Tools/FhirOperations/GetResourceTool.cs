@@ -11,6 +11,7 @@ using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
@@ -23,14 +24,17 @@ namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
 public class GetResourceTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
 
     public GetResourceTool(
         IHttpContextAccessor httpContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
+        IMediator mediator,
+        IFhirRequestContextAccessor contextAccessor)
         : base(httpContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
     }
 
     [McpServerTool(Name = "get_fhir_resource")]
@@ -61,11 +65,12 @@ Example: resourceType='Patient', id='123', elements='id,name,birthDate'")]
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
-        // Set tenant context in HttpContext.Items for GetResourceHandler
-        var httpContext = HttpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext not available");
+        // Update the FHIR request context with the resolved tenant ID
+        // The middleware has already created the context, we just need to update the tenant
+        var requestContext = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available - middleware may not have run");
 
-        httpContext.Items["TenantId"] = resolvedTenantId;
+        requestContext.TenantId = resolvedTenantId;
 
         // Execute get via Medino handler
         var query = new GetResourceQuery(resourceType, id);

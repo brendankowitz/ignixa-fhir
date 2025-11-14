@@ -3,11 +3,11 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
@@ -86,8 +86,8 @@ public static class HistoryEndpoints
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
         agnosticGroup.MapGet("/{resourceType}/{id}/_history", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleGetResourceHistory(context, context.GetTenantId(), resourceType, id, mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
+            HandleGetResourceHistory(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, ct))
             .WithName("GetResourceHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
@@ -95,16 +95,16 @@ public static class HistoryEndpoints
 
         // GET /{resourceType}/_history - Type-level history (agnostic)
         agnosticGroup.MapGet("/{resourceType}/_history", (HttpContext context, string resourceType,
-            [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleGetTypeHistory(context, context.GetTenantId(), resourceType, mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
+            HandleGetTypeHistory(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, ct))
             .WithName("GetTypeHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
         // GET /_history - System-level history (agnostic, no resource type, no filter needed)
         endpoints.MapGet("/_history", (HttpContext context,
-            [FromServices] IMediator mediator, CancellationToken ct) =>
-            HandleGetSystemHistory(context, context.GetTenantId(), mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
+            HandleGetSystemHistory(context, fhirContextAccessor.RequestContext!.TenantId, mediator, ct))
             .WithName("GetSystemHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);

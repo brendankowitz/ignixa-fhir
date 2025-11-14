@@ -52,6 +52,11 @@ builder.Services.AddMemoryCache();
 // Register RecyclableMemoryStreamManager as singleton
 builder.Services.AddSingleton<RecyclableMemoryStreamManager>();
 
+// Register MultiTenantSearchIndexCache as singleton (multi-tenant cache consolidation)
+// Provides per-tenant cache instances for search index reference data
+// Uses on-demand caching for large datasets (Systems, QuantityCodes) to prevent memory exhaustion
+builder.Services.AddSingleton<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>();
+
 // Configure ForwardedHeaders for Docker/container deployments (supports reverse proxies like Azure App Service)
 // Enables X-Forwarded-Host and X-Forwarded-Prefix headers for correct URL generation behind proxies
 if (string.Equals(builder.Configuration["ASPNETCORE_FORWARDEDHEADERS_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))

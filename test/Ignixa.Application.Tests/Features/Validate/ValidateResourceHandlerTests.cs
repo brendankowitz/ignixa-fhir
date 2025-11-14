@@ -6,12 +6,12 @@
 #nullable disable
 
 using FluentAssertions;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using System.Text.Json.Nodes;
@@ -26,18 +26,18 @@ namespace Ignixa.Application.Tests.Features.Validate;
 /// </summary>
 public class ValidateResourceHandlerTests
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly Func<FhirSpecification, int, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ValidateResourceHandler _handler;
 
     public ValidateResourceHandlerTests()
     {
-        _httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        _contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
         _schemaResolverFactory = Substitute.For<Func<FhirSpecification, int, IValidationSchemaResolver>>();
         _terminologyService = Substitute.For<ITerminologyService>();
         _handler = new ValidateResourceHandler(
-            _httpContextAccessor,
+            _contextAccessor,
             _schemaResolverFactory,
             _terminologyService,
             NullLogger<ValidateResourceHandler>.Instance);
@@ -157,7 +157,6 @@ public class ValidateResourceHandlerTests
             ResourceType: "Patient",
             JsonNode: jsonNode);
 
-        var httpContext = Substitute.For<HttpContext>();
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
@@ -165,8 +164,11 @@ public class ValidateResourceHandlerTests
             FhirVersion = "R4",
             ValidationTier = "None"
         };
-        httpContext.Items["TenantConfiguration"].Returns(tenantConfig);
-        _httpContextAccessor.HttpContext.Returns(httpContext);
+
+        // Mock FHIR request context with tenant configuration
+        var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantConfiguration.Returns(tenantConfig);
+        _contextAccessor.RequestContext.Returns(fhirContext);
 
         // Act
         var result = await _handler.HandleAsync(command, CancellationToken.None);
@@ -194,7 +196,6 @@ public class ValidateResourceHandlerTests
             ResourceType: "Patient",
             JsonNode: jsonNode);
 
-        var httpContext = Substitute.For<HttpContext>();
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
@@ -202,8 +203,10 @@ public class ValidateResourceHandlerTests
             FhirVersion = "R4",
             ValidationTier = "Fast"
         };
-        httpContext.Items["TenantConfiguration"].Returns(tenantConfig);
-        _httpContextAccessor.HttpContext.Returns(httpContext);
+        // Mock FHIR request context with tenant configuration
+        var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantConfiguration.Returns(tenantConfig);
+        _contextAccessor.RequestContext.Returns(fhirContext);
 
         SetupSchemaResolver();
 
@@ -232,7 +235,6 @@ public class ValidateResourceHandlerTests
             ResourceType: "Patient",
             JsonNode: jsonNode);
 
-        var httpContext = Substitute.For<HttpContext>();
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
@@ -240,8 +242,10 @@ public class ValidateResourceHandlerTests
             FhirVersion = "R4",
             ValidationTier = "Spec"
         };
-        httpContext.Items["TenantConfiguration"].Returns(tenantConfig);
-        _httpContextAccessor.HttpContext.Returns(httpContext);
+        // Mock FHIR request context with tenant configuration
+        var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantConfiguration.Returns(tenantConfig);
+        _contextAccessor.RequestContext.Returns(fhirContext);
 
         SetupSchemaResolver();
 
@@ -374,7 +378,6 @@ public class ValidateResourceHandlerTests
             ResourceType: "Patient",
             JsonNode: jsonNode);
 
-        var httpContext = Substitute.For<HttpContext>();
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
@@ -382,8 +385,10 @@ public class ValidateResourceHandlerTests
             FhirVersion = "R4",
             ValidationTier = "Spec"
         };
-        httpContext.Items["TenantConfiguration"].Returns(tenantConfig);
-        _httpContextAccessor.HttpContext.Returns(httpContext);
+        // Mock FHIR request context with tenant configuration
+        var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantConfiguration.Returns(tenantConfig);
+        _contextAccessor.RequestContext.Returns(fhirContext);
 
         SetupSchemaResolver();
 
@@ -413,7 +418,6 @@ public class ValidateResourceHandlerTests
             ResourceType: "Patient",
             JsonNode: jsonNode);
 
-        var httpContext = Substitute.For<HttpContext>();
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
@@ -421,8 +425,10 @@ public class ValidateResourceHandlerTests
             FhirVersion = "R5",
             ValidationTier = "Spec"
         };
-        httpContext.Items["TenantConfiguration"].Returns(tenantConfig);
-        _httpContextAccessor.HttpContext.Returns(httpContext);
+        // Mock FHIR request context with tenant configuration
+        var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantConfiguration.Returns(tenantConfig);
+        _contextAccessor.RequestContext.Returns(fhirContext);
 
         SetupSchemaResolver();
 
@@ -504,7 +510,6 @@ public class ValidateResourceHandlerTests
 
     private void SetupHttpContext()
     {
-        var httpContext = Substitute.For<HttpContext>();
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
@@ -512,8 +517,10 @@ public class ValidateResourceHandlerTests
             FhirVersion = "R4",
             ValidationTier = "Spec"
         };
-        httpContext.Items["TenantConfiguration"].Returns(tenantConfig);
-        _httpContextAccessor.HttpContext.Returns(httpContext);
+        // Mock FHIR request context with tenant configuration
+        var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantConfiguration.Returns(tenantConfig);
+        _contextAccessor.RequestContext.Returns(fhirContext);
     }
 
     private void SetupSchemaResolver(string schemaUri = null)

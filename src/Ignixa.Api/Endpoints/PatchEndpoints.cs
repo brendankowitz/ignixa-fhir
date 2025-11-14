@@ -4,11 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
-using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
 using Ignixa.Application.Features.Patch;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
@@ -98,8 +98,8 @@ public static class PatchEndpoints
         // PATCH /{resourceType} - Conditional Patch (agnostic)
         // IMPORTANT: Must be registered BEFORE PATCH /{resourceType}/{id} to match correctly
         agnosticGroup.MapPatch("/{resourceType}", (HttpContext context, string resourceType,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
-            HandleConditionalPatchResource(context, resourceType, mediator, memoryStreamManager, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
+            HandleConditionalPatchResource(context, resourceType, mediator, memoryStreamManager, fhirContextAccessor, ct))
             .WithName("ConditionalPatchResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -109,8 +109,8 @@ public static class PatchEndpoints
 
         // PATCH /{resourceType}/{id} - Direct Patch (agnostic)
         agnosticGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
-            HandlePatchResource(context, context.GetTenantId(), resourceType, id, mediator, memoryStreamManager, logger, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePatchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -185,9 +185,10 @@ public static class PatchEndpoints
         string resourceType,
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
+        IFhirRequestContextAccessor fhirContextAccessor,
         CancellationToken cancellationToken)
     {
-        var tenantId = context.GetTenantId();
+        var tenantId = fhirContextAccessor.RequestContext!.TenantId;
         return await HandleConditionalPatchResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, cancellationToken);
     }
 
