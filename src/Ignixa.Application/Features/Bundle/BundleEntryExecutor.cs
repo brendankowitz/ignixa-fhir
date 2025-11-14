@@ -121,32 +121,8 @@ public class BundleEntryExecutor
             {
                 httpContext.RequestServices = _httpContextAccessor.HttpContext.RequestServices;
 
-                // CRITICAL: Propagate tenant context from parent HttpContext to bundle entry HttpContext
-                // This ensures DeferredWriteCoordinator can extract tenant context for partition routing
-                // Multi-Tenancy (ADR-2523 Phase 20)
-                if (_httpContextAccessor.HttpContext.Items.TryGetValue("TenantId", out var tenantId))
-                {
-                    httpContext.Items["TenantId"] = tenantId;
-                    _logger.LogDebug(
-                        "Propagated tenant {TenantId} to bundle entry {Index}",
-                        tenantId,
-                        entry.Index);
-                }
-
-                if (_httpContextAccessor.HttpContext.Items.TryGetValue("TenantConfiguration", out var tenantConfig))
-                {
-                    httpContext.Items["TenantConfiguration"] = tenantConfig;
-                }
-
-                // Propagate validation tier override from parent HttpContext (for Prefer header)
-                if (_httpContextAccessor.HttpContext.Items.TryGetValue("ValidationTierOverride", out var validationOverride))
-                {
-                    httpContext.Items["ValidationTierOverride"] = validationOverride;
-                    _logger.LogDebug(
-                        "Propagated validation tier override to bundle entry {Index}: {ValidationTier}",
-                        entry.Index,
-                        validationOverride);
-                }
+                // NOTE: Tenant context propagation now handled by IFhirRequestContext (AsyncLocal storage)
+                // No need to copy HttpContext.Items - the isolated context is already set above (lines 76-106)
             }
 
             // Set request properties
