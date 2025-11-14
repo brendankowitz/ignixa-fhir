@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Serialization.Models;
 
@@ -23,7 +23,7 @@ public class BundleProcessor
     private readonly BundleResponseBuilder _responseBuilder;
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IPartitionStrategy _partitionStrategy;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<BundleProcessor> _logger;
 
@@ -33,7 +33,7 @@ public class BundleProcessor
         BundleResponseBuilder responseBuilder,
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILoggerFactory loggerFactory,
         ILogger<BundleProcessor> logger)
     {
@@ -42,7 +42,7 @@ public class BundleProcessor
         _responseBuilder = EnsureArg.IsNotNull(responseBuilder, nameof(responseBuilder));
         _repositoryFactory = EnsureArg.IsNotNull(repositoryFactory, nameof(repositoryFactory));
         _partitionStrategy = EnsureArg.IsNotNull(partitionStrategy, nameof(partitionStrategy));
-        _httpContextAccessor = EnsureArg.IsNotNull(httpContextAccessor, nameof(httpContextAccessor));
+        _contextAccessor = EnsureArg.IsNotNull(contextAccessor, nameof(contextAccessor));
         _loggerFactory = EnsureArg.IsNotNull(loggerFactory, nameof(loggerFactory));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
     }
@@ -84,7 +84,7 @@ public class BundleProcessor
                 channelCapacity: options.ChannelCapacity,
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
-                httpContextAccessor: _httpContextAccessor,
+                httpContextAccessor: _contextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -191,7 +191,7 @@ public class BundleProcessor
                     channelCapacity: options.ChannelCapacity,
                     repositoryFactory: _repositoryFactory,
                     partitionStrategy: _partitionStrategy,
-                    httpContextAccessor: _httpContextAccessor,
+                    httpContextAccessor: _contextAccessor,
                     logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                     cancellationToken: cancellationToken);
 
@@ -316,7 +316,7 @@ public class BundleProcessor
                 channelCapacity: options.ChannelCapacity,
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
-                httpContextAccessor: _httpContextAccessor,
+                httpContextAccessor: _contextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -399,7 +399,7 @@ public class BundleProcessor
                 channelCapacity: options.ChannelCapacity,
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
-                httpContextAccessor: _httpContextAccessor,
+                httpContextAccessor: _contextAccessor,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -600,7 +600,7 @@ public class BundleProcessor
             channelCapacity: options.ChannelCapacity,
             repositoryFactory: _repositoryFactory,
             partitionStrategy: _partitionStrategy,
-            httpContextAccessor: _httpContextAccessor,
+            httpContextAccessor: _contextAccessor,
             logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
             cancellationToken: cancellationToken);
 

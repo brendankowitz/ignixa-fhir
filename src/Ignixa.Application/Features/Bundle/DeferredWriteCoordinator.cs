@@ -5,7 +5,6 @@
 
 using System.Threading.Channels;
 using EnsureThat;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Infrastructure;
@@ -35,7 +34,7 @@ public class DeferredWriteCoordinator
     private readonly Channel<DeferredWriteOperation> _writeChannel;
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IPartitionStrategy _partitionStrategy;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DeferredWriteCoordinator> _logger;
     private readonly TransactionId _transactionId;
     private readonly HashSet<int> _touchedPartitions;
@@ -44,19 +43,19 @@ public class DeferredWriteCoordinator
         int channelCapacity,
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<DeferredWriteCoordinator> logger,
         TransactionId transactionId)
     {
         EnsureArg.IsGt(channelCapacity, 0, nameof(channelCapacity));
         EnsureArg.IsNotNull(repositoryFactory, nameof(repositoryFactory));
         EnsureArg.IsNotNull(partitionStrategy, nameof(partitionStrategy));
-        EnsureArg.IsNotNull(httpContextAccessor, nameof(httpContextAccessor));
+        EnsureArg.IsNotNull(contextAccessor, nameof(contextAccessor));
         EnsureArg.IsNotNull(logger, nameof(logger));
 
         _repositoryFactory = repositoryFactory;
         _partitionStrategy = partitionStrategy;
-        _httpContextAccessor = httpContextAccessor;
+        _contextAccessor = contextAccessor;
         _logger = logger;
         _transactionId = transactionId;
         _touchedPartitions = new HashSet<int>();
@@ -82,20 +81,24 @@ public class DeferredWriteCoordinator
     /// <param name="channelCapacity">Maximum number of pending write operations.</param>
     /// <param name="repositoryFactory">Factory for obtaining partition-specific repositories.</param>
     /// <param name="partitionStrategy">Strategy for determining which partition(s) to write to.</param>
-    /// <param name="httpContextAccessor">Accessor for HttpContext (needed to extract tenant context per operation).</param>
+    /// <param name="contextAccessor">Accessor for FHIR request context (needed to extract tenant context per operation).</param>
     /// <param name="logger">Logger instance.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public static async Task<DeferredWriteCoordinator> CreateAsync(
         int channelCapacity,
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<DeferredWriteCoordinator> logger,
         CancellationToken cancellationToken = default)
     {
-        // Extract tenant ID from HTTP context (set by TenantResolutionMiddleware)
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+
+        // Extract tenant ID from context
         // In Isolated mode, tenant ID equals partition ID
-        var tenantId = httpContextAccessor.GetTenantId();
+        var tenantId = context.TenantId;
 
         // Allocate transaction from the TENANT'S repository (not Partition 0)
         // This ensures the transaction exists in the correct datastore
@@ -112,7 +115,7 @@ public class DeferredWriteCoordinator
             channelCapacity,
             repositoryFactory,
             partitionStrategy,
-            httpContextAccessor,
+            contextAccessor,
             logger,
             transactionId);
     }
@@ -199,17 +202,14 @@ public class DeferredWriteCoordinator
 
         try
         {
-            // Extract tenant context from HttpContext (set by TenantResolutionMiddleware)
-            var tenantId = _httpContextAccessor.GetTenantId();
-
-            // Get tenant configuration
-            var httpContext = _httpContextAccessor.HttpContext!; // Non-null assertion safe because GetTenantId() already validated
-            var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
+            // Get FHIR request context (populated by FhirRequestContextMiddleware)
+            var context = _contextAccessor.RequestContext
+                ?? throw new InvalidOperationException("FHIR request context not available");
 
             var partitionContext = new PartitionResolutionContext
             {
-                TenantId = tenantId,
-                TenantConfiguration = tenantConfig
+                TenantId = context.TenantId,
+                TenantConfiguration = context.TenantConfiguration
             };
 
             // Determine partition for each operation

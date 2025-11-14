@@ -5,12 +5,12 @@
 
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Infrastructure.Behaviors;
@@ -53,20 +53,20 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
 {
     private readonly CapabilityStatementService _capabilityService;
     private readonly ITenantConfigurationStore _tenantConfigStore;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<CapabilityEnforcementBehavior<TRequest, TResponse>> _logger;
 
     public CapabilityEnforcementBehavior(
         CapabilityStatementService capabilityService,
         ITenantConfigurationStore tenantConfigStore,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext versionContext,
         ILogger<CapabilityEnforcementBehavior<TRequest, TResponse>> logger)
     {
         _capabilityService = capabilityService ?? throw new ArgumentNullException(nameof(capabilityService));
         _tenantConfigStore = tenantConfigStore ?? throw new ArgumentNullException(nameof(tenantConfigStore));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -80,12 +80,12 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
             return await next();
         }
 
-        // Get tenant context from HttpContext (set by TenantResolutionMiddleware)
-        var httpContext = _httpContextAccessor.HttpContext;
-        var tenantId = httpContext?.Items["TenantId"] as int?;
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext;
+        var tenantId = context?.TenantId;
 
-        // Get FHIR version for tenant
-        var fhirVersion = await GetFhirVersionForTenantAsync(tenantId, cancellationToken);
+        // Get FHIR version from context (or fallback to tenant lookup)
+        var fhirVersion = context?.FhirVersion ?? await GetFhirVersionForTenantAsync(tenantId, cancellationToken);
 
         // Get CapabilityStatement
         var capabilityContext = new CapabilityContext(FhirVersion: fhirVersion, TenantId: tenantId);

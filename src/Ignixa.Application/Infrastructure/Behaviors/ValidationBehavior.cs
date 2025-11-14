@@ -4,12 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Infrastructure.Behaviors;
@@ -21,18 +21,18 @@ namespace Ignixa.Application.Infrastructure.Behaviors;
 /// </summary>
 public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceCommand, ResourceKey>
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidationBehavior> _logger;
 
     public ValidationBehavior(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidationBehavior> logger)
     {
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
         _terminologyService = terminologyService ?? throw new ArgumentNullException(nameof(terminologyService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -43,13 +43,15 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
         RequestHandlerDelegate<ResourceKey> next,
         CancellationToken cancellationToken)
     {
-        // Extract FHIR version from headers (defaults to R4)
-        var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
 
-        // Get tenant configuration to determine validation tier
-        var currentHttpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is null");
-        var currentTenantConfig = currentHttpContext.Items["TenantConfiguration"] as TenantConfiguration;
+        // Use FHIR version from context
+        var fhirVersionEnum = context.FhirVersion;
+
+        // Get tenant configuration from context to determine validation tier
+        var currentTenantConfig = context.TenantConfiguration;
 
         // Determine validation tier: Prefer header override takes precedence, then tenant config, then default to Spec
         var validationTier = request.ValidationTierOverride
