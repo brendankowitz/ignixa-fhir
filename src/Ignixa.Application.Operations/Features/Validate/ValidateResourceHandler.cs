@@ -5,12 +5,12 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Operations.Features.Validate;
@@ -22,18 +22,18 @@ namespace Ignixa.Application.Operations.Features.Validate;
 /// </summary>
 public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, ValidateResourceResult>
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly Func<FhirSpecification, int, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidateResourceHandler> _logger;
 
     public ValidateResourceHandler(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         Func<FhirSpecification, int, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidateResourceHandler> logger)
     {
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
         _terminologyService = terminologyService ?? throw new ArgumentNullException(nameof(terminologyService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -43,15 +43,15 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
         ValidateResourceCommand request,
         CancellationToken cancellationToken)
     {
-        // Get tenant configuration to determine validation tier
-        var currentHttpContext = _httpContextAccessor.HttpContext;
-        var currentTenantConfig = currentHttpContext?.Items["TenantConfiguration"] as TenantConfiguration;
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
 
-        // Default to R4 for $validate operation
-        var fhirVersionString = currentTenantConfig?.FhirVersion ?? string.Empty;
-        var fhirVersionEnum = Enum.TryParse<FhirSpecification>(fhirVersionString, ignoreCase: true, out var parsed)
-            ? parsed
-            : FhirSpecification.R4;
+        // Get tenant configuration from context to determine validation tier
+        var currentTenantConfig = context.TenantConfiguration;
+
+        // Use FHIR version from context (defaults to R4)
+        var fhirVersionEnum = context.FhirVersion;
 
         // Determine validation tier: Default to Spec tier for $validate operation
         var validationTier = ParseValidationTier(currentTenantConfig?.ValidationTier ?? "Spec");

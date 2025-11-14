@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Ignixa.Application.Features.Resource;
@@ -35,7 +34,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
     private readonly IQueryParameterParser _queryParser;
     private readonly ISearchOptionsBuilderFactory _searchOptionsBuilderFactory;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<ConditionalCreateHandler> _logger;
 
     public ConditionalCreateHandler(
@@ -44,7 +43,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         RecyclableMemoryStreamManager memoryStreamManager,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<ConditionalCreateHandler> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
@@ -52,7 +51,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         _queryParser = queryParser ?? throw new ArgumentNullException(nameof(queryParser));
         _searchOptionsBuilderFactory = searchOptionsBuilderFactory ?? throw new ArgumentNullException(nameof(searchOptionsBuilderFactory));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -60,6 +59,10 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         ConditionalCreateCommand request,
         CancellationToken cancellationToken)
     {
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+
         _logger.LogInformation(
             "Processing conditional create for {ResourceType} with search criteria: {SearchCriteria}",
             request.ResourceType,
@@ -79,7 +82,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         }
 
         // 2. Get FHIR version from context
-        var fhirVersion = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+        var fhirVersion = context.FhirVersion;
         var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion);
 
         // 3. Build search options with _count=2 (we only need to know if 0, 1, or multiple)
@@ -197,11 +200,13 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         int tenantId,
         CancellationToken cancellationToken)
     {
+        // Get FHIR request context to check for bundle-assigned IDs
+        var context = _contextAccessor.RequestContext;
+
         // Check if we're in a bundle context with a pre-assigned ID
         // This is used for bundles with urn:uuid references to maintain referential integrity
         string? bundleAssignedId = null;
-        var httpContext = _httpContextAccessor.HttpContext;
-        if (httpContext != null && httpContext.Items.TryGetValue("BundleAssignedResourceId", out var assignedIdObj))
+        if (context != null && context.Properties.TryGetValue("BundleAssignedResourceId", out var assignedIdObj))
         {
             bundleAssignedId = assignedIdObj as string;
         }

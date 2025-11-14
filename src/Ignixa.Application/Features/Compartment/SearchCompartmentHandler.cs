@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
@@ -30,18 +30,18 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
 {
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IQueryExecutionStrategy _executionStrategy;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<SearchCompartmentHandler> _logger;
 
     public SearchCompartmentHandler(
         IPartitionStrategy partitionStrategy,
         IQueryExecutionStrategy executionStrategy,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<SearchCompartmentHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -49,23 +49,15 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         SearchCompartmentQuery request,
         CancellationToken cancellationToken)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is null");
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
 
         _logger.LogInformation(
             "Searching compartment {CompartmentType}/{CompartmentId} for {ResourceType} resources",
             request.CompartmentType,
             request.CompartmentId,
             request.ResourceType);
-
-        // Extract tenant context from HttpContext.Items
-        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            throw new InvalidOperationException("TenantId not found in HttpContext.Items");
-        }
-
-        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration
-            ?? throw new InvalidOperationException("TenantConfiguration not found in HttpContext.Items");
 
         // Create CompartmentSearchExpression with optional resource type filtering
         // If ResourceType is "*", we search all types in the compartment (empty FilteredResourceTypes)
@@ -98,8 +90,8 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         // 4. Determine partition(s) using IPartitionStrategy
         var partitionContext = new PartitionResolutionContext
         {
-            TenantId = tenantId,
-            TenantConfiguration = tenantConfig
+            TenantId = context.TenantId,
+            TenantConfiguration = context.TenantConfiguration
         };
 
         var queryParams = new Dictionary<string, string>(); // TODO: Extract from SearchOptions if needed

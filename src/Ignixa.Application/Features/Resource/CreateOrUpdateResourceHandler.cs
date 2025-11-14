@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Infrastructure;
@@ -35,26 +34,30 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
 {
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRepositoryFactory _repositoryFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
         IPartitionStrategy partitionStrategy,
         IFhirRepositoryFactory repositoryFactory,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext fhirVersionContext,
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<UpdateResult> HandleAsync(CreateOrUpdateResourceCommand command, CancellationToken cancellationToken)
     {
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+
         // Business logic - always runs for both bundle and standalone operations
         // NOTE: Validation now handled by ValidationBehavior in the pipeline
         _logger.LogInformation(
@@ -62,33 +65,26 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             command.ResourceType,
             command.Id);
 
-        // Extract FHIR version from headers (defaults to R4)
-        var fhirVersionEnum = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+        // Use FHIR version from context
+        var fhirVersionEnum = context.FhirVersion;
         var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
 
-        // Extract tenant ID early for tenant-aware search indexing
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is null");
-
-        int? tenantId = null;
-        if (httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) && tenantIdObj is int tid)
-        {
-            tenantId = tid;
-        }
+        // Tenant ID available from context for tenant-aware search indexing
+        int? tenantId = context.TenantId;
 
         // Create wrapper (needed for both paths now)
         var wrapper = CreateResourceWrapper(command, fhirVersionEnum, schemaProvider, tenantId);
 
         UpdateResult result;
 
-        // Resolve coordinator from command OR HttpContext.Items (pipeline routing fallback)
+        // Resolve coordinator from command OR context (pipeline routing fallback)
         DeferredWriteCoordinator? coordinator = command.Coordinator
-            ?? _httpContextAccessor.HttpContext.GetDeferredWriteCoordinator();
+            ?? context.DeferredWriteCoordinator;
 
         if (coordinator != null && command.Coordinator == null)
         {
             _logger.LogDebug(
-                "Resolved DeferredWriteCoordinator from HttpContext.Items for {ResourceType}/{Id}",
+                "Resolved DeferredWriteCoordinator from FHIR request context for {ResourceType}/{Id}",
                 command.ResourceType,
                 command.Id);
         }
@@ -102,11 +98,11 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 command.ResourceType,
                 command.Id);
 
-            // Get entry index from HttpContext.Items if available
-            int entryIndex = _httpContextAccessor.HttpContext.GetBundleEntryIndex();
+            // Get entry index from context if available
+            int entryIndex = context.BundleEntryIndex ?? 0;
 
             _logger.LogWarning(
-                "HANDLER: Retrieved entry index {EntryIndex} from HttpContext for {ResourceType}/{ResourceId}",
+                "HANDLER: Retrieved entry index {EntryIndex} from context for {ResourceType}/{ResourceId}",
                 entryIndex,
                 command.ResourceType,
                 command.Id);
@@ -128,19 +124,17 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         else
         {
             // Standalone path - write immediately to repository via multi-tenant factory
-            // 1. Validate tenant context (already extracted earlier)
+            // 1. Validate tenant context (already available from context)
             if (!tenantId.HasValue)
             {
-                throw new InvalidOperationException("TenantId not found in HttpContext.Items");
+                throw new InvalidOperationException("TenantId not available in FHIR request context");
             }
 
-            var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
-
-            // Create partition resolution context
+            // Create partition resolution context from FHIR request context
             var partitionContext = new PartitionResolutionContext
             {
                 TenantId = tenantId.Value,
-                TenantConfiguration = tenantConfig
+                TenantConfiguration = context.TenantConfiguration
             };
 
             // 2. Determine partition using IPartitionStrategy

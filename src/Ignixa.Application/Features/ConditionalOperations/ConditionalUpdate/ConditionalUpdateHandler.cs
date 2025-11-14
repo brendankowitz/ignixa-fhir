@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
@@ -33,7 +32,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IQueryParameterParser _queryParser;
     private readonly ISearchOptionsBuilderFactory _searchOptionsBuilderFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<ConditionalUpdateHandler> _logger;
 
     public ConditionalUpdateHandler(
@@ -41,14 +40,14 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         IFhirRepositoryFactory repositoryFactory,
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<ConditionalUpdateHandler> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _queryParser = queryParser ?? throw new ArgumentNullException(nameof(queryParser));
         _searchOptionsBuilderFactory = searchOptionsBuilderFactory ?? throw new ArgumentNullException(nameof(searchOptionsBuilderFactory));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -56,6 +55,10 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         ConditionalUpdateCommand request,
         CancellationToken cancellationToken)
     {
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+
         _logger.LogInformation(
             "Processing conditional update for {ResourceType} with search criteria: {SearchCriteria}",
             request.ResourceType,
@@ -65,7 +68,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         var queryParameters = _queryParser.Parse(request.SearchCriteria);
 
         // 2. Get FHIR version from context
-        var fhirVersion = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+        var fhirVersion = context.FhirVersion;
         var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion);
 
         // 3. Build search options with _count=2 (we only need to know if 0, 1, or multiple)

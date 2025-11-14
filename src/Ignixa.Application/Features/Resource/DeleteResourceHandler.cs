@@ -4,8 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -20,18 +20,18 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
 {
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IPartitionStrategy _partitionStrategy;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DeleteResourceHandler> _logger;
 
     public DeleteResourceHandler(
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<DeleteResourceHandler> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -39,29 +39,21 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        // Extract tenant ID from HttpContext (populated by TenantResolutionMiddleware)
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is null");
-
-        if (!httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            throw new InvalidOperationException(
-                "TenantId not found in HttpContext.Items. TenantResolutionMiddleware may not have run.");
-        }
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
 
         _logger.LogDebug(
             "Deleting resource {ResourceType}/{Id} in tenant {TenantId}",
             command.ResourceType,
             command.Id,
-            tenantId);
+            context.TenantId);
 
-        var tenantConfig = httpContext.Items["TenantConfiguration"] as TenantConfiguration;
-
-        // Create partition resolution context
+        // Create partition resolution context from FHIR request context
         var partitionContext = new PartitionResolutionContext
         {
-            TenantId = tenantId,
-            TenantConfiguration = tenantConfig
+            TenantId = context.TenantId,
+            TenantConfiguration = context.TenantConfiguration
         };
 
         // Create minimal ResourceJsonNode for partition strategy (only resourceType/id needed)
@@ -95,7 +87,7 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
         var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
         // Create resource key (positional parameters: ResourceType, Id, VersionId, TenantId)
-        var key = new ResourceKey(command.ResourceType, command.Id, null, tenantId);
+        var key = new ResourceKey(command.ResourceType, command.Id, null, context.TenantId);
 
         // Create resource request metadata
         var request = new ResourceRequest("DELETE", $"{command.ResourceType}/{command.Id}");
@@ -110,7 +102,7 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
                 "Cannot delete {ResourceType}/{Id}: resource not found in tenant {TenantId}",
                 command.ResourceType,
                 command.Id,
-                tenantId);
+                context.TenantId);
             return false;
         }
 
@@ -119,7 +111,7 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
             command.ResourceType,
             command.Id,
             deletedKey.VersionId,
-            tenantId);
+            context.TenantId);
 
         return true;
     }

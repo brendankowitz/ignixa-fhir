@@ -11,7 +11,6 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
@@ -30,20 +29,20 @@ public class ConditionalPatchHandler : IRequestHandler<ConditionalPatchCommand, 
     private readonly IMediator _mediator;
     private readonly IQueryParameterParser _queryParser;
     private readonly ISearchOptionsBuilderFactory _searchOptionsBuilderFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<ConditionalPatchHandler> _logger;
 
     public ConditionalPatchHandler(
         IMediator mediator,
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor contextAccessor,
         ILogger<ConditionalPatchHandler> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _queryParser = queryParser ?? throw new ArgumentNullException(nameof(queryParser));
         _searchOptionsBuilderFactory = searchOptionsBuilderFactory ?? throw new ArgumentNullException(nameof(searchOptionsBuilderFactory));
-        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -51,6 +50,10 @@ public class ConditionalPatchHandler : IRequestHandler<ConditionalPatchCommand, 
         ConditionalPatchCommand request,
         CancellationToken cancellationToken)
     {
+        // Get FHIR request context (populated by FhirRequestContextMiddleware)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+
         _logger.LogInformation(
             "Conditional patch: TenantId={TenantId}, ResourceType={ResourceType}, Criteria={SearchCriteria}",
             request.TenantId,
@@ -61,7 +64,7 @@ public class ConditionalPatchHandler : IRequestHandler<ConditionalPatchCommand, 
         var queryParameters = _queryParser.Parse(request.SearchCriteria);
 
         // Step 2: Get FHIR version from context
-        var fhirVersion = FhirVersionExtractor.ExtractFhirVersion(_httpContextAccessor.HttpContext);
+        var fhirVersion = context.FhirVersion;
         var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion);
 
         // Step 3: Build search options with _count=2 (we only need to know if 0, 1, or multiple)
