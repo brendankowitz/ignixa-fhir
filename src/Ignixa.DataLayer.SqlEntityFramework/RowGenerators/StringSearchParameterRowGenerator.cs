@@ -54,7 +54,7 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not StringSearchValue stringValue)
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
                 var record = new SqlDataRecord(metadata);

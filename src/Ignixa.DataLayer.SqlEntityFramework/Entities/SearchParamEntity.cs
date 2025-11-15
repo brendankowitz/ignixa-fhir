@@ -26,8 +26,21 @@ public class SearchParamEntity
     /// Gets or sets the URI of the search parameter (e.g., "http://hl7.org/fhir/SearchParameter/Patient-name").
     /// </summary>
     [Required]
-    [MaxLength(300)]
+    [MaxLength(128)]
     public string Uri { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the status of the search parameter (e.g., "active", "draft", "retired").
+    /// </summary>
+    [Required]
+    [MaxLength(20)]
+    public string Status { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the last updated timestamp for this search parameter.
+    /// </summary>
+    [Required]
+    public DateTimeOffset LastUpdated { get; set; }
 
     /// <summary>
     /// Gets or sets whether this search parameter is partially supported.

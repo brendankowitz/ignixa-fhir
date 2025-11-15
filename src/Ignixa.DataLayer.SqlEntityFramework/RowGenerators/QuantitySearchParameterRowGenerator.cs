@@ -52,7 +52,7 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not QuantitySearchValue quantityValue)
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
                 var record = new SqlDataRecord(metadata);

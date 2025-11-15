@@ -116,7 +116,7 @@ public class ChainedExpressionProcessor
 
         // Step 2.5: Get the SearchParamId for the reference search parameter
         // This ensures we only match references using the specific parameter requested in the chain
-        var refSearchParamId = await _cache.GetSearchParamIdAsync(chainedExpression.ReferenceSearchParameter.Url.ToString());
+        var refSearchParamId = await _cache.GetSearchParamIdAsync(chainedExpression.ReferenceSearchParameter);
         if (!refSearchParamId.HasValue)
         {
             _logger.LogWarning(
@@ -196,7 +196,7 @@ public class ChainedExpressionProcessor
 
         // Step 2.5: Get the SearchParamId for the reference search parameter
         // This ensures we only match references using the specific parameter requested in the _has query
-        var refSearchParamId = await _cache.GetSearchParamIdAsync(chainedExpression.ReferenceSearchParameter.Url.ToString());
+        var refSearchParamId = await _cache.GetSearchParamIdAsync(chainedExpression.ReferenceSearchParameter);
         if (!refSearchParamId.HasValue)
         {
             _logger.LogWarning(

@@ -57,7 +57,7 @@ public class TokenNumberNumberCompositeRowGenerator : ISearchParameterRowGenerat
                 if (searchIndex.Value is not CompositeSearchValue compositeValue)
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
                 foreach (var componentGroup in compositeValue.Components)

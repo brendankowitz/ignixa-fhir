@@ -18,9 +18,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Medino for event handling -->
+    <PackageReference Include="Medino" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Project references -->
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\Ignixa.Application\Ignixa.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

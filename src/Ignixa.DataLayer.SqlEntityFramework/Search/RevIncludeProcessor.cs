@@ -168,7 +168,7 @@ public class RevIncludeProcessor
         short? searchParamId = null;
         if (revIncludeExpr.ReferenceSearchParameter?.Url != null)
         {
-            searchParamId = await _cache.GetSearchParamIdAsync(revIncludeExpr.ReferenceSearchParameter.Url.ToString());
+            searchParamId = await _cache.GetSearchParamIdAsync(revIncludeExpr.ReferenceSearchParameter);
             if (!searchParamId.HasValue)
             {
                 _logger.LogWarning("SearchParamId not found for: {Url}", revIncludeExpr.ReferenceSearchParameter.Url);

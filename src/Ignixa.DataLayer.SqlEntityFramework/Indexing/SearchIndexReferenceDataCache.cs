@@ -8,6 +8,8 @@ using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
+using Ignixa.Search.Definition;
+using Ignixa.Search.Models;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Indexing;
 
@@ -84,6 +86,36 @@ public class SearchIndexReferenceDataCache : IDisposable
         // Cache positive result and return
         _searchParamCache.TryAdd(uri, entity.SearchParamId);
         return entity.SearchParamId;
+    }
+
+    /// <summary>
+    /// Gets the SearchParamId for a search parameter, with support for OverridesUrl fallback.
+    /// If the search parameter URL is not found in the database, checks the OverridesUrl property
+    /// to handle cases where Implementation Guide parameters override base FHIR parameters.
+    /// </summary>
+    /// <param name="searchParameter">The search parameter containing URL and optional OverridesUrl.</param>
+    /// <returns>The SearchParamId, or null if not found (even after checking OverridesUrl).</returns>
+    public async ValueTask<short?> GetSearchParamIdAsync(SearchParameterInfo searchParameter)
+    {
+        if (searchParameter?.Url == null)
+        {
+            return null;
+        }
+
+        // Try primary lookup using the parameter's URL
+        var searchParamId = await GetSearchParamIdAsync(searchParameter.Url.ToString());
+        if (searchParamId.HasValue)
+        {
+            return searchParamId;
+        }
+
+        // Fallback: if this parameter overrides another parameter, try the overridden URL
+        if (searchParameter.OverridesUrl != null)
+        {
+            return await GetSearchParamIdAsync(searchParameter.OverridesUrl.ToString());
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -460,6 +492,113 @@ public class SearchIndexReferenceDataCache : IDisposable
         return _searchParamCache
             .Where(kvp => kvp.Value > 0) // Filter out sentinel value -1
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    /// <summary>
+    /// Syncs search parameters from in-memory manager to database.
+    /// Used when packages (e.g., US Core) are loaded to ensure their search parameters
+    /// are persisted to the SearchParam table for indexing pipeline.
+    /// CRITICAL: Without this, package search parameters won't be found during row generation,
+    /// causing "SearchParam URL not found" warnings and failed indexing.
+    /// </summary>
+    /// <param name="searchParameterUrls">List of search parameter canonical URLs to sync.</param>
+    /// <param name="searchParamManager">Search parameter manager to check for OverridesUrl aliasing.</param>
+    /// <returns>Number of search parameters synced to database.</returns>
+    public async Task<int> SyncSearchParametersToDatabase(
+        IEnumerable<string> searchParameterUrls,
+        ISearchParameterDefinitionManager searchParamManager)
+    {
+        if (searchParameterUrls == null)
+        {
+            return 0;
+        }
+
+        var urls = searchParameterUrls.ToList();
+        if (urls.Count == 0)
+        {
+            return 0;
+        }
+
+        _logger.LogInformation("Syncing {Count} search parameter URLs to database", urls.Count);
+
+        var syncedCount = 0;
+
+        foreach (var url in urls)
+        {
+            // Check if already exists in database
+            var existing = await _context.SearchParams
+                .AsNoTracking()
+                .FirstOrDefaultAsync(sp => sp.Uri == url);
+
+            if (existing != null)
+            {
+                // Already exists - update cache if needed
+                _searchParamCache.TryAdd(url, existing.SearchParamId);
+                _logger.LogDebug("Search parameter {Url} already exists in database with ID {SearchParamId}", url, existing.SearchParamId);
+                continue;
+            }
+
+            // Get search parameter definition from manager to check for OverridesUrl
+            SearchParameterInfo? paramInfo = null;
+            if (searchParamManager != null && searchParamManager.TryGetSearchParameter(new Uri(url), out var param))
+            {
+                paramInfo = param;
+            }
+
+            short? searchParamIdToCache = null;
+
+            // Check if this parameter overrides another one
+            if (paramInfo?.OverridesUrl != null)
+            {
+                // Look up the overridden parameter's ID in the database
+                var overriddenParam = await _context.SearchParams
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(sp => sp.Uri == paramInfo.OverridesUrl.ToString());
+
+                if (overriddenParam != null)
+                {
+                    searchParamIdToCache = overriddenParam.SearchParamId;
+                    _logger.LogInformation(
+                        "Search parameter {Url} overrides {OverriddenUrl} - will use SearchParamId {SearchParamId} for indexing",
+                        url,
+                        paramInfo.OverridesUrl,
+                        searchParamIdToCache);
+                }
+            }
+
+            // Create new entry in database
+            var newEntity = new Entities.SearchParamEntity
+            {
+                Uri = url,
+                Status = "Enabled",
+                LastUpdated = DateTimeOffset.UtcNow,
+                IsPartiallySupported = false
+            };
+
+            _context.SearchParams.Add(newEntity);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Synced search parameter {Url} to database with ID {SearchParamId}", url, newEntity.SearchParamId);
+
+            // Cache using the OVERRIDE ID if present, otherwise use the new ID
+            var idToCache = searchParamIdToCache ?? newEntity.SearchParamId;
+            _searchParamCache.TryAdd(url, idToCache);
+
+            if (searchParamIdToCache.HasValue)
+            {
+                _logger.LogInformation(
+                    "Cached search parameter {Url} with aliased SearchParamId {AliasedId} (own ID is {OwnId})",
+                    url,
+                    idToCache,
+                    newEntity.SearchParamId);
+            }
+
+            syncedCount++;
+        }
+
+        _logger.LogInformation("Successfully synced {Count} search parameters to database", syncedCount);
+
+        return syncedCount;
     }
 
     /// <summary>

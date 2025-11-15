@@ -388,6 +388,19 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     }
 
     /// <summary>
+    /// Gets the tenant-specific SearchIndexReferenceDataCache for syncing search parameters.
+    /// Used by PackageLoadedEventHandler to sync package search parameters to database.
+    /// </summary>
+    /// <param name="tenantId">The tenant ID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The tenant-specific SearchIndexReferenceDataCache.</returns>
+    public async Task<SearchIndexReferenceDataCache> GetSearchIndexReferenceCacheAsync(int tenantId, CancellationToken ct = default)
+    {
+        var factory = await GetOrCreateFactoryAsync(tenantId, ct);
+        return _multiTenantCache.GetOrCreateCacheForTenant(tenantId, factory.DbContextOptions);
+    }
+
+    /// <summary>
     /// Extracts the Managed Identity name (Client ID or App Service name) from connection string.
     /// The connection string can optionally include "User ID=&lt;client-id-or-name&gt;" for explicit MI identification.
     /// If not specified in connection string, returns null (the running process identity is used).

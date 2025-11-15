@@ -167,9 +167,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .SingleInstance();
 
     // SqlEntityFrameworkRepositoryFactory implements both interfaces, register with both names
+    // Also register as itself for handlers that need direct access (e.g., PackageLoadedSearchParameterSyncHandler)
     containerBuilder.RegisterType<SqlEntityFrameworkRepositoryFactory>()
         .Named<IFhirRepositoryFactory>("SqlEf")
         .Named<ISearchServiceFactory>("SqlEf")
+        .AsSelf()
         .SingleInstance();
 
     // Register composite factories as main interfaces
@@ -788,9 +790,16 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
             debounceDelay: TimeSpan.FromSeconds(1)))
         .SingleInstance();
 
-    // Register PackageLoaded event handler
+    // Register PackageLoaded event handlers
     containerBuilder.RegisterType<Ignixa.Application.Events.Package.PackageLoadedNotificationHandler>()
         .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageLoaded>>()
+        .InstancePerDependency();
+
+    // Register PackageLoadedSearchParameterSyncHandler for syncing search parameters to database
+    // CRITICAL: Without this, US Core and other package search parameters won't be in the database
+    // and bundle processing will fail with "SearchParam URL not found" warnings
+    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedSearchParameterSyncHandler>()
+        .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
         .InstancePerDependency();
 
     // Register bundle processing services

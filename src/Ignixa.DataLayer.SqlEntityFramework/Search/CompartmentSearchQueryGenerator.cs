@@ -127,16 +127,16 @@ public class CompartmentSearchQueryGenerator
                     // Get search parameter info from definition manager
                     var searchParamInfo = _searchParameterDefinitionManager.GetSearchParameter(resourceType, searchParamCode);
 
-                    // Get SearchParamId from cache using the parameter URI
-                    var searchParamUri = searchParamInfo.Url.ToString();
-                    var searchParamId = await _cache.GetSearchParamIdAsync(searchParamUri);
+                    // Get SearchParamId from cache (handles OverridesUrl fallback)
+                    var searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo);
                     if (!searchParamId.HasValue)
                     {
-                        _logger.LogDebug("SearchParamId not found for URI: {Uri}", searchParamUri);
+                        _logger.LogDebug("SearchParamId not found for URI: {Uri}", searchParamInfo.Url);
                         continue;
                     }
 
                     // Add to map, grouping all resource types that use this parameter
+                    var searchParamUri = searchParamInfo.Url.ToString();
                     if (!searchParamMap.ContainsKey(searchParamUri))
                     {
                         searchParamMap[searchParamUri] = (searchParamId.Value, new HashSet<short>());

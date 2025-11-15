@@ -122,6 +122,14 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     /// </summary>
     public IReadOnlyList<SearchParameterComponentInfo> Component { get; }
 
+    /// <summary>
+    /// If this search parameter overrides another parameter (e.g., IG parameter overriding base parameter),
+    /// this contains the canonical URL of the overridden parameter.
+    /// Used for database indexing to ensure both parameters map to the same SearchParamId.
+    /// Example: US Core "us-core-encounter-patient" overrides base "clinical-patient".
+    /// </summary>
+    public Uri OverridesUrl { get; set; }
+
     public bool Equals([AllowNull] SearchParameterInfo other)
     {
         if (other == null) return false;

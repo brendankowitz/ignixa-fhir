@@ -48,7 +48,7 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (searchIndex.Value is not UriSearchValue uriValue)
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
                 var record = new SqlDataRecord(metadata);

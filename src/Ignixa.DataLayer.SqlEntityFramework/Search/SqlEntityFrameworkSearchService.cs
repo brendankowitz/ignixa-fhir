@@ -547,6 +547,22 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         // Search parameter-based sorting
         // Use LEFT JOIN with subqueries to handle resources without the parameter (nulls sort last)
+
+        // Pre-compute SearchParamId with OverridesUrl fallback support
+        // IMPORTANT: Must be done before entering LINQ expression (LINQ to SQL requires constants)
+#pragma warning disable CA2012 // Use ValueTasks correctly - Must block synchronously in EF LINQ expression context
+        var searchParamId = _cache.GetSearchParamIdAsync(sortExpr.Parameter).GetAwaiter().GetResult();
+#pragma warning restore CA2012
+        if (!searchParamId.HasValue)
+        {
+            _logger.LogWarning(
+                "Search parameter not found for _sort: {Url}. Falling back to default sort.",
+                sortExpr.Parameter.Url);
+            return isDescending
+                ? query.OrderByDescending(r => r.ResourceId)
+                : query.OrderBy(r => r.ResourceId);
+        }
+
         var paramType = sortExpr.Parameter.Type;
 
         switch (paramType)
@@ -560,13 +576,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.StringSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Text)
                             .Max())
                     : query.OrderBy(r =>
                         _context.StringSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Text)
                             .Min());
 
@@ -576,13 +592,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.DateTimeSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.StartDateTime)
                             .Max())
                     : query.OrderBy(r =>
                         _context.DateTimeSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.StartDateTime)
                             .Min());
 
@@ -592,13 +608,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.TokenSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Code)
                             .Max())
                     : query.OrderBy(r =>
                         _context.TokenSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Code)
                             .Min());
 
@@ -608,13 +624,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.NumberSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Max())
                     : query.OrderBy(r =>
                         _context.NumberSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Min());
 
@@ -624,13 +640,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.QuantitySearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Max())
                     : query.OrderBy(r =>
                         _context.QuantitySearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Min());
 
@@ -640,13 +656,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.ReferenceSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.ReferenceResourceId)
                             .Max())
                     : query.OrderBy(r =>
                         _context.ReferenceSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.ReferenceResourceId)
                             .Min());
 
@@ -656,13 +672,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.OrderByDescending(r =>
                         _context.UriSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Uri)
                             .Max())
                     : query.OrderBy(r =>
                         _context.UriSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Uri)
                             .Min());
 
@@ -726,6 +742,22 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         // Search parameter-based secondary sorting
         // Use LEFT JOIN with subqueries, similar to primary sort
+
+        // Pre-compute SearchParamId with OverridesUrl fallback support
+        // IMPORTANT: Must be done before entering LINQ expression (LINQ to SQL requires constants)
+#pragma warning disable CA2012 // Use ValueTasks correctly - Must block synchronously in EF LINQ expression context
+        var searchParamId = _cache.GetSearchParamIdAsync(sortExpr.Parameter).GetAwaiter().GetResult();
+#pragma warning restore CA2012
+        if (!searchParamId.HasValue)
+        {
+            _logger.LogWarning(
+                "Search parameter not found for _sort (ThenBy): {Url}. Falling back to default sort.",
+                sortExpr.Parameter.Url);
+            return isDescending
+                ? query.ThenByDescending(r => r.ResourceId)
+                : query.ThenBy(r => r.ResourceId);
+        }
+
         var paramType = sortExpr.Parameter.Type;
 
         switch (paramType)
@@ -736,13 +768,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.StringSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Text)
                             .Max())
                     : query.ThenBy(r =>
                         _context.StringSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Text)
                             .Min());
 
@@ -752,13 +784,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.DateTimeSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.StartDateTime)
                             .Max())
                     : query.ThenBy(r =>
                         _context.DateTimeSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.StartDateTime)
                             .Min());
 
@@ -768,13 +800,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.TokenSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Code)
                             .Max())
                     : query.ThenBy(r =>
                         _context.TokenSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Code)
                             .Min());
 
@@ -784,13 +816,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.NumberSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Max())
                     : query.ThenBy(r =>
                         _context.NumberSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Min());
 
@@ -800,13 +832,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.QuantitySearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Max())
                     : query.ThenBy(r =>
                         _context.QuantitySearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.LowValue)
                             .Min());
 
@@ -816,13 +848,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.ReferenceSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.ReferenceResourceId)
                             .Max())
                     : query.ThenBy(r =>
                         _context.ReferenceSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.ReferenceResourceId)
                             .Min());
 
@@ -832,13 +864,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     ? query.ThenByDescending(r =>
                         _context.UriSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Uri)
                             .Max())
                     : query.ThenBy(r =>
                         _context.UriSearchParams
                             .Where(sp => sp.ResourceSurrogateId == r.ResourceSurrogateId
-                                      && sp.SearchParamId == GetSearchParamIdFromUrl(sortExpr.Parameter.Url))
+                                      && sp.SearchParamId == searchParamId.Value)
                             .Select(sp => sp.Uri)
                             .Min());
 

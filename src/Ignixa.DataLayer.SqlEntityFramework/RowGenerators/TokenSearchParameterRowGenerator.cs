@@ -55,7 +55,7 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (string.IsNullOrEmpty(tokenValue.Code))
                     continue;
 
-                if (!searchParameterIdMap.TryGetValue(searchIndex.SearchParameter.Url.ToString(), out var searchParamId))
+                if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
                 var record = new SqlDataRecord(metadata);

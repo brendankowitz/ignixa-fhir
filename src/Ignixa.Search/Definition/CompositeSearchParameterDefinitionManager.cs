@@ -47,8 +47,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     // Cache: canonical URL -> package metadata (for conflict resolution)
     private readonly ConcurrentDictionary<string, PackageMetadata> _packageMetadataCache;
 
-    // Eager loading state: all merged search parameters (base + packages)
-    private IEnumerable<SearchParameterInfo>? _allSearchParametersCache;
+    // Eager loading state: initialization flag only (cache is in _packageSearchParametersByResourceType)
     private bool _isInitialized;
 
     // Lazy cache for SearchParameterHashMap to avoid repeated base manager queries
@@ -136,7 +135,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 _logger.LogInformation(
                     "No package search parameters found for FHIR version {FhirVersion}",
                     _fhirVersion ?? "any");
-                _allSearchParametersCache = _baseManager.AllSearchParameters;
                 _isInitialized = true;
                 return;
             }
@@ -193,11 +191,9 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             }
 
             // Merge base parameters with package parameters using conflict resolution
+            // This populates _packageSearchParametersByResourceType directly with winners
             var baseParameters = _baseManager.AllSearchParameters.ToList();
-            var merged = MergeAllSearchParameters(baseParameters, searchParameters);
-
-            // Cache merged result
-            _allSearchParametersCache = merged;
+            MergeAllSearchParametersIntoCache(baseParameters, searchParameters);
             _isInitialized = true;
 
             var elapsedMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
@@ -220,8 +216,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 throw;
             }
 
-            // Fall back to base parameters only
-            _allSearchParametersCache = _baseManager.AllSearchParameters;
+            // Fall back to base parameters only (lazy loading will work)
             _isInitialized = true;
 
             _logger.LogWarning(
@@ -234,13 +229,17 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     {
         get
         {
-            // If eager loading is enabled and initialization is complete, return cached merged list
-            if (_options.EagerLoadPackageSearchParameters && _isInitialized && _allSearchParametersCache != null)
+            if (_options.EagerLoadPackageSearchParameters && _isInitialized)
             {
-                return _allSearchParametersCache;
+                // Build from per-resource-type cache (deduplicates by URL)
+                return _packageSearchParametersByResourceType.Values
+                    .SelectMany(list => list)
+                    .GroupBy(p => p.OverridesUrl ?? p.Url)
+                    .Select(g => g.First())
+                    .ToList();
             }
 
-            // Fall back to base parameters only (lazy loading mode or not yet initialized)
+            // Fall back to base parameters only
             return _baseManager.AllSearchParameters;
         }
     }
@@ -251,34 +250,17 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     /// <inheritdoc/>
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
-        // Check per-resource-type cache first
+        // Check per-resource-type cache first (populated during eager load)
         if (_packageSearchParametersByResourceType.TryGetValue(resourceType, out var cached))
         {
             return cached;
         }
 
-        // If eager loading is enabled and initialization is complete, filter from pre-merged cache
-        // This avoids lazy loading and repeated conflict resolution logs
-        if (_options.EagerLoadPackageSearchParameters && _isInitialized && _allSearchParametersCache != null)
-        {
-            // IMPORTANT: Use Distinct() because MergeAllSearchParameters adds the same SearchParameterInfo
-            // multiple times (once per resource type it applies to via BaseResourceTypes).
-            // We need to return unique SearchParameterInfo objects, not duplicate references.
-            var filtered = _allSearchParametersCache
-                .Where(p => p.BaseResourceTypes != null &&
-                           p.BaseResourceTypes.Contains(resourceType, StringComparer.OrdinalIgnoreCase))
-                .Distinct()
-                .ToList();
-
-            _packageSearchParametersByResourceType[resourceType] = filtered;
-            return filtered;
-        }
-
-        // Fallback: lazy load (for lazy loading mode or not yet initialized)
+        // Fallback: lazy load for this resource type
         var baseParameters = _baseManager.GetSearchParameters(resourceType);
         var packageParameters = LoadPackageSearchParametersForResourceType(resourceType);
 
-        // Merge with conflict resolution (IG wins on code conflict)
+        // Merge with conflict resolution
         var merged = MergeSearchParameters(baseParameters, packageParameters, resourceType);
 
         // Cache and return
@@ -421,8 +403,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             () => _baseManager.SearchParameterHashMap,
             LazyThreadSafetyMode.ExecutionAndPublication);
 
-        // Reset eager loading state to force reinit if needed
-        _allSearchParametersCache = null;
+        // Reset initialization flag
         _isInitialized = false;
 
         _logger.LogInformation(
@@ -715,21 +696,33 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
     /// <summary>
     /// Merges all base and package search parameters with per-resource-type conflict resolution.
-    /// Used during eager loading to create a complete merged list of all search parameters.
+    /// Populates _packageSearchParametersByResourceType cache directly with winners.
     /// CRITICAL: Resolves conflicts PER RESOURCE TYPE (not globally) to match FHIR semantics.
-    /// Example: "identifier" conflict on Patient is resolved independently from "identifier" conflict on Organization.
     /// </summary>
-    private IEnumerable<SearchParameterInfo> MergeAllSearchParameters(
+    private void MergeAllSearchParametersIntoCache(
         IReadOnlyList<SearchParameterInfo> baseParameters,
         IReadOnlyList<SearchParameterInfo> packageParameters)
     {
         if (packageParameters.Count == 0)
         {
-            return baseParameters;
+            // No package parameters - populate cache with base parameters only
+            var resourceTypes = baseParameters
+                .SelectMany(p => p.BaseResourceTypes ?? Array.Empty<string>())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var resourceType in resourceTypes)
+            {
+                var paramsForType = baseParameters
+                    .Where(p => p.BaseResourceTypes != null &&
+                               p.BaseResourceTypes.Contains(resourceType, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+                _packageSearchParametersByResourceType[resourceType] = paramsForType;
+            }
+            return;
         }
 
         // Build lookup: (code, resourceType) -> List<SearchParameterInfo>
-        // This ensures conflicts are resolved independently per resource type
         var parametersByCodeAndResourceType =
             new Dictionary<(string code, string resourceType), List<SearchParameterInfo>>(
                 new CodeResourceTypeTupleComparer());
@@ -737,8 +730,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         // Start with base parameters
         foreach (var baseParam in baseParameters)
         {
-            // Base parameters can apply to multiple resource types via BaseResourceTypes
-            // Add them for each resource type they apply to
             if (baseParam.BaseResourceTypes != null && baseParam.BaseResourceTypes.Count > 0)
             {
                 foreach (var resourceType in baseParam.BaseResourceTypes)
@@ -768,7 +759,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         // Add package parameters
         foreach (var packageParam in packageParameters)
         {
-            // Package parameters can also apply to multiple resource types
             if (packageParam.BaseResourceTypes != null && packageParam.BaseResourceTypes.Count > 0)
             {
                 foreach (var resourceType in packageParam.BaseResourceTypes)
@@ -799,30 +789,41 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             }
         }
 
-        // Resolve conflicts per (code, resourceType) tuple
-        var result = new List<SearchParameterInfo>(parametersByCodeAndResourceType.Count);
+        // Resolve conflicts and populate cache per resource type
+        var resultByResourceType = new Dictionary<string, List<SearchParameterInfo>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var ((code, resourceType), candidates) in parametersByCodeAndResourceType)
         {
+            SearchParameterInfo winner;
+
             if (candidates.Count == 1)
             {
-                result.Add(candidates[0]);
+                winner = candidates[0];
             }
             else
             {
                 // Conflict: multiple parameters with same code for same resource type
-                // Use intelligent conflict resolution (per-resource-type)
-                var winner = _conflictResolver.ResolveConflict(
+                winner = _conflictResolver.ResolveConflict(
                     candidates,
                     code,
-                    resourceType,  // ✅ PER-RESOURCE-TYPE resolution (not global "All")
+                    resourceType,
                     _packageMetadataCache);
-
-                result.Add(winner);
             }
+
+            // Add winner to resource type's list
+            if (!resultByResourceType.TryGetValue(resourceType, out var list))
+            {
+                list = new List<SearchParameterInfo>();
+                resultByResourceType[resourceType] = list;
+            }
+            list.Add(winner);
         }
 
-        return result;
+        // Populate the cache
+        foreach (var (resourceType, parameters) in resultByResourceType)
+        {
+            _packageSearchParametersByResourceType[resourceType] = parameters;
+        }
     }
 
     /// <summary>
