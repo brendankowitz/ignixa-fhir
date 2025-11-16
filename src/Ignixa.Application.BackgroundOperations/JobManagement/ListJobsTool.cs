@@ -7,9 +7,9 @@ using System.ComponentModel;
 using System.Text.Json;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 
 namespace Ignixa.Application.BackgroundOperations.JobManagement;
@@ -25,11 +25,11 @@ public class ListJobsTool : TenantAwareMcpTool
     private readonly IBackgroundJobRepository<ExportJobDefinition> _exportRepository;
 
     public ListJobsTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IBackgroundJobRepository<ImportJobDefinition> importRepository,
         IBackgroundJobRepository<ExportJobDefinition> exportRepository)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _importRepository = importRepository ?? throw new ArgumentNullException(nameof(importRepository));
         _exportRepository = exportRepository ?? throw new ArgumentNullException(nameof(exportRepository));

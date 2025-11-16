@@ -6,7 +6,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
@@ -36,13 +35,13 @@ public class SearchResourcesTool : TenantAwareMcpTool
     private readonly IFhirRequestContextAccessor _contextAccessor;
 
     public SearchResourcesTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         ISearchOptionsBuilderFactory builderFactory,
         IFhirVersionContext versionContext,
         IFhirRequestContextAccessor contextAccessor)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _builderFactory = builderFactory ?? throw new ArgumentNullException(nameof(builderFactory));

@@ -6,11 +6,11 @@
 using System.ComponentModel;
 using System.Text.Json.Nodes;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -29,10 +29,10 @@ public class PatchResourceFieldTool : TenantAwareMcpTool
     private readonly IMediator _mediator;
 
     public PatchResourceFieldTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
     }

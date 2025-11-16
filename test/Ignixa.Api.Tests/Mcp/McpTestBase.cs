@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.AspNetCore.Http;
@@ -12,14 +13,14 @@ namespace Ignixa.Api.Tests.Mcp;
 
 /// <summary>
 /// Base class for MCP tool tests providing common mocking infrastructure.
-/// Sets up HttpContext, TenantConfigurationStore, and helper methods for tenant setup.
+/// Sets up IFhirRequestContextAccessor, TenantConfigurationStore, and helper methods for tenant setup.
 /// </summary>
 public abstract class McpTestBase
 {
     /// <summary>
-    /// Mocked HTTP context accessor for accessing current HTTP request context.
+    /// Mocked FHIR request context accessor for accessing current request context.
     /// </summary>
-    protected IHttpContextAccessor HttpContextAccessor { get; }
+    protected IFhirRequestContextAccessor HttpContextAccessor { get; }
 
     /// <summary>
     /// Mocked tenant configuration store for tenant lookup.
@@ -27,9 +28,14 @@ public abstract class McpTestBase
     protected ITenantConfigurationStore TenantConfigurationStore { get; }
 
     /// <summary>
-    /// Mocked HTTP context instance.
+    /// Mocked HTTP context instance (for backward compatibility).
     /// </summary>
     protected HttpContext HttpContext { get; }
+
+    /// <summary>
+    /// Mocked FHIR request context.
+    /// </summary>
+    protected IFhirRequestContext FhirRequestContext { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpTestBase"/> class.
@@ -37,11 +43,12 @@ public abstract class McpTestBase
     /// </summary>
     protected McpTestBase()
     {
-        HttpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        HttpContextAccessor = Substitute.For<IFhirRequestContextAccessor>();
         TenantConfigurationStore = Substitute.For<ITenantConfigurationStore>();
         HttpContext = new DefaultHttpContext();
+        FhirRequestContext = Substitute.For<IFhirRequestContext>();
 
-        HttpContextAccessor.HttpContext.Returns(HttpContext);
+        HttpContextAccessor.RequestContext.Returns(FhirRequestContext);
     }
 
     /// <summary>
@@ -75,13 +82,13 @@ public abstract class McpTestBase
     }
 
     /// <summary>
-    /// Simulates middleware setting the tenant context in HttpContext.Items.
-    /// This mimics the behavior of TenantResolutionMiddleware when processing /tenant/{id}/mcp routes.
+    /// Simulates middleware setting the tenant context in IFhirRequestContext.
+    /// This mimics the behavior of FhirRequestContextMiddleware when processing /tenant/{id}/mcp routes.
     /// </summary>
     /// <param name="tenantId">Tenant ID to set in context.</param>
     protected void SetTenantContext(int tenantId)
     {
-        HttpContext.Items["TenantContext"] = tenantId;
+        FhirRequestContext.TenantId.Returns(tenantId);
     }
 
     /// <summary>

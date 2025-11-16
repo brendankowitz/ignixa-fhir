@@ -64,21 +64,24 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
 
                 if (quantityValue.Low.HasValue && quantityValue.High.HasValue && quantityValue.Low == quantityValue.High)
                 {
-                    record.SetDecimal(5, quantityValue.Low.Value);
-                    record.SetDBNull(6);
-                    record.SetDBNull(7);
+                    // Single value - exact match
+                    // Populate all three columns with the same value to satisfy NOT NULL constraints
+                    record.SetDecimal(5, quantityValue.Low.Value);  // SingleValue
+                    record.SetDecimal(6, quantityValue.Low.Value);  // LowValue (same value)
+                    record.SetDecimal(7, quantityValue.Low.Value);  // HighValue (same value)
                 }
                 else
                 {
-                    record.SetDBNull(5);
-                    if (quantityValue.Low.HasValue)
-                        record.SetDecimal(6, quantityValue.Low.Value);
-                    else
-                        record.SetDBNull(6);
-                    if (quantityValue.High.HasValue)
-                        record.SetDecimal(7, quantityValue.High.Value);
-                    else
-                        record.SetDBNull(7);
+                    // Range or single-sided value
+                    record.SetDBNull(5);                           // SingleValue = NULL
+
+                    // For range values, at least one of Low/High must be non-null per QuantitySearchValue constructor
+                    // If only one is provided, use it for both Low and High to satisfy NOT NULL constraints
+                    var lowValue = quantityValue.Low ?? quantityValue.High ?? throw new InvalidOperationException("Both Low and High are null");
+                    var highValue = quantityValue.High ?? quantityValue.Low ?? throw new InvalidOperationException("Both High and Low are null");
+
+                    record.SetDecimal(6, lowValue);
+                    record.SetDecimal(7, highValue);
                 }
 
                 yield return record;

@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.ComponentModel;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
 
@@ -23,10 +23,10 @@ public class UninstallPackageTool : TenantAwareMcpTool
     private readonly IImplementationGuideProvider _packageProvider;
 
     public UninstallPackageTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IImplementationGuideProvider packageProvider)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _packageProvider = packageProvider ?? throw new ArgumentNullException(nameof(packageProvider));
     }

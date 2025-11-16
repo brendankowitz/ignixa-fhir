@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.ComponentModel;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
 
@@ -23,11 +23,11 @@ public class InstallPackageTool : TenantAwareMcpTool
     private readonly INpmPackageSearchService _searchService;
 
     public InstallPackageTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IImplementationGuideProvider packageProvider,
         INpmPackageSearchService searchService)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _packageProvider = packageProvider ?? throw new ArgumentNullException(nameof(packageProvider));
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));

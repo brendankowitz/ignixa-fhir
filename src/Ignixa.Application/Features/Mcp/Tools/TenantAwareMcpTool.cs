@@ -3,10 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
-using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Application.Features.Mcp.Tools;
 
@@ -14,30 +14,24 @@ namespace Ignixa.Application.Features.Mcp.Tools;
 /// Base class for MCP tools that require tenant context resolution.
 /// Provides three-tier tenant resolution strategy:
 /// 1. Explicit tenantId parameter (highest priority)
-/// 2. HttpContext.Items["TenantContext"] from route /tenant/{id}/mcp
+/// 2. IFhirRequestContext.TenantId from middleware
 /// 3. Default to single tenant if only one active tenant exists
 /// </summary>
 public abstract class TenantAwareMcpTool
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
-
-    /// <summary>
-    /// Gets the HTTP context accessor.
-    /// Protected to allow derived tools to access HttpContext for setting tenant context.
-    /// </summary>
-    protected IHttpContextAccessor HttpContextAccessor => _httpContextAccessor;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TenantAwareMcpTool"/> class.
     /// </summary>
-    /// <param name="httpContextAccessor">HTTP context accessor for route parameters.</param>
+    /// <param name="fhirRequestContextAccessor">FHIR request context accessor for tenant resolution.</param>
     /// <param name="tenantConfigurationStore">Tenant configuration store.</param>
     protected TenantAwareMcpTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantConfigurationStore)
     {
-        _httpContextAccessor = httpContextAccessor;
+        _fhirRequestContextAccessor = fhirRequestContextAccessor;
         _tenantConfigurationStore = tenantConfigurationStore;
     }
 
@@ -60,12 +54,11 @@ public abstract class TenantAwareMcpTool
             return explicitTenantId.Value;
         }
 
-        // Strategy 2: Route context from /tenant/{id}/mcp
-        var httpContext = _httpContextAccessor.HttpContext;
-        if (httpContext?.Items.TryGetValue("TenantContext", out var tenantContextObj) == true
-            && tenantContextObj is int tenantId)
+        // Strategy 2: IFhirRequestContext.TenantId from middleware
+        var requestContext = _fhirRequestContextAccessor.RequestContext;
+        if (requestContext?.TenantId > 0)
         {
-            return tenantId;
+            return requestContext.TenantId;
         }
 
         // Strategy 3: Default to single tenant if only one active tenant exists

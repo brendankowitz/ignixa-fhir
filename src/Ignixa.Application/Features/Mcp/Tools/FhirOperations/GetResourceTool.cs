@@ -6,7 +6,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
@@ -27,11 +26,11 @@ public class GetResourceTool : TenantAwareMcpTool
     private readonly IFhirRequestContextAccessor _contextAccessor;
 
     public GetResourceTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         IFhirRequestContextAccessor contextAccessor)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));

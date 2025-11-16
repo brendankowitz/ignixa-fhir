@@ -7,11 +7,11 @@ using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.Metadata;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
@@ -36,13 +36,13 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
     private readonly ITenantConfigurationStore _tenantConfigStore;
 
     public FhirPathQueryCapabilityStatementTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         FhirPathEvaluator evaluator,
         FhirPathCompiler compiler,
         IFhirVersionContext versionContext)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));

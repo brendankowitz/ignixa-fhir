@@ -859,6 +859,31 @@ app.UseMiddleware<TenantResolutionMiddleware>();
 // Provides strongly-typed context accessible via IFhirRequestContextAccessor throughout request pipeline
 app.UseMiddleware<FhirRequestContextMiddleware>();
 
+// DEVELOPMENT VALIDATION: Detect middleware ordering issues
+// Ensures TenantResolutionMiddleware runs before FhirRequestContextMiddleware
+// Catches configuration errors early in dev where TenantId would be 0/null
+if (app.Environment.IsDevelopment())
+{
+    app.Use(async (context, next) =>
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        var fhirContextAccessor = context.RequestServices.GetRequiredService<IFhirRequestContextAccessor>();
+
+        if (context.GetEndpoint() != null &&
+            !context.Items.ContainsKey("TenantId") &&
+            fhirContextAccessor.RequestContext?.TenantId == 0)
+        {
+            logger.LogWarning(
+                "TenantResolutionMiddleware may not have run before FhirRequestContextMiddleware. " +
+                "Route: {Path}, TenantId in context: {TenantId}",
+                context.Request.Path,
+                fhirContextAccessor.RequestContext?.TenantId);
+        }
+
+        await next();
+    });
+}
+
 // CAPABILITY ENFORCEMENT (Phase 3 - ADR-2506)
 // Now handled by CapabilityEnforcementBehavior (Medino pipeline behavior)
 // Commands/queries implement IRequiresCapability and declare FHIRPath expressions

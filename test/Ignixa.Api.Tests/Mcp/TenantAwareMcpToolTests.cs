@@ -5,10 +5,10 @@
 
 using FluentAssertions;
 using Ignixa.Application.Features.Mcp.Tools;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
-using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using Xunit;
 
@@ -203,9 +203,9 @@ public class TenantAwareMcpToolTests : McpTestBase
     private class TestTenantAwareTool : TenantAwareMcpTool
     {
         public TestTenantAwareTool(
-            IHttpContextAccessor httpContextAccessor,
+            IFhirRequestContextAccessor fhirRequestContextAccessor,
             ITenantConfigurationStore tenantConfigurationStore)
-            : base(httpContextAccessor, tenantConfigurationStore)
+            : base(fhirRequestContextAccessor, tenantConfigurationStore)
         {
         }
 

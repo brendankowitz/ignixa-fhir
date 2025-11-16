@@ -7,10 +7,10 @@ using System.ComponentModel;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using ModelContextProtocol.Server;
 
@@ -27,11 +27,11 @@ public class StartImportJobTool : TenantAwareMcpTool
     private readonly IConfiguration _configuration;
 
     public StartImportJobTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         IConfiguration configuration)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));

@@ -7,9 +7,9 @@ using System.ComponentModel;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 
 namespace Ignixa.Application.BackgroundOperations.JobManagement;
@@ -24,10 +24,10 @@ public class StartExportJobTool : TenantAwareMcpTool
     private readonly IMediator _mediator;
 
     public StartExportJobTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
     }

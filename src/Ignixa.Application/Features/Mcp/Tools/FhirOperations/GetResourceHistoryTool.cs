@@ -6,11 +6,11 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Medino;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.History;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 
@@ -24,14 +24,16 @@ namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
 public class GetResourceHistoryTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
+    private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
 
     public GetResourceHistoryTool(
-        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator)
-        : base(httpContextAccessor, tenantStore)
+        : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
+        _fhirRequestContextAccessor = fhirRequestContextAccessor;
     }
 
     [McpServerTool(Name = "get_fhir_resource_history")]
@@ -82,10 +84,10 @@ Example: resourceType='Patient', id='123', count=5")]
         // Execute history query via Medino handler
         // Note: GetResourceHistoryHandler requires BaseUrl and RequestPath for pagination links
         // For MCP, we can use placeholder values since we return data, not FHIR Bundle links
-        var httpContext = HttpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext not available");
+        var requestContext = _fhirRequestContextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available - middleware may not have run");
 
-        var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
+        var baseUrl = "https://localhost"; // Placeholder for MCP tools
         var requestPath = $"/{resourceType}/{id}/_history";
 
         var query = new GetResourceHistoryQuery(
