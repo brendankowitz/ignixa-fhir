@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Services;
@@ -143,5 +144,125 @@ public class InMemoryTerminologyService : ITerminologyService
             IsValid: true,
             Severity: IssueSeverity.Information,
             Message: null));
+    }
+
+    /// <summary>
+    /// $lookup operation is not supported by the in-memory implementation.
+    /// Returns not found for all lookups.
+    /// </summary>
+    public Task<LookupResult> LookupCodeAsync(
+        string system,
+        string code,
+        string? version,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult(new LookupResult(
+            Found: false,
+            Name: null,
+            Version: null,
+            Display: null,
+            Definition: null,
+            Properties: null,
+            Designations: null));
+    }
+
+    /// <summary>
+    /// $expand operation is not supported by the in-memory implementation.
+    /// Always returns null (expansion not available).
+    /// </summary>
+    public Task<ExpandResult?> ExpandValueSetAsync(
+        ExpansionParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<ExpandResult?>(null);
+    }
+
+    /// <summary>
+    /// Validates a coded element against a terminology binding.
+    /// In-memory implementation uses hardcoded ValueSets for common bindings.
+    /// </summary>
+    public async Task<BindingValidationResult> ValidateBindingAsync(
+        string valueSetUrl,
+        BindingStrength strength,
+        string? system,
+        string? code,
+        string? display,
+        string? version,
+        CancellationToken cancellationToken)
+    {
+        // Use existing ValidateCodeAsync for code validation
+        var codeValidation = await ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
+
+        // Determine severity based on binding strength and code validation result
+        var (isValid, severity, message) = DetermineSeverity(strength, codeValidation);
+
+        // For display validation, we don't have CodeSystem lookups in memory, so return null
+        return new BindingValidationResult(
+            IsValid: isValid,
+            Strength: strength,
+            Severity: severity,
+            Message: message,
+            SuggestedDisplay: null); // In-memory service doesn't have CodeSystem definitions
+    }
+
+    /// <summary>
+    /// $translate operation is not supported by the in-memory implementation.
+    /// Returns no matches.
+    /// </summary>
+    public Task<TranslateResult> TranslateCodeAsync(
+        TranslateParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult(new TranslateResult(
+            Result: false,
+            Message: "ConceptMap translation not supported in in-memory terminology service",
+            Matches: Array.Empty<TranslateMatch>()));
+    }
+
+    /// <summary>
+    /// $subsumes operation is not supported by the in-memory implementation.
+    /// Returns not-subsumed.
+    /// </summary>
+    public Task<SubsumesResult> SubsumesAsync(
+        SubsumesParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult(new SubsumesResult("not-subsumed"));
+    }
+
+    /// <summary>
+    /// Determines validation result severity based on binding strength and code validation outcome.
+    /// </summary>
+    private static (bool IsValid, IssueSeverity Severity, string? Message) DetermineSeverity(
+        BindingStrength strength,
+        TerminologyValidationResult codeValidation)
+    {
+        return strength switch
+        {
+            BindingStrength.Required => codeValidation.IsValid
+                ? (true, IssueSeverity.Information, null)
+                : (false, IssueSeverity.Error, codeValidation.Message),
+
+            BindingStrength.Extensible => codeValidation.IsValid
+                ? (true, IssueSeverity.Information, null)
+                : (true, IssueSeverity.Warning, codeValidation.Message), // Warning, not error for extensible
+
+            BindingStrength.Preferred => (true, IssueSeverity.Information, codeValidation.Message),
+
+            BindingStrength.Example => (true, IssueSeverity.Information, null), // No validation for examples
+
+            _ => (true, IssueSeverity.Warning, "Unknown binding strength")
+        };
+    }
+
+    /// <summary>
+    /// Import status checking is not supported by the in-memory implementation.
+    /// Always returns null (resource not found in terminology import system).
+    /// </summary>
+    public Task<TerminologyImportStatus?> GetImportStatusAsync(
+        string canonical,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<TerminologyImportStatus?>(null);
     }
 }

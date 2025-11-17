@@ -8,6 +8,7 @@ using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Medino;
@@ -39,7 +40,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<ValidateResourceResult> HandleAsync(
+    public async Task<ValidateResourceResult> HandleAsync(
         ValidateResourceCommand request,
         CancellationToken cancellationToken)
     {
@@ -156,7 +157,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                     issue = issues.ToArray()
                 };
                 var deleteJson = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(deleteOutcome));
-                return Task.FromResult(new ValidateResourceResult(deleteJson ?? throw new InvalidOperationException("Failed to serialize OperationOutcome")));
+                return new ValidateResourceResult(deleteJson ?? throw new InvalidOperationException("Failed to serialize OperationOutcome"));
             }
 
             // Determine which schema to use
@@ -216,6 +217,27 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                             diagnostics = issue.Message,
                             expression = string.IsNullOrEmpty(issue.Path) ? null : issue.Path  // Note: 'location' is deprecated, only use 'expression'
                         });
+                    }
+                }
+
+                // After structural validation, add terminology binding validation
+                if (request.ValidationMode != ValidationMode.Minimal)
+                {
+                    var terminologyIssues = await ValidateTerminologyBindingsAsync(
+                        resourceType,
+                        request.JsonNode,
+                        request.ValidationMode,
+                        cancellationToken);
+
+                    // Merge terminology issues into operation outcome
+                    if (terminologyIssues.Count > 0)
+                    {
+                        _logger.LogDebug(
+                            "Terminology validation found {IssueCount} issue(s) for {ResourceType}",
+                            terminologyIssues.Count,
+                            resourceType);
+
+                        issues.AddRange(terminologyIssues);
                     }
                 }
 
@@ -410,7 +432,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
             throw new InvalidOperationException("Failed to serialize OperationOutcome");
         }
 
-        return Task.FromResult(new ValidateResourceResult(operationOutcomeJson));
+        return new ValidateResourceResult(operationOutcomeJson);
     }
 
     private static ValidationTier ParseValidationTier(string? tier)
@@ -463,5 +485,145 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
             // Default to processing for unknown codes
             _ => "processing"
         };
+    }
+
+    /// <summary>
+    /// Validates terminology bindings for common coded elements based on ValidationMode.
+    /// </summary>
+    private async Task<List<object>> ValidateTerminologyBindingsAsync(
+        string resourceType,
+        ResourceJsonNode resource,
+        ValidationMode validationMode,
+        CancellationToken cancellationToken)
+    {
+        var issues = new List<object>();
+
+        // Skip terminology validation for Minimal mode
+        if (validationMode == ValidationMode.Minimal)
+        {
+            return issues;
+        }
+
+        // Define bindings for common coded elements (hard-coded for MVP)
+        var bindings = GetKnownBindings(resourceType);
+
+        foreach (var (elementPath, valueSetUrl, strength) in bindings)
+        {
+            // Skip extensible bindings in Normal mode (only validate in Full mode)
+            if (validationMode == ValidationMode.Normal && strength == Ignixa.Validation.Abstractions.BindingStrength.Extensible)
+            {
+                continue;
+            }
+
+            // Extract coded value from resource
+            var codedValue = ExtractCodedValue(resource, elementPath);
+            if (codedValue == null)
+            {
+                continue; // Element not present in resource
+            }
+
+            // Validate binding
+            var result = await _terminologyService.ValidateBindingAsync(
+                valueSetUrl,
+                strength,
+                codedValue.Value.System,
+                codedValue.Value.Code,
+                codedValue.Value.Display,
+                version: null,
+                cancellationToken);
+
+            // Add issue if validation failed or has warnings
+            if (!result.IsValid || result.Severity != IssueSeverity.Information)
+            {
+                issues.Add(new
+                {
+                    severity = MapSeverity(result.Severity),
+                    code = result.Severity == IssueSeverity.Error ? "code-invalid" : "business-rule",
+                    diagnostics = result.Message,
+                    expression = elementPath
+                });
+            }
+        }
+
+        return issues;
+    }
+
+    /// <summary>
+    /// Returns known bindings for common coded elements by resource type.
+    /// </summary>
+    private static List<(string ElementPath, string ValueSetUrl, Ignixa.Validation.Abstractions.BindingStrength Strength)> GetKnownBindings(string resourceType)
+    {
+        return resourceType switch
+        {
+            "Patient" => new List<(string, string, Ignixa.Validation.Abstractions.BindingStrength)>
+            {
+                ("Patient.gender", "http://hl7.org/fhir/ValueSet/administrative-gender", Ignixa.Validation.Abstractions.BindingStrength.Required),
+                ("Patient.maritalStatus.coding", "http://hl7.org/fhir/ValueSet/marital-status", Ignixa.Validation.Abstractions.BindingStrength.Extensible),
+            },
+            "Observation" => new List<(string, string, Ignixa.Validation.Abstractions.BindingStrength)>
+            {
+                ("Observation.status", "http://hl7.org/fhir/ValueSet/observation-status", Ignixa.Validation.Abstractions.BindingStrength.Required),
+            },
+            "Condition" => new List<(string, string, Ignixa.Validation.Abstractions.BindingStrength)>
+            {
+                ("Condition.clinicalStatus.coding", "http://hl7.org/fhir/ValueSet/condition-clinical", Ignixa.Validation.Abstractions.BindingStrength.Required),
+                ("Condition.verificationStatus.coding", "http://hl7.org/fhir/ValueSet/condition-ver-status", Ignixa.Validation.Abstractions.BindingStrength.Required),
+            },
+            _ => new List<(string, string, Ignixa.Validation.Abstractions.BindingStrength)>()
+        };
+    }
+
+    /// <summary>
+    /// Extracts coded value from resource at given element path.
+    /// </summary>
+    private static (string? System, string? Code, string? Display)? ExtractCodedValue(
+        ResourceJsonNode resource,
+        string elementPath)
+    {
+        try
+        {
+            var parts = elementPath.Split('.');
+            JsonNode? current = resource.MutableNode;
+
+            // Navigate to element (e.g., "Patient.gender" or "Patient.maritalStatus.coding")
+            for (int i = 1; i < parts.Length; i++) // Skip resource type (parts[0])
+            {
+                var part = parts[i];
+                current = current?[part];
+                if (current == null) return null;
+            }
+
+            // Handle different coded element types
+            if (elementPath.EndsWith(".coding", StringComparison.Ordinal))
+            {
+                // CodeableConcept.coding (array)
+                var codingArray = current?.AsArray();
+                if (codingArray == null || codingArray.Count == 0) return null;
+
+                var firstCoding = codingArray[0];
+                return (
+                    System: firstCoding?["system"]?.GetValue<string>(),
+                    Code: firstCoding?["code"]?.GetValue<string>(),
+                    Display: firstCoding?["display"]?.GetValue<string>()
+                );
+            }
+            else
+            {
+                // Simple code element (e.g., Patient.gender)
+                var code = current?.GetValue<string>();
+                if (code == null) return null;
+
+                // For simple code elements, system will be inferred by terminology service
+                return (
+                    System: null,
+                    Code: code,
+                    Display: null
+                );
+            }
+        }
+        catch
+        {
+            return null; // Ignore extraction errors
+        }
     }
 }

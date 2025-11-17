@@ -5,6 +5,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
+using Ignixa.DataLayer.SqlEntityFramework.Entities.Terminology;
 
 namespace Ignixa.DataLayer.SqlEntityFramework;
 
@@ -104,6 +105,38 @@ public class FhirDbContext : DbContext
     /// </summary>
     public DbSet<PackageResourceEntity> PackageResources { get; set; } = null!;
 
+    // Terminology tables (Phase 1)
+
+    /// <summary>
+    /// Gets or sets the TermCodeSystems table (CodeSystem metadata for fast lookups).
+    /// </summary>
+    public DbSet<TermCodeSystemEntity> TermCodeSystems { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TermConcepts table (individual concepts/codes from CodeSystems).
+    /// </summary>
+    public DbSet<TermConceptEntity> TermConcepts { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TermValueSets table (ValueSet metadata and expansion tracking).
+    /// </summary>
+    public DbSet<TermValueSetEntity> TermValueSets { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TermValueSetExpansions table (pre-computed ValueSet expansions).
+    /// </summary>
+    public DbSet<TermValueSetExpansionEntity> TermValueSetExpansions { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TermConceptMaps table (ConceptMap metadata for code translation).
+    /// </summary>
+    public DbSet<TermConceptMapEntity> TermConceptMaps { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TermConceptMapElements table (individual mapping elements for $translate).
+    /// </summary>
+    public DbSet<TermConceptMapElementEntity> TermConceptMapElements { get; set; } = null!;
+
     /// <summary>
     /// Configures database provider options and warnings.
     /// </summary>
@@ -136,6 +169,7 @@ public class FhirDbContext : DbContext
         ConfigureSearchParamEntities(modelBuilder);
         ConfigureBackgroundJobEntity(modelBuilder);
         ConfigurePackageResourceEntity(modelBuilder);
+        ConfigureTerminologyEntities(modelBuilder);
     }
 
     private static void ConfigureResourceEntity(ModelBuilder modelBuilder)
@@ -438,5 +472,235 @@ public class FhirDbContext : DbContext
         // Default value for IsActive
         entity.Property(pr => pr.IsActive)
             .HasDefaultValue(true);
+    }
+
+    private static void ConfigureTerminologyEntities(ModelBuilder modelBuilder)
+    {
+        ConfigureTermCodeSystemEntity(modelBuilder);
+        ConfigureTermConceptEntity(modelBuilder);
+        ConfigureTermValueSetEntity(modelBuilder);
+        ConfigureTermValueSetExpansionEntity(modelBuilder);
+        ConfigureTermConceptMapEntity(modelBuilder);
+        ConfigureTermConceptMapElementEntity(modelBuilder);
+    }
+
+    private static void ConfigureTermCodeSystemEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<TermCodeSystemEntity>();
+
+        // Primary key
+        entity.HasKey(tcs => tcs.TermCodeSystemId)
+            .HasName("PK_TermCodeSystem");
+
+        // Foreign keys
+        entity.HasOne(tcs => tcs.PackageResource)
+            .WithMany()
+            .HasForeignKey(tcs => tcs.PackageResourceId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_TermCodeSystem_PackageResource");
+
+        entity.HasOne(tcs => tcs.System)
+            .WithMany()
+            .HasForeignKey(tcs => tcs.SystemId)
+            .OnDelete(DeleteBehavior.NoAction)  // Don't cascade delete System records
+            .HasConstraintName("FK_TermCodeSystem_System");
+
+        // Unique constraint: One CodeSystem per system + version
+        entity.HasIndex(tcs => new { tcs.SystemId, tcs.Version })
+            .IsUnique()
+            .HasDatabaseName("UQ_TermCodeSystem_System_Version")
+            .HasFilter("[Version] IS NOT NULL");
+
+        // Index for lookups by PackageResourceId
+        entity.HasIndex(tcs => tcs.PackageResourceId)
+            .HasDatabaseName("IX_TermCodeSystem_PackageResourceId");
+
+        // Default value for ImportedDate
+        entity.Property(tcs => tcs.ImportedDate)
+            .HasDefaultValueSql("GETUTCDATE()");
+    }
+
+    private static void ConfigureTermConceptEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<TermConceptEntity>();
+
+        // Primary key
+        entity.HasKey(tc => tc.TermConceptId)
+            .HasName("PK_TermConcept");
+
+        // Foreign keys
+        entity.HasOne(tc => tc.CodeSystem)
+            .WithMany()
+            .HasForeignKey(tc => tc.TermCodeSystemId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_TermConcept_CodeSystem");
+
+        entity.HasOne(tc => tc.ParentConcept)
+            .WithMany()
+            .HasForeignKey(tc => tc.ParentConceptId)
+            .OnDelete(DeleteBehavior.NoAction)  // Prevent cascade delete loops
+            .HasConstraintName("FK_TermConcept_Parent");
+
+        // Unique constraint: One code per CodeSystem
+        entity.HasIndex(tc => new { tc.TermCodeSystemId, tc.Code })
+            .IsUnique()
+            .HasDatabaseName("UQ_TermConcept_CodeSystem_Code");
+
+        // Index for $lookup queries (system + code)
+        entity.HasIndex(tc => new { tc.TermCodeSystemId, tc.Code, tc.IsActive })
+            .HasDatabaseName("IX_TermConcept_CodeSystem_Code_Active")
+            .IncludeProperties(tc => new { tc.Display, tc.Definition });
+
+        // Index for hierarchy queries ($subsumes)
+        entity.HasIndex(tc => new { tc.ParentConceptId, tc.Level })
+            .HasDatabaseName("IX_TermConcept_Parent")
+            .IncludeProperties(tc => new { tc.Code, tc.Display })
+            .HasFilter("[ParentConceptId] IS NOT NULL");
+
+        // Index for display search (filter:text)
+        entity.HasIndex(tc => tc.Display)
+            .HasDatabaseName("IX_TermConcept_Display")
+            .IncludeProperties(tc => new { tc.TermCodeSystemId, tc.Code })
+            .HasFilter("[Display] IS NOT NULL");
+    }
+
+    private static void ConfigureTermValueSetEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<TermValueSetEntity>();
+
+        // Primary key
+        entity.HasKey(tvs => tvs.TermValueSetId)
+            .HasName("PK_TermValueSet");
+
+        // Foreign key
+        entity.HasOne(tvs => tvs.PackageResource)
+            .WithMany()
+            .HasForeignKey(tvs => tvs.PackageResourceId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_TermValueSet_PackageResource");
+
+        // Unique constraint: One ValueSet per canonical + version
+        entity.HasIndex(tvs => new { tvs.Canonical, tvs.Version })
+            .IsUnique()
+            .HasDatabaseName("UQ_TermValueSet_Canonical_Version")
+            .HasFilter("[Version] IS NOT NULL");
+
+        // Index for lookups by canonical URL (without version)
+        entity.HasIndex(tvs => tvs.Canonical)
+            .HasDatabaseName("IX_TermValueSet_Canonical")
+            .IncludeProperties(tvs => new { tvs.Version, tvs.IsExpanded });
+
+        // Index for finding unexpanded ValueSets (for background import)
+        entity.HasIndex(tvs => tvs.IsExpanded)
+            .HasDatabaseName("IX_TermValueSet_Expanded")
+            .HasFilter("[IsExpanded] = 0");
+
+        // Default value for ImportedDate
+        entity.Property(tvs => tvs.ImportedDate)
+            .HasDefaultValueSql("GETUTCDATE()");
+    }
+
+    private static void ConfigureTermValueSetExpansionEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<TermValueSetExpansionEntity>();
+
+        // Primary key
+        entity.HasKey(tvse => tvse.TermValueSetExpansionId)
+            .HasName("PK_TermValueSetExpansion");
+
+        // Foreign keys
+        entity.HasOne(tvse => tvse.ValueSet)
+            .WithMany()
+            .HasForeignKey(tvse => tvse.TermValueSetId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_TermValueSetExpansion_ValueSet");
+
+        entity.HasOne(tvse => tvse.System)
+            .WithMany()
+            .HasForeignKey(tvse => tvse.SystemId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .HasConstraintName("FK_TermValueSetExpansion_System");
+
+        // Index for $expand queries (get all codes in ValueSet)
+        entity.HasIndex(tvse => new { tvse.TermValueSetId, tvse.Ordinal })
+            .HasDatabaseName("IX_TermValueSetExpansion_ValueSet_Ordinal")
+            .IncludeProperties(tvse => new { tvse.SystemId, tvse.Code, tvse.Display })
+            .HasFilter("[IsActive] = 1");
+
+        // Index for $validate-code queries (check if code is in ValueSet)
+        entity.HasIndex(tvse => new { tvse.TermValueSetId, tvse.SystemId, tvse.Code })
+            .HasDatabaseName("IX_TermValueSetExpansion_ValueSet_System_Code")
+            .HasFilter("[IsActive] = 1");
+
+        // Index for filter:text searches on display
+        entity.HasIndex(tvse => tvse.Display)
+            .HasDatabaseName("IX_TermValueSetExpansion_Display")
+            .IncludeProperties(tvse => new { tvse.TermValueSetId, tvse.SystemId, tvse.Code })
+            .HasFilter("[Display] IS NOT NULL AND [IsActive] = 1");
+    }
+
+    private static void ConfigureTermConceptMapEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<TermConceptMapEntity>();
+
+        // Primary key
+        entity.HasKey(tcm => tcm.TermConceptMapId)
+            .HasName("PK_TermConceptMap");
+
+        // Foreign key
+        entity.HasOne(tcm => tcm.PackageResource)
+            .WithMany()
+            .HasForeignKey(tcm => tcm.PackageResourceId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_TermConceptMap_PackageResource");
+
+        // Unique constraint: One ConceptMap per canonical + version
+        entity.HasIndex(tcm => new { tcm.Canonical, tcm.Version })
+            .IsUnique()
+            .HasDatabaseName("UQ_TermConceptMap_Canonical_Version")
+            .HasFilter("[Version] IS NOT NULL");
+
+        // Default value for ImportedDate
+        entity.Property(tcm => tcm.ImportedDate)
+            .HasDefaultValueSql("GETUTCDATE()");
+    }
+
+    private static void ConfigureTermConceptMapElementEntity(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<TermConceptMapElementEntity>();
+
+        // Primary key
+        entity.HasKey(tcme => tcme.TermConceptMapElementId)
+            .HasName("PK_TermConceptMapElement");
+
+        // Foreign keys
+        entity.HasOne(tcme => tcme.ConceptMap)
+            .WithMany()
+            .HasForeignKey(tcme => tcme.TermConceptMapId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_TermConceptMapElement_ConceptMap");
+
+        entity.HasOne(tcme => tcme.SourceSystem)
+            .WithMany()
+            .HasForeignKey(tcme => tcme.SourceSystemId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .HasConstraintName("FK_TermConceptMapElement_SourceSystem");
+
+        entity.HasOne(tcme => tcme.TargetSystem)
+            .WithMany()
+            .HasForeignKey(tcme => tcme.TargetSystemId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .HasConstraintName("FK_TermConceptMapElement_TargetSystem");
+
+        // Index for $translate queries (source → target)
+        entity.HasIndex(tcme => new { tcme.SourceSystemId, tcme.SourceCode })
+            .HasDatabaseName("IX_TermConceptMapElement_Source")
+            .IncludeProperties(tcme => new { tcme.TermConceptMapId, tcme.TargetSystemId, tcme.TargetCode, tcme.Equivalence });
+
+        // Index for reverse $translate (target → source)
+        entity.HasIndex(tcme => new { tcme.TargetSystemId, tcme.TargetCode })
+            .HasDatabaseName("IX_TermConceptMapElement_Target")
+            .IncludeProperties(tcme => new { tcme.TermConceptMapId, tcme.SourceSystemId, tcme.SourceCode, tcme.Equivalence })
+            .HasFilter("[TargetSystemId] IS NOT NULL");
     }
 }

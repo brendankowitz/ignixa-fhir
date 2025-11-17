@@ -608,10 +608,34 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         })
         .SingleInstance();
 
-    // Register InMemoryTerminologyService (basic terminology validation)
+    // TERMINOLOGY SERVICES - HYBRID ROUTING (Phase 2 Week 3 - ADR-2533)
+    // HybridTerminologyService routes to SQL (fast) when terminology is imported,
+    // falls back to InMemoryTerminologyService (JSON) when not imported
+
+    // Register InMemoryTerminologyService as fallback for non-imported terminology
     containerBuilder.RegisterType<Ignixa.Validation.Services.InMemoryTerminologyService>()
-        .As<Ignixa.Validation.Abstractions.ITerminologyService>()
+        .AsSelf()
         .SingleInstance();
+
+    // Register SqlTerminologyService as concrete type (dependency for HybridTerminologyService)
+    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Terminology.SqlTerminologyService>()
+        .AsSelf()
+        .InstancePerLifetimeScope();
+
+    // Register HybridTerminologyService as ITerminologyService
+    // Routes to SQL (fast) when terminology is imported, fallback to JSON parsing otherwise
+    containerBuilder.Register<Ignixa.Validation.Abstractions.ITerminologyService>(c =>
+    {
+        var sqlService = c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Terminology.SqlTerminologyService>();
+        var fallbackService = c.Resolve<Ignixa.Validation.Services.InMemoryTerminologyService>();
+        var logger = c.Resolve<ILogger<Ignixa.DataLayer.SqlEntityFramework.Terminology.HybridTerminologyService>>();
+
+        return new Ignixa.DataLayer.SqlEntityFramework.Terminology.HybridTerminologyService(
+            sqlService,
+            fallbackService,
+            logger);
+    })
+    .InstancePerLifetimeScope(); // Share within request scope for caching efficiency
 
     // PACKAGE MANAGEMENT (ADR-2532 Phase 1: Package Integration)
     // Provides NPM package download, extraction, and conformance resource caching
@@ -801,6 +825,30 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // and bundle processing will fail with "SearchParam URL not found" warnings
     containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedSearchParameterSyncHandler>()
         .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
+        .InstancePerDependency();
+
+    // Register PackageLoadedTerminologyImportHandler for automatic terminology import after package load
+    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedTerminologyImportHandler>()
+        .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
+        .InstancePerDependency();
+
+    // Register TerminologyImportTriggeredHandler to start DurableTask orchestration
+    containerBuilder.RegisterType<Ignixa.Application.BackgroundOperations.Terminology.EventHandlers.TerminologyImportTriggeredHandler>()
+        .As<INotificationHandler<Ignixa.Application.Events.Terminology.TerminologyImportTriggeredEvent>>()
+        .InstancePerDependency();
+
+    // TERMINOLOGY SERVICES (Phase 2 Week 3 - ADR-2533: FHIR Terminology Services)
+    // Provides CodeSystem/ValueSet/ConceptMap import from packages into SQL tables
+
+    // Register SqlSystemRepository for system URL normalization
+    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Repositories.SqlSystemRepository>()
+        .As<ISystemRepository>()
+        .InstancePerDependency();
+
+    // Register SqlCodeSystemImporter for terminology resource import
+    // Week 3: CodeSystem import only (ValueSet/ConceptMap in Week 4)
+    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Features.Terminology.SqlCodeSystemImporter>()
+        .As<Ignixa.Domain.Terminology.ITerminologyImporter>()
         .InstancePerDependency();
 
     // Register bundle processing services

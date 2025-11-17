@@ -102,4 +102,48 @@ public class PackageResourceEntity
     [Required]
     [Column("IsActive")]
     public bool IsActive { get; set; } = true;
+
+    // -------------------------------------------------------------------------------------------------
+    // Terminology Import Tracking (Phase 1)
+    // -------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Status of terminology import for this resource (only applies to CodeSystem, ValueSet, ConceptMap).
+    /// Null for non-terminology resources (StructureDefinition, SearchParameter, etc.).
+    /// </summary>
+    [Column("TerminologyImportStatus")]
+    [MaxLength(20)]
+    public string? TerminologyImportStatus { get; set; }
+
+    /// <summary>
+    /// SHA256 hash of ResourceJson content to detect changes and avoid re-importing unchanged resources.
+    /// </summary>
+    [Column("ContentHash")]
+    [MaxLength(64)]
+    public string? ContentHash { get; set; }
+
+    /// <summary>
+    /// When terminology import started (null if not started).
+    /// </summary>
+    [Column("ImportStartDate")]
+    public DateTimeOffset? ImportStartDate { get; set; }
+
+    /// <summary>
+    /// When terminology import completed (null if not completed).
+    /// </summary>
+    [Column("ImportCompletedDate")]
+    public DateTimeOffset? ImportCompletedDate { get; set; }
+
+    /// <summary>
+    /// Error message if import failed (null if succeeded or pending).
+    /// </summary>
+    [Column("ImportErrorMessage")]
+    [MaxLength(1000)]
+    public string? ImportErrorMessage { get; set; }
+
+    /// <summary>
+    /// Number of concepts/codes imported (for CodeSystem/ValueSet).
+    /// </summary>
+    [Column("ImportedConceptCount")]
+    public int? ImportedConceptCount { get; set; }
 }

@@ -69,4 +69,67 @@ public class PackageResource
     /// Allows soft-deletion of packages without data loss.
     /// </summary>
     public bool IsActive { get; set; } = true;
+
+    // -------------------------------------------------------------------------------------------------
+    // Terminology Import Tracking (Phase 1)
+    // -------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Status of terminology import for this resource (only applies to CodeSystem, ValueSet, ConceptMap).
+    /// Null for non-terminology resources (StructureDefinition, SearchParameter, etc.).
+    /// </summary>
+    public Terminology.TerminologyImportStatus? TerminologyImportStatus { get; set; }
+
+    /// <summary>
+    /// SHA256 hash of ResourceJson content to detect changes and avoid re-importing unchanged resources.
+    /// Computed when resource is first loaded or updated.
+    /// </summary>
+    public string? ContentHash { get; set; }
+
+    /// <summary>
+    /// When terminology import started (null if not started).
+    /// Used to detect stalled imports.
+    /// </summary>
+    public DateTimeOffset? ImportStartDate { get; set; }
+
+    /// <summary>
+    /// When terminology import completed (null if not completed).
+    /// Indicates successful extraction to TermCodeSystem/TermValueSet/TermConceptMap tables.
+    /// </summary>
+    public DateTimeOffset? ImportCompletedDate { get; set; }
+
+    /// <summary>
+    /// Error message if import failed (null if succeeded or pending).
+    /// Contains exception message and stack trace for troubleshooting.
+    /// </summary>
+    public string? ImportErrorMessage { get; set; }
+
+    /// <summary>
+    /// Number of concepts/codes imported (for CodeSystem/ValueSet).
+    /// Used for progress tracking and metrics.
+    /// </summary>
+    public int? ImportedConceptCount { get; set; }
+
+    // -------------------------------------------------------------------------------------------------
+    // Helper Methods
+    // -------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns true if this resource is a terminology resource (CodeSystem, ValueSet, ConceptMap).
+    /// </summary>
+    public bool IsTerminologyResource()
+    {
+        return ResourceType is "CodeSystem" or "ValueSet" or "ConceptMap";
+    }
+
+    /// <summary>
+    /// Computes SHA256 hash of ResourceJson for change detection.
+    /// Use this to set ContentHash after loading or updating a resource.
+    /// </summary>
+    public string ComputeContentHash()
+    {
+        byte[] contentBytes = System.Text.Encoding.UTF8.GetBytes(ResourceJson);
+        byte[] hashBytes = System.Security.Cryptography.SHA256.HashData(contentBytes);
+        return Convert.ToHexString(hashBytes);
+    }
 }

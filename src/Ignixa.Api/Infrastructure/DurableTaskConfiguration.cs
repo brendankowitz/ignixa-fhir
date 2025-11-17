@@ -6,9 +6,11 @@ using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
 using Ignixa.DataLayer.FileSystem.DurableTask;
 using ExportCompleteJobActivity = Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity;
 using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activities;
+using TerminologyActivities = Ignixa.Application.BackgroundOperations.Terminology.Activities;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -43,6 +45,7 @@ public static class DurableTaskConfiguration
             // Register orchestrations
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
             worker.AddTaskOrchestrations(typeof(ImportOrchestration));
+            worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
 
             // Register Export activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<SearchAndWriteChunkActivity>(sp);
@@ -53,6 +56,9 @@ public static class DurableTaskConfiguration
             worker.AddTaskActivitiesFromInterface<ImportActivities.StreamingImportFileActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ImportActivities.UpdateProgressActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ImportActivities.CompleteJobActivity>(sp);
+
+            // Register Terminology activities with service provider for DI
+            worker.AddTaskActivitiesFromInterface<TerminologyActivities.ImportTerminologyResourceActivity>(sp);
 
             return worker;
         });

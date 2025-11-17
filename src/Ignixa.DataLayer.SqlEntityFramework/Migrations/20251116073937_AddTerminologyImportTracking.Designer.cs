@@ -4,6 +4,7 @@ using Ignixa.DataLayer.SqlEntityFramework;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
 {
     [DbContext(typeof(FhirDbContext))]
-    partial class FhirDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251116073937_AddTerminologyImportTracking")]
+    partial class AddTerminologyImportTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -6,9 +6,11 @@
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Operations.Features.Validate;
+using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Validation.Abstractions;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
@@ -28,6 +30,7 @@ public static class OperationEndpoints
     /// - POST /$validate - System-level validation (any resource type)
     /// - POST /{resourceType}/$validate - Type-level validation
     /// - POST /{resourceType}/{id}/$validate - Instance-level validation
+    /// - GET /ValueSet/$expand - Expand a ValueSet to a list of codes
     /// </summary>
     public static IEndpointRouteBuilder MapOperationEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -89,6 +92,219 @@ public static class OperationEndpoints
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // GET /ValueSet/$expand - Expand a ValueSet to a list of codes
+        endpoints.MapGet("/ValueSet/$expand", async (
+            HttpContext httpContext,
+            [FromQuery] string? url,
+            [FromQuery] string? filter,
+            [FromQuery] int? count,
+            [FromQuery] int? offset,
+            [FromServices] ITerminologyService terminologyService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return Results.BadRequest(CreateOperationOutcomeError(
+                    "error",
+                    "required",
+                    "Parameter 'url' is required"));
+            }
+
+            var parameters = new ExpansionParameters(
+                Url: url,
+                Filter: filter,
+                Count: count,
+                Offset: offset,
+                IncludeDesignations: false);
+
+            var result = await terminologyService.ExpandValueSetAsync(parameters, cancellationToken);
+
+            if (result == null)
+            {
+                return Results.NotFound(CreateOperationOutcomeError(
+                    "error",
+                    "not-found",
+                    $"ValueSet '{url}' not found or not expanded"));
+            }
+
+            // Convert to FHIR ValueSet resource with expansion
+            var valueSetJson = new
+            {
+                resourceType = "ValueSet",
+                url,
+                expansion = new
+                {
+                    identifier = result.Identifier,
+                    timestamp = result.Timestamp.ToString("o"),
+                    total = result.Total,
+                    offset = result.Offset,
+                    contains = result.Contains.Select(c => new
+                    {
+                        system = c.System,
+                        code = c.Code,
+                        display = c.Display,
+                        version = c.Version,
+                        inactive = c.Inactive
+                    }).ToList()
+                }
+            };
+
+            return Results.Ok(valueSetJson);
+        })
+        .WithName("ExpandValueSet")
+        .WithTags("Operations")
+        .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+        .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+        .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "$expand - Expand a ValueSet to a list of codes";
+            operation.Description = "Returns the expansion of a ValueSet (list of codes). Uses pre-computed expansions when available.";
+            return operation;
+        });
+
+        // POST /ConceptMap/$translate - Translate code using ConceptMap
+        endpoints.MapPost("/ConceptMap/$translate", async (
+            HttpContext httpContext,
+            [FromBody] TranslateRequestBody body,
+            [FromServices] ITerminologyService terminologyService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.Code) || string.IsNullOrWhiteSpace(body.System))
+            {
+                return Results.BadRequest(CreateOperationOutcomeError(
+                    "error",
+                    "required",
+                    "Parameters 'code' and 'system' are required"));
+            }
+
+            var parameters = new TranslateParameters(
+                Url: body.Url,
+                ConceptMapVersion: body.ConceptMapVersion,
+                Code: body.Code,
+                System: body.System,
+                Version: body.Version,
+                Source: body.Source,
+                Target: body.Target,
+                TargetSystem: body.TargetSystem,
+                Reverse: body.Reverse ?? false);
+
+            var result = await terminologyService.TranslateCodeAsync(parameters, cancellationToken);
+
+            // Convert to FHIR Parameters resource
+            var parameters_list = new List<object>
+            {
+                new
+                {
+                    name = "result",
+                    valueBoolean = result.Result
+                }
+            };
+
+            if (result.Message != null)
+            {
+                parameters_list.Add(new
+                {
+                    name = "message",
+                    valueString = result.Message
+                });
+            }
+
+            foreach (var match in result.Matches)
+            {
+                var parts = new List<object>
+                {
+                    new { name = "equivalence", valueCode = match.Equivalence },
+                    new { name = "concept", valueCoding = new
+                    {
+                        system = match.Concept.System,
+                        code = match.Concept.Code,
+                        display = match.Concept.Display
+                    }},
+                    new { name = "source", valueUri = match.Source }
+                };
+
+                if (match.Comment != null)
+                {
+                    parts.Add(new { name = "comment", valueString = match.Comment });
+                }
+
+                parameters_list.Add(new
+                {
+                    name = "match",
+                    part = parts
+                });
+            }
+
+            var parametersResponse = new
+            {
+                resourceType = "Parameters",
+                parameter = parameters_list
+            };
+
+            return Results.Ok(parametersResponse);
+        })
+        .WithName("TranslateCode")
+        .WithTags("Operations")
+        .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+        .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "$translate - Translate code using ConceptMap";
+            operation.Description = "Translates a code from one code system to another using ConceptMap resources.";
+            return operation;
+        });
+
+        // POST /CodeSystem/$subsumes - Test subsumption relationship between codes
+        endpoints.MapPost("/CodeSystem/$subsumes", async (
+            HttpContext httpContext,
+            [FromBody] SubsumesRequestBody body,
+            [FromServices] ITerminologyService terminologyService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.CodeA) || string.IsNullOrWhiteSpace(body.CodeB) || string.IsNullOrWhiteSpace(body.System))
+            {
+                return Results.BadRequest(CreateOperationOutcomeError(
+                    "error",
+                    "required",
+                    "Parameters 'codeA', 'codeB', and 'system' are required"));
+            }
+
+            var parameters = new SubsumesParameters(
+                CodeA: body.CodeA,
+                CodeB: body.CodeB,
+                System: body.System,
+                Version: body.Version);
+
+            var result = await terminologyService.SubsumesAsync(parameters, cancellationToken);
+
+            // Convert to FHIR Parameters resource
+            var parametersResponse = new
+            {
+                resourceType = "Parameters",
+                parameter = new[]
+                {
+                    new
+                    {
+                        name = "outcome",
+                        valueCode = result.Outcome
+                    }
+                }
+            };
+
+            return Results.Ok(parametersResponse);
+        })
+        .WithName("SubsumesCodes")
+        .WithTags("Operations")
+        .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+        .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "$subsumes - Test subsumption relationship between codes";
+            operation.Description = "Tests if codeA subsumes codeB, is subsumed by codeB, is equivalent, or has no relationship.";
+            return operation;
+        });
 
         return endpoints;
     }
@@ -299,14 +515,19 @@ public static class OperationEndpoints
             }
         }
 
+        // Parse ValidationMode from Prefer header
+        var preferHeader = context.Request.Headers["Prefer"].ToString();
+        var validationMode = ParseValidationModeFromPreferHeader(preferHeader);
+
         // Create validation command
         var command = new ValidateResourceCommand(
             tenantId,
             resourceType,
             jsonNode,
-            mode,
-            profile,
-            instanceId);
+            ValidationMode: validationMode,
+            Mode: mode,
+            Profile: profile,
+            InstanceId: instanceId);
 
         // Execute validation
         var result = await mediator.SendAsync(command, cancellationToken);
@@ -314,4 +535,60 @@ public static class OperationEndpoints
         // Return OperationOutcome
         return Results.Ok(result.OperationOutcome);
     }
+
+    /// <summary>
+    /// Parses ValidationMode from Prefer header.
+    /// Expects: Prefer: handling=strict, mode=minimal|normal|full
+    /// Defaults to Normal if not specified or invalid.
+    /// </summary>
+    private static ValidationMode ParseValidationModeFromPreferHeader(string? preferHeader)
+    {
+        if (string.IsNullOrWhiteSpace(preferHeader))
+        {
+            return ValidationMode.Normal; // Default to Normal per FHIR spec
+        }
+
+        // Parse "mode=minimal|normal|full" from Prefer header
+        // Example: "handling=strict, mode=full" → Full
+        var parts = preferHeader.Split(',', StringSplitOptions.TrimEntries);
+        var modePart = parts.FirstOrDefault(p => p.StartsWith("mode=", StringComparison.OrdinalIgnoreCase));
+
+        if (modePart == null)
+        {
+            return ValidationMode.Normal;
+        }
+
+        var modeValue = modePart.Substring(5).Trim(); // Remove "mode=" prefix
+
+        return modeValue.ToUpperInvariant() switch
+        {
+            "MINIMAL" => ValidationMode.Minimal,
+            "NORMAL" => ValidationMode.Normal,
+            "FULL" => ValidationMode.Full,
+            _ => ValidationMode.Normal // Unknown value, default to Normal
+        };
+    }
+
+    /// <summary>
+    /// Request body for $translate operation.
+    /// </summary>
+    private record TranslateRequestBody(
+        string? Url,
+        string? ConceptMapVersion,
+        string Code,
+        string System,
+        string? Version,
+        string? Source,
+        string? Target,
+        string? TargetSystem,
+        bool? Reverse);
+
+    /// <summary>
+    /// Request body for $subsumes operation.
+    /// </summary>
+    private record SubsumesRequestBody(
+        string CodeA,
+        string CodeB,
+        string System,
+        string? Version);
 }
