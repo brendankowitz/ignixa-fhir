@@ -5,6 +5,7 @@
 
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
+using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Models;
@@ -457,18 +458,29 @@ public static class OperationEndpoints
             Types: types,
             Count: count);
 
-        // Execute via mediator
+        // Execute via mediator (returns streaming IAsyncEnumerable<SearchEntryResult>)
         var result = await mediator.SendAsync(query, cancellationToken);
 
-        // TODO: Build Bundle response from SearchResourcesResult
-        // For now, return a simple message indicating the operation is working
-        // In production, this would serialize the bundle with all resources
-        return Results.Ok(new
-        {
-            resourceType = "Bundle",
-            type = "searchset",
-            total = result.Total,
-            entry = new[] { new { fullUrl = $"Patient/{patientId}", resource = new { resourceType = "Patient", id = patientId } } }
-        });
+        // Build base URL for link generation
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
+
+        // Set response headers
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
+
+        // Stream Bundle response using StreamingBundleSerializer
+        // This provides optimal memory efficiency by streaming results as they're retrieved
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream: context.Response.Body,
+            bundleType: "searchset",
+            total: result.Total,
+            entries: result.Resources,
+            searchOptions: result.SearchOptions!,
+            baseUrl: baseUrl,
+            queryString: context.Request.QueryString.Value ?? string.Empty,
+            pretty: false,
+            cancellationToken: cancellationToken);
+
+        // Response already written to the body, return empty result
+        return Results.Empty;
     }
 }

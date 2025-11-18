@@ -125,7 +125,9 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
         var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
-            ContinuationToken: null); // TODO: Implement paging token generation
+            ContinuationToken: null, // TODO: Implement paging token generation
+            HasMore: false, // TODO: Implement hasMore detection
+            SearchOptions: searchOptions); // Include SearchOptions for bundle serialization
 
         return Task.FromResult(result);
     }
