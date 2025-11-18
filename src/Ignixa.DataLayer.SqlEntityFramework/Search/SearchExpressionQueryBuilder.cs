@@ -22,6 +22,7 @@ public class SearchExpressionQueryBuilder
     private readonly SearchParameterQueryGenerator _parameterQueryGenerator;
     private readonly ChainedExpressionProcessor _chainedExpressionProcessor;
     private readonly CompartmentSearchQueryGenerator _compartmentQueryGenerator;
+    private readonly PatientEverythingQueryGenerator _patientEverythingQueryGenerator;
     private readonly ILogger<SearchExpressionQueryBuilder> _logger;
 
     /// <summary>
@@ -31,18 +32,21 @@ public class SearchExpressionQueryBuilder
     /// <param name="parameterQueryGenerator">The parameter query generator.</param>
     /// <param name="chainedExpressionProcessor">The chained expression processor.</param>
     /// <param name="compartmentQueryGenerator">The compartment query generator.</param>
+    /// <param name="patientEverythingQueryGenerator">The patient everything query generator.</param>
     /// <param name="logger">Logger instance.</param>
     public SearchExpressionQueryBuilder(
         FhirDbContext context,
         SearchParameterQueryGenerator parameterQueryGenerator,
         ChainedExpressionProcessor chainedExpressionProcessor,
         CompartmentSearchQueryGenerator compartmentQueryGenerator,
+        PatientEverythingQueryGenerator patientEverythingQueryGenerator,
         ILogger<SearchExpressionQueryBuilder> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _parameterQueryGenerator = parameterQueryGenerator ?? throw new ArgumentNullException(nameof(parameterQueryGenerator));
         _chainedExpressionProcessor = chainedExpressionProcessor ?? throw new ArgumentNullException(nameof(chainedExpressionProcessor));
         _compartmentQueryGenerator = compartmentQueryGenerator ?? throw new ArgumentNullException(nameof(compartmentQueryGenerator));
+        _patientEverythingQueryGenerator = patientEverythingQueryGenerator ?? throw new ArgumentNullException(nameof(patientEverythingQueryGenerator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -68,6 +72,7 @@ public class SearchExpressionQueryBuilder
             SearchParameterExpression searchParamExpr => await ApplySearchParameterExpressionAsync(baseQuery, resourceTypeId, searchParamExpr, ct),
             ChainedExpression chainedExpr => await ApplyChainedExpressionAsync(baseQuery, resourceTypeId, chainedExpr, ct),
             CompartmentSearchExpression compartmentExpr => await ApplyCompartmentSearchExpressionAsync(baseQuery, resourceTypeId, compartmentExpr, ct),
+            PatientEverythingExpression everythingExpr => await ApplyPatientEverythingExpressionAsync(baseQuery, resourceTypeId, everythingExpr, ct),
             UnionExpression unionExpr => await ApplyUnionExpressionAsync(baseQuery, resourceTypeId, unionExpr, ct),
             NotExpression notExpr => await ApplyNotExpressionAsync(baseQuery, resourceTypeId, notExpr, ct),
             MissingSearchParameterExpression missingExpr => await ApplyMissingSearchParameterExpressionAsync(baseQuery, resourceTypeId, missingExpr, ct),
@@ -161,6 +166,25 @@ public class SearchExpressionQueryBuilder
             expression.CompartmentType,
             expression.CompartmentId,
             resourceTypesToSearch,
+            ct);
+
+        // Filter base query by matching resource IDs
+        return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
+    }
+
+    private async Task<IQueryable<ResourceEntity>> ApplyPatientEverythingExpressionAsync(
+        IQueryable<ResourceEntity> baseQuery,
+        short resourceTypeId,
+        PatientEverythingExpression expression,
+        CancellationToken ct)
+    {
+        _logger.LogDebug(
+            "Processing Patient $everything expression for {PatientCount} patient(s)",
+            expression.PatientIds.Count);
+
+        // Use PatientEverythingQueryGenerator to build the optimized query
+        var matchingResourceIds = await _patientEverythingQueryGenerator.GeneratePatientEverythingQueryAsync(
+            expression,
             ct);
 
         // Filter base query by matching resource IDs

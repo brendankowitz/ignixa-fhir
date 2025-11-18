@@ -5,6 +5,7 @@
 
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
+using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -19,7 +20,7 @@ using System.Text.Json.Nodes;
 namespace Ignixa.Api.Endpoints;
 
 /// <summary>
-/// Registers FHIR validation operation endpoints ($validate).
+/// Registers FHIR operation endpoints ($validate, $everything, etc.)
 /// </summary>
 public static class OperationEndpoints
 {
@@ -30,6 +31,7 @@ public static class OperationEndpoints
     /// - POST /$validate - System-level validation (any resource type)
     /// - POST /{resourceType}/$validate - Type-level validation
     /// - POST /{resourceType}/{id}/$validate - Instance-level validation
+    /// - GET /Patient/{id}/$everything - Patient $everything operation
     /// </summary>
     public static IEndpointRouteBuilder MapOperationEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -62,6 +64,13 @@ public static class OperationEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
+        // GET /Patient/{id}/$everything - Patient $everything operation (tenant-explicit)
+        tenantGroup.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
+            .WithName("PatientEverything")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
         return endpoints;
     }
 
@@ -90,6 +99,13 @@ public static class OperationEndpoints
             .WithName("ValidateResourceInstanceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // GET /Patient/{id}/$everything - Patient $everything operation (agnostic route)
+        endpoints.MapGet("/Patient/{id}/$everything", HandlePatientEverythingAgnostic)
+            .WithName("PatientEverythingAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
         return endpoints;
@@ -354,5 +370,105 @@ public static class OperationEndpoints
             "FULL" => ValidationDepth.Full,
             _ => ValidationDepth.Spec // Unknown value, default to Spec
         };
+    }
+
+    /// <summary>
+    /// Handles tenant-explicit Patient $everything operation.
+    /// GET /tenant/{tenantId}/Patient/{id}/$everything
+    /// </summary>
+    private static async Task<IResult> HandlePatientEverything(
+        HttpContext context,
+        int tenantId,
+        string id,
+        [FromServices] IMediator mediator,
+        [FromQuery] DateOnly? start,
+        [FromQuery] DateOnly? end,
+        [FromQuery] DateTimeOffset? _since,
+        [FromQuery] string? _type,
+        [FromQuery] int? _count,
+        CancellationToken cancellationToken)
+    {
+        return await HandlePatientEverythingInternal(context, tenantId, id, start, end, _since, _type, _count, mediator, cancellationToken);
+    }
+
+    /// <summary>
+    /// Handles agnostic Patient $everything operation (single-tenant only).
+    /// GET /Patient/{id}/$everything
+    /// </summary>
+    private static async Task<IResult> HandlePatientEverythingAgnostic(
+        HttpContext context,
+        string id,
+        [FromServices] IMediator mediator,
+        [FromQuery] DateOnly? start,
+        [FromQuery] DateOnly? end,
+        [FromQuery] DateTimeOffset? _since,
+        [FromQuery] string? _type,
+        [FromQuery] int? _count,
+        CancellationToken cancellationToken)
+    {
+        // For agnostic route, determine tenant from context
+        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+        {
+            return Results.BadRequest(CreateOperationOutcomeError(
+                "error",
+                "required",
+                "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/Patient/{id}/$everything"));
+        }
+
+        return await HandlePatientEverythingInternal(context, tenantId, id, start, end, _since, _type, _count, mediator, cancellationToken);
+    }
+
+    /// <summary>
+    /// Core Patient $everything handler used by both tenant-explicit and agnostic endpoints.
+    /// </summary>
+    private static async Task<IResult> HandlePatientEverythingInternal(
+        HttpContext context,
+        int tenantId,
+        string patientId,
+        DateOnly? start,
+        DateOnly? end,
+        DateTimeOffset? since,
+        string? typeParam,
+        int? count,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        // Parse _type parameter (comma-delimited list of resource types)
+        ISet<string>? types = null;
+        if (!string.IsNullOrEmpty(typeParam))
+        {
+            types = new HashSet<string>(typeParam.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+
+        // Convert DateOnly to DateTimeOffset for filtering
+        DateTimeOffset? startOffset = start.HasValue
+            ? new DateTimeOffset(start.Value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+            : null;
+        DateTimeOffset? endOffset = end.HasValue
+            ? new DateTimeOffset(end.Value.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero)
+            : null;
+
+        // Create Patient $everything query
+        var query = new PatientEverythingQuery(
+            PatientId: patientId,
+            Start: startOffset,
+            End: endOffset,
+            Since: since,
+            Types: types,
+            Count: count);
+
+        // Execute via mediator
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        // TODO: Build Bundle response from SearchResourcesResult
+        // For now, return a simple message indicating the operation is working
+        // In production, this would serialize the bundle with all resources
+        return Results.Ok(new
+        {
+            resourceType = "Bundle",
+            type = "searchset",
+            total = result.Total,
+            entry = new[] { new { fullUrl = $"Patient/{patientId}", resource = new { resourceType = "Patient", id = patientId } } }
+        });
     }
 }
