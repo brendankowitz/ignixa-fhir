@@ -368,6 +368,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<IRequestHandler<Ignixa.Application.Operations.Features.Terminology.Subsumes.SubsumesQuery, Ignixa.Application.Operations.Features.Terminology.Subsumes.SubsumesQueryResult>>()
         .InstancePerDependency();
 
+    // Patient $everything operation (Phase 25: FHIR $everything)
+    containerBuilder.RegisterType<Ignixa.Application.Operations.Features.PatientEverything.PatientEverythingHandler>()
+        .As<IRequestHandler<Ignixa.Application.Operations.Features.PatientEverything.PatientEverythingQuery, SearchResourcesResult>>()
+        .InstancePerDependency();
+
     // Patch handlers (Phase 17 - ADR-2520: FHIR Patch operations)
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.PatchResourceHandler>()
         .As<IRequestHandler<Ignixa.Application.Features.Patch.PatchResourceCommand, ResourceWrapper?>>()

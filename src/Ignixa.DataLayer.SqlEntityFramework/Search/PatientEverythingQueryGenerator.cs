@@ -139,9 +139,10 @@ public class PatientEverythingQueryGenerator
 
         // Query for patient resources using batched IN clause
         // Use EF.Constant() to force inlining instead of JSON parameterization
+        // patientIds is already a IReadOnlyList, no need to call ToList()
         var query = from resource in _context.Resources
                     where resource.ResourceTypeId == patientTypeId
-                        && EF.Constant(patientIds.ToList()).Contains(resource.ResourceId)
+                        && EF.Constant(patientIds).Contains(resource.ResourceId)
                         && resource.IsDeleted == false
                     select resource.ResourceSurrogateId;
 
@@ -192,6 +193,9 @@ public class PatientEverythingQueryGenerator
     /// <summary>
     /// Applies date filters (start/end) to compartment resources.
     /// Filters resources based on clinical date search parameters.
+    /// NOTE: This uses INNER JOIN which excludes resources without date parameters.
+    /// Resources like Patient, RelatedPerson, etc. without date params will be excluded.
+    /// For a full $everything implementation, consider LEFT JOIN or resource-type-aware filtering.
     /// </summary>
     private IQueryable<long> ApplyDateFilters(
         IQueryable<long> baseQuery,
@@ -200,6 +204,7 @@ public class PatientEverythingQueryGenerator
     {
         // Filter using DateTimeSearchParam table for resources with clinical dates
         // Resources with date parameters: Encounter.period, Observation.effective[x], Procedure.performed[x], etc.
+        // INNER JOIN: Only includes resources that HAVE date parameters matching the filter
         var dateFilteredQuery = from resourceId in baseQuery
                                 join dateParam in _context.DateTimeSearchParams
                                     on resourceId equals dateParam.ResourceSurrogateId
@@ -236,16 +241,19 @@ public class PatientEverythingQueryGenerator
     private IQueryable<long> GetReferencedResourceIds(IQueryable<long> compartmentResourceIds)
     {
         // Get resource type IDs for referenced resource types
+        // ReferencedResourceTypes is already a HashSet, no need to call ToList()
         var referencedTypeIds = from rt in _context.ResourceTypes
-                                where EF.Constant(ReferencedResourceTypes.ToList()).Contains(rt.Name)
+                                where EF.Constant(ReferencedResourceTypes).Contains(rt.Name)
                                 select rt.ResourceTypeId;
 
         // Query ReferenceSearchParam for outbound references from compartment resources
         // to Practitioner, Organization, Location, Medication resources
+        // Filter out null ReferenceResourceSurrogateId values for safety
         var referencedIds = from refParam in _context.ReferenceSearchParams
                             where compartmentResourceIds.Contains(refParam.ResourceSurrogateId)
                                 && referencedTypeIds.Contains(refParam.ReferenceResourceTypeId)
-                            select refParam.ReferenceResourceSurrogateId;
+                                && refParam.ReferenceResourceSurrogateId != null
+                            select refParam.ReferenceResourceSurrogateId.Value;
 
         return referencedIds.Distinct();
     }

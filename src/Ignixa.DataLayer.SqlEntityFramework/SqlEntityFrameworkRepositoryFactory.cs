@@ -357,11 +357,17 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 parameterManager,
                 _loggerFactory.CreateLogger<Search.CompartmentSearchQueryGenerator>());
 
+            var patientEverythingQueryGenerator = new Search.PatientEverythingQueryGenerator(
+                dbContext,
+                compartmentQueryGenerator,
+                _loggerFactory.CreateLogger<Search.PatientEverythingQueryGenerator>());
+
             var queryBuilder = new Search.SearchExpressionQueryBuilder(
                 dbContext,
                 parameterQueryGenerator,
                 chainedExpressionProcessor,
                 compartmentQueryGenerator,
+                patientEverythingQueryGenerator,
                 _loggerFactory.CreateLogger<Search.SearchExpressionQueryBuilder>());
 
             var includeProcessor = new Search.IncludeProcessor(
