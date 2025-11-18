@@ -277,7 +277,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// <param name="repository">The repository to persist the Provenance resource.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     private async Task ProcessProvenanceAsync(
-        Serialization.SourceNodes.ResourceJsonNode provenanceTemplate,
+        ProvenanceJsonNode provenanceTemplate,
         UpdateResult mainResourceResult,
         FhirSpecification fhirVersion,
         IFhirSchemaProvider schemaProvider,
@@ -285,45 +285,29 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRepository repository,
         CancellationToken cancellationToken)
     {
-        // Clone the provenance node and add target reference
-        var provenanceJson = provenanceTemplate.SerializeToString();
-        var provenanceObject = JsonNode.Parse(provenanceJson)?.AsObject()
-            ?? throw new InvalidOperationException("Failed to parse Provenance resource from X-Provenance header");
-
         // Generate ID for the Provenance resource (using same strategy as main resource creation)
         var provenanceId = Guid.NewGuid().ToString();
 
         // Set ID on the provenance resource
-        provenanceObject["id"] = provenanceId;
+        provenanceTemplate.Id = provenanceId;
 
-        // Add target reference array with version-specific reference to the created/updated resource
-        var targetReference = $"{mainResourceResult.Key.ResourceType}/{mainResourceResult.Key.Id}/_history/{mainResourceResult.Key.VersionId}";
-        var targetArray = new JsonArray
-        {
-            new JsonObject
-            {
-                ["reference"] = targetReference
-            }
-        };
-        provenanceObject["target"] = targetArray;
+        // Add target reference with version-specific reference to the created/updated resource
+        // Uses type-safe AddTarget method from ProvenanceJsonNode
+        provenanceTemplate.AddTarget(
+            mainResourceResult.Key.ResourceType,
+            mainResourceResult.Key.Id,
+            mainResourceResult.Key.VersionId!);
 
         _logger.LogDebug(
-            "Created Provenance resource {ProvenanceId} with target reference: {TargetReference}",
+            "Created Provenance resource {ProvenanceId} with target reference: {TargetType}/{TargetId}/_history/{TargetVersion}",
             provenanceId,
-            targetReference);
-
-        // Parse back to ResourceJsonNode
-        var updatedProvenanceJson = provenanceObject.ToJsonString();
-        Serialization.SourceNodes.ResourceJsonNode provenanceNode;
-        using (var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(updatedProvenanceJson)))
-        {
-            provenanceNode = await Serialization.SourceNodes.JsonSourceNodeFactory.Parse(memoryStream);
-        }
+            mainResourceResult.Key.ResourceType,
+            mainResourceResult.Key.Id,
+            mainResourceResult.Key.VersionId);
 
         // Set meta values
-        provenanceNode.Meta.LastUpdated = DateTimeOffset.UtcNow;
-        provenanceNode.Meta.VersionId = "1";
-        provenanceNode.Id = provenanceId;
+        provenanceTemplate.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        provenanceTemplate.Meta.VersionId = "1";
 
         // Create ResourceWrapper for the Provenance resource
         var request = new ResourceRequest("POST", $"Provenance/{provenanceId}");
@@ -333,7 +317,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            var typedElement = provenanceNode.ToTypedElement(schemaProvider);
+            var typedElement = provenanceTemplate.ToTypedElement(schemaProvider);
             searchIndices = searchIndexer.Extract(typedElement);
 
             _logger.LogDebug(
@@ -352,9 +336,9 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         var provenanceWrapper = new ResourceWrapper(
             "Provenance",
             provenanceId,
-            provenanceNode.Meta.VersionId,
-            provenanceNode.Meta.LastUpdated.Value,
-            provenanceNode,
+            provenanceTemplate.Meta.VersionId!,
+            provenanceTemplate.Meta.LastUpdated!.Value,
+            provenanceTemplate, // ProvenanceJsonNode extends ResourceJsonNode, so this works
             request,
             false) // isDeleted
         {

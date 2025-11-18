@@ -434,7 +434,7 @@ public static class FhirEndpoints
         }
 
         // Extract X-Provenance header if present
-        ResourceJsonNode? provenanceResource = null;
+        ProvenanceJsonNode? provenanceResource = null;
         if (coordinator == null) // Only process provenance for standalone operations (not bundle operations)
         {
             provenanceResource = await ProvenanceHeaderHelper.TryParseProvenanceHeaderAsync(
@@ -811,7 +811,7 @@ public static class FhirEndpoints
         var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
 
         // Extract X-Provenance header if present
-        ResourceJsonNode? provenanceResource = null;
+        ProvenanceJsonNode? provenanceResource = null;
         if (coordinator == null) // Only process provenance for standalone operations (not bundle operations)
         {
             provenanceResource = await ProvenanceHeaderHelper.TryParseProvenanceHeaderAsync(

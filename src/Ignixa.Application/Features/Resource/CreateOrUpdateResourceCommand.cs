@@ -8,6 +8,7 @@ using Medino;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 
@@ -33,7 +34,7 @@ public record CreateOrUpdateResourceCommand(
     DeferredWriteCoordinator? Coordinator = null,
     string? IfMatch = null,
     ValidationDepth? ValidationDepthOverride = null,
-    ResourceJsonNode? ProvenanceResource = null) : IRequest<UpdateResult>, IRequireCapability
+    ProvenanceJsonNode? ProvenanceResource = null) : IRequest<UpdateResult>, IRequireCapability
 {
     /// <summary>
     /// Returns FHIRPath expression to validate update capability for this resource type.

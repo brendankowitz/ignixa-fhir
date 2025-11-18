@@ -6,6 +6,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Domain.Exceptions;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -29,8 +30,10 @@ public static class ProvenanceHeaderHelper
     /// Attempts to parse the X-Provenance header from the request.
     /// </summary>
     /// <param name="headers">HTTP request headers.</param>
+    /// <param name="memoryStreamManager">Memory stream manager for efficient parsing.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
-    /// <returns>Parsed Provenance resource as ResourceJsonNode, or null if header not present or invalid.</returns>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Parsed Provenance resource as ProvenanceJsonNode, or null if header not present or invalid.</returns>
     /// <remarks>
     /// The provenance resource:
     /// - MUST be valid JSON
@@ -39,7 +42,7 @@ public static class ProvenanceHeaderHelper
     /// - SHOULD have required Provenance elements (recorded, agent)
     /// Validation of the Provenance resource structure is delegated to the validation pipeline.
     /// </remarks>
-    public static async Task<ResourceJsonNode?> TryParseProvenanceHeaderAsync(
+    public static async Task<ProvenanceJsonNode?> TryParseProvenanceHeaderAsync(
         IHeaderDictionary headers,
         RecyclableMemoryStreamManager memoryStreamManager,
         ILogger logger,
@@ -71,7 +74,7 @@ public static class ProvenanceHeaderHelper
         logger.LogInformation("Processing X-Provenance header ({Length} bytes)", provenanceJson.Length);
 
         // Parse JSON to ResourceJsonNode
-        ResourceJsonNode provenanceNode;
+        ResourceJsonNode resourceNode;
         try
         {
             await using (RecyclableMemoryStream memoryStream = memoryStreamManager.GetStream("x-provenance-header"))
@@ -79,7 +82,7 @@ public static class ProvenanceHeaderHelper
                 var bytes = System.Text.Encoding.UTF8.GetBytes(provenanceJson);
                 await memoryStream.WriteAsync(bytes, cancellationToken);
                 memoryStream.Position = 0;
-                provenanceNode = await JsonSourceNodeFactory.Parse(memoryStream);
+                resourceNode = await JsonSourceNodeFactory.Parse(memoryStream);
             }
         }
         catch (JsonException ex)
@@ -89,17 +92,20 @@ public static class ProvenanceHeaderHelper
         }
 
         // Validate resource type is Provenance
-        if (!string.Equals(provenanceNode.ResourceType, "Provenance", StringComparison.Ordinal))
+        if (!string.Equals(resourceNode.ResourceType, "Provenance", StringComparison.Ordinal))
         {
             logger.LogWarning(
                 "X-Provenance header resourceType must be 'Provenance', got '{ResourceType}'",
-                provenanceNode.ResourceType);
+                resourceNode.ResourceType);
             throw new BadRequestException(
-                $"X-Provenance header must contain a Provenance resource, got resourceType='{provenanceNode.ResourceType}'");
+                $"X-Provenance header must contain a Provenance resource, got resourceType='{resourceNode.ResourceType}'");
         }
 
+        // Convert to strongly-typed ProvenanceJsonNode
+        var provenanceNode = new ProvenanceJsonNode(resourceNode.MutableNode.AsObject());
+
         // Validate that target is NOT specified (per FHIR spec for X-Provenance)
-        if (provenanceNode.MutableNode.AsObject().ContainsKey("target"))
+        if (provenanceNode.HasTarget)
         {
             logger.LogWarning("X-Provenance header should not contain 'target' property - server will auto-fill");
             throw new BadRequestException(
@@ -110,54 +116,4 @@ public static class ProvenanceHeaderHelper
         return provenanceNode;
     }
 
-    /// <summary>
-    /// Creates a Provenance resource with the target reference set to the specified resource.
-    /// </summary>
-    /// <param name="provenanceTemplate">The original Provenance resource from X-Provenance header (without target).</param>
-    /// <param name="targetResourceType">The resource type of the target (e.g., "Patient").</param>
-    /// <param name="targetResourceId">The resource ID of the target.</param>
-    /// <param name="targetVersionId">The version ID of the target resource.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <returns>A new ResourceJsonNode with the target reference populated.</returns>
-    public static async Task<ResourceJsonNode> CreateProvenanceWithTargetAsync(
-        ResourceJsonNode provenanceTemplate,
-        string targetResourceType,
-        string targetResourceId,
-        string targetVersionId,
-        RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger logger)
-    {
-        logger.LogInformation(
-            "Creating Provenance resource with target {ResourceType}/{Id}/_history/{VersionId}",
-            targetResourceType,
-            targetResourceId,
-            targetVersionId);
-
-        // Clone the provenance node to avoid mutating the original
-        var provenanceJson = provenanceTemplate.SerializeToString();
-        var provenanceObject = JsonNode.Parse(provenanceJson)?.AsObject()
-            ?? throw new InvalidOperationException("Failed to parse Provenance resource");
-
-        // Add target reference array with version-specific reference
-        var targetReference = $"{targetResourceType}/{targetResourceId}/_history/{targetVersionId}";
-        var targetArray = new JsonArray
-        {
-            new JsonObject
-            {
-                ["reference"] = targetReference
-            }
-        };
-
-        provenanceObject["target"] = targetArray;
-
-        // Serialize back to ResourceJsonNode
-        var updatedJson = provenanceObject.ToJsonString();
-        await using (RecyclableMemoryStream memoryStream = memoryStreamManager.GetStream("provenance-with-target"))
-        {
-            var bytes = System.Text.Encoding.UTF8.GetBytes(updatedJson);
-            await memoryStream.WriteAsync(bytes);
-            memoryStream.Position = 0;
-            return await JsonSourceNodeFactory.Parse(memoryStream);
-        }
-    }
 }
