@@ -108,4 +108,9 @@ internal abstract class DefaultExpressionVisitor<TContext, TOutput> : IExpressio
 
         return result;
     }
+
+    public virtual TOutput VisitPatientEverything(PatientEverythingExpression expression, TContext context)
+    {
+        return default;
+    }
 }

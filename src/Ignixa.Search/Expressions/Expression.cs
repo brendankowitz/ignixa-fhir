@@ -321,6 +321,27 @@ public abstract class Expression
         return new CompartmentSearchExpression(compartmentType, compartmentId);
     }
 
+    /// <summary>
+    /// Creates a <see cref="PatientEverythingExpression"/> that represents a Patient $everything operation.
+    /// </summary>
+    /// <param name="patientId">The patient ID.</param>
+    /// <param name="startDate">Optional lower bound for clinical dates.</param>
+    /// <param name="endDate">Optional upper bound for clinical dates.</param>
+    /// <param name="sinceDate">Optional filter for resources modified after this timestamp.</param>
+    /// <param name="filteredResourceTypes">Optional set of resource types to limit search to.</param>
+    /// <param name="includeReferencedResources">Whether to include referenced resources.</param>
+    /// <returns>A <see cref="PatientEverythingExpression"/> that represents a Patient $everything operation.</returns>
+    public static PatientEverythingExpression PatientEverything(
+        string patientId,
+        DateTimeOffset? startDate = null,
+        DateTimeOffset? endDate = null,
+        DateTimeOffset? sinceDate = null,
+        ISet<string>? filteredResourceTypes = null,
+        bool includeReferencedResources = true)
+    {
+        return new PatientEverythingExpression(patientId, startDate, endDate, sinceDate, filteredResourceTypes, includeReferencedResources);
+    }
+
     public abstract TOutput AcceptVisitor<TContext, TOutput>(IExpressionVisitor<TContext, TOutput> visitor, TContext context);
 
     /// <inheritdoc />

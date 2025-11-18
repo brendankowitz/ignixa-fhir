@@ -102,4 +102,11 @@ public interface IExpressionVisitor<in TContext, out TOutput>
     /// <param name="expression">The expression to visit.</param>
     /// <param name="context">The input</param>
     TOutput VisitUnion(UnionExpression expression, TContext context);
+
+    /// <summary>
+    /// Visits the <see cref="PatientEverythingExpression"/>.
+    /// </summary>
+    /// <param name="expression">The expression to visit.</param>
+    /// <param name="context">The input</param>
+    TOutput VisitPatientEverything(PatientEverythingExpression expression, TContext context);
 }
