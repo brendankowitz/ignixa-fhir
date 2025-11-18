@@ -14,6 +14,7 @@ using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Resource;

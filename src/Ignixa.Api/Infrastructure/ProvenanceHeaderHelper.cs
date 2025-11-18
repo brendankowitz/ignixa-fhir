@@ -6,6 +6,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Domain.Exceptions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Extensions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.AspNetCore.Http;
@@ -101,8 +103,8 @@ public static class ProvenanceHeaderHelper
                 $"X-Provenance header must contain a Provenance resource, got resourceType='{resourceNode.ResourceType}'");
         }
 
-        // Convert to strongly-typed ProvenanceJsonNode
-        var provenanceNode = new ProvenanceJsonNode(resourceNode.MutableNode.AsObject());
+        // Convert to strongly-typed ProvenanceJsonNode using extension method
+        var provenanceNode = resourceNode.As<ProvenanceJsonNode>();
 
         // Validate that target is NOT specified (per FHIR spec for X-Provenance)
         if (provenanceNode.HasTarget)
