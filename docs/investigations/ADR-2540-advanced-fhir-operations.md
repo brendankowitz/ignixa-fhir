@@ -110,7 +110,7 @@ GET [base]/DocumentReference/$docref?patient={id}&start={date}&end={date}&type={
 **File Structure**:
 ```
 src/Ignixa.Api/Endpoints/DocumentEndpoints.cs (new)
-src/Ignixa.Application/Features/Document/
+src/Ignixa.Application.Operations/Features/DocRef/
   ├── DocRefQuery.cs
   ├── DocRefHandler.cs
   └── DocumentReferenceFeature.cs
@@ -215,7 +215,7 @@ public static class DocumentEndpoints
 **Query/Handler Implementation**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Document/DocRefQuery.cs
+// File: src/Ignixa.Application.Operations/Features/DocRef/DocRefQuery.cs
 public record DocRefQuery(
     int TenantId,
     string PatientId,
@@ -225,7 +225,7 @@ public record DocRefQuery(
     bool OnDemand
 ) : IRequest<BundleJsonNode>;
 
-// File: src/Ignixa.Application/Features/Document/DocRefHandler.cs
+// File: src/Ignixa.Application.Operations/Features/DocRef/DocRefHandler.cs
 public class DocRefHandler : IRequestHandler<DocRefQuery, BundleJsonNode>
 {
     private readonly IFhirRepositoryFactory _repositoryFactory;
@@ -341,7 +341,7 @@ public class DocRefHandler : IRequestHandler<DocRefQuery, BundleJsonNode>
 **Feature Registration**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Document/DocumentReferenceFeature.cs
+// File: src/Ignixa.Application.Operations/Features/DocRef/DocumentReferenceFeature.cs
 public class DocumentReferenceFeature : IPackageFeature
 {
     public string PackageId => "hl7.fhir.core";
@@ -496,12 +496,12 @@ POST [base]/Patient/$member-match
 **File Structure**:
 ```
 src/Ignixa.Api/Endpoints/PatientOperationsEndpoints.cs (new)
-src/Ignixa.Application/Features/PatientMatching/
+src/Ignixa.Application.Operations/Features/MemberMatch/
   ├── MemberMatchCommand.cs
   ├── MemberMatchHandler.cs
   ├── IPatientMatchingService.cs
   └── DemographicMatchingService.cs
-src/Ignixa.Application/Features/PatientMatching/Models/
+src/Ignixa.Application.Operations/Features/MemberMatch/Models/
   ├── MemberMatchInput.cs
   └── MemberMatchOutput.cs
 ```
@@ -673,7 +673,7 @@ public static class PatientOperationsEndpoints
 **Command/Handler Implementation**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/PatientMatching/MemberMatchCommand.cs
+// File: src/Ignixa.Application.Operations/Features/MemberMatch/MemberMatchCommand.cs
 public record MemberMatchCommand(
     int TenantId,
     ResourceJsonNode MemberPatient,
@@ -682,13 +682,13 @@ public record MemberMatchCommand(
     ResourceJsonNode? CoverageToLink
 ) : IRequest<MemberMatchOutput>;
 
-// File: src/Ignixa.Application/Features/PatientMatching/Models/MemberMatchOutput.cs
+// File: src/Ignixa.Application.Operations/Features/MemberMatch/Models/MemberMatchOutput.cs
 public record MemberMatchOutput(
     JsonNode MemberIdentifier,
     JsonNode? MemberId
 );
 
-// File: src/Ignixa.Application/Features/PatientMatching/MemberMatchHandler.cs
+// File: src/Ignixa.Application.Operations/Features/MemberMatch/MemberMatchHandler.cs
 public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatchOutput>
 {
     private readonly IPatientMatchingService _matchingService;
@@ -800,7 +800,7 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
     }
 }
 
-// File: src/Ignixa.Application/Features/PatientMatching/PatientMatchException.cs
+// File: src/Ignixa.Application.Operations/Features/MemberMatch/PatientMatchException.cs
 public class PatientMatchException : Exception
 {
     public int MatchCount { get; }
@@ -816,7 +816,7 @@ public class PatientMatchException : Exception
 **Matching Service**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/PatientMatching/IPatientMatchingService.cs
+// File: src/Ignixa.Application.Operations/Features/MemberMatch/IPatientMatchingService.cs
 public interface IPatientMatchingService
 {
     Task<List<ResourceWrapper>> FindByMemberIdentifierAsync(
@@ -831,7 +831,7 @@ public interface IPatientMatchingService
         CancellationToken cancellationToken);
 }
 
-// File: src/Ignixa.Application/Features/PatientMatching/DemographicMatchingService.cs
+// File: src/Ignixa.Application.Operations/Features/MemberMatch/DemographicMatchingService.cs
 public class DemographicMatchingService : IPatientMatchingService
 {
     private readonly ILogger<DemographicMatchingService> _logger;
@@ -1042,14 +1042,14 @@ POST [base]/$submit-attachment
 **File Structure**:
 ```
 src/Ignixa.Api/Endpoints/AttachmentEndpoints.cs (new)
-src/Ignixa.Application/Features/Attachments/
+src/Ignixa.Application.Operations/Features/SubmitAttachment/
   ├── SubmitAttachmentCommand.cs
   ├── SubmitAttachmentHandler.cs
   └── AttachmentStorageService.cs
-src/Ignixa.Application/Features/Attachments/Models/
+src/Ignixa.Application.Operations/Features/SubmitAttachment/Models/
   ├── AttachmentSubmission.cs
   └── AttachmentMetadata.cs
-src/Ignixa.Application.BackgroundOperations/Attachments/
+src/Ignixa.Application.BackgroundOperations/SubmitAttachment/
   ├── ProcessAttachmentOrchestration.cs (DurableTask)
   └── StoreAttachmentActivity.cs
 ```
@@ -1262,7 +1262,7 @@ public static class AttachmentEndpoints
 **Models**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Attachments/Models/AttachmentSubmission.cs
+// File: src/Ignixa.Application.Operations/Features/SubmitAttachment/Models/AttachmentSubmission.cs
 public class AttachmentSubmission
 {
     public JsonNode? TrackingId { get; set; }
@@ -1288,7 +1288,7 @@ public class AttachmentItem
 **DurableTask Orchestration** (for large attachments):
 
 ```csharp
-// File: src/Ignixa.Application.BackgroundOperations/Attachments/ProcessAttachmentOrchestration.cs
+// File: src/Ignixa.Application.BackgroundOperations/SubmitAttachment/ProcessAttachmentOrchestration.cs
 public class ProcessAttachmentOrchestration
     : TaskOrchestration<ProcessAttachmentOutput, ProcessAttachmentInput>
 {
@@ -1360,7 +1360,7 @@ public record ProcessAttachmentOutput
 **Activity**:
 
 ```csharp
-// File: src/Ignixa.Application.BackgroundOperations/Attachments/StoreAttachmentActivity.cs
+// File: src/Ignixa.Application.BackgroundOperations/SubmitAttachment/StoreAttachmentActivity.cs
 public class StoreAttachmentActivity : AsyncTaskActivity<StoreAttachmentInput, string>
 {
     private readonly IBlobStorageClient _blobStorage;
@@ -1525,7 +1525,7 @@ POST [base]/Questionnaire/$questionnaire-package
 **File Structure**:
 ```
 src/Ignixa.Api/Endpoints/QuestionnaireEndpoints.cs (new)
-src/Ignixa.Application/Features/Questionnaire/
+src/Ignixa.Application.Operations/Features/QuestionnairePackage/
   ├── QuestionnairePackageQuery.cs
   ├── QuestionnairePackageHandler.cs
   └── QuestionnairePackageBuilder.cs
@@ -1633,7 +1633,7 @@ public static class QuestionnaireEndpoints
 **Query/Handler**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Questionnaire/QuestionnairePackageQuery.cs
+// File: src/Ignixa.Application.Operations/Features/QuestionnairePackage/QuestionnairePackageQuery.cs
 public record QuestionnairePackageQuery(
     int TenantId,
     List<ResourceJsonNode> CoverageResources,
@@ -1648,7 +1648,7 @@ public record QuestionnairePackageResult(
     OperationOutcomeJsonNode? Outcome
 );
 
-// File: src/Ignixa.Application/Features/Questionnaire/QuestionnairePackageHandler.cs
+// File: src/Ignixa.Application.Operations/Features/QuestionnairePackage/QuestionnairePackageHandler.cs
 public class QuestionnairePackageHandler
     : IRequestHandler<QuestionnairePackageQuery, QuestionnairePackageResult>
 {
@@ -1728,7 +1728,7 @@ public class QuestionnairePackageHandler
 **Package Builder**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Questionnaire/QuestionnairePackageBuilder.cs
+// File: src/Ignixa.Application.Operations/Features/QuestionnairePackage/QuestionnairePackageBuilder.cs
 public class QuestionnairePackageBuilder
 {
     private readonly IPackageResourceRepository _packageRepository;
@@ -1951,7 +1951,7 @@ GET [base]/Composition/{id}/$document?persist={bool}
 **File Structure**:
 ```
 src/Ignixa.Api/Endpoints/CompositionEndpoints.cs (new)
-src/Ignixa.Application/Features/Document/
+src/Ignixa.Application.Operations/Features/Document/
   ├── GenerateDocumentQuery.cs
   ├── GenerateDocumentHandler.cs
   └── DocumentBundleBuilder.cs
@@ -2021,7 +2021,7 @@ public static class CompositionEndpoints
 **Query/Handler**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Document/GenerateDocumentQuery.cs
+// File: src/Ignixa.Application.Operations/Features/Document/GenerateDocumentQuery.cs
 public record GenerateDocumentQuery(
     int TenantId,
     string CompositionId,
@@ -2034,7 +2034,7 @@ public record GenerateDocumentResult(
     string? BundleId
 );
 
-// File: src/Ignixa.Application/Features/Document/GenerateDocumentHandler.cs
+// File: src/Ignixa.Application.Operations/Features/Document/GenerateDocumentHandler.cs
 public class GenerateDocumentHandler
     : IRequestHandler<GenerateDocumentQuery, GenerateDocumentResult>
 {
@@ -2127,7 +2127,7 @@ public class GenerateDocumentHandler
 **Document Bundle Builder**:
 
 ```csharp
-// File: src/Ignixa.Application/Features/Document/DocumentBundleBuilder.cs
+// File: src/Ignixa.Application.Operations/Features/Document/DocumentBundleBuilder.cs
 public class DocumentBundleBuilder
 {
     private readonly ILogger<DocumentBundleBuilder> _logger;
