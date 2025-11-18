@@ -2,7 +2,7 @@
 
 **Status**: Proposed
 **Date**: 2025-11-18
-**Effort Estimate**: 280-380 hours (6 operations)
+**Effort Estimate**: 230-310 hours (5 operations)
 **Dependencies**:
 - Existing operation infrastructure (`IPackageFeature`, `OperationsSegment`)
 - Package resource repository (for OperationDefinitions)
@@ -15,14 +15,15 @@
 
 ### Problem Statement
 
-Based on [fhir-operations-support-analysis.md](./fhir-operations-support-analysis.md), Ignixa currently supports only 2 FHIR operations ($validate, $export). To achieve compliance with US Core, IPA, and Da Vinci Implementation Guides, we need to implement 6 high-priority operations:
+Based on [fhir-operations-support-analysis.md](./fhir-operations-support-analysis.md), Ignixa currently supports 3 FHIR operations: $validate, $export (system-level), and Group/$export (bulk data export for patient cohorts). To achieve compliance with US Core, IPA, and Da Vinci Implementation Guides, we need to implement 5 additional high-priority operations:
 
 1. **$docref** - Document retrieval (US Core, IPA - **SHALL**)
 2. **$member-match** - Member identity matching (Da Vinci HRex - **SHALL** for payers)
 3. **$submit-attachment** - Clinical attachments for claims (Da Vinci CDex - **SHALL**)
 4. **$questionnaire-package** - Prior auth questionnaires (Da Vinci DTR - **SHALL**)
 5. **$document** - FHIR document generation (FHIR Core - common)
-6. **$group-everything** - Bulk patient data retrieval (FHIR Core, PDex - **SHOULD**)
+
+**Note**: The existing Group/$export and Patient/$export operations provide equivalent functionality to $group-everything and $patient-everything operations, satisfying CARIN Blue Button and PDex requirements for bulk patient data access.
 
 ### Certification Impact
 
@@ -33,7 +34,8 @@ Based on [fhir-operations-support-analysis.md](./fhir-operations-support-analysi
 | $submit-attachment | Da Vinci CDex | **P1** |
 | $questionnaire-package | Da Vinci DTR | **P1** |
 | $document | Clinical document workflows | **P2** |
-| $group-everything | CARIN Blue Button, PDex | **P1** |
+
+**Note**: CARIN Blue Button and PDex requirements are already satisfied by the existing Group/$export operation.
 
 ---
 
@@ -2267,528 +2269,6 @@ public async Task GenerateDocument_WithPersist_StoresBundleResource()
 
 ---
 
-### 6. $group-everything - Group Data Export
-
-**Canonical**: `http://hl7.org/fhir/OperationDefinition/Group-everything`
-**Type**: Instance-level (Group)
-**Priority**: **P1** (PDex, bulk data use cases)
-**Effort**: 50-70 hours
-
-#### FHIR Specification
-
-**Invocation**:
-```
-GET [base]/Group/{id}/$everything?_type={types}&_since={instant}
-```
-
-**Input Parameters**:
-
-| Parameter | Card | Type | Description |
-|-----------|------|------|-------------|
-| start | 0..1 | date | Start of care date range |
-| end | 0..1 | date | End of care date range |
-| _since | 0..1 | instant | Resources modified after this time |
-| _type | 0..* | code | Resource types to include |
-| _count | 0..1 | integer | Pagination support |
-
-**Output Parameter**:
-- **return** (1..1): Bundle (searchset)
-
-**Use Cases**:
-- Payer data exchange (PDex): Export data for patient cohorts
-- Population health: Bulk export for analytics
-- Care coordination: Share data for care team patients
-
-#### Implementation Design
-
-**File Structure**:
-```
-src/Ignixa.Api/Endpoints/GroupEndpoints.cs (new)
-src/Ignixa.Application/Features/GroupEverything/
-  ├── GroupEverythingQuery.cs
-  ├── GroupEverythingHandler.cs
-  └── GroupDataCollector.cs
-```
-
-**Endpoint Implementation**:
-
-```csharp
-// File: src/Ignixa.Api/Endpoints/GroupEndpoints.cs
-public static class GroupEndpoints
-{
-    public static IEndpointRouteBuilder MapGroupEndpoints(
-        this IEndpointRouteBuilder endpoints)
-    {
-        // GET /tenant/{tenantId}/Group/{id}/$everything
-        endpoints.MapGet(
-            "/tenant/{tenantId:int}/Group/{id}/$everything",
-            HandleGroupEverythingAsync)
-            .WithName("GroupEverything")
-            .Produces<BundleJsonNode>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
-            .Produces(StatusCodes.Status202Accepted); // For async processing
-
-        return endpoints;
-    }
-
-    private static async Task<IResult> HandleGroupEverythingAsync(
-        HttpContext context,
-        int tenantId,
-        string id,
-        [FromQuery] DateTimeOffset? start,
-        [FromQuery] DateTimeOffset? end,
-        [FromQuery] DateTimeOffset? _since,
-        [FromQuery] string? _type,
-        [FromQuery] int? _count,
-        [FromServices] IMediator mediator,
-        [FromServices] TaskHubClient taskHubClient,
-        CancellationToken cancellationToken)
-    {
-        // Parse resource types
-        var resourceTypes = string.IsNullOrWhiteSpace(_type)
-            ? Array.Empty<string>()
-            : _type.Split(',', StringSplitOptions.RemoveEmptyEntries);
-
-        var query = new GroupEverythingQuery(
-            TenantId: tenantId,
-            GroupId: id,
-            Start: start,
-            End: end,
-            Since: _since,
-            ResourceTypes: resourceTypes,
-            Count: _count);
-
-        // Check if this should be async (large dataset)
-        var estimatedSize = await EstimateDataSizeAsync(query, mediator, cancellationToken);
-
-        if (estimatedSize > 1000) // More than 1000 resources
-        {
-            // Use async processing with DurableTask
-            var jobId = Guid.NewGuid().ToString("N");
-
-            var orchestrationInput = new GroupEverythingOrchestrationInput
-            {
-                JobId = jobId,
-                Query = query
-            };
-
-            await taskHubClient.CreateOrchestrationInstanceAsync(
-                typeof(GroupEverythingOrchestration),
-                orchestrationInput);
-
-            // Return 202 Accepted with status URL
-            var statusUrl = $"/tenant/{tenantId}/_group-export/{jobId}";
-            context.Response.Headers["Content-Location"] = statusUrl;
-
-            return Results.Accepted(statusUrl);
-        }
-        else
-        {
-            // Process synchronously
-            var result = await mediator.SendAsync(query, cancellationToken);
-            return Results.Ok(result);
-        }
-    }
-
-    private static async Task<int> EstimateDataSizeAsync(
-        GroupEverythingQuery query,
-        IMediator mediator,
-        CancellationToken cancellationToken)
-    {
-        // Quick estimate of total resources
-        // TODO: Implement estimation logic
-        return 0;
-    }
-}
-```
-
-**Query/Handler**:
-
-```csharp
-// File: src/Ignixa.Application/Features/GroupEverything/GroupEverythingQuery.cs
-public record GroupEverythingQuery(
-    int TenantId,
-    string GroupId,
-    DateTimeOffset? Start,
-    DateTimeOffset? End,
-    DateTimeOffset? Since,
-    string[] ResourceTypes,
-    int? Count
-) : IRequest<BundleJsonNode>;
-
-// File: src/Ignixa.Application/Features/GroupEverything/GroupEverythingHandler.cs
-public class GroupEverythingHandler
-    : IRequestHandler<GroupEverythingQuery, BundleJsonNode>
-{
-    private readonly IFhirRepositoryFactory _repositoryFactory;
-    private readonly GroupDataCollector _dataCollector;
-    private readonly ILogger<GroupEverythingHandler> _logger;
-
-    public GroupEverythingHandler(
-        IFhirRepositoryFactory repositoryFactory,
-        GroupDataCollector dataCollector,
-        ILogger<GroupEverythingHandler> logger)
-    {
-        _repositoryFactory = repositoryFactory;
-        _dataCollector = dataCollector;
-        _logger = logger;
-    }
-
-    public async Task<BundleJsonNode> HandleAsync(
-        GroupEverythingQuery request,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation(
-            "Executing $everything for Group {GroupId}",
-            request.GroupId);
-
-        var repository = await _repositoryFactory.GetRepositoryAsync(
-            request.TenantId,
-            cancellationToken);
-
-        // Step 1: Get Group resource
-        var groupKey = new ResourceKey(request.TenantId, "Group", request.GroupId);
-        var group = await repository.GetAsync(groupKey, cancellationToken);
-
-        if (group == null)
-        {
-            throw new ResourceNotFoundException($"Group/{request.GroupId} not found");
-        }
-
-        // Step 2: Get all patient IDs from Group.member[]
-        var patientIds = ExtractPatientIds(group.Resource);
-
-        _logger.LogInformation(
-            "Group contains {Count} patients",
-            patientIds.Count);
-
-        // Step 3: Create searchset Bundle
-        var bundle = new BundleJsonNode
-        {
-            Type = "searchset",
-            Id = Guid.NewGuid().ToString("N"),
-            Timestamp = DateTimeOffset.UtcNow
-        };
-
-        // Step 4: Add Group resource itself
-        bundle.AddEntry(group.Resource);
-
-        // Step 5: Collect all patient resources
-        foreach (var patientId in patientIds)
-        {
-            var patientKey = new ResourceKey(request.TenantId, "Patient", patientId);
-            var patient = await repository.GetAsync(patientKey, cancellationToken);
-
-            if (patient != null)
-            {
-                bundle.AddEntry(patient.Resource);
-            }
-        }
-
-        // Step 6: Collect all data for each patient
-        var resourceTypesToInclude = request.ResourceTypes.Length > 0
-            ? request.ResourceTypes
-            : GetAllResourceTypes(); // Patient compartment resources
-
-        foreach (var patientId in patientIds)
-        {
-            var patientData = await _dataCollector.CollectPatientDataAsync(
-                repository,
-                patientId,
-                resourceTypesToInclude,
-                request.Start,
-                request.End,
-                request.Since,
-                cancellationToken);
-
-            foreach (var resource in patientData)
-            {
-                bundle.AddEntry(resource);
-            }
-        }
-
-        // Update total count
-        bundle.Total = bundle.Entry?.Count ?? 0;
-
-        _logger.LogInformation(
-            "Group $everything returned {Count} resources for {PatientCount} patients",
-            bundle.Total,
-            patientIds.Count);
-
-        return bundle;
-    }
-
-    private List<string> ExtractPatientIds(ResourceJsonNode group)
-    {
-        var patientIds = new List<string>();
-
-        // Extract from Group.member[].entity.reference
-        var members = group.MutableNode["member"]?.AsArray();
-        if (members != null)
-        {
-            foreach (var member in members)
-            {
-                var entity = member?["entity"];
-                var reference = entity?["reference"]?.GetValue<string>();
-
-                if (reference?.StartsWith("Patient/") == true)
-                {
-                    var patientId = reference.Substring("Patient/".Length);
-                    patientIds.Add(patientId);
-                }
-            }
-        }
-
-        return patientIds;
-    }
-
-    private string[] GetAllResourceTypes()
-    {
-        // Return all Patient compartment resource types
-        return new[]
-        {
-            "Condition", "Observation", "Procedure", "MedicationRequest",
-            "AllergyIntolerance", "Immunization", "DiagnosticReport",
-            "Encounter", "CarePlan", "Goal", "DocumentReference"
-        };
-    }
-}
-```
-
-**Data Collector**:
-
-```csharp
-// File: src/Ignixa.Application/Features/GroupEverything/GroupDataCollector.cs
-public class GroupDataCollector
-{
-    private readonly ILogger<GroupDataCollector> _logger;
-
-    public GroupDataCollector(ILogger<GroupDataCollector> logger)
-    {
-        _logger = logger;
-    }
-
-    public async Task<List<ResourceJsonNode>> CollectPatientDataAsync(
-        IFhirRepository repository,
-        string patientId,
-        string[] resourceTypes,
-        DateTimeOffset? start,
-        DateTimeOffset? end,
-        DateTimeOffset? since,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogDebug(
-            "Collecting data for patient {PatientId}, types: {Types}",
-            patientId,
-            string.Join(",", resourceTypes));
-
-        var allResources = new List<ResourceJsonNode>();
-
-        foreach (var resourceType in resourceTypes)
-        {
-            var resources = await SearchPatientResourcesAsync(
-                repository,
-                resourceType,
-                patientId,
-                start,
-                end,
-                since,
-                cancellationToken);
-
-            allResources.AddRange(resources);
-        }
-
-        _logger.LogDebug(
-            "Collected {Count} resources for patient {PatientId}",
-            allResources.Count,
-            patientId);
-
-        return allResources;
-    }
-
-    private async Task<List<ResourceJsonNode>> SearchPatientResourcesAsync(
-        IFhirRepository repository,
-        string resourceType,
-        string patientId,
-        DateTimeOffset? start,
-        DateTimeOffset? end,
-        DateTimeOffset? since,
-        CancellationToken cancellationToken)
-    {
-        // Build search parameters
-        var searchParams = new List<(string, string)>
-        {
-            ("patient", patientId)
-        };
-
-        // Add date filters
-        if (start.HasValue || end.HasValue)
-        {
-            var dateParam = GetDateSearchParameter(resourceType);
-            if (!string.IsNullOrEmpty(dateParam))
-            {
-                if (start.HasValue && end.HasValue)
-                {
-                    searchParams.Add((dateParam, $"ge{start.Value:s}"));
-                    searchParams.Add((dateParam, $"le{end.Value:s}"));
-                }
-                else if (start.HasValue)
-                {
-                    searchParams.Add((dateParam, $"ge{start.Value:s}"));
-                }
-                else if (end.HasValue)
-                {
-                    searchParams.Add((dateParam, $"le{end.Value:s}"));
-                }
-            }
-        }
-
-        // Add _lastUpdated filter
-        if (since.HasValue)
-        {
-            searchParams.Add(("_lastUpdated", $"ge{since.Value:s}"));
-        }
-
-        // Execute search
-        var searchResult = await repository.SearchAsync(
-            resourceType,
-            searchParams,
-            cancellationToken);
-
-        return searchResult.Resources.Select(w => w.Resource).ToList();
-    }
-
-    private string GetDateSearchParameter(string resourceType)
-    {
-        // Return appropriate date search parameter for resource type
-        return resourceType switch
-        {
-            "Observation" => "date",
-            "Condition" => "onset-date",
-            "Procedure" => "date",
-            "MedicationRequest" => "authoredon",
-            "Encounter" => "date",
-            "DiagnosticReport" => "date",
-            _ => "date"
-        };
-    }
-}
-```
-
-**DurableTask Orchestration** (for large groups):
-
-```csharp
-// File: src/Ignixa.Application.BackgroundOperations/GroupEverything/GroupEverythingOrchestration.cs
-public class GroupEverythingOrchestration
-    : TaskOrchestration<GroupEverythingOutput, GroupEverythingOrchestrationInput>
-{
-    public override async Task<GroupEverythingOutput> RunTask(
-        OrchestrationContext context,
-        GroupEverythingOrchestrationInput input)
-    {
-        // Step 1: Get patient IDs from Group
-        var patientIds = await context.ScheduleTask<List<string>>(
-            typeof(GetGroupPatientsActivity),
-            input);
-
-        // Step 2: Process each patient in parallel batches
-        var batchSize = 10;
-        var outputFiles = new Dictionary<string, string>();
-
-        for (int i = 0; i < patientIds.Count; i += batchSize)
-        {
-            var batch = patientIds.Skip(i).Take(batchSize).ToList();
-
-            var batchInput = new CollectPatientDataInput
-            {
-                JobId = input.JobId,
-                TenantId = input.Query.TenantId,
-                PatientIds = batch,
-                ResourceTypes = input.Query.ResourceTypes,
-                Start = input.Query.Start,
-                End = input.Query.End,
-                Since = input.Query.Since
-            };
-
-            var batchOutput = await context.ScheduleTask<CollectPatientDataOutput>(
-                typeof(CollectPatientDataActivity),
-                batchInput);
-
-            // Merge output files
-            foreach (var (resourceType, filePath) in batchOutput.OutputFiles)
-            {
-                outputFiles[resourceType] = filePath;
-            }
-        }
-
-        return new GroupEverythingOutput
-        {
-            JobId = input.JobId,
-            Status = "Completed",
-            TotalPatients = patientIds.Count,
-            OutputFiles = outputFiles
-        };
-    }
-}
-
-public record GroupEverythingOrchestrationInput
-{
-    public required string JobId { get; init; }
-    public required GroupEverythingQuery Query { get; init; }
-}
-
-public record GroupEverythingOutput
-{
-    public required string JobId { get; init; }
-    public required string Status { get; init; }
-    public required int TotalPatients { get; init; }
-    public required Dictionary<string, string> OutputFiles { get; init; }
-}
-```
-
-#### Testing Strategy
-
-```csharp
-[Fact]
-public async Task GroupEverything_WithValidGroup_ReturnsAllPatientData()
-{
-    // Arrange
-    var groupId = "group-123";
-    var query = new GroupEverythingQuery(1, groupId, null, null, null, Array.Empty<string>(), null);
-
-    // Act
-    var result = await _handler.HandleAsync(query, CancellationToken.None);
-
-    // Assert
-    result.Type.Should().Be("searchset");
-    result.Entry.Should().Contain(e => e.Resource.ResourceType == "Group");
-    result.Entry.Should().Contain(e => e.Resource.ResourceType == "Patient");
-}
-
-[Fact]
-public async Task GroupEverything_WithResourceTypeFilter_ReturnsOnlySpecifiedTypes()
-{
-    // Arrange
-    var query = new GroupEverythingQuery(
-        1,
-        "group-123",
-        null,
-        null,
-        null,
-        new[] { "Observation", "Condition" },
-        null);
-
-    // Act
-    var result = await _handler.HandleAsync(query, CancellationToken.None);
-
-    // Assert
-    var resourceTypes = result.Entry.Select(e => e.Resource.ResourceType).Distinct().ToList();
-    resourceTypes.Should().OnlyContain(t =>
-        t == "Group" || t == "Patient" || t == "Observation" || t == "Condition");
-}
-```
-
----
-
 ## Implementation Roadmap
 
 ### Phase Breakdown
@@ -2800,9 +2280,8 @@ public async Task GroupEverything_WithResourceTypeFilter_ReturnsOnlySpecifiedTyp
 | **Phase 3** | $member-match | 40-50 hrs | P1 | Q1 2026 - Week 7 |
 | **Phase 4** | $questionnaire-package | 40-55 hrs | P1 | Q2 2026 - Week 2 |
 | **Phase 5** | $submit-attachment | 50-70 hrs | P1 | Q2 2026 - Week 6 |
-| **Phase 6** | $group-everything | 50-70 hrs | P1 | Q2 2026 - Week 10 |
 
-**Total Effort**: 280-380 hours (35-48 weeks at 8 hours/week)
+**Total Effort**: 230-310 hours (29-39 weeks at 8 hours/week)
 
 ### Dependencies
 
@@ -2837,7 +2316,7 @@ Each operation requires:
 
 - Endpoint HTTP tests
 - Multi-tenant isolation tests
-- Async orchestration tests (for $submit-attachment, $group-everything)
+- Async orchestration tests (for $submit-attachment)
 - Persistence tests ($document with persist=true)
 
 ### Conformance Testing
@@ -2855,7 +2334,7 @@ Each operation requires:
 All operations must enforce:
 - Tenant isolation (only access own tenant data)
 - Resource-level permissions (RBAC/ABAC)
-- Patient consent (especially $member-match, $group-everything)
+- Patient consent (especially $member-match)
 
 ### Audit Logging
 
@@ -2872,7 +2351,6 @@ _auditLogger.LogOperation(
 ### Data Protection
 
 - **$submit-attachment**: Encrypt attachments at rest
-- **$group-everything**: Apply data minimization (only requested types)
 - **$member-match**: Rate limiting to prevent brute-force matching
 
 ---
@@ -2890,12 +2368,12 @@ _auditLogger.LogOperation(
 | Operation | Sync Threshold | Async Method |
 |-----------|----------------|--------------|
 | $submit-attachment | < 10 MB | DurableTask |
-| $group-everything | < 1000 resources | DurableTask |
 | $document | < 100 references | Inline |
+
+**Note**: Group/$export (existing) uses async DurableTask for all group exports.
 
 ### Pagination
 
-- **$group-everything**: Support `_count` parameter
 - **$docref**: Implicit pagination (most recent first)
 
 ---
@@ -2914,7 +2392,6 @@ Track per operation:
 
 - **$member-match**: Alert on > 10% no-match rate
 - **$submit-attachment**: Alert on > 5% failures
-- **$group-everything**: Alert on > 2 min response time
 
 ---
 
@@ -2931,7 +2408,6 @@ All operations are **additive** - no breaking changes to existing APIs.
 3. **Week 5-8**: Deploy $member-match
 4. **Week 9-12**: Deploy $questionnaire-package
 5. **Week 13-18**: Deploy $submit-attachment
-6. **Week 19-24**: Deploy $group-everything
 
 ### Feature Flags
 
@@ -2954,7 +2430,6 @@ if (_featureManager.IsEnabledAsync("Operations.MemberMatch", tenantId))
 - [$submit-attachment](https://build.fhir.org/ig/HL7/davinci-ecdx/OperationDefinition-submit-attachment.html)
 - [$questionnaire-package](https://www.hl7.org/fhir/us/davinci-dtr/OperationDefinition-questionnaire-package.html)
 - [$document](https://hl7.org/fhir/composition-operation-document.html)
-- [$group-everything](https://hl7.org/fhir/group-operation-everything.html)
 
 ### Implementation Guides
 
