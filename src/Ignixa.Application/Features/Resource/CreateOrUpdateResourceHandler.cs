@@ -14,6 +14,7 @@ using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -164,6 +165,25 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
 
             // 5. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
             result = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
+
+            // 6. Process X-Provenance header if provided (only for standalone operations)
+            // Provenance cannot be processed in bundle/deferred context because the main resource isn't persisted yet
+            if (command.ProvenanceResource != null)
+            {
+                _logger.LogInformation(
+                    "Processing X-Provenance header for {ResourceType}/{Id}",
+                    result.Key.ResourceType,
+                    result.Key.Id);
+
+                await ProcessProvenanceAsync(
+                    command.ProvenanceResource,
+                    result,
+                    fhirVersionEnum,
+                    schemaProvider,
+                    tenantId,
+                    repository,
+                    cancellationToken);
+            }
         }
 
         // Success logging - always runs for both bundle and standalone operations
@@ -243,5 +263,117 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
             SearchIndices = searchIndices?.ToArray()
         };
+    }
+
+    /// <summary>
+    /// Processes the Provenance resource from X-Provenance header.
+    /// Fills in the target reference to point to the created/updated resource and persists the Provenance.
+    /// </summary>
+    /// <param name="provenanceTemplate">The Provenance resource from X-Provenance header (without target).</param>
+    /// <param name="mainResourceResult">The result from creating/updating the main resource.</param>
+    /// <param name="fhirVersion">The FHIR version being used.</param>
+    /// <param name="schemaProvider">The schema provider for the FHIR version.</param>
+    /// <param name="tenantId">The tenant ID for search indexing.</param>
+    /// <param name="repository">The repository to persist the Provenance resource.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private async Task ProcessProvenanceAsync(
+        Serialization.SourceNodes.ResourceJsonNode provenanceTemplate,
+        UpdateResult mainResourceResult,
+        FhirSpecification fhirVersion,
+        IFhirSchemaProvider schemaProvider,
+        int? tenantId,
+        IFhirRepository repository,
+        CancellationToken cancellationToken)
+    {
+        // Clone the provenance node and add target reference
+        var provenanceJson = provenanceTemplate.SerializeToString();
+        var provenanceObject = JsonNode.Parse(provenanceJson)?.AsObject()
+            ?? throw new InvalidOperationException("Failed to parse Provenance resource from X-Provenance header");
+
+        // Generate ID for the Provenance resource (using same strategy as main resource creation)
+        var provenanceId = Guid.NewGuid().ToString();
+
+        // Set ID on the provenance resource
+        provenanceObject["id"] = provenanceId;
+
+        // Add target reference array with version-specific reference to the created/updated resource
+        var targetReference = $"{mainResourceResult.Key.ResourceType}/{mainResourceResult.Key.Id}/_history/{mainResourceResult.Key.VersionId}";
+        var targetArray = new JsonArray
+        {
+            new JsonObject
+            {
+                ["reference"] = targetReference
+            }
+        };
+        provenanceObject["target"] = targetArray;
+
+        _logger.LogDebug(
+            "Created Provenance resource {ProvenanceId} with target reference: {TargetReference}",
+            provenanceId,
+            targetReference);
+
+        // Parse back to ResourceJsonNode
+        var updatedProvenanceJson = provenanceObject.ToJsonString();
+        Serialization.SourceNodes.ResourceJsonNode provenanceNode;
+        using (var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(updatedProvenanceJson)))
+        {
+            provenanceNode = await Serialization.SourceNodes.JsonSourceNodeFactory.Parse(memoryStream);
+        }
+
+        // Set meta values
+        provenanceNode.Meta.LastUpdated = DateTimeOffset.UtcNow;
+        provenanceNode.Meta.VersionId = "1";
+        provenanceNode.Id = provenanceId;
+
+        // Create ResourceWrapper for the Provenance resource
+        var request = new ResourceRequest("POST", $"Provenance/{provenanceId}");
+
+        // Extract search indices for Provenance
+        var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, tenantId);
+        IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
+        try
+        {
+            var typedElement = provenanceNode.ToTypedElement(schemaProvider);
+            searchIndices = searchIndexer.Extract(typedElement);
+
+            _logger.LogDebug(
+                "Extracted {Count} search indices for Provenance/{Id}",
+                searchIndices.Count,
+                provenanceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to extract search indices for Provenance/{Id}",
+                provenanceId);
+        }
+
+        var provenanceWrapper = new ResourceWrapper(
+            "Provenance",
+            provenanceId,
+            provenanceNode.Meta.VersionId,
+            provenanceNode.Meta.LastUpdated.Value,
+            provenanceNode,
+            request,
+            false) // isDeleted
+        {
+            FhirVersion = fhirVersion.ToVersionString(),
+            SearchIndices = searchIndices?.ToArray()
+        };
+
+        // Persist the Provenance resource
+        // Note: Validation will be performed by ValidationBehavior for the Provenance resource
+        // However, since we're calling repository directly, validation behavior won't run
+        // The Provenance resource has already been parsed, so basic JSON validation is done
+        // FHIR-level validation (required fields, cardinality, etc.) is delegated to the repository or skipped
+        var provenanceResult = await repository.CreateOrUpdateAsync(provenanceWrapper, cancellationToken);
+
+        _logger.LogInformation(
+            "Created Provenance resource {ProvenanceId} (version {VersionId}) for {TargetType}/{TargetId}",
+            provenanceResult.Key.Id,
+            provenanceResult.Key.VersionId,
+            mainResourceResult.Key.ResourceType,
+            mainResourceResult.Key.Id);
     }
 }

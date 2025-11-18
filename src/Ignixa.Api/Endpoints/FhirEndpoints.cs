@@ -433,8 +433,19 @@ public static class FhirEndpoints
             }
         }
 
+        // Extract X-Provenance header if present
+        ResourceJsonNode? provenanceResource = null;
+        if (coordinator == null) // Only process provenance for standalone operations (not bundle operations)
+        {
+            provenanceResource = await ProvenanceHeaderHelper.TryParseProvenanceHeaderAsync(
+                context.Request.Headers,
+                memoryStreamManager,
+                logger,
+                ct);
+        }
+
         // Send generic command with optional coordinator and validation override
-        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, parsedIfMatch, validationOverride);
+        var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, parsedIfMatch, validationOverride, provenanceResource);
         UpdateResult result = await mediator.SendAsync(command, ct);
 
         // Add ETag, Last-Modified, and Preference-Applied headers
@@ -799,8 +810,19 @@ public static class FhirEndpoints
         // Extract return preference from Prefer header (RFC 7240)
         var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
 
+        // Extract X-Provenance header if present
+        ResourceJsonNode? provenanceResource = null;
+        if (coordinator == null) // Only process provenance for standalone operations (not bundle operations)
+        {
+            provenanceResource = await ProvenanceHeaderHelper.TryParseProvenanceHeaderAsync(
+                context.Request.Headers,
+                memoryStreamManager,
+                logger,
+                ct);
+        }
+
         // Send generic command with HTTP POST method
-        var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride);
+        var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride, provenanceResource);
         UpdateResult createResult = await mediator.SendAsync(createCommand, ct);
 
         // Add ETag, Last-Modified, and Preference-Applied headers
