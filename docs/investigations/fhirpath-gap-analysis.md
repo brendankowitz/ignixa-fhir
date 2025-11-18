@@ -9,17 +9,31 @@
 
 ## Executive Summary
 
-The Ignixa.FhirPath implementation provides **comprehensive coverage** of the FHIRPath N1.0 (Normative) features with **71 implemented functions** covering all common FHIR use cases. However, there are **significant gaps** in the newer **STU (Standard for Trial Use)** features introduced in FHIRPath 3.0.0-ballot.
+The Ignixa.FhirPath implementation provides **comprehensive coverage** of the FHIRPath v2.0.0 (Normative) features with **64 implemented functions** covering all common FHIR use cases. However, there are **significant gaps** in the newer **STU (Standard for Trial Use)** features and functions introduced in FHIRPath 3.0.0-ballot (not yet finalized).
 
 ### Coverage Overview
 
 | Category | Implemented | Missing | Coverage |
 |----------|------------|---------|----------|
-| **Normative Features** | 71 functions | 1 critical (Quantity eval) | **~98%** |
+| **Normative Features** | 64 functions | 1 critical (Quantity eval) | **~98%** |
 | **STU Features** | 2 functions | 45+ functions | **~4%** |
 | **Operators** | 15 operators | 1 operator (`not`) | **~94%** |
 | **Literal Types** | 7 types | 1 type (Long) | **~88%** |
 | **Overall Compliance** | **Core: 98%** | **Extended: 4%** | **Combined: ~65%** |
+
+### Specification Version Notes
+
+⚠️ **Important Clarification:**
+- **FHIRPath v2.0.0** (January 2020): **Normative, ANSI-certified, Production-ready**
+  - 61 normative functions (stable, unlikely to change)
+  - Our 64 implemented functions cover v2.0.0 + some v3.0 early additions
+
+- **FHIRPath v3.0.0-ballot** (December 2024): **NOT FINALIZED, Subject to change**
+  - Adds 33+ new functions and improvements
+  - New STU features (Date/Time components, String extensions, Sorting, etc.)
+  - Expected finalization timeline: Unknown (ballot in progress)
+
+**Recommendation:** Build toward v3.0.0-ballot for future compatibility, but ensure v2.0.0 normative features work identically for production stability.
 
 ### Priority Classification
 
@@ -317,6 +331,67 @@ conformsTo(profile : String) : Boolean
 
 ---
 
+#### 2.11 New Functions in FHIRPath 3.0.0-ballot
+
+**Context:** FHIRPath 3.0.0-ballot introduces **33+ new functions** and improvements not in the stable v2.0.0 release. These are categorized below by priority.
+
+**NEW High-Value Functions (NEW in ballot):**
+```fhirpath
+// Date/Time Component Extraction (NEW)
+year() : Integer          // Extract year from date/datetime
+month() : Integer         // Extract month (1-12)
+day() : Integer           // Extract day of month
+hour() : Integer          // Extract hour (0-23)
+minute() : Integer        // Extract minute (0-59)
+second() : Integer        // Extract second (0-59)
+millisecond() : Integer   // Extract millisecond
+timezone() : String       // Extract timezone offset
+
+// Date/Time Interval Calculation (NEW)
+duration(precision: String) : Quantity    // Duration with precision
+difference(date, precision: String) : Quantity  // Time difference
+
+// Collection Enhancements (NEW)
+sort([keySelector: expression [asc | desc]]) : collection  // Sort with key
+coalesce(values...) : collection    // First non-empty value
+repeatAll(projection) : collection  // Recursive with intermediates
+
+// Aggregate Helpers (EXPANDED in ballot)
+sum() : Integer | Long | Decimal | Quantity
+min() : Integer | Long | Decimal | Quantity | Date | DateTime | Time | String
+max() : Integer | Long | Decimal | Quantity | Date | DateTime | Time | String
+avg() : Decimal | Quantity
+```
+
+**NEW String Functions (NEW in ballot):**
+```fhirpath
+trim() : String                      // Remove whitespace
+split(separator: String) : collection  // Split string
+join(separator: String) : String    // Join collection
+lastIndexOf(substring) : Integer    // Find last occurrence
+encode(format: String) : String     // Base64/URL encode
+decode(format: String) : String     // Base64/URL decode
+escape(target: String) : String     // HTML/JSON escape
+unescape(target: String) : String   // HTML/JSON unescape
+matchesFull(regex, flags) : Boolean // Exact regex match
+```
+
+**NEW Type Support (NEW in ballot):**
+```fhirpath
+toLong() : Long                     // Convert to 64-bit integer
+convertsToLong() : Boolean          // Test conversion
+```
+
+**Impact Summary:**
+- **33+ new functions** not in v2.0.0 (all marked STU in ballot)
+- Majority are **common use cases** (sorting, date components, string utilities)
+- Some are **domain-specific** (ConformsTo for FHIR validation)
+- Implementation these enhances search, display, and validation capabilities
+
+**Estimated Effort for All:** ~13-18 weeks (covered in Roadmap section)
+
+---
+
 ### 3. Medium Priority Gaps (🟢)
 
 #### 3.1 RepeatAll Function (STU)
@@ -419,50 +494,56 @@ These are advanced/rare features with minimal impact on typical FHIR operations:
 
 ## Implementation Roadmap
 
-### Phase 23: Critical & High Priority (4-6 weeks)
-**Target:** Pre-GA feature completeness
+⚠️ **Ballot Status Disclaimer:**
+This roadmap targets **FHIRPath 3.0.0-ballot** features. Note that:
+- **Ballot spec is NOT finalized** - Features may change before official release
+- **v2.0.0 normative features** are stable and should remain unchanged
+- **Recommend feature flags** for ballot-only features (in case of spec changes)
+- **Monitor HL7 voting** on the ballot for finalization timeline
+
+See [FHIRPath Specification URLs](#9-specification-urls) for tracking ballot status.
+
+### Phase 23: Critical Gaps & High-Value Features (5-6 weeks)
+**Target:** Pre-GA feature completeness, prioritize blocking issues
 
 1. **Week 1-3:** Quantity Literal Evaluation (🔴 Critical)
    - UCUM library integration
    - Arithmetic and comparison operators
    - Calendar duration support
    - Unit tests with FHIR Observation examples
+   - **Reason:** Blocks FHIR Observation, vital signs, medication dosages
 
-2. **Week 4:** Date/Time Component Extraction (🟡 High)
-   - `year()`, `month()`, `day()`, `hour()`, `minute()`, `second()`, `millisecond()`, `timezone()`
-   - Integration with existing Date/DateTime/Time types
-   - Unit tests
-
-3. **Week 5:** Date/Time Interval Functions (🟡 High)
-   - `duration()`, `difference()`
-   - Timezone-aware calculations
-   - Unit tests with age calculation examples
-
-4. **Week 6:** Aggregate Functions (🟡 High)
-   - `sum()`, `min()`, `max()`, `avg()`, `aggregate()`
+2. **Week 4:** Aggregate Functions (🟡 High Priority)
+   - `sum()`, `min()`, `max()`, `avg()` (simpler than generic `aggregate()`)
    - Type handling (Integer/Long/Decimal/Quantity)
    - Unit tests with FHIR analytics examples
+   - **Reason:** Higher ROI than generic aggregate, commonly used in validation
 
-### Phase 24: Enhanced Features (4-5 weeks)
-**Target:** Improved developer experience
+3. **Week 5-6:** Date/Time Component Extraction (🟡 High)
+   - `year()`, `month()`, `day()`, `hour()`, `minute()`, `second()`, `millisecond()`, `timezone()`
+   - Integration with existing Date/DateTime/Time types
+   - Unit tests with age/temporal filtering examples
+   - **Reason:** Essential for search parameters and temporal queries
 
-1. **Week 1-2:** Math Functions (🟡 High)
-   - All 10 math functions
+### Phase 24: Date/Time Intervals & Extended Features (4-5 weeks)
+**Target:** Temporal query support and developer experience
+
+1. **Week 1-2:** Date/Time Interval Functions (🟡 High)
+   - `duration()`, `difference()` (moved up from Phase 23)
+   - Timezone-aware calculations
+   - Unit tests with age calculation examples
+   - **Reason:** Paired with date components for complete temporal support
+
+2. **Week 3:** Math Functions (🟡 High)
+   - All 10 math functions (abs, ceiling, floor, exp, ln, log, power, round, sqrt, truncate)
    - Type coercion rules
-   - Unit tests
+   - Unit tests with BMI, dosage calculations
 
-2. **Week 3:** Collection Sorting (🟡 High)
-   - Single-key and multi-key sorting
-   - Ascending/descending order
-   - Unit tests
-
-3. **Week 4:** String Functions Extended (🟡 High)
-   - `trim()`, `split()`, `lastIndexOf()`, `matchesFull()`
+3. **Week 4-5:** String Functions Extended & Collection Utilities (🟡 High)
+   - `trim()`, `split()`, `join()`, `lastIndexOf()`
    - `encode()`, `decode()`, `escape()`, `unescape()`
-   - Unit tests
-
-4. **Week 5:** Coalesce & NOT Operator (🟡 High)
    - `coalesce()` function
+   - `sort([keySelector])` with multi-key support
    - `not` unary operator
    - Unit tests
 
@@ -586,16 +667,46 @@ These are advanced/rare features with minimal impact on typical FHIR operations:
 
 ---
 
+## Specification Reference URLs
+
+**Official FHIRPath Versions**:
+- **v2.0.0 Normative** (Stable): https://hl7.org/fhirpath/N1/
+- **v3.0.0-ballot** (Continuous Build): https://build.fhir.org/ig/HL7/FHIRPath/
+- **Version History**: https://hl7.org/fhirpath/history.html
+
+**Development Resources**:
+- **HL7 FHIRPath Repository**: https://github.com/HL7/FHIRPath
+- **FHIRPath Test Suite**: https://github.com/HL7/FHIRPath/tree/master/tests
+- **Reference Implementations**: https://confluence.hl7.org/display/FHIRI/FHIRPath+Implementations
+
+**Track Ballot Progress**:
+- **HL7 Ballot Tracker**: https://www.hl7.org/ballot/
+- **Current Status**: Check for "FHIRPath" ballot items for finalization status
+
+---
+
 ## Conclusion
 
-The Ignixa.FhirPath implementation provides **excellent coverage of FHIRPath N1.0 normative features** (98%), making it suitable for **production FHIR server operations**. However, to achieve **full FHIRPath 3.0.0-ballot compliance**, approximately **12-15 weeks of development** across 4 phases is recommended.
+The Ignixa.FhirPath implementation provides **excellent coverage of FHIRPath v2.0.0 normative features** (98%, 64 implemented functions), making it suitable for **production FHIR server operations**. However, to achieve **full FHIRPath 3.0.0-ballot compliance**, approximately **13-18 weeks of development** across 4 phases is recommended.
 
-The **most critical gap** is Quantity Literal Evaluation, which should be prioritized in Phase 23 to support FHIR Observation resources and medication dosages. Following this, Date/Time and Aggregate functions will significantly enhance search capabilities and validation rules.
+**Key Findings from Spec Alignment Review:**
+- ✅ FHIRPath v2.0.0 is stable (Normative, ANSI-certified)
+- ⚠️ FHIRPath v3.0.0-ballot adds 33+ new functions (not yet finalized)
+- 🔴 **Critical blocking gap**: Quantity Literal Evaluation (affects Observations, vital signs, medications)
+- 🟡 **High-value gaps**: Aggregate helpers (sum/min/max/avg), Date/Time components, Date/Time intervals
+
+**Reordered Implementation Strategy:**
+With updated prioritization, Phase 23 focuses on:
+1. **Quantity Literal Evaluation** (Weeks 1-3) - Unblocks FHIR Observation support
+2. **Aggregate Helpers** (Week 4) - Higher ROI than generic aggregate()
+3. **Date/Time Components** (Weeks 5-6) - Essential for temporal queries
 
 With the proposed roadmap, Ignixa.FhirPath can achieve:
-- **100% Normative compliance** by end of Phase 23
-- **90%+ STU compliance** by end of Phase 25
+- **100% v2.0.0 Normative compliance** by end of Phase 23
+- **90%+ v3.0.0-ballot STU compliance** by end of Phase 25
 - **Enterprise-grade validation** by end of Phase 26
+
+⚠️ **Important:** Monitor FHIRPath 3.0.0 ballot status for finalization. Implement ballot features with feature flags to accommodate potential spec changes before official release.
 
 **Total Estimated Effort:** 13-18 weeks across 4 development phases.
 
@@ -618,7 +729,7 @@ With the proposed roadmap, Ignixa.FhirPath can achieve:
 | Tree Navigation | 2 | 2 | 0 | 100% |
 | Utility | 8 | 3 | 5 | 38% |
 | FHIR-Specific | 4 | 3 | 1 | 75% |
-| **TOTAL** | **115** | **72** | **43** | **63%** |
+| **TOTAL** | **115** | **64** | **51** | **56%** |
 
 ---
 
