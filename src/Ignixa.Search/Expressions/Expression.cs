@@ -336,7 +336,7 @@ public abstract class Expression
         DateTimeOffset? startDate = null,
         DateTimeOffset? endDate = null,
         DateTimeOffset? sinceDate = null,
-        ISet<string>? filteredResourceTypes = null,
+        ISet<string> filteredResourceTypes = null,
         bool includeReferencedResources = true)
     {
         return new PatientEverythingExpression(patientId, startDate, endDate, sinceDate, filteredResourceTypes, includeReferencedResources);

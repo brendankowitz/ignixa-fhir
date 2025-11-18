@@ -181,6 +181,14 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         throw new SearchOperationNotSupportedException("Compartment search is not supported.");
     }
 
+    public SearchPredicate VisitPatientEverything(PatientEverythingExpression expression, Context context)
+    {
+        EnsureArg.IsNotNull(expression, nameof(expression));
+        EnsureArg.IsNotNull<Context>(context, nameof(context));
+
+        throw new SearchOperationNotSupportedException("Patient $everything is not supported in in-memory search.");
+    }
+
     public SearchPredicate VisitInclude(IncludeExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));

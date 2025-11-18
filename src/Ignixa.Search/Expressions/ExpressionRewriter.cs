@@ -67,6 +67,11 @@ public abstract class ExpressionRewriter<TContext> : IExpressionVisitor<TContext
         return expression;
     }
 
+    public virtual Expression VisitPatientEverything(PatientEverythingExpression expression, TContext context)
+    {
+        return expression;
+    }
+
     public virtual Expression VisitInclude(IncludeExpression expression, TContext context)
     {
         return expression;

@@ -31,7 +31,7 @@ public class PatientEverythingExpression : Expression
         DateTimeOffset? startDate = null,
         DateTimeOffset? endDate = null,
         DateTimeOffset? sinceDate = null,
-        ISet<string>? filteredResourceTypes = null,
+        ISet<string> filteredResourceTypes = null,
         bool includeReferencedResources = true)
         : this(new[] { patientId }, startDate, endDate, sinceDate, filteredResourceTypes, includeReferencedResources)
     {
@@ -52,7 +52,7 @@ public class PatientEverythingExpression : Expression
         DateTimeOffset? startDate = null,
         DateTimeOffset? endDate = null,
         DateTimeOffset? sinceDate = null,
-        ISet<string>? filteredResourceTypes = null,
+        ISet<string> filteredResourceTypes = null,
         bool includeReferencedResources = true)
     {
         EnsureArg.IsNotNull(patientIds, nameof(patientIds));
