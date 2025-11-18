@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Clean up nul files with optional logging
+NUL_FILES=$(find . -type f -name "nul" 2>/dev/null)
+
+if [ -n "$NUL_FILES" ]; then
+    echo "🧹 Cleaning up nul files..." >&2
+    find . -type f -name "nul" -delete 2>/dev/null
+fi
+
+exit 0

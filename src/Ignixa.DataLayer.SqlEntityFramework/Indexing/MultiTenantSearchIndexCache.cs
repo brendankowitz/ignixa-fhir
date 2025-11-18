@@ -82,6 +82,10 @@ public class MultiTenantSearchIndexCache
                 dbContext,
                 _loggerFactory.CreateLogger<SearchIndexReferenceDataCache>());
 
+            // Initialize the cache by batch-loading all search parameters
+            // This prevents N+1 query problems during startup
+            cache.InitializeAsync().GetAwaiter().GetResult();
+
             _logger.LogDebug("Cache instance created for tenant {TenantId}", tid);
 
             return new CacheEntry

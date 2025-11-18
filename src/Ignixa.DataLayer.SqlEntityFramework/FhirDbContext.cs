@@ -262,14 +262,16 @@ public class FhirDbContext : DbContext
     {
         var entity = modelBuilder.Entity<SearchParamEntity>();
 
-        // Primary key on SearchParamId
-        entity.HasKey(sp => sp.SearchParamId)
-            .HasName("PK_SearchParam");
+        // Primary key on Uri (CLUSTERED) - matches 97.sql legacy schema
+        // IMPORTANT: Microsoft FHIR Server v97 schema uses Uri as PRIMARY KEY, not SearchParamId
+        entity.HasKey(sp => sp.Uri)
+            .HasName("PKC_SearchParam")
+            .IsClustered();
 
-        // Unique index on Uri
-        entity.HasIndex(sp => sp.Uri)
+        // Unique constraint on SearchParamId - matches 97.sql legacy schema
+        entity.HasIndex(sp => sp.SearchParamId)
             .IsUnique()
-            .HasDatabaseName("UQ_SearchParam_Uri");
+            .HasDatabaseName("UQ_SearchParam_SearchParamId");
     }
 
     private static void ConfigureSystemEntity(ModelBuilder modelBuilder)

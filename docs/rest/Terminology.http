@@ -1,0 +1,199 @@
+### Terminology Operations Test File
+### Base URL
+@hostname = https://localhost:7058
+@tenantId = 1
+
+###############################################################################
+# $expand - ValueSet Expansion
+###############################################################################
+
+### $expand - Basic expansion (tenant-agnostic)
+GET {{hostname}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+Accept: application/fhir+json
+
+### $expand - With filter (tenant-agnostic)
+GET {{hostname}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender&filter=mal
+Accept: application/fhir+json
+
+### $expand - With pagination (tenant-agnostic)
+GET {{hostname}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender&count=2&offset=0
+Accept: application/fhir+json
+
+### $expand - With includeDesignations (tenant-agnostic)
+GET {{hostname}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender&includeDesignations=true
+Accept: application/fhir+json
+
+### $expand - Tenant-explicit route
+GET {{hostname}}/tenant/{{tenantId}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+Accept: application/fhir+json
+
+### $expand - Tenant-explicit with all parameters
+GET {{baseUrl}}/tenant/{{tenantId}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender&filter=fem&count=10&offset=0&includeDesignations=true
+Accept: application/fhir+json
+
+### $expand - Missing URL parameter (should return 400)
+GET {{baseUrl}}/ValueSet/$expand
+Accept: application/fhir+json
+
+###############################################################################
+# $translate - ConceptMap Translation
+###############################################################################
+
+### $translate - Basic translation (tenant-agnostic)
+POST {{baseUrl}}/ConceptMap/$translate
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "code": "male",
+  "system": "http://hl7.org/fhir/administrative-gender",
+  "url": "http://example.org/fhir/ConceptMap/gender-mapping"
+}
+
+### $translate - With source and target (tenant-agnostic)
+POST {{baseUrl}}/ConceptMap/$translate
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "code": "male",
+  "system": "http://hl7.org/fhir/administrative-gender",
+  "source": "http://hl7.org/fhir/ValueSet/administrative-gender",
+  "target": "http://example.org/fhir/ValueSet/custom-gender"
+}
+
+### $translate - Reverse translation (tenant-agnostic)
+POST {{baseUrl}}/ConceptMap/$translate
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "code": "M",
+  "system": "http://example.org/codesystem/custom-gender",
+  "reverse": true
+}
+
+### $translate - Tenant-explicit route
+POST {{baseUrl}}/tenant/{{tenantId}}/ConceptMap/$translate
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "code": "male",
+  "system": "http://hl7.org/fhir/administrative-gender",
+  "url": "http://example.org/fhir/ConceptMap/gender-mapping"
+}
+
+### $translate - Missing required parameters (should return 400)
+POST {{baseUrl}}/ConceptMap/$translate
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "code": "male"
+}
+
+###############################################################################
+# $subsumes - Code Subsumption
+###############################################################################
+
+### $subsumes - Basic subsumption test (tenant-agnostic)
+POST {{baseUrl}}/CodeSystem/$subsumes
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "codeA": "386661006",
+  "codeB": "404684003",
+  "system": "http://snomed.info/sct"
+}
+
+### $subsumes - With version (tenant-agnostic)
+POST {{baseUrl}}/CodeSystem/$subsumes
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "codeA": "386661006",
+  "codeB": "404684003",
+  "system": "http://snomed.info/sct",
+  "version": "http://snomed.info/sct/900000000000207008/version/20230901"
+}
+
+### $subsumes - Tenant-explicit route
+POST {{baseUrl}}/tenant/{{tenantId}}/CodeSystem/$subsumes
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "codeA": "386661006",
+  "codeB": "404684003",
+  "system": "http://snomed.info/sct"
+}
+
+### $subsumes - Missing required parameters (should return 400)
+POST {{baseUrl}}/CodeSystem/$subsumes
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "codeA": "386661006"
+}
+
+###############################################################################
+# Error Cases
+###############################################################################
+
+### Missing URL parameter for $expand (400 Bad Request)
+GET {{baseUrl}}/ValueSet/$expand?filter=test
+Accept: application/fhir+json
+
+### Missing code/system for $translate (400 Bad Request)
+POST {{baseUrl}}/ConceptMap/$translate
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "url": "http://example.org/fhir/ConceptMap/test"
+}
+
+### Missing codeA/codeB/system for $subsumes (400 Bad Request)
+POST {{baseUrl}}/CodeSystem/$subsumes
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+  "codeA": "test"
+}
+
+### Non-existent ValueSet (404 Not Found)
+GET {{baseUrl}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/does-not-exist
+Accept: application/fhir+json
+
+###############################################################################
+# Multi-Tenant Testing
+###############################################################################
+
+### Tenant 1 - $expand
+GET {{baseUrl}}/tenant/1/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+Accept: application/fhir+json
+
+### Tenant 2 - $expand (if multi-tenant enabled)
+GET {{baseUrl}}/tenant/2/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+Accept: application/fhir+json
+
+### Tenant 0 - Should be blocked (400 Bad Request per CLAUDE.md)
+GET {{baseUrl}}/tenant/0/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+Accept: application/fhir+json
+
+###############################################################################
+# Performance Testing
+###############################################################################
+
+### Large ValueSet expansion (test pagination)
+GET {{baseUrl}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/ucum-common&count=100&offset=0
+Accept: application/fhir+json
+
+### Next page
+GET {{baseUrl}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/ucum-common&count=100&offset=100
+Accept: application/fhir+json

@@ -4,39 +4,18 @@ using Microsoft.EntityFrameworkCore.Migrations;
 #nullable disable
 
 #pragma warning disable CA1861 // Prefer static readonly fields over constant array arguments (auto-generated migration code)
+#pragma warning disable IDE0161 // Use file-scoped namespace (auto-generated migration code)
 
-namespace Ignixa.DataLayer.SqlEntityFramework.Migrations;
-
-/// <inheritdoc />
-public partial class AddTerminologyImportTracking : Migration
+namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
 {
     /// <inheritdoc />
-    protected override void Up(MigrationBuilder migrationBuilder)
+    public partial class AddTerminologyImportTracking : Migration
     {
-            migrationBuilder.AlterColumn<string>(
-                name: "Uri",
-                table: "SearchParam",
-                type: "nvarchar(128)",
-                maxLength: 128,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(300)",
-                oldMaxLength: 300);
-
-            migrationBuilder.AddColumn<DateTimeOffset>(
-                name: "LastUpdated",
-                table: "SearchParam",
-                type: "datetimeoffset",
-                nullable: false,
-                defaultValue: new DateTimeOffset(new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)));
-
-            migrationBuilder.AddColumn<string>(
-                name: "Status",
-                table: "SearchParam",
-                type: "nvarchar(20)",
-                maxLength: 20,
-                nullable: false,
-                defaultValue: "");
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            // NOTE: 97.sql already creates SearchParam table with correct schema (Uri=128, Status, LastUpdated, PKC_SearchParam)
+            // We only need to verify the schema matches our expectations, not recreate it
 
             migrationBuilder.AddColumn<string>(
                 name: "ContentHash",
@@ -82,6 +61,8 @@ public partial class AddTerminologyImportTracking : Migration
                 type: "nvarchar(20)",
                 maxLength: 20,
                 nullable: true);
+
+            // NOTE: PKC_SearchParam already exists from 97.sql - no need to recreate
 
             migrationBuilder.CreateTable(
                 name: "TermCodeSystem",
@@ -279,6 +260,9 @@ public partial class AddTerminologyImportTracking : Migration
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            // NOTE: UQ_SearchParam_SearchParamId already exists from 97.sql
+            // NOTE: UQ_PackageResource_Identity already exists from 20251108000000_AddPackageResourceAndTerminologyIndexes.cs
+
             migrationBuilder.CreateIndex(
                 name: "IX_TermCodeSystem_PackageResourceId",
                 schema: "dbo",
@@ -443,13 +427,9 @@ public partial class AddTerminologyImportTracking : Migration
                 name: "TermValueSet",
                 schema: "dbo");
 
-            migrationBuilder.DropColumn(
-                name: "LastUpdated",
-                table: "SearchParam");
-
-            migrationBuilder.DropColumn(
-                name: "Status",
-                table: "SearchParam");
+            // NOTE: SearchParam table and its constraints are base schema from 97.sql - don't modify
+            // NOTE: UQ_PackageResource_Identity index belongs to 20251108000000_AddPackageResourceAndTerminologyIndexes.cs - don't drop here
+            // NOTE: LastUpdated and Status columns already exist in SearchParam from 97.sql - don't drop
 
             migrationBuilder.DropColumn(
                 name: "ContentHash",
@@ -481,14 +461,9 @@ public partial class AddTerminologyImportTracking : Migration
                 schema: "dbo",
                 table: "PackageResource");
 
-            migrationBuilder.AlterColumn<string>(
-                name: "Uri",
-                table: "SearchParam",
-                type: "nvarchar(300)",
-                maxLength: 300,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(128)",
-                oldMaxLength: 128);
+            // NOTE: SearchParam schema (Uri length, PK, indexes) is base schema from 97.sql - don't alter
         }
     }
+}
+#pragma warning restore CA1861
+#pragma warning restore IDE0161

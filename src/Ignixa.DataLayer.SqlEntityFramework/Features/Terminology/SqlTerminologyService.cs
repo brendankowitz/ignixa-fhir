@@ -5,32 +5,54 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Domain.Terminology;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.DataLayer.SqlEntityFramework.Terminology;
+namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 
 /// <summary>
 /// SQL-based terminology service using imported TermConcept and TermValueSetExpansion tables.
 /// Provides fast $lookup and $validate-code operations with in-memory caching.
 /// </summary>
+/// <remarks>
+/// MULTI-TENANT ARCHITECTURE: Terminology resources (ValueSet, CodeSystem, ConceptMap) are
+/// stored in the System Partition (Partition 0) and shared across all tenants. This service
+/// uses SqlEntityFrameworkRepositoryFactory to create FhirDbContext instances scoped to the
+/// system partition. See also: ImportTerminologyResourceActivity, PackageLoadedTerminologyImportHandler
+/// </remarks>
 public class SqlTerminologyService : ITerminologyService
 {
-    private readonly FhirDbContext _context;
+    private readonly SqlEntityFrameworkRepositoryFactory _repositoryFactory;
     private readonly IMemoryCache _cache;
     private readonly ILogger<SqlTerminologyService> _logger;
 
     public SqlTerminologyService(
-        FhirDbContext context,
+        SqlEntityFrameworkRepositoryFactory repositoryFactory,
         IMemoryCache cache,
         ILogger<SqlTerminologyService> logger)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Creates a FhirDbContext for the system partition (Partition 0) where terminology resources are stored.
+    /// </summary>
+    /// <remarks>
+    /// Terminology resources (ValueSet, CodeSystem, ConceptMap) are stored in the System Partition and shared
+    /// across all tenants. This method uses SqlEntityFrameworkRepositoryFactory.GetDbContextAsync to create
+    /// a properly configured DbContext for the system partition.
+    /// </remarks>
+    private async Task<FhirDbContext> CreateSystemPartitionContextAsync(CancellationToken cancellationToken)
+    {
+        // Get a FhirDbContext for the system partition (Partition 0) where terminology is stored
+        return await _repositoryFactory.GetDbContextAsync(SystemConstants.SystemPartitionId, cancellationToken);
     }
 
     /// <summary>
@@ -56,8 +78,11 @@ public class SqlTerminologyService : ITerminologyService
             return cachedResult;
         }
 
+        // Get FhirDbContext for system partition (where terminology is stored)
+        await using var context = await CreateSystemPartitionContextAsync(cancellationToken);
+
         // 1. Get SystemId from System table
-        var systemId = await _context.Systems
+        var systemId = await context.Systems
             .Where(s => s.Value == system)
             .Select(s => s.SystemId)
             .FirstOrDefaultAsync(cancellationToken);
@@ -70,7 +95,7 @@ public class SqlTerminologyService : ITerminologyService
         }
 
         // 2. Query TermConcept by SystemId + Code (join to TermCodeSystem for metadata)
-        var concept = await _context.TermConcepts
+        var concept = await context.TermConcepts
             .Include(tc => tc.CodeSystem)
             .Where(tc => tc.CodeSystem.SystemId == systemId && tc.Code == code)
             .Where(tc => version == null || tc.CodeSystem.Version == version)
@@ -120,10 +145,13 @@ public class SqlTerminologyService : ITerminologyService
             return cachedResult;
         }
 
+        // Get FhirDbContext for system partition (where terminology is stored)
+        await using var context = await CreateSystemPartitionContextAsync(cancellationToken);
+
         try
         {
             // 3. Query TermValueSet table - find ValueSet by canonical URL
-            var termValueSet = await _context.TermValueSets
+            var termValueSet = await context.TermValueSets
                 .AsNoTracking()
                 .Where(tvs => tvs.Canonical == parameters.Url && tvs.IsExpanded)
                 .OrderByDescending(tvs => tvs.ImportedDate)
@@ -137,7 +165,7 @@ public class SqlTerminologyService : ITerminologyService
             }
 
             // 5. Build query for TermValueSetExpansion with filter and pagination
-            var expansionQuery = _context.TermValueSetExpansions
+            var expansionQuery = context.TermValueSetExpansions
                 .AsNoTracking()
                 .Include(tvse => tvse.System)
                 .Where(tvse => tvse.TermValueSetId == termValueSet.TermValueSetId);
@@ -239,8 +267,11 @@ public class SqlTerminologyService : ITerminologyService
             return cachedResult;
         }
 
+        // Get FhirDbContext for system partition (where terminology is stored)
+        await using var context = await CreateSystemPartitionContextAsync(cancellationToken);
+
         // 1. Find TermValueSet by canonical URL
-        var termValueSet = await _context.TermValueSets
+        var termValueSet = await context.TermValueSets
             .Where(tvs => tvs.Canonical == valueSetUrl && tvs.IsExpanded)
             .OrderByDescending(tvs => tvs.ImportedDate)
             .FirstOrDefaultAsync(cancellationToken);
@@ -259,7 +290,7 @@ public class SqlTerminologyService : ITerminologyService
         int? systemId = null;
         if (!string.IsNullOrEmpty(system))
         {
-            systemId = await _context.Systems
+            systemId = await context.Systems
                 .Where(s => s.Value == system)
                 .Select(s => (int?)s.SystemId)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -276,7 +307,7 @@ public class SqlTerminologyService : ITerminologyService
         }
 
         // 3. Check if code exists in expansion
-        var expansionEntry = await _context.TermValueSetExpansions
+        var expansionEntry = await context.TermValueSetExpansions
             .Where(tvse =>
                 tvse.TermValueSetId == termValueSet.TermValueSetId &&
                 tvse.Code == code &&
@@ -402,10 +433,13 @@ public class SqlTerminologyService : ITerminologyService
         ArgumentException.ThrowIfNullOrWhiteSpace(parameters.Code);
         ArgumentException.ThrowIfNullOrWhiteSpace(parameters.System);
 
+        // Get FhirDbContext for system partition (where terminology is stored)
+        await using var context = await CreateSystemPartitionContextAsync(cancellationToken);
+
         try
         {
             // Get SystemId for source system
-            var sourceSystemId = await _context.Systems
+            var sourceSystemId = await context.Systems
                 .Where(s => s.Value == parameters.System)
                 .Select(s => s.SystemId)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -419,7 +453,7 @@ public class SqlTerminologyService : ITerminologyService
             }
 
             // Build query for translation
-            var query = _context.TermConceptMapElements
+            var query = context.TermConceptMapElements
                 .Include(e => e.ConceptMap)
                 .Include(e => e.SourceSystem)
                 .Include(e => e.TargetSystem)
@@ -443,7 +477,7 @@ public class SqlTerminologyService : ITerminologyService
             // Filter by target system if specified
             if (!string.IsNullOrEmpty(parameters.TargetSystem))
             {
-                var targetSystemId = await _context.Systems
+                var targetSystemId = await context.Systems
                     .Where(s => s.Value == parameters.TargetSystem)
                     .Select(s => s.SystemId)
                     .FirstOrDefaultAsync(cancellationToken);
@@ -508,10 +542,13 @@ public class SqlTerminologyService : ITerminologyService
         ArgumentException.ThrowIfNullOrWhiteSpace(parameters.CodeB);
         ArgumentException.ThrowIfNullOrWhiteSpace(parameters.System);
 
+        // Get FhirDbContext for system partition (where terminology is stored)
+        await using var context = await CreateSystemPartitionContextAsync(cancellationToken);
+
         try
         {
             // Get SystemId
-            var systemId = await _context.Systems
+            var systemId = await context.Systems
                 .Where(s => s.Value == parameters.System)
                 .Select(s => s.SystemId)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -522,7 +559,7 @@ public class SqlTerminologyService : ITerminologyService
             }
 
             // Find both concepts
-            var concepts = await _context.TermConcepts
+            var concepts = await context.TermConcepts
                 .Where(tc => tc.CodeSystem.SystemId == systemId)
                 .Where(tc => tc.Code == parameters.CodeA || tc.Code == parameters.CodeB)
                 .Where(tc => parameters.Version == null || tc.CodeSystem.Version == parameters.Version)
@@ -543,13 +580,13 @@ public class SqlTerminologyService : ITerminologyService
             }
 
             // Check if A subsumes B (B is descendant of A)
-            if (await IsDescendantOfAsync(conceptB.TermConceptId, conceptA.TermConceptId, cancellationToken))
+            if (await IsDescendantOfAsync(context, conceptB.TermConceptId, conceptA.TermConceptId, cancellationToken))
             {
                 return new SubsumesResult("subsumes");
             }
 
             // Check if B subsumes A (A is descendant of B)
-            if (await IsDescendantOfAsync(conceptA.TermConceptId, conceptB.TermConceptId, cancellationToken))
+            if (await IsDescendantOfAsync(context, conceptA.TermConceptId, conceptB.TermConceptId, cancellationToken))
             {
                 return new SubsumesResult("subsumed-by");
             }
@@ -569,6 +606,7 @@ public class SqlTerminologyService : ITerminologyService
     /// Checks if descendantId is a descendant of ancestorId by traversing parent references.
     /// </summary>
     private async Task<bool> IsDescendantOfAsync(
+        FhirDbContext context,
         long descendantId,
         long ancestorId,
         CancellationToken cancellationToken)
@@ -580,7 +618,7 @@ public class SqlTerminologyService : ITerminologyService
         for (int depth = 0; depth < 50; depth++)
         {
             // Get parent of current concept
-            var parentId = await _context.TermConcepts
+            var parentId = await context.TermConcepts
                 .Where(tc => tc.TermConceptId == currentId)
                 .Select(tc => tc.ParentConceptId)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -623,7 +661,10 @@ public class SqlTerminologyService : ITerminologyService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
-        var statusString = await _context.PackageResources
+        // Get FhirDbContext for system partition (where terminology is stored)
+        await using var context = await CreateSystemPartitionContextAsync(cancellationToken);
+
+        var statusString = await context.PackageResources
             .Where(pr => pr.Canonical == canonical && pr.IsActive)
             .OrderByDescending(pr => pr.LoadedDate)
             .Select(pr => pr.TerminologyImportStatus)

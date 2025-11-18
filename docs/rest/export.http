@@ -1,0 +1,74 @@
+### FHIR Bulk Export Operations ($export)
+### Uses DurableTask framework for background processing
+### Based on: https://hl7.org/fhir/async.html
+
+@baseUrl = http://localhost:5027
+@tenantId = 1
+
+### 1. Start System-Level Export (all resource types)
+# @name startSystemExport
+POST {{baseUrl}}/tenant/{{tenantId}}/$export
+Accept: application/fhir+json
+Prefer: respond-async
+
+###
+
+### 2. Start System-Level Export (specific resource types)
+# @name startFilteredExport
+POST {{baseUrl}}/tenant/{{tenantId}}/$export?_type=Patient,Observation
+Accept: application/fhir+json
+Prefer: respond-async
+
+###
+
+### 3. Start Export with Since Parameter (incremental export)
+# @name startIncrementalExport
+POST {{baseUrl}}/tenant/{{tenantId}}/$export?_type=Patient&_since=2024-01-01T00:00:00Z
+Accept: application/fhir+json
+Prefer: respond-async
+
+###
+
+### 4. Start Export with Type Filter (advanced filtering)
+# @name startTypeFilterExport
+POST {{baseUrl}}/tenant/{{tenantId}}/$export?_type=Observation&_typeFilter=Observation?code=http://loinc.org|8867-4
+Accept: application/fhir+json
+Prefer: respond-async
+
+###
+
+### 5. Poll Export Job Status
+# Replace {jobId} with the ID from Content-Location header
+# @name pollExportStatus
+GET {{baseUrl}}/tenant/{{tenantId}}/_export/{jobId}
+Accept: application/fhir+json
+
+###
+
+### 6. Cancel Export Job
+# Replace {jobId} with the ID from Content-Location header
+# @name cancelExport
+DELETE {{baseUrl}}/tenant/{{tenantId}}/_export/{jobId}
+
+###
+
+### Expected Response Flow:
+# 1. POST $export returns 202 Accepted with Content-Location header
+# 2. Poll GET _export/{jobId} returns:
+#    - 202 Accepted (still processing) with X-Progress header
+#    - 200 OK (completed) with output file links in JSON body
+# 3. Download output files from URLs in response
+
+### Example Completed Response Body:
+# {
+#   "transactionTime": "2024-01-15T10:30:00Z",
+#   "request": "https://localhost:5027/tenant/1/$export?_type=Patient",
+#   "requiresAccessToken": false,
+#   "output": [
+#     {
+#       "type": "Patient",
+#       "url": "https://localhost:5027/tenant/1/_export/files/job-123/Patient_001.ndjson"
+#     }
+#   ],
+#   "error": []
+# }

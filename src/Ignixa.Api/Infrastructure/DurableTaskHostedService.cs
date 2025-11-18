@@ -10,13 +10,16 @@ namespace Ignixa.Api.Infrastructure;
 public class DurableTaskHostedService : BackgroundService
 {
     private readonly TaskHubWorker _worker;
+    private readonly IOrchestrationService _orchestrationService;
     private readonly ILogger<DurableTaskHostedService> _logger;
 
     public DurableTaskHostedService(
         TaskHubWorker worker,
+        IOrchestrationService orchestrationService,
         ILogger<DurableTaskHostedService> logger)
     {
         _worker = worker ?? throw new ArgumentNullException(nameof(worker));
+        _orchestrationService = orchestrationService ?? throw new ArgumentNullException(nameof(orchestrationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -25,6 +28,14 @@ public class DurableTaskHostedService : BackgroundService
         _logger.LogInformation("Starting DurableTask worker...");
         try
         {
+            // Initialize orchestration service backend (creates Azure Table Storage schema if using AzureStorage)
+            if (_orchestrationService is DurableTask.AzureStorage.AzureStorageOrchestrationService azureService)
+            {
+                _logger.LogInformation("Initializing Azure Storage orchestration service...");
+                await azureService.CreateIfNotExistsAsync();
+                _logger.LogInformation("Azure Storage orchestration service initialized");
+            }
+
             await _worker.StartAsync();
             _logger.LogInformation("DurableTask worker started successfully");
 

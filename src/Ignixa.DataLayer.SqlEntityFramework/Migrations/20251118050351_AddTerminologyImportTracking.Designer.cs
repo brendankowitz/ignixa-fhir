@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
 {
     [DbContext(typeof(FhirDbContext))]
-    [Migration("20251116073937_AddTerminologyImportTracking")]
+    [Migration("20251118050351_AddTerminologyImportTracking")]
     partial class AddTerminologyImportTracking
     {
         /// <inheritdoc />
@@ -515,11 +515,9 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
 
             modelBuilder.Entity("Ignixa.DataLayer.SqlEntityFramework.Entities.SearchParamEntity", b =>
                 {
-                    b.Property<short>("SearchParamId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<short>("SearchParamId"));
+                    b.Property<string>("Uri")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<bool>("IsPartiallySupported")
                         .HasColumnType("bit");
@@ -527,22 +525,25 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                     b.Property<DateTimeOffset>("LastUpdated")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<short>("SearchParamId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<short>("SearchParamId"));
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<string>("Uri")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                    b.HasKey("Uri")
+                        .HasName("PKC_SearchParam");
 
-                    b.HasKey("SearchParamId")
-                        .HasName("PK_SearchParam");
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Uri"));
 
-                    b.HasIndex("Uri")
+                    b.HasIndex("SearchParamId")
                         .IsUnique()
-                        .HasDatabaseName("UQ_SearchParam_Uri");
+                        .HasDatabaseName("UQ_SearchParam_SearchParamId");
 
                     b.ToTable("SearchParam");
                 });

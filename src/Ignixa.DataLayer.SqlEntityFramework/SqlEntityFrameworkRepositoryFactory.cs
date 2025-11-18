@@ -101,6 +101,24 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         return factory.CreateSearchService(dbContext, repository);
     }
 
+    /// <summary>
+    /// Gets a new FhirDbContext instance for the specified tenant.
+    /// The caller is responsible for disposing the context.
+    /// </summary>
+    /// <param name="tenantId">The tenant ID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A new FhirDbContext instance.</returns>
+    public async Task<FhirDbContext> GetDbContextAsync(int tenantId, CancellationToken ct = default)
+    {
+        var factory = await GetOrCreateFactoryAsync(tenantId, ct);
+
+        // Create a new DbContext for this request (thread-safe)
+        // CA2000: DbContext disposal is responsibility of calling code
+#pragma warning disable CA2000 // Dispose objects before losing scope
+        return new FhirDbContext(factory.DbContextOptions);
+#pragma warning restore CA2000
+    }
+
     private async Task<TenantServiceFactory> GetOrCreateFactoryAsync(int tenantId, CancellationToken ct)
     {
         // Check cache first

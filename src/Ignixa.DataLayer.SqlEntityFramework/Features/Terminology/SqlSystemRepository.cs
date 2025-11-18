@@ -7,7 +7,7 @@ using Ignixa.Domain.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.DataLayer.SqlEntityFramework.Repositories;
+namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 
 /// <summary>
 /// SQL Server implementation of ISystemRepository.

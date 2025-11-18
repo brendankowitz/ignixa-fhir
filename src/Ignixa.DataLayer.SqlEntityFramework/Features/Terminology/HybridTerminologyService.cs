@@ -8,7 +8,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.DataLayer.SqlEntityFramework.Terminology;
+namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 
 /// <summary>
 /// Hybrid terminology service that routes between SQL (fast) and JSON fallback implementations.

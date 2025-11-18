@@ -18,16 +18,16 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Events;
 /// </summary>
 public class PackageLoadedTerminologyImportHandler : INotificationHandler<PackageLoadedEvent>
 {
-    private readonly FhirDbContext _context;
+    private readonly SqlEntityFrameworkRepositoryFactory _repositoryFactory;
     private readonly IMediator _mediator;
     private readonly ILogger<PackageLoadedTerminologyImportHandler> _logger;
 
     public PackageLoadedTerminologyImportHandler(
-        FhirDbContext context,
+        SqlEntityFrameworkRepositoryFactory repositoryFactory,
         IMediator mediator,
         ILogger<PackageLoadedTerminologyImportHandler> logger)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -41,8 +41,11 @@ public class PackageLoadedTerminologyImportHandler : INotificationHandler<Packag
                 notification.PackageId,
                 notification.PackageVersion);
 
+            // Get tenant-specific DbContext from factory
+            using var context = await _repositoryFactory.GetDbContextAsync(notification.TenantId, cancellationToken);
+
             // Query PackageResources for terminology resources that need importing
-            var terminologyResourceIds = await _context.PackageResources
+            var terminologyResourceIds = await context.PackageResources
                 .Where(pr => pr.PackageId == notification.PackageId)
                 .Where(pr => pr.PackageVersion == notification.PackageVersion)
                 .Where(pr => pr.IsActive)

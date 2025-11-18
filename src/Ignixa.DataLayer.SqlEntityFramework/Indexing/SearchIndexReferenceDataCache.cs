@@ -50,6 +50,26 @@ public class SearchIndexReferenceDataCache : IDisposable
     }
 
     /// <summary>
+    /// Initializes the cache by batch-loading all search parameters from the database.
+    /// This prevents N+1 query problems during startup when search parameters are being synced.
+    /// Call this method once after creating the cache instance.
+    /// </summary>
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        var searchParams = await _context.SearchParams
+            .AsNoTracking()
+            .Select(sp => new { sp.Uri, sp.SearchParamId })
+            .ToListAsync(cancellationToken);
+
+        foreach (var sp in searchParams)
+        {
+            _searchParamCache.TryAdd(sp.Uri, sp.SearchParamId);
+        }
+
+        _logger.LogInformation("Initialized SearchIndexReferenceDataCache with {Count} search parameters", searchParams.Count);
+    }
+
+    /// <summary>
     /// Gets the SearchParamId for a given search parameter URI.
     /// Returns null if the search parameter is not registered in the database.
     /// Caches both positive results (found) and negative results (not found) to avoid repeated database queries.
@@ -522,19 +542,20 @@ public class SearchIndexReferenceDataCache : IDisposable
         _logger.LogInformation("Syncing {Count} search parameter URLs to database", urls.Count);
 
         var syncedCount = 0;
+        var existingList = await _context.SearchParams
+            .AsNoTracking()
+            .ToListAsync();
 
         foreach (var url in urls)
         {
             // Check if already exists in database
-            var existing = await _context.SearchParams
-                .AsNoTracking()
-                .FirstOrDefaultAsync(sp => sp.Uri == url);
+            
+            var existing = existingList.FirstOrDefault(sp => sp.Uri == url);
 
             if (existing != null)
             {
                 // Already exists - update cache if needed
                 _searchParamCache.TryAdd(url, existing.SearchParamId);
-                _logger.LogDebug("Search parameter {Url} already exists in database with ID {SearchParamId}", url, existing.SearchParamId);
                 continue;
             }
 

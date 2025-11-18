@@ -32,6 +32,7 @@ using Ignixa.Domain;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
+using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Models;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
@@ -110,6 +111,9 @@ builder.Services.AddHostedService<IndexLoaderService>();
 // Loads packages configured in TenantConfiguration.Packages.PreloadPackages
 // Embedded packages are loaded via EmbeddedPackageLoader when referenced in PreloadPackages
 builder.Services.AddHostedService<TenantPackagePreloadService>();
+
+// Bootstrap service to trigger terminology imports for existing packages (runs after preload)
+builder.Services.AddHostedService<TerminologyImportBootstrapService>();
 
 // Register HTTP client factory for background operations (Import activities need this)
 builder.Services.AddHttpClient();
@@ -338,6 +342,19 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Validation operations ($validate - Phase 24: FHIR Operations)
     containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Validate.ValidateResourceHandler>()
         .As<IRequestHandler<Ignixa.Application.Operations.Features.Validate.ValidateResourceCommand, Ignixa.Application.Operations.Features.Validate.ValidateResourceResult>>()
+        .InstancePerDependency();
+
+    // Terminology operations ($expand, $translate, $subsumes)
+    containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Terminology.Expand.ExpandValueSetHandler>()
+        .As<IRequestHandler<Ignixa.Application.Operations.Features.Terminology.Expand.ExpandValueSetQuery, Ignixa.Application.Operations.Features.Terminology.Expand.ExpandValueSetResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Terminology.Translate.TranslateCodeHandler>()
+        .As<IRequestHandler<Ignixa.Application.Operations.Features.Terminology.Translate.TranslateCodeCommand, Ignixa.Application.Operations.Features.Terminology.Translate.TranslateCodeResult>>()
+        .InstancePerDependency();
+
+    containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Terminology.Subsumes.SubsumesHandler>()
+        .As<IRequestHandler<Ignixa.Application.Operations.Features.Terminology.Subsumes.SubsumesQuery, Ignixa.Application.Operations.Features.Terminology.Subsumes.SubsumesQueryResult>>()
         .InstancePerDependency();
 
     // Patch handlers (Phase 17 - ADR-2520: FHIR Patch operations)
@@ -618,7 +635,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .SingleInstance();
 
     // Register SqlTerminologyService as concrete type (dependency for HybridTerminologyService)
-    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Terminology.SqlTerminologyService>()
+    containerBuilder.RegisterType<SqlTerminologyService>()
         .AsSelf()
         .InstancePerLifetimeScope();
 
@@ -626,11 +643,11 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Routes to SQL (fast) when terminology is imported, fallback to JSON parsing otherwise
     containerBuilder.Register<Ignixa.Validation.Abstractions.ITerminologyService>(c =>
     {
-        var sqlService = c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Terminology.SqlTerminologyService>();
+        var sqlService = c.Resolve<SqlTerminologyService>();
         var fallbackService = c.Resolve<Ignixa.Validation.Services.InMemoryTerminologyService>();
-        var logger = c.Resolve<ILogger<Ignixa.DataLayer.SqlEntityFramework.Terminology.HybridTerminologyService>>();
+        var logger = c.Resolve<ILogger<HybridTerminologyService>>();
 
-        return new Ignixa.DataLayer.SqlEntityFramework.Terminology.HybridTerminologyService(
+        return new HybridTerminologyService(
             sqlService,
             fallbackService,
             logger);
@@ -841,7 +858,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Provides CodeSystem/ValueSet/ConceptMap import from packages into SQL tables
 
     // Register SqlSystemRepository for system URL normalization
-    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Repositories.SqlSystemRepository>()
+    containerBuilder.RegisterType<SqlSystemRepository>()
         .As<ISystemRepository>()
         .InstancePerDependency();
 
@@ -959,6 +976,7 @@ app.MapAdminPackageEndpoints(); // Admin package management endpoints (/admin/pa
 app.MapFhirEndpoints();
 app.MapFhirHistoryEndpoints(); // FHIR _history endpoints (instance, type, system-level)
 app.MapOperationEndpoints(); // FHIR operation endpoints ($validate, etc.)
+app.MapTerminologyEndpoints(); // FHIR terminology endpoints ($expand, $translate, $subsumes)
 app.MapPatchEndpoints(); // FHIR PATCH endpoints (direct and conditional)
 app.MapCompartmentEndpoints(); // FHIR compartment search endpoints (GET /Patient/123/Observation)
 app.MapMetadataEndpoints(); // FHIR metadata endpoints (CapabilityStatement)

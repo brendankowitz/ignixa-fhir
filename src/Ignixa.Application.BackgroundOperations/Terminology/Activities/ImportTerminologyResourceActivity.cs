@@ -9,6 +9,7 @@ using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Terminology.Activities;
@@ -16,20 +17,18 @@ namespace Ignixa.Application.BackgroundOperations.Terminology.Activities;
 /// <summary>
 /// DurableTask activity for importing a single terminology resource (CodeSystem, ValueSet, or ConceptMap).
 /// Loads PackageResource from database, routes to appropriate ITerminologyImporter method, and updates status.
+/// Uses IServiceProvider to create scoped services (FhirDbContext, ITerminologyImporter) per activity execution.
 /// </summary>
 public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTerminologyResourceInput, ImportTerminologyResourceOutput>
 {
-    private readonly FhirDbContext _context;
-    private readonly ITerminologyImporter _terminologyImporter;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ImportTerminologyResourceActivity> _logger;
 
     public ImportTerminologyResourceActivity(
-        FhirDbContext context,
-        ITerminologyImporter terminologyImporter,
+        IServiceProvider serviceProvider,
         ILogger<ImportTerminologyResourceActivity> logger)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _terminologyImporter = terminologyImporter ?? throw new ArgumentNullException(nameof(terminologyImporter));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -37,6 +36,11 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
         TaskContext context,
         ImportTerminologyResourceInput input)
     {
+        // Create scope for this activity execution to get scoped services (FhirDbContext, ITerminologyImporter)
+        using var scope = _serviceProvider.CreateScope();
+        var fhirDbContext = scope.ServiceProvider.GetRequiredService<FhirDbContext>();
+        var terminologyImporter = scope.ServiceProvider.GetRequiredService<ITerminologyImporter>();
+
         try
         {
             _logger.LogInformation(
@@ -44,7 +48,7 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
                 input.PackageResourceId);
 
             // Load PackageResource entity from database
-            var entity = await _context.PackageResources
+            var entity = await fhirDbContext.PackageResources
                 .AsNoTracking()
                 .FirstOrDefaultAsync(pr => pr.PackageResourceId == input.PackageResourceId)
                 .ConfigureAwait(false);
@@ -76,6 +80,7 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
 
             // Update status to InProgress
             await UpdateImportStatusAsync(
+                fhirDbContext,
                 input.PackageResourceId,
                 TerminologyImportStatus.InProgress,
                 importStartDate: DateTimeOffset.UtcNow,
@@ -87,9 +92,9 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
             {
                 result = packageResource.ResourceType switch
                 {
-                    "CodeSystem" => await _terminologyImporter.ImportCodeSystemAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
-                    "ValueSet" => await _terminologyImporter.ImportValueSetAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
-                    "ConceptMap" => await _terminologyImporter.ImportConceptMapAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
+                    "CodeSystem" => await terminologyImporter.ImportCodeSystemAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
+                    "ValueSet" => await terminologyImporter.ImportValueSetAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
+                    "ConceptMap" => await terminologyImporter.ImportConceptMapAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
                     _ => throw new InvalidOperationException($"Unsupported ResourceType for terminology import: {packageResource.ResourceType}")
                 };
             }
@@ -104,6 +109,7 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
 
                 // Update status to Failed
                 await UpdateImportStatusAsync(
+                    fhirDbContext,
                     input.PackageResourceId,
                     TerminologyImportStatus.Failed,
                     errorMessage: ex.Message,
@@ -122,6 +128,7 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
 
             // Update final status based on result
             await UpdateImportStatusAsync(
+                fhirDbContext,
                 input.PackageResourceId,
                 result.Status,
                 errorMessage: result.ErrorMessage,
@@ -164,9 +171,10 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
 
     /// <summary>
     /// Updates PackageResource import status fields in database.
-    /// Uses a separate DbContext to avoid tracking conflicts.
+    /// Uses raw SQL to avoid tracking conflicts.
     /// </summary>
     private async Task UpdateImportStatusAsync(
+        FhirDbContext context,
         long packageResourceId,
         TerminologyImportStatus status,
         DateTimeOffset? importStartDate = null,
@@ -217,7 +225,7 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
             sql += $" WHERE PackageResourceId = {{{paramIndex}}}";
             parameters.Add(packageResourceId);
 
-            await _context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+            await context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug(
                 "Updated PackageResource {PackageResourceId} import status to {Status}",
