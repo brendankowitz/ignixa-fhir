@@ -25,17 +25,3 @@ public interface ISourcePositionInfo
     /// <summary>Length of the element in characters</summary>
     int Length { get; }
 }
-
-/// <summary>
-/// Implementation of position information for FhirPath expressions.
-/// </summary>
-public class FhirPathExpressionLocationInfo : ISourcePositionInfo
-{
-    public int LineNumber { get; set; }
-    public int LinePosition { get; set; }
-    public int RawPosition { get; set; }
-    public int Length { get; set; }
-
-    public override string ToString() =>
-        $"Line {LineNumber}, Column {LinePosition}, Position {RawPosition}, Length {Length}";
-}

@@ -47,14 +47,14 @@ public class FhirPathDelegateCompiler
                 // Axis reference: $this
                 AxisExpression axis => CompileAxis(axis),
 
-                // Function call: where(), first(), exists(), count()
-                FunctionCallExpression func => CompileFunctionCall(func),
-
-                // Child access: name.family, identifier.value
+                // Child access: name.family, identifier.value (check before FunctionCallExpression)
                 ChildExpression child => CompileChild(child),
 
-                // Binary expression: system = 'phone'
+                // Binary expression: system = 'phone' (check before FunctionCallExpression)
                 BinaryExpression binary => CompileBinary(binary),
+
+                // Function call: where(), first(), exists(), count()
+                FunctionCallExpression func => CompileFunctionCall(func),
 
                 // Constant value
                 ConstantExpression constant => CompileConstant(constant),
@@ -384,41 +384,4 @@ public class FhirPathDelegateCompiler
         public IElementDefinitionSummary? Definition => null;
         public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
     }
-}
-
-/// <summary>
-/// Represents a child path access in FhirPath: "name.family".
-/// This class exists to support the compiler; normally handled via function calls.
-/// </summary>
-internal class ChildExpression : Expression
-{
-    public ChildExpression(Expression? focus, string childName, ISourcePositionInfo? location = null) : base(location)
-    {
-        Focus = focus;
-        ChildName = childName ?? throw new ArgumentNullException(nameof(childName));
-    }
-
-    public Expression? Focus { get; }
-    public string ChildName { get; }
-
-    public override string ToString() => Focus != null ? $"{Focus}.{ChildName}" : ChildName;
-}
-
-/// <summary>
-/// Represents a binary expression in FhirPath: "system = 'phone'".
-/// </summary>
-internal class BinaryExpression : Expression
-{
-    public BinaryExpression(Expression left, string op, Expression right, ISourcePositionInfo? location = null) : base(location)
-    {
-        Left = left ?? throw new ArgumentNullException(nameof(left));
-        Operator = op ?? throw new ArgumentNullException(nameof(op));
-        Right = right ?? throw new ArgumentNullException(nameof(right));
-    }
-
-    public Expression Left { get; }
-    public string Operator { get; }
-    public Expression Right { get; }
-
-    public override string ToString() => $"{Left} {Operator} {Right}";
 }
