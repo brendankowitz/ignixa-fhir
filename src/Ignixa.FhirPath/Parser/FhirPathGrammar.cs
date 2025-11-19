@@ -6,7 +6,6 @@
  */
 
 using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Lexer;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;

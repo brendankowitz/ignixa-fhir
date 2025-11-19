@@ -5,11 +5,10 @@
  * Falls back to interpreted execution for complex/unsupported expressions.
  */
 
-using Ignixa.FhirPath.Evaluation;
-using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Expressions;
 
-namespace Ignixa.FhirPath.Compilation;
+namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
 /// Compiles FhirPath AST to executable delegates for improved performance.

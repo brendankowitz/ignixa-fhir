@@ -15,6 +15,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -31,7 +32,7 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
 {
     private readonly IMediator _mediator;
     private readonly FhirPathEvaluator _evaluator;
-    private readonly FhirPathCompiler _compiler;
+    private readonly FhirPathParser _parser;
     private readonly IFhirVersionContext _versionContext;
     private readonly ITenantConfigurationStore _tenantConfigStore;
 
@@ -40,13 +41,13 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
         FhirPathEvaluator evaluator,
-        FhirPathCompiler compiler,
+        FhirPathParser parser,
         IFhirVersionContext versionContext)
         : base(fhirRequestContextAccessor, tenantStore)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));
-        _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _tenantConfigStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
     }
@@ -87,7 +88,7 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
         try
         {
             // Compile FHIRPath expression
-            var expression = _compiler.Parse(fhirPathExpression);
+            var expression = _parser.Parse(fhirPathExpression);
 
             // Determine FHIR version from tenant configuration
             var fhirVersion = await ResolveFhirVersionAsync(resolvedTenantId, cancellationToken);

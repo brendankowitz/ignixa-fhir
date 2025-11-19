@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Patch;
@@ -17,16 +18,16 @@ namespace Ignixa.Application.Features.Patch;
 public class FhirPathPatchHelper
 {
     private readonly FhirPathEvaluator _evaluator;
-    private readonly FhirPathCompiler _compiler;
+    private readonly FhirPathParser _parser;
     private readonly IStructureDefinitionSummaryProvider _structureProvider;
 
     public FhirPathPatchHelper(
         FhirPathEvaluator evaluator,
-        FhirPathCompiler compiler,
+        FhirPathParser parser,
         IStructureDefinitionSummaryProvider structureProvider)
     {
         _evaluator = evaluator;
-        _compiler = compiler;
+        _parser = parser;
         _structureProvider = structureProvider;
     }
 
@@ -39,7 +40,7 @@ public class FhirPathPatchHelper
     public IEnumerable<JsonNode> EvaluateToJsonNodes(ResourceJsonNode resource, string fhirPathExpression)
     {
         // 1. Parse FHIRPath expression
-        var expression = _compiler.Parse(fhirPathExpression);
+        var expression = _parser.Parse(fhirPathExpression);
 
         // 2. Convert ResourceJsonNode to ISourceNode (with annotations)
         var sourceNode = resource.ToSourceNode();

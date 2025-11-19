@@ -5,7 +5,6 @@
  */
 
 using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Lexer;
 using Ignixa.FhirPath.Parser;
 using Superpower;
 

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -33,7 +34,7 @@ public class AddOperationExecutorTests
         _logger = Substitute.For<ILogger<AddOperationExecutor>>();
 
         var evaluator = new Ignixa.FhirPath.Evaluation.FhirPathEvaluator();
-        var compiler = new Ignixa.FhirPath.FhirPathCompiler();
+        var compiler = new FhirPathParser();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);

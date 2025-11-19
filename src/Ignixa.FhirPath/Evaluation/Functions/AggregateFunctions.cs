@@ -5,14 +5,11 @@
  * Implements sum(), min(), max(), and avg() according to FHIRPath 3.0.0 spec.
  */
 
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Types;
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
 
-namespace Ignixa.FhirPath.Functions;
+namespace Ignixa.FhirPath.Evaluation.Functions;
 
 #nullable enable
 

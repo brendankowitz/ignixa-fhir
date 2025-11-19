@@ -7,12 +7,13 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 public class BinaryOperatorTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region Union Operator (|) Tests
@@ -21,7 +22,7 @@ public class BinaryOperatorTests
     public void GivenTwoCollections_WhenUsingUnionOperator_ThenEliminatesDuplicates()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3) | (2 | 3 | 4)");
+        var expr = _parser.Parse("(1 | 2 | 3) | (2 | 3 | 4)");
         var root = CreateIntegerElement(0); // Dummy root
 
         // Act
@@ -35,7 +36,7 @@ public class BinaryOperatorTests
     public void GivenEmptyCollections_WhenUsingUnionOperator_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} | {}");
+        var expr = _parser.Parse("{} | {}");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -53,7 +54,7 @@ public class BinaryOperatorTests
     public void GivenTwoIntegers_WhenAddition_ThenReturnsInteger()
     {
         // Arrange
-        var expr = _compiler.Parse("5 + 3");
+        var expr = _parser.Parse("5 + 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -68,7 +69,7 @@ public class BinaryOperatorTests
     public void GivenIntegerAndDecimal_WhenAddition_ThenReturnsDecimal()
     {
         // Arrange
-        var expr = _compiler.Parse("5 + 3.5");
+        var expr = _parser.Parse("5 + 3.5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -83,7 +84,7 @@ public class BinaryOperatorTests
     public void GivenTwoIntegers_WhenSubtraction_ThenReturnsCorrectValue()
     {
         // Arrange
-        var expr = _compiler.Parse("10 - 3");
+        var expr = _parser.Parse("10 - 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -97,7 +98,7 @@ public class BinaryOperatorTests
     public void GivenTwoIntegers_WhenMultiplication_ThenReturnsCorrectValue()
     {
         // Arrange
-        var expr = _compiler.Parse("4 * 3");
+        var expr = _parser.Parse("4 * 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -111,7 +112,7 @@ public class BinaryOperatorTests
     public void GivenTwoIntegers_WhenDivision_ThenReturnsDecimal()
     {
         // Arrange
-        var expr = _compiler.Parse("10 / 4");
+        var expr = _parser.Parse("10 / 4");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -126,7 +127,7 @@ public class BinaryOperatorTests
     public void GivenDivisionByZero_WhenDivision_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("10 / 0");
+        var expr = _parser.Parse("10 / 0");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -140,7 +141,7 @@ public class BinaryOperatorTests
     public void GivenTwoIntegers_WhenIntegerDivision_ThenReturnsTruncatedInteger()
     {
         // Arrange
-        var expr = _compiler.Parse("10 div 3");
+        var expr = _parser.Parse("10 div 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -155,7 +156,7 @@ public class BinaryOperatorTests
     public void GivenTwoIntegers_WhenModulo_ThenReturnsRemainder()
     {
         // Arrange
-        var expr = _compiler.Parse("10 mod 3");
+        var expr = _parser.Parse("10 mod 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -173,7 +174,7 @@ public class BinaryOperatorTests
     public void GivenTwoStrings_WhenStringConcatenation_ThenConcatenates()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello' & ' ' & 'World'");
+        var expr = _parser.Parse("'Hello' & ' ' & 'World'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -192,7 +193,7 @@ public class BinaryOperatorTests
     public void GivenEmptyCollections_WhenEquivalent_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("{} ~ {}");
+        var expr = _parser.Parse("{} ~ {}");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -207,7 +208,7 @@ public class BinaryOperatorTests
     public void GivenCaseInsensitiveStrings_WhenEquivalent_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'HELLO' ~ 'hello'");
+        var expr = _parser.Parse("'HELLO' ~ 'hello'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -221,7 +222,7 @@ public class BinaryOperatorTests
     public void GivenWhitespaceNormalizedStrings_WhenEquivalent_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello  World' ~ 'Hello World'");
+        var expr = _parser.Parse("'Hello  World' ~ 'Hello World'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -235,7 +236,7 @@ public class BinaryOperatorTests
     public void GivenDifferentStrings_WhenNotEquivalent_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'HELLO' !~ 'goodbye'");
+        var expr = _parser.Parse("'HELLO' !~ 'goodbye'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -254,7 +255,7 @@ public class BinaryOperatorTests
     {
         // Arrange
         // Note: Using delimited identifiers due to 'integer' containing 'in' keyword
-        var expr = _compiler.Parse("42 is `integer`");
+        var expr = _parser.Parse("42 is `integer`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -269,7 +270,7 @@ public class BinaryOperatorTests
     {
         // Arrange
         // Note: Using delimited identifiers due to 'string' containing 'in' keyword
-        var expr = _compiler.Parse("42 is `string`");
+        var expr = _parser.Parse("42 is `string`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -284,7 +285,7 @@ public class BinaryOperatorTests
     {
         // Arrange
         // Note: Using delimited identifiers due to 'integer' containing 'in' keyword
-        var expr = _compiler.Parse("42 as `integer`");
+        var expr = _parser.Parse("42 as `integer`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -299,7 +300,7 @@ public class BinaryOperatorTests
     {
         // Arrange
         // Note: Using delimited identifiers due to 'string' containing 'in' keyword
-        var expr = _compiler.Parse("42 as `string`");
+        var expr = _parser.Parse("42 as `string`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -317,7 +318,7 @@ public class BinaryOperatorTests
     public void GivenValueInCollection_WhenInOperator_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("2 in (1 | 2 | 3)");
+        var expr = _parser.Parse("2 in (1 | 2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -331,7 +332,7 @@ public class BinaryOperatorTests
     public void GivenValueNotInCollection_WhenInOperator_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("5 in (1 | 2 | 3)");
+        var expr = _parser.Parse("5 in (1 | 2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -345,7 +346,7 @@ public class BinaryOperatorTests
     public void GivenValueInCollection_WhenContainsOperator_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3) contains 2");
+        var expr = _parser.Parse("(1 | 2 | 3) contains 2");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -363,7 +364,7 @@ public class BinaryOperatorTests
     public void GivenTrueAndTrue_WhenAndOperator_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("true and true");
+        var expr = _parser.Parse("true and true");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -377,7 +378,7 @@ public class BinaryOperatorTests
     public void GivenTrueAndFalse_WhenAndOperator_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("true and false");
+        var expr = _parser.Parse("true and false");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -391,7 +392,7 @@ public class BinaryOperatorTests
     public void GivenTrueOrFalse_WhenOrOperator_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("true or false");
+        var expr = _parser.Parse("true or false");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -405,7 +406,7 @@ public class BinaryOperatorTests
     public void GivenTrueXorFalse_WhenXorOperator_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("true xor false");
+        var expr = _parser.Parse("true xor false");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -419,7 +420,7 @@ public class BinaryOperatorTests
     public void GivenTrueXorTrue_WhenXorOperator_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("true xor true");
+        var expr = _parser.Parse("true xor true");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -433,7 +434,7 @@ public class BinaryOperatorTests
     public void GivenFalseImpliesTrue_WhenImpliesOperator_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("false implies true");
+        var expr = _parser.Parse("false implies true");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -447,7 +448,7 @@ public class BinaryOperatorTests
     public void GivenTrueImpliesFalse_WhenImpliesOperator_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("true implies false");
+        var expr = _parser.Parse("true implies false");
         var root = CreateIntegerElement(0);
 
         // Act

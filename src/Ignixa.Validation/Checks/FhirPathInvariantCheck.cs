@@ -6,6 +6,7 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
@@ -25,7 +26,7 @@ public class FhirPathInvariantCheck : IValidationCheck
 {
     private readonly ConstraintDefinition _constraint;
     private readonly IStructureDefinitionSummaryProvider _provider;
-    private readonly FhirPathCompiler _compiler;
+    private readonly FhirPathParser _parser;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
     private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
 
@@ -39,15 +40,15 @@ public class FhirPathInvariantCheck : IValidationCheck
     /// </summary>
     /// <param name="constraint">The constraint definition to evaluate.</param>
     /// <param name="provider">Structure definition provider for type information.</param>
-    /// <param name="compiler">FhirPath compiler for parsing expressions (shared across checks).</param>
+    /// <param name="parser">FhirPath compiler for parsing expressions (shared across checks).</param>
     public FhirPathInvariantCheck(
         ConstraintDefinition constraint,
         IStructureDefinitionSummaryProvider provider,
-        FhirPathCompiler compiler)
+        FhirPathParser parser)
     {
         _constraint = constraint ?? throw new ArgumentNullException(nameof(constraint));
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
 
         // Lazy compilation - parse FHIRPath expression only when first needed
         _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
@@ -55,7 +56,7 @@ public class FhirPathInvariantCheck : IValidationCheck
         {
             try
             {
-                return _compiler.Parse(_constraint.Expression);
+                return _parser.Parse(_constraint.Expression);
             }
             catch (Exception ex)
             {

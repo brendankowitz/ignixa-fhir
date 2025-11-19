@@ -9,6 +9,7 @@
 using System.Collections.Immutable;
 using Ignixa.FhirPath;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 using Ignixa.SqlOnFhir.Expressions;
 
 namespace Ignixa.SqlOnFhir.Parsing;
@@ -21,7 +22,7 @@ namespace Ignixa.SqlOnFhir.Parsing;
 /// </summary>
 public static class ViewDefinitionExpressionParser
 {
-    private static readonly FhirPathCompiler _compiler = new();
+    private static readonly FhirPathParser Parser = new();
 
     /// <summary>
     /// Parses a ViewDefinition from an ISourceNode into an expression tree.
@@ -108,7 +109,7 @@ public static class ViewDefinitionExpressionParser
                 ?? throw new InvalidOperationException("WHERE clause must have a 'path' property");
 
             // Compile FHIRPath expression once during parsing
-            var expr = _compiler.Parse(path);
+            var expr = Parser.Parse(path);
             builder.Add(new WhereExpression(expr));
         }
 
@@ -146,7 +147,7 @@ public static class ViewDefinitionExpressionParser
             }
 
             var forEach = !string.IsNullOrEmpty(forEachText)
-                ? _compiler.Parse(forEachText)
+                ? Parser.Parse(forEachText)
                 : null;
 
             var forEachOrNullNode = selectNode.Children("forEachOrNull").FirstOrDefault();
@@ -163,7 +164,7 @@ public static class ViewDefinitionExpressionParser
             }
 
             var forEachOrNull = !string.IsNullOrEmpty(forEachOrNullText)
-                ? _compiler.Parse(forEachOrNullText)
+                ? Parser.Parse(forEachOrNullText)
                 : null;
 
             // Parse repeat - array of FHIRPath expressions
@@ -174,7 +175,7 @@ public static class ViewDefinitionExpressionParser
                 var repeatPath = repeatNode.Text;
                 if (!string.IsNullOrEmpty(repeatPath))
                 {
-                    repeatBuilder.Add(_compiler.Parse(repeatPath));
+                    repeatBuilder.Add(Parser.Parse(repeatPath));
                 }
             }
             var repeat = repeatBuilder.ToImmutable();
@@ -223,7 +224,7 @@ public static class ViewDefinitionExpressionParser
             var collection = bool.TryParse(collectionText, out var collectionValue) && collectionValue;
 
             // Compile FHIRPath expression once during parsing
-            var path = _compiler.Parse(pathText);
+            var path = Parser.Parse(pathText);
 
             builder.Add(new ColumnExpression(
                 Name: name,
@@ -271,7 +272,7 @@ public static class ViewDefinitionExpressionParser
             }
 
             var forEach = !string.IsNullOrEmpty(forEachText)
-                ? _compiler.Parse(forEachText)
+                ? Parser.Parse(forEachText)
                 : null;
 
             var forEachOrNullNode = nestedNode.Children("forEachOrNull").FirstOrDefault();
@@ -288,7 +289,7 @@ public static class ViewDefinitionExpressionParser
             }
 
             var forEachOrNull = !string.IsNullOrEmpty(forEachOrNullText)
-                ? _compiler.Parse(forEachOrNullText)
+                ? Parser.Parse(forEachOrNullText)
                 : null;
 
             // Parse repeat - array of FHIRPath expressions
@@ -299,7 +300,7 @@ public static class ViewDefinitionExpressionParser
                 var repeatPath = repeatNode.Text;
                 if (!string.IsNullOrEmpty(repeatPath))
                 {
-                    repeatBuilder.Add(_compiler.Parse(repeatPath));
+                    repeatBuilder.Add(Parser.Parse(repeatPath));
                 }
             }
             var repeat = repeatBuilder.ToImmutable();

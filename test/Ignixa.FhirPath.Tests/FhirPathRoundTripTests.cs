@@ -5,6 +5,7 @@
  */
 
 using Ignixa.FhirPath;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests;
 
@@ -13,7 +14,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenSimpleExpression_WhenRoundTripping_ThenPreservesExactText()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: true);
+        var compiler = new FhirPathParser(preserveTrivia: true);
         var original = "Patient.name";
 
         var expr = compiler.Parse(original);
@@ -25,7 +26,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenExpressionWithWhitespace_WhenRoundTripping_ThenPreservesWhitespace()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: true);
+        var compiler = new FhirPathParser(preserveTrivia: true);
         var original = "Patient  .  name";
 
         var expr = compiler.Parse(original);
@@ -37,7 +38,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenExpressionWithLineComment_WhenRoundTripping_ThenPreservesComment()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: true);
+        var compiler = new FhirPathParser(preserveTrivia: true);
         var original = "Patient // patient resource\n.name";
 
         var expr = compiler.Parse(original);
@@ -49,7 +50,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenExpressionWithBlockComment_WhenRoundTripping_ThenPreservesComment()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: true);
+        var compiler = new FhirPathParser(preserveTrivia: true);
         var original = "Patient /* comment */ .name";
 
         var expr = compiler.Parse(original);
@@ -61,7 +62,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenComplexExpressionWithTrivia_WhenRoundTripping_ThenPreservesAllTrivia()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: true);
+        var compiler = new FhirPathParser(preserveTrivia: true);
         var original = "Patient  // patient\n.name  /* name */\n.given";
 
         var expr = compiler.Parse(original);
@@ -73,7 +74,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenFunctionCallWithTrivia_WhenRoundTripping_ThenPreservesTrivia()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: true);
+        var compiler = new FhirPathParser(preserveTrivia: true);
         var original = "name . where ( $this != '' )";
 
         var expr = compiler.Parse(original);
@@ -85,7 +86,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenExpressionWithoutTrivia_WhenRoundTripping_ThenReconstructsSemantically()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: false);
+        var compiler = new FhirPathParser(preserveTrivia: false);
         var original = "Patient.name";
 
         var expr = compiler.Parse(original);
@@ -101,7 +102,7 @@ public class FhirPathRoundTripTests
     [Fact]
     public void GivenBinaryExpression_WhenRoundTripping_ThenReconstructsCorrectly()
     {
-        var compiler = new FhirPathCompiler(preserveTrivia: false);
+        var compiler = new FhirPathParser(preserveTrivia: false);
         var original = "age > 18";
 
         var expr = compiler.Parse(original);

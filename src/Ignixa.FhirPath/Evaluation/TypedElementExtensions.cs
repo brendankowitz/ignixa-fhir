@@ -6,9 +6,9 @@
  */
 
 using System.Collections.Concurrent;
-using Ignixa.FhirPath.Compilation;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Evaluation;
 
@@ -28,7 +28,7 @@ public static class TypedElementExtensions
     private static readonly ConcurrentDictionary<string, Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>?> _delegateCache = new();
 
     // Shared compiler instances
-    private static readonly FhirPathCompiler _astCompiler = new FhirPathCompiler(preserveTrivia: false);
+    private static readonly FhirPathParser AstParser = new FhirPathParser(preserveTrivia: false);
     private static readonly FhirPathDelegateCompiler _delegateCompiler = new FhirPathDelegateCompiler(new FhirPathEvaluator());
 
     // Shared evaluator instance
@@ -39,7 +39,7 @@ public static class TypedElementExtensions
     /// </summary>
     private static Expression CompileExpressionToAst(string expression)
     {
-        return _astCache.GetOrAdd(expression, expr => _astCompiler.Parse(expr));
+        return _astCache.GetOrAdd(expression, expr => AstParser.Parse(expr));
     }
 
     /// <summary>

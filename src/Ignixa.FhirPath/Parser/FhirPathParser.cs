@@ -6,17 +6,15 @@
  */
 
 using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Lexer;
-using Ignixa.FhirPath.Parser;
 using Superpower;
 
-namespace Ignixa.FhirPath;
+namespace Ignixa.FhirPath.Parser;
 
 /// <summary>
 /// Compiles FhirPath expression strings into abstract syntax trees.
 /// This is the main entry point for parsing FhirPath expressions.
 /// </summary>
-public class FhirPathCompiler
+public class FhirPathParser
 {
     private readonly Tokenizer<FhirPathTokenKind> _tokenizer;
     private readonly bool _preserveTrivia;
@@ -28,7 +26,7 @@ public class FhirPathCompiler
     /// If true, whitespace and comments are preserved for round-tripping.
     /// If false (default), trivia is ignored for faster parsing.
     /// </param>
-    public FhirPathCompiler(bool preserveTrivia = false)
+    public FhirPathParser(bool preserveTrivia = false)
     {
         _preserveTrivia = preserveTrivia;
         _tokenizer = preserveTrivia

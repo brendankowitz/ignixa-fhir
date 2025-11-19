@@ -9,12 +9,13 @@
 
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Expressions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Expressions;
 
 public class ExpressionPropertyTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
 
     #region ConstantExpression Tests
 
@@ -22,7 +23,7 @@ public class ExpressionPropertyTests
     public void GivenIntegerConstant_WhenToString_ThenReturnsValue()
     {
         // Arrange
-        var expr = _compiler.Parse("42");
+        var expr = _parser.Parse("42");
 
         // Act
         var result = expr.ToString();
@@ -35,7 +36,7 @@ public class ExpressionPropertyTests
     public void GivenStringConstant_WhenToString_ThenReturnsQuotedValue()
     {
         // Arrange
-        var expr = _compiler.Parse("'hello'");
+        var expr = _parser.Parse("'hello'");
 
         // Act
         var result = expr.ToString();
@@ -48,7 +49,7 @@ public class ExpressionPropertyTests
     public void GivenBooleanConstant_WhenToString_ThenReturnsBooleanValue()
     {
         // Arrange
-        var expr = _compiler.Parse("true");
+        var expr = _parser.Parse("true");
 
         // Act
         var result = expr.ToString();
@@ -65,7 +66,7 @@ public class ExpressionPropertyTests
     public void GivenIdentifier_WhenToString_ThenReturnsName()
     {
         // Arrange
-        var expr = _compiler.Parse("Patient");
+        var expr = _parser.Parse("Patient");
 
         // Act
         var result = expr.ToString();
@@ -78,7 +79,7 @@ public class ExpressionPropertyTests
     public void GivenDelimitedIdentifier_WhenParsed_ThenPreservesName()
     {
         // Arrange & Act
-        var expr = _compiler.Parse("`integer`");
+        var expr = _parser.Parse("`integer`");
 
         // Assert
         Assert.NotNull(expr);
@@ -94,7 +95,7 @@ public class ExpressionPropertyTests
     public void GivenThisAxis_WhenToString_ThenReturnsAxis()
     {
         // Arrange
-        var expr = _compiler.Parse("$this");
+        var expr = _parser.Parse("$this");
 
         // Act
         var result = expr.ToString();
@@ -107,7 +108,7 @@ public class ExpressionPropertyTests
     public void GivenIndexAxis_WhenParsed_ThenCreatesAxisExpression()
     {
         // Arrange & Act
-        var expr = _compiler.Parse("$index");
+        var expr = _parser.Parse("$index");
 
         // Assert
         Assert.NotNull(expr);
@@ -118,7 +119,7 @@ public class ExpressionPropertyTests
     public void GivenTotalAxis_WhenParsed_ThenCreatesAxisExpression()
     {
         // Arrange & Act
-        var expr = _compiler.Parse("$total");
+        var expr = _parser.Parse("$total");
 
         // Assert
         Assert.NotNull(expr);
@@ -133,7 +134,7 @@ public class ExpressionPropertyTests
     public void GivenExternalVariable_WhenToString_ThenReturnsVariableName()
     {
         // Arrange
-        var expr = _compiler.Parse("%context");
+        var expr = _parser.Parse("%context");
 
         // Act
         var result = expr.ToString();
@@ -150,7 +151,7 @@ public class ExpressionPropertyTests
     public void GivenSimpleFunction_WhenToString_ThenReturnsFunctionSignature()
     {
         // Arrange
-        var expr = _compiler.Parse("name.exists()");
+        var expr = _parser.Parse("name.exists()");
 
         // Act
         var result = expr.ToString();
@@ -163,7 +164,7 @@ public class ExpressionPropertyTests
     public void GivenFunctionWithArguments_WhenToString_ThenIncludesArguments()
     {
         // Arrange
-        var expr = _compiler.Parse("name.where($this != '')");
+        var expr = _parser.Parse("name.where($this != '')");
 
         // Act
         var result = expr.ToString();
@@ -180,7 +181,7 @@ public class ExpressionPropertyTests
     public void GivenChildNavigation_WhenToString_ThenReturnsPath()
     {
         // Arrange
-        var expr = _compiler.Parse("Patient.name");
+        var expr = _parser.Parse("Patient.name");
 
         // Act
         var result = expr.ToString();
@@ -193,7 +194,7 @@ public class ExpressionPropertyTests
     public void GivenNestedChild_WhenToString_ThenReturnsFullPath()
     {
         // Arrange
-        var expr = _compiler.Parse("Patient.name.given");
+        var expr = _parser.Parse("Patient.name.given");
 
         // Act
         var result = expr.ToString();
@@ -210,7 +211,7 @@ public class ExpressionPropertyTests
     public void GivenIndexer_WhenToString_ThenReturnsIndexNotation()
     {
         // Arrange
-        var expr = _compiler.Parse("name[0]");
+        var expr = _parser.Parse("name[0]");
 
         // Act
         var result = expr.ToString();
@@ -228,7 +229,7 @@ public class ExpressionPropertyTests
     public void GivenBinaryOperator_WhenToString_ThenReturnsExpression()
     {
         // Arrange
-        var expr = _compiler.Parse("age > 18");
+        var expr = _parser.Parse("age > 18");
 
         // Act
         var result = expr.ToString();
@@ -242,7 +243,7 @@ public class ExpressionPropertyTests
     public void GivenUnionOperator_WhenToString_ThenReturnsUnion()
     {
         // Arrange
-        var expr = _compiler.Parse("1 | 2");
+        var expr = _parser.Parse("1 | 2");
 
         // Act
         var result = expr.ToString();
@@ -259,7 +260,7 @@ public class ExpressionPropertyTests
     public void GivenUnaryMinus_WhenToString_ThenReturnsMinusSign()
     {
         // Arrange
-        var expr = _compiler.Parse("-5");
+        var expr = _parser.Parse("-5");
 
         // Act
         var result = expr.ToString();
@@ -273,7 +274,7 @@ public class ExpressionPropertyTests
     public void GivenUnaryPlus_WhenToString_ThenReturnsPlusSign()
     {
         // Arrange
-        var expr = _compiler.Parse("+5");
+        var expr = _parser.Parse("+5");
 
         // Act
         var result = expr.ToString();
@@ -290,7 +291,7 @@ public class ExpressionPropertyTests
     public void GivenParenthesizedExpression_WhenToString_ThenIncludesParentheses()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 + 2)");
+        var expr = _parser.Parse("(1 + 2)");
 
         // Act
         var result = expr.ToString();
@@ -308,7 +309,7 @@ public class ExpressionPropertyTests
     public void GivenEmptyCollection_WhenToString_ThenReturnsEmptyNotation()
     {
         // Arrange
-        var expr = _compiler.Parse("{}");
+        var expr = _parser.Parse("{}");
 
         // Act
         var result = expr.ToString();
@@ -322,7 +323,7 @@ public class ExpressionPropertyTests
     public void GivenEmptyCollection_WhenParsed_ThenCreatesEmptyExpression()
     {
         // Arrange & Act
-        var expr = _compiler.Parse("{}");
+        var expr = _parser.Parse("{}");
 
         // Assert
         Assert.IsType<EmptyExpression>(expr);
@@ -336,7 +337,7 @@ public class ExpressionPropertyTests
     public void GivenQuantity_WhenToString_ThenReturnsValueAndUnit()
     {
         // Note: Quantity parsing requires special handling, so we test the structure
-        var success = _compiler.TryParse("5 'mg'", out var expr, out var error);
+        var success = _parser.TryParse("5 'mg'", out var expr, out var error);
 
         if (success && expr != null)
         {
@@ -356,7 +357,7 @@ public class ExpressionPropertyTests
     public void GivenExpression_WhenGetLocation_ThenReturnsPositionInfo()
     {
         // Arrange
-        var expr = _compiler.Parse("Patient.name");
+        var expr = _parser.Parse("Patient.name");
 
         // Act
         var location = expr.Location;
@@ -371,7 +372,7 @@ public class ExpressionPropertyTests
     public void GivenComplexExpression_WhenGetLocation_ThenHasValidSpan()
     {
         // Arrange
-        var expr = _compiler.Parse("Patient.name.where($this != '')");
+        var expr = _parser.Parse("Patient.name.where($this != '')");
 
         // Act
         var location = expr.Location;
@@ -389,7 +390,7 @@ public class ExpressionPropertyTests
     public void GivenInvalidSyntax_WhenTryParse_ThenReturnsFalse()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("Patient..name", out var expr, out var error);
+        var success = _parser.TryParse("Patient..name", out var expr, out var error);
 
         // Assert
         Assert.False(success);
@@ -401,7 +402,7 @@ public class ExpressionPropertyTests
     public void GivenEmptyString_WhenTryParse_ThenReturnsFalse()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("", out var expr, out var error);
+        var success = _parser.TryParse("", out var expr, out var error);
 
         // Assert
         Assert.False(success);
@@ -413,7 +414,7 @@ public class ExpressionPropertyTests
     public void GivenInvalidFunction_WhenTryParse_ThenReturnsFalse()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("name.invalidFunc(", out var expr, out var error);
+        var success = _parser.TryParse("name.invalidFunc(", out var expr, out var error);
 
         // Assert
         Assert.False(success);

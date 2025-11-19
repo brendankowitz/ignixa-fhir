@@ -6,8 +6,8 @@
  */
 
 using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Functions;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation.Functions;
 
 namespace Ignixa.FhirPath.Evaluation;
 

@@ -9,6 +9,7 @@
 #pragma warning disable CA1307 // Specify StringComparison for clarity
 
 using Ignixa.FhirPath;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Lexer;
 
@@ -19,7 +20,7 @@ namespace Ignixa.FhirPath.Tests.Lexer;
 /// </summary>
 public class KeywordCaseSensitivityTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
 
     #region Organization (starts with "Or")
 
@@ -27,7 +28,7 @@ public class KeywordCaseSensitivityTests
     public void GivenOrganization_WhenParsed_ThenParsesAsIdentifier()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("Organization", out var expr, out var error);
+        var success = _parser.TryParse("Organization", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'Organization': {error}");
@@ -39,7 +40,7 @@ public class KeywordCaseSensitivityTests
     public void GivenOrganizationDotAddress_WhenParsed_ThenParsesAsPath()
     {
         // Arrange & Act - This is the exact expression that was failing in search indexing
-        var success = _compiler.TryParse("Organization.address", out var expr, out var error);
+        var success = _parser.TryParse("Organization.address", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'Organization.address': {error}");
@@ -50,7 +51,7 @@ public class KeywordCaseSensitivityTests
     public void GivenOrganizationDotName_WhenParsed_ThenParsesCorrectly()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("Organization.name", out var expr, out var error);
+        var success = _parser.TryParse("Organization.name", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'Organization.name': {error}");
@@ -65,7 +66,7 @@ public class KeywordCaseSensitivityTests
     public void GivenInvoice_WhenParsed_ThenParsesAsIdentifier()
     {
         // 'Invoice' starts with 'In' which is a keyword
-        var success = _compiler.TryParse("Invoice", out var expr, out var error);
+        var success = _parser.TryParse("Invoice", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'Invoice': {error}");
         Assert.NotNull(expr);
@@ -75,7 +76,7 @@ public class KeywordCaseSensitivityTests
     public void GivenInvoiceDotStatus_WhenParsed_ThenParsesAsPath()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("Invoice.status", out var expr, out var error);
+        var success = _parser.TryParse("Invoice.status", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'Invoice.status': {error}");
@@ -90,7 +91,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseOr_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("true or false", out var expr, out var error);
+        var success = _parser.TryParse("true or false", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'true or false': {error}");
@@ -101,7 +102,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseAnd_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("true and false", out var expr, out var error);
+        var success = _parser.TryParse("true and false", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'true and false': {error}");
@@ -112,7 +113,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseIs_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("name is string", out var expr, out var error);
+        var success = _parser.TryParse("name is string", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'name is string': {error}");
@@ -123,7 +124,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseAs_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("value as String", out var expr, out var error);
+        var success = _parser.TryParse("value as String", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse 'value as String': {error}");
@@ -134,7 +135,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseDiv_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("10 div 3", out var expr, out var error);
+        var success = _parser.TryParse("10 div 3", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse '10 div 3': {error}");
@@ -145,7 +146,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseMod_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("10 mod 3", out var expr, out var error);
+        var success = _parser.TryParse("10 mod 3", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse '10 mod 3': {error}");
@@ -156,7 +157,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseIn_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("'a' in ('a' | 'b')", out var expr, out var error);
+        var success = _parser.TryParse("'a' in ('a' | 'b')", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse \"'a' in ('a' | 'b')\": {error}");
@@ -167,7 +168,7 @@ public class KeywordCaseSensitivityTests
     public void GivenLowercaseContains_WhenParsedInExpression_ThenRecognizedAsKeyword()
     {
         // Arrange & Act
-        var success = _compiler.TryParse("('a' | 'b') contains 'a'", out var expr, out var error);
+        var success = _parser.TryParse("('a' | 'b') contains 'a'", out var expr, out var error);
 
         // Assert
         Assert.True(success, $"Failed to parse \"('a' | 'b') contains 'a'\": {error}");
@@ -182,7 +183,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedOr_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'Or' should be an identifier, not the 'or' keyword
-        var success = _compiler.TryParse("Or", out var expr, out var error);
+        var success = _parser.TryParse("Or", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'Or': {error}");
         Assert.NotNull(expr);
@@ -192,7 +193,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedAnd_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'And' should be an identifier, not the 'and' keyword
-        var success = _compiler.TryParse("And", out var expr, out var error);
+        var success = _parser.TryParse("And", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'And': {error}");
         Assert.NotNull(expr);
@@ -202,7 +203,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedIs_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'Is' should be an identifier, not the 'is' keyword
-        var success = _compiler.TryParse("Is", out var expr, out var error);
+        var success = _parser.TryParse("Is", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'Is': {error}");
         Assert.NotNull(expr);
@@ -212,7 +213,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedAs_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'As' should be an identifier, not the 'as' keyword
-        var success = _compiler.TryParse("As", out var expr, out var error);
+        var success = _parser.TryParse("As", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'As': {error}");
         Assert.NotNull(expr);
@@ -222,7 +223,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedDiv_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'Div' should be an identifier, not the 'div' keyword
-        var success = _compiler.TryParse("Div", out var expr, out var error);
+        var success = _parser.TryParse("Div", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'Div': {error}");
         Assert.NotNull(expr);
@@ -232,7 +233,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedMod_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'Mod' should be an identifier, not the 'mod' keyword
-        var success = _compiler.TryParse("Mod", out var expr, out var error);
+        var success = _parser.TryParse("Mod", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'Mod': {error}");
         Assert.NotNull(expr);
@@ -242,7 +243,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedIn_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'In' should be an identifier, not the 'in' keyword
-        var success = _compiler.TryParse("In", out var expr, out var error);
+        var success = _parser.TryParse("In", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'In': {error}");
         Assert.NotNull(expr);
@@ -252,7 +253,7 @@ public class KeywordCaseSensitivityTests
     public void GivenCapitalizedContains_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'Contains' should be an identifier, not the 'contains' keyword
-        var success = _compiler.TryParse("Contains", out var expr, out var error);
+        var success = _parser.TryParse("Contains", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'Contains': {error}");
         Assert.NotNull(expr);
@@ -266,7 +267,7 @@ public class KeywordCaseSensitivityTests
     public void GivenUppercaseOR_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'OR' should be an identifier, not the 'or' keyword
-        var success = _compiler.TryParse("OR", out var expr, out var error);
+        var success = _parser.TryParse("OR", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'OR': {error}");
         Assert.NotNull(expr);
@@ -276,7 +277,7 @@ public class KeywordCaseSensitivityTests
     public void GivenUppercaseAND_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'AND' should be an identifier, not the 'and' keyword
-        var success = _compiler.TryParse("AND", out var expr, out var error);
+        var success = _parser.TryParse("AND", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'AND': {error}");
         Assert.NotNull(expr);
@@ -286,7 +287,7 @@ public class KeywordCaseSensitivityTests
     public void GivenMixedCaseXoR_WhenUsedAsIdentifier_ThenParsesAsIdentifier()
     {
         // 'XoR' should be an identifier, not the 'xor' keyword
-        var success = _compiler.TryParse("XoR", out var expr, out var error);
+        var success = _parser.TryParse("XoR", out var expr, out var error);
 
         Assert.True(success, $"Failed to parse 'XoR': {error}");
         Assert.NotNull(expr);

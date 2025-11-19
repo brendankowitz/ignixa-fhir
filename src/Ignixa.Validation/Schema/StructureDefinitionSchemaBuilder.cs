@@ -5,6 +5,7 @@
 
 using Ignixa.FhirPath;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
@@ -18,15 +19,15 @@ namespace Ignixa.Validation.Schema;
 /// </summary>
 public class StructureDefinitionSchemaBuilder
 {
-    private readonly FhirPathCompiler _compiler;
+    private readonly FhirPathParser _parser;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaBuilder"/> class.
     /// </summary>
     /// <param name="compiler">Shared FhirPath compiler for parsing constraint expressions. If null, a new instance will be created.</param>
-    public StructureDefinitionSchemaBuilder(FhirPathCompiler? compiler = null)
+    public StructureDefinitionSchemaBuilder(FhirPathParser? compiler = null)
     {
-        _compiler = compiler ?? new FhirPathCompiler();
+        _parser = compiler ?? new FhirPathParser();
     }
 
     /// <summary>
@@ -196,7 +197,7 @@ public class StructureDefinitionSchemaBuilder
         // This includes constraints like ele-1, dom-1, resource-specific invariants
         // Moved to Profile tier to avoid false positives on minimal resources
         // Constraints are scoped to the current resource type (see ExtractInvariantChecks for filtering)
-        var invariantChecks = ExtractInvariantChecks(elements.ToArray(), summary, provider, _compiler);
+        var invariantChecks = ExtractInvariantChecks(elements.ToArray(), summary, provider, _parser);
         profileChecks.AddRange(invariantChecks);
 
         // Build the canonical URL from the type name
@@ -218,13 +219,13 @@ public class StructureDefinitionSchemaBuilder
     /// <param name="elements">The element definitions to extract constraints from.</param>
     /// <param name="summary">The structure definition being built (for scoping constraints to correct resource type).</param>
     /// <param name="provider">The structure definition provider for FHIRPath evaluation.</param>
-    /// <param name="compiler">The FhirPath compiler for parsing constraint expressions.</param>
+    /// <param name="parser">The FhirPath compiler for parsing constraint expressions.</param>
     /// <returns>A collection of FhirPathInvariantCheck instances.</returns>
     private static IEnumerable<IValidationCheck> ExtractInvariantChecks(
         IElementDefinitionSummary[] elements,
         IStructureDefinitionSummary summary,
         IStructureDefinitionSummaryProvider provider,
-        FhirPathCompiler compiler)
+        FhirPathParser parser)
     {
         var checks = new List<IValidationCheck>();
 
@@ -269,7 +270,7 @@ public class StructureDefinitionSchemaBuilder
 
                 // Create FhirPathInvariantCheck for this constraint
                 // Compiler is passed in from builder instance (shared across all checks)
-                var check = new FhirPathInvariantCheck(constraint, provider, compiler);
+                var check = new FhirPathInvariantCheck(constraint, provider, parser);
                 checks.Add(check);
             }
         }

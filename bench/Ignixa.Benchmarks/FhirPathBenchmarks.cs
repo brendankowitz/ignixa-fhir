@@ -10,6 +10,7 @@ using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 // Ignixa FHIRPath extension methods
@@ -39,7 +40,7 @@ public class FhirPathBenchmarks
     private IFhirSchemaProvider _ignixaSchemaProvider = null!;
     private FhirVersionContext _versionContext = null!;
 
-    private Ignixa.FhirPath.FhirPathCompiler _ignixaCompiler = null!;
+    private FhirPathParser _ignixaParser = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -60,7 +61,7 @@ public class FhirPathBenchmarks
         _ignixaPatientTyped = TypedElementExtensions.ToTypedElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
         _ignixaObservationTyped = TypedElementExtensions.ToTypedElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);
 
-        _ignixaCompiler = new Ignixa.FhirPath.FhirPathCompiler();
+        _ignixaParser = new FhirPathParser();
 
         // Firely setup
         var firelyPatientSource = Hl7.Fhir.Serialization.FhirJsonNode.Parse(patientJson);
@@ -164,7 +165,7 @@ public class FhirPathBenchmarks
     [BenchmarkCategory("Compile")]
     public Ignixa.FhirPath.Expressions.Expression IgnixaCompile()
     {
-        return _ignixaCompiler.Parse("Patient.name.where(use='official').given.first()");
+        return _ignixaParser.Parse("Patient.name.where(use='official').given.first()");
     }
 
     [GlobalCleanup]

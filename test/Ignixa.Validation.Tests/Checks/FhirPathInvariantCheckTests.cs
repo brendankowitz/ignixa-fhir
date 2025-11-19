@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.FhirPath;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -21,12 +22,12 @@ namespace Ignixa.Validation.Tests.Checks;
 public class FhirPathInvariantCheckTests
 {
     private readonly R4StructureDefinitionSummaryProvider _provider;
-    private readonly FhirPathCompiler _compiler;
+    private readonly FhirPathParser _parser;
 
     public FhirPathInvariantCheckTests()
     {
         _provider = new R4StructureDefinitionSummaryProvider();
-        _compiler = new FhirPathCompiler();
+        _parser = new FhirPathParser();
     }
 
     #region Universal Constraints
@@ -50,7 +51,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"id\":\"123\",\"gender\":\"male\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -84,7 +85,7 @@ public class FhirPathInvariantCheckTests
         // Empty object with no children
         var json = JsonNode.Parse("{}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -132,7 +133,7 @@ public class FhirPathInvariantCheckTests
             ]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -174,7 +175,7 @@ public class FhirPathInvariantCheckTests
             ]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json)!.Children("contact").First();
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -209,7 +210,7 @@ public class FhirPathInvariantCheckTests
             ""valueQuantity"": {""value"": 120, ""unit"": ""mmHg""}
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -253,7 +254,7 @@ public class FhirPathInvariantCheckTests
             ]
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -288,7 +289,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -325,7 +326,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Fast };
         var state = new ValidationState();
 
@@ -360,7 +361,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -392,7 +393,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -424,7 +425,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 
@@ -459,7 +460,7 @@ public class FhirPathInvariantCheckTests
 
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var check = new FhirPathInvariantCheck(constraint, _provider, _compiler);
+        var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
         var settings = new ValidationSettings { Tier = ValidationTier.Spec };
         var state = new ValidationState();
 

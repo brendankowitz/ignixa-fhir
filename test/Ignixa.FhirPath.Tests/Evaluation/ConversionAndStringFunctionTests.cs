@@ -7,12 +7,13 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 public class ConversionAndStringFunctionTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region Type Conversion Function Tests
@@ -21,7 +22,7 @@ public class ConversionAndStringFunctionTests
     public void GivenStringNumber_WhenToInteger_ThenConvertsToInteger()
     {
         // Arrange
-        var expr = _compiler.Parse("'42'.toInteger()");
+        var expr = _parser.Parse("'42'.toInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -36,7 +37,7 @@ public class ConversionAndStringFunctionTests
     public void GivenInvalidString_WhenToInteger_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'abc'.toInteger()");
+        var expr = _parser.Parse("'abc'.toInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -50,7 +51,7 @@ public class ConversionAndStringFunctionTests
     public void GivenIntegerString_WhenToDecimal_ThenConvertsToDecimal()
     {
         // Arrange
-        var expr = _compiler.Parse("'3.14'.toDecimal()");
+        var expr = _parser.Parse("'3.14'.toDecimal()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -65,7 +66,7 @@ public class ConversionAndStringFunctionTests
     public void GivenInteger_WhenToString_ThenConvertsToString()
     {
         // Arrange
-        var expr = _compiler.Parse("42.toString()");
+        var expr = _parser.Parse("42.toString()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -80,7 +81,7 @@ public class ConversionAndStringFunctionTests
     public void GivenTrueString_WhenToBoolean_ThenConvertsToBoolean()
     {
         // Arrange
-        var expr = _compiler.Parse("'true'.toBoolean()");
+        var expr = _parser.Parse("'true'.toBoolean()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -95,7 +96,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidDateString_WhenToDate_ThenConvertsToDate()
     {
         // Arrange
-        var expr = _compiler.Parse("'2025-01-15'.toDate()");
+        var expr = _parser.Parse("'2025-01-15'.toDate()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -110,7 +111,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidDateTimeString_WhenToDateTime_ThenConvertsToDateTime()
     {
         // Arrange
-        var expr = _compiler.Parse("'2025-01-15T10:30:00Z'.toDateTime()");
+        var expr = _parser.Parse("'2025-01-15T10:30:00Z'.toDateTime()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -125,7 +126,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidTimeString_WhenToTime_ThenConvertsToTime()
     {
         // Arrange
-        var expr = _compiler.Parse("'10:30:00'.toTime()");
+        var expr = _parser.Parse("'10:30:00'.toTime()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -144,7 +145,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidIntegerString_WhenConvertsToInteger_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'42'.convertsToInteger()");
+        var expr = _parser.Parse("'42'.convertsToInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -158,7 +159,7 @@ public class ConversionAndStringFunctionTests
     public void GivenInvalidString_WhenConvertsToInteger_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("'abc'.convertsToInteger()");
+        var expr = _parser.Parse("'abc'.convertsToInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -172,7 +173,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidDecimalString_WhenConvertsToDecimal_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'3.14'.convertsToDecimal()");
+        var expr = _parser.Parse("'3.14'.convertsToDecimal()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -186,7 +187,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidBooleanString_WhenConvertsToBoolean_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'true'.convertsToBoolean()");
+        var expr = _parser.Parse("'true'.convertsToBoolean()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -200,7 +201,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValidDateString_WhenConvertsToDate_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'2025-01-15'.convertsToDate()");
+        var expr = _parser.Parse("'2025-01-15'.convertsToDate()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -218,7 +219,7 @@ public class ConversionAndStringFunctionTests
     public void GivenTrueCondition_WhenIif_ThenReturnsTrueBranch()
     {
         // Arrange
-        var expr = _compiler.Parse("iif(true, 'yes', 'no')");
+        var expr = _parser.Parse("iif(true, 'yes', 'no')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -232,7 +233,7 @@ public class ConversionAndStringFunctionTests
     public void GivenFalseCondition_WhenIif_ThenReturnsFalseBranch()
     {
         // Arrange
-        var expr = _compiler.Parse("iif(false, 'yes', 'no')");
+        var expr = _parser.Parse("iif(false, 'yes', 'no')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -246,7 +247,7 @@ public class ConversionAndStringFunctionTests
     public void GivenEmptyCondition_WhenIif_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("iif({}, 'yes', 'no')");
+        var expr = _parser.Parse("iif({}, 'yes', 'no')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -265,7 +266,7 @@ public class ConversionAndStringFunctionTests
     {
         // Arrange
         // Note: Using delimited identifier due to 'indexOf' containing 'in' keyword
-        var expr = _compiler.Parse("'Hello World'.`indexOf`('World')");
+        var expr = _parser.Parse("'Hello World'.`indexOf`('World')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -280,7 +281,7 @@ public class ConversionAndStringFunctionTests
     {
         // Arrange
         // Note: Using delimited identifier due to 'indexOf' containing 'in' keyword
-        var expr = _compiler.Parse("'Hello World'.`indexOf`('xyz')");
+        var expr = _parser.Parse("'Hello World'.`indexOf`('xyz')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -294,7 +295,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenSubstring_ThenReturnsSubstring()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello World'.substring(6, 5)");
+        var expr = _parser.Parse("'Hello World'.substring(6, 5)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -308,7 +309,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenStartsWith_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello World'.startsWith('Hello')");
+        var expr = _parser.Parse("'Hello World'.startsWith('Hello')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -322,7 +323,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenEndsWith_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello World'.endsWith('World')");
+        var expr = _parser.Parse("'Hello World'.endsWith('World')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -336,7 +337,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenUpper_ThenReturnsUppercase()
     {
         // Arrange
-        var expr = _compiler.Parse("'hello'.upper()");
+        var expr = _parser.Parse("'hello'.upper()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -350,7 +351,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenLower_ThenReturnsLowercase()
     {
         // Arrange
-        var expr = _compiler.Parse("'HELLO'.lower()");
+        var expr = _parser.Parse("'HELLO'.lower()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -364,7 +365,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenLength_ThenReturnsLength()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello World'.length()");
+        var expr = _parser.Parse("'Hello World'.length()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -382,7 +383,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenReplace_ThenReplacesSubstring()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello World'.replace('World', 'FhirPath')");
+        var expr = _parser.Parse("'Hello World'.replace('World', 'FhirPath')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -396,7 +397,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenMatches_ThenReturnsTrueForMatch()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello123'.matches('[A-Za-z]+[0-9]+')");
+        var expr = _parser.Parse("'Hello123'.matches('[A-Za-z]+[0-9]+')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -410,7 +411,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenMatchesNoMatch_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello'.matches('[0-9]+')");
+        var expr = _parser.Parse("'Hello'.matches('[0-9]+')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -424,7 +425,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenReplaceMatches_ThenReplacesPattern()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello123World456'.replaceMatches('[0-9]+', 'NUM')");
+        var expr = _parser.Parse("'Hello123World456'.replaceMatches('[0-9]+', 'NUM')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -438,7 +439,7 @@ public class ConversionAndStringFunctionTests
     public void GivenString_WhenToChars_ThenReturnsSingleCharacters()
     {
         // Arrange
-        var expr = _compiler.Parse("'ABC'.toChars()");
+        var expr = _parser.Parse("'ABC'.toChars()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -459,7 +460,7 @@ public class ConversionAndStringFunctionTests
     public void GivenPatientResource_WhenChildren_ThenReturnsDirectChildren()
     {
         // Arrange
-        var expr = _compiler.Parse("children()");
+        var expr = _parser.Parse("children()");
         var root = CreatePatientWithName();
 
         // Act
@@ -474,7 +475,7 @@ public class ConversionAndStringFunctionTests
     public void GivenPatientResource_WhenDescendants_ThenReturnsAllDescendants()
     {
         // Arrange
-        var expr = _compiler.Parse("descendants()");
+        var expr = _parser.Parse("descendants()");
         var root = CreatePatientWithName();
 
         // Act
@@ -493,7 +494,7 @@ public class ConversionAndStringFunctionTests
     public void GivenValue_WhenTrace_ThenReturnsValue()
     {
         // Arrange
-        var expr = _compiler.Parse("42.trace('test')");
+        var expr = _parser.Parse("42.trace('test')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -507,7 +508,7 @@ public class ConversionAndStringFunctionTests
     public void GivenNoInput_WhenNow_ThenReturnsCurrentDateTime()
     {
         // Arrange
-        var expr = _compiler.Parse("now()");
+        var expr = _parser.Parse("now()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -522,7 +523,7 @@ public class ConversionAndStringFunctionTests
     public void GivenNoInput_WhenToday_ThenReturnsCurrentDate()
     {
         // Arrange
-        var expr = _compiler.Parse("today()");
+        var expr = _parser.Parse("today()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -537,7 +538,7 @@ public class ConversionAndStringFunctionTests
     public void GivenNoInput_WhenTimeOfDay_ThenReturnsCurrentTime()
     {
         // Arrange
-        var expr = _compiler.Parse("timeOfDay()");
+        var expr = _parser.Parse("timeOfDay()");
         var root = CreateIntegerElement(0);
 
         // Act

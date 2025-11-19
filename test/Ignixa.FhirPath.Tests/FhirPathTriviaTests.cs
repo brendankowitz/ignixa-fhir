@@ -5,7 +5,7 @@
  */
 
 using Ignixa.FhirPath;
-using Ignixa.FhirPath.Lexer;
+using Ignixa.FhirPath.Parser;
 using Superpower;
 using Superpower.Model;
 

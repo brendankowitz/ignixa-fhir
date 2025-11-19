@@ -5,7 +5,7 @@
  * Based on FhirPath N1.0 (Normative) specification.
  */
 
-namespace Ignixa.FhirPath.Lexer;
+namespace Ignixa.FhirPath.Parser;
 
 /// <summary>
 /// Token kinds for FhirPath expressions.

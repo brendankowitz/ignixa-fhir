@@ -7,12 +7,13 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 public class CoreFunctionTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region Subsetting Function Tests
@@ -21,7 +22,7 @@ public class CoreFunctionTests
     public void GivenSingleItem_WhenSingle_ThenReturnsThatItem()
     {
         // Arrange
-        var expr = _compiler.Parse("(5).single()");
+        var expr = _parser.Parse("(5).single()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -35,7 +36,7 @@ public class CoreFunctionTests
     public void GivenMultipleItems_WhenSingle_ThenThrowsException()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).single()");
+        var expr = _parser.Parse("(1 | 2 | 3).single()");
         var root = CreateIntegerElement(0);
 
         // Act & Assert
@@ -46,7 +47,7 @@ public class CoreFunctionTests
     public void GivenCollection_WhenTail_ThenReturnsAllButFirst()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).tail()");
+        var expr = _parser.Parse("(1 | 2 | 3).tail()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -62,7 +63,7 @@ public class CoreFunctionTests
     public void GivenCollection_WhenSkip_ThenSkipsFirstN()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3 | 4).skip(2)");
+        var expr = _parser.Parse("(1 | 2 | 3 | 4).skip(2)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -78,7 +79,7 @@ public class CoreFunctionTests
     public void GivenCollection_WhenTake_ThenTakesFirstN()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3 | 4).take(2)");
+        var expr = _parser.Parse("(1 | 2 | 3 | 4).take(2)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -95,7 +96,7 @@ public class CoreFunctionTests
     {
         // Arrange
         // Note: Using backticks due to 'intersect' containing 'in' keyword
-        var expr = _compiler.Parse("(1 | 2 | 3).`intersect`(2 | 3 | 4)");
+        var expr = _parser.Parse("(1 | 2 | 3).`intersect`(2 | 3 | 4)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -111,7 +112,7 @@ public class CoreFunctionTests
     public void GivenTwoCollections_WhenExclude_ThenRemovesMatchingElements()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).exclude(2 | 4)");
+        var expr = _parser.Parse("(1 | 2 | 3).exclude(2 | 4)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -131,7 +132,7 @@ public class CoreFunctionTests
     public void GivenAllTrueValues_WhenAllTrue_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(true | true | true).allTrue()");
+        var expr = _parser.Parse("(true | true | true).allTrue()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -145,7 +146,7 @@ public class CoreFunctionTests
     public void GivenMixedValues_WhenAllTrue_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("(true | false | true).allTrue()");
+        var expr = _parser.Parse("(true | false | true).allTrue()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -159,7 +160,7 @@ public class CoreFunctionTests
     public void GivenSomeTrueValues_WhenAnyTrue_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(false | true | false).anyTrue()");
+        var expr = _parser.Parse("(false | true | false).anyTrue()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -173,7 +174,7 @@ public class CoreFunctionTests
     public void GivenAllFalseValues_WhenAnyTrue_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("(false | false | false).anyTrue()");
+        var expr = _parser.Parse("(false | false | false).anyTrue()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -187,7 +188,7 @@ public class CoreFunctionTests
     public void GivenAllFalseValues_WhenAllFalse_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(false | false | false).allFalse()");
+        var expr = _parser.Parse("(false | false | false).allFalse()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -201,7 +202,7 @@ public class CoreFunctionTests
     public void GivenSomeFalseValues_WhenAnyFalse_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(true | false | true).anyFalse()");
+        var expr = _parser.Parse("(true | false | true).anyFalse()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -215,7 +216,7 @@ public class CoreFunctionTests
     public void GivenEmptyCollection_WhenAllTrue_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.allTrue()");
+        var expr = _parser.Parse("{}.allTrue()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -229,7 +230,7 @@ public class CoreFunctionTests
     public void GivenEmptyCollection_WhenAnyTrue_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.anyTrue()");
+        var expr = _parser.Parse("{}.anyTrue()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -247,7 +248,7 @@ public class CoreFunctionTests
     public void GivenTrueValue_WhenNot_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("true.not()");
+        var expr = _parser.Parse("true.not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -261,7 +262,7 @@ public class CoreFunctionTests
     public void GivenFalseValue_WhenNot_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("false.not()");
+        var expr = _parser.Parse("false.not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -275,7 +276,7 @@ public class CoreFunctionTests
     public void GivenEmptyCollection_WhenNot_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.not()");
+        var expr = _parser.Parse("{}.not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -289,7 +290,7 @@ public class CoreFunctionTests
     public void GivenComparisonTrue_WhenNot_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 = 1).not()");
+        var expr = _parser.Parse("(1 = 1).not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -303,7 +304,7 @@ public class CoreFunctionTests
     public void GivenComparisonFalse_WhenNot_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 = 2).not()");
+        var expr = _parser.Parse("(1 = 2).not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -317,7 +318,7 @@ public class CoreFunctionTests
     public void GivenDoubleNegation_WhenNot_ThenReturnsOriginal()
     {
         // Arrange
-        var expr = _compiler.Parse("true.not().not()");
+        var expr = _parser.Parse("true.not().not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -331,7 +332,7 @@ public class CoreFunctionTests
     public void GivenNonBooleanValue_WhenNot_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("5.not()");
+        var expr = _parser.Parse("5.not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -345,7 +346,7 @@ public class CoreFunctionTests
     public void GivenMultipleItems_WhenNot_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(true | false).not()");
+        var expr = _parser.Parse("(true | false).not()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -363,7 +364,7 @@ public class CoreFunctionTests
     public void GivenSubset_WhenSubsetOf_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2).subsetOf(1 | 2 | 3)");
+        var expr = _parser.Parse("(1 | 2).subsetOf(1 | 2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -377,7 +378,7 @@ public class CoreFunctionTests
     public void GivenNotSubset_WhenSubsetOf_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 4).subsetOf(1 | 2 | 3)");
+        var expr = _parser.Parse("(1 | 4).subsetOf(1 | 2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -391,7 +392,7 @@ public class CoreFunctionTests
     public void GivenSuperset_WhenSupersetOf_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).supersetOf(1 | 2)");
+        var expr = _parser.Parse("(1 | 2 | 3).supersetOf(1 | 2)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -405,7 +406,7 @@ public class CoreFunctionTests
     public void GivenEmptyCollection_WhenSubsetOf_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.subsetOf(1 | 2 | 3)");
+        var expr = _parser.Parse("{}.subsetOf(1 | 2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -420,7 +421,7 @@ public class CoreFunctionTests
     {
         // Arrange
         // Note: Using backticks due to 'isDistinct' containing 'is' keyword
-        var expr = _compiler.Parse("(1 | 2 | 3).`isDistinct`()");
+        var expr = _parser.Parse("(1 | 2 | 3).`isDistinct`()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -436,7 +437,7 @@ public class CoreFunctionTests
         // Arrange
         // Note: Using backticks due to 'isDistinct' containing 'is' keyword
         // Note: Using combine() to keep duplicates (| union eliminates them)
-        var expr = _compiler.Parse("(1 | 2).combine(2 | 3).`isDistinct`()");
+        var expr = _parser.Parse("(1 | 2).combine(2 | 3).`isDistinct`()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -454,7 +455,7 @@ public class CoreFunctionTests
     public void GivenTwoCollections_WhenUnionFunction_ThenEliminatesDuplicates()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2).union(2 | 3)");
+        var expr = _parser.Parse("(1 | 2).union(2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -468,7 +469,7 @@ public class CoreFunctionTests
     public void GivenTwoCollections_WhenCombine_ThenKeepsDuplicates()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2).combine(2 | 3)");
+        var expr = _parser.Parse("(1 | 2).combine(2 | 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -494,7 +495,7 @@ public class CoreFunctionTests
     public void GivenResourceWithExtension_WhenExtensionFunction_ThenReturnsMatchingExtension()
     {
         // Arrange
-        var expr = _compiler.Parse("extension('http://example.org/fhir/StructureDefinition/participation-agreement')");
+        var expr = _parser.Parse("extension('http://example.org/fhir/StructureDefinition/participation-agreement')");
         var resource = CreateResourceWithExtensions();
 
         // Act
@@ -510,7 +511,7 @@ public class CoreFunctionTests
     public void GivenResourceWithMultipleExtensions_WhenExtensionFunction_ThenReturnsOnlyMatching()
     {
         // Arrange
-        var expr = _compiler.Parse("extension('http://example.org/test')");
+        var expr = _parser.Parse("extension('http://example.org/test')");
         var resource = CreateResourceWithExtensions();
 
         // Act
@@ -524,7 +525,7 @@ public class CoreFunctionTests
     public void GivenResourceWithoutExtensions_WhenExtensionFunction_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("extension('http://example.org/test')");
+        var expr = _parser.Parse("extension('http://example.org/test')");
         var resource = CreateIntegerElement(42);
 
         // Act

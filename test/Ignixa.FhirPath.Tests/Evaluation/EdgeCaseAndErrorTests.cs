@@ -7,12 +7,13 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 public class EdgeCaseAndErrorTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region EvaluationContext Tests
@@ -67,7 +68,7 @@ public class EdgeCaseAndErrorTests
         // Arrange
         var context = new EvaluationContext();
         context.SetEnvironmentVariable("myValue", CreateIntegerElement(99));
-        var expr = _compiler.Parse("%myValue");
+        var expr = _parser.Parse("%myValue");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -83,7 +84,7 @@ public class EdgeCaseAndErrorTests
     {
         // Arrange
         var context = new EvaluationContext();
-        var expr = _compiler.Parse("%nonExistent");
+        var expr = _parser.Parse("%nonExistent");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -101,7 +102,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenFirst_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.first()");
+        var expr = _parser.Parse("{}.first()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -115,7 +116,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenLast_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.last()");
+        var expr = _parser.Parse("{}.last()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -129,7 +130,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenSingle_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.single()");
+        var expr = _parser.Parse("{}.single()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -143,7 +144,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenCount_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.count()");
+        var expr = _parser.Parse("{}.count()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -161,7 +162,7 @@ public class EdgeCaseAndErrorTests
     public void GivenInvalidTypeConversion_WhenToInteger_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'not-a-number'.toInteger()");
+        var expr = _parser.Parse("'not-a-number'.toInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -175,7 +176,7 @@ public class EdgeCaseAndErrorTests
     public void GivenInvalidTypeConversion_WhenToDecimal_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'not-a-number'.toDecimal()");
+        var expr = _parser.Parse("'not-a-number'.toDecimal()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -189,7 +190,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenMathOperation_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} + 5");
+        var expr = _parser.Parse("{} + 5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -203,7 +204,7 @@ public class EdgeCaseAndErrorTests
     public void GivenMultipleItems_WhenMathOperation_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2) + 3");
+        var expr = _parser.Parse("(1 | 2) + 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -217,7 +218,7 @@ public class EdgeCaseAndErrorTests
     public void GivenInvalidRegex_WhenMatches_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'test'.matches('[invalid(')");
+        var expr = _parser.Parse("'test'.matches('[invalid(')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -231,7 +232,7 @@ public class EdgeCaseAndErrorTests
     public void GivenInvalidRegex_WhenReplaceMatches_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'test'.replaceMatches('[invalid(', 'x')");
+        var expr = _parser.Parse("'test'.replaceMatches('[invalid(', 'x')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -249,7 +250,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollections_WhenEquality_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} = {}");
+        var expr = _parser.Parse("{} = {}");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -263,7 +264,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyAndNonEmpty_WhenEquality_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} = 5");
+        var expr = _parser.Parse("{} = 5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -277,7 +278,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollections_WhenGreaterThan_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} > {}");
+        var expr = _parser.Parse("{} > {}");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -291,7 +292,7 @@ public class EdgeCaseAndErrorTests
     public void GivenMultipleItems_WhenComparison_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2) > 3");
+        var expr = _parser.Parse("(1 | 2) > 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -309,7 +310,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyString_WhenLength_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("''.length()");
+        var expr = _parser.Parse("''.length()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -323,7 +324,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyString_WhenUpper_ThenReturnsEmptyString()
     {
         // Arrange
-        var expr = _compiler.Parse("''.upper()");
+        var expr = _parser.Parse("''.upper()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -337,7 +338,7 @@ public class EdgeCaseAndErrorTests
     public void GivenOutOfBoundsSubstring_WhenSubstring_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello'.substring(10)");
+        var expr = _parser.Parse("'Hello'.substring(10)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -351,7 +352,7 @@ public class EdgeCaseAndErrorTests
     public void GivenNegativeIndex_WhenSubstring_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'Hello'.substring(-1)");
+        var expr = _parser.Parse("'Hello'.substring(-1)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -365,7 +366,7 @@ public class EdgeCaseAndErrorTests
     public void GivenNonString_WhenStringFunction_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("42.upper()");
+        var expr = _parser.Parse("42.upper()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -384,7 +385,7 @@ public class EdgeCaseAndErrorTests
     {
         // Arrange
         // Skip with empty argument returns empty
-        var expr = _compiler.Parse("(1 | 2 | 3).skip({})");
+        var expr = _parser.Parse("(1 | 2 | 3).skip({})");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -398,7 +399,7 @@ public class EdgeCaseAndErrorTests
     public void GivenZeroSkip_WhenSkip_ThenReturnsAll()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).skip(0)");
+        var expr = _parser.Parse("(1 | 2 | 3).skip(0)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -412,7 +413,7 @@ public class EdgeCaseAndErrorTests
     public void GivenNegativeTake_WhenTake_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).take(-1)");
+        var expr = _parser.Parse("(1 | 2 | 3).take(-1)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -426,7 +427,7 @@ public class EdgeCaseAndErrorTests
     public void GivenZeroTake_WhenTake_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).take(0)");
+        var expr = _parser.Parse("(1 | 2 | 3).take(0)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -444,7 +445,7 @@ public class EdgeCaseAndErrorTests
     public void GivenNegativeIndex_WhenIndexer_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3)[-1]");
+        var expr = _parser.Parse("(1 | 2 | 3)[-1]");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -458,7 +459,7 @@ public class EdgeCaseAndErrorTests
     public void GivenOutOfBoundsIndex_WhenIndexer_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3)[10]");
+        var expr = _parser.Parse("(1 | 2 | 3)[10]");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -476,7 +477,7 @@ public class EdgeCaseAndErrorTests
     public void GivenPositiveInteger_WhenUnaryMinus_ThenReturnsNegative()
     {
         // Arrange
-        var expr = _compiler.Parse("-5");
+        var expr = _parser.Parse("-5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -491,7 +492,7 @@ public class EdgeCaseAndErrorTests
     public void GivenPositiveInteger_WhenUnaryPlus_ThenReturnsValue()
     {
         // Arrange
-        var expr = _compiler.Parse("+5");
+        var expr = _parser.Parse("+5");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -509,7 +510,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenWhere_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.where($this > 5)");
+        var expr = _parser.Parse("{}.where($this > 5)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -523,7 +524,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenAll_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.all($this > 5)");
+        var expr = _parser.Parse("{}.all($this > 5)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -537,7 +538,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenAny_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.any($this > 5)");
+        var expr = _parser.Parse("{}.any($this > 5)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -555,7 +556,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenTypeIs_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} is `integer`");
+        var expr = _parser.Parse("{} is `integer`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -569,7 +570,7 @@ public class EdgeCaseAndErrorTests
     public void GivenEmptyCollection_WhenTypeAs_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{} as `integer`");
+        var expr = _parser.Parse("{} as `integer`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -583,7 +584,7 @@ public class EdgeCaseAndErrorTests
     public void GivenWrongType_WhenTypeAs_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("'hello' as `integer`");
+        var expr = _parser.Parse("'hello' as `integer`");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -601,7 +602,7 @@ public class EdgeCaseAndErrorTests
     public void GivenDecimalOutOfIntRange_WhenToInteger_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("9999999999999.5.toInteger()");
+        var expr = _parser.Parse("9999999999999.5.toInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -615,7 +616,7 @@ public class EdgeCaseAndErrorTests
     public void GivenBooleanTrue_WhenToInteger_ThenReturnsOne()
     {
         // Arrange
-        var expr = _compiler.Parse("true.toInteger()");
+        var expr = _parser.Parse("true.toInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -629,7 +630,7 @@ public class EdgeCaseAndErrorTests
     public void GivenBooleanFalse_WhenToInteger_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("false.toInteger()");
+        var expr = _parser.Parse("false.toInteger()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -643,7 +644,7 @@ public class EdgeCaseAndErrorTests
     public void GivenIntegerOne_WhenToBoolean_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("1.toBoolean()");
+        var expr = _parser.Parse("1.toBoolean()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -657,7 +658,7 @@ public class EdgeCaseAndErrorTests
     public void GivenIntegerZero_WhenToBoolean_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("0.toBoolean()");
+        var expr = _parser.Parse("0.toBoolean()");
         var root = CreateIntegerElement(0);
 
         // Act

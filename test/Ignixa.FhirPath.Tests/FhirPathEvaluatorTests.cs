@@ -9,6 +9,7 @@ using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 
@@ -20,7 +21,7 @@ namespace Ignixa.FhirPath.Tests;
 /// </summary>
 public class FhirPathEvaluatorTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
     private readonly IStructureDefinitionSummaryProvider _r4Provider;
 
@@ -34,7 +35,7 @@ public class FhirPathEvaluatorTests
     /// </summary>
     private IEnumerable<ITypedElement> EvaluatePath(ITypedElement element, string pathExpression)
     {
-        var expression = _compiler.Parse(pathExpression);
+        var expression = _parser.Parse(pathExpression);
         return _evaluator.Evaluate(element, expression, new EvaluationContext());
     }
 

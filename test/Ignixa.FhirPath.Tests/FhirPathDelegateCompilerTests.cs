@@ -4,10 +4,10 @@
  * Unit tests for FhirPathDelegateCompiler - tests compiled vs interpreted evaluation equivalence.
  */
 
-using Ignixa.FhirPath.Compilation;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 using Xunit;
 
 namespace Ignixa.FhirPath.Tests;
@@ -18,11 +18,11 @@ namespace Ignixa.FhirPath.Tests;
 /// </summary>
 public class FhirPathDelegateCompilerTests
 {
-    private static readonly FhirPathCompiler _compiler = new(preserveTrivia: false);
+    private static readonly FhirPathParser Parser = new(preserveTrivia: false);
     private static readonly FhirPathEvaluator _evaluator = new();
     private static readonly FhirPathDelegateCompiler _delegateCompiler = new(_evaluator);
 
-    private static Expression ParseExpression(string expression) => _compiler.Parse(expression);
+    private static Expression ParseExpression(string expression) => Parser.Parse(expression);
 
     private static IEnumerable<ITypedElement> EvaluateInterpreted(ITypedElement input, string expression)
     {

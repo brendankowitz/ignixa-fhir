@@ -9,7 +9,7 @@ using Superpower;
 using Superpower.Parsers;
 using Superpower.Tokenizers;
 
-namespace Ignixa.FhirPath.Lexer;
+namespace Ignixa.FhirPath.Parser;
 
 /// <summary>
 /// Tokenizer for FhirPath expressions using Superpower.

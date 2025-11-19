@@ -8,6 +8,7 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirMappingLanguage.Evaluation;
 
@@ -16,7 +17,7 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// </summary>
 public class FhirPathIntegration
 {
-    private readonly FhirPathCompiler _compiler;
+    private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
     private readonly Dictionary<string, Ignixa.FhirPath.Expressions.Expression> _expressionCache;
 
@@ -26,7 +27,7 @@ public class FhirPathIntegration
     /// <param name="cacheExpressions">Whether to cache compiled expressions for performance</param>
     public FhirPathIntegration(bool cacheExpressions = true)
     {
-        _compiler = new FhirPathCompiler();
+        _parser = new FhirPathParser();
         _evaluator = new FhirPathEvaluator();
         _expressionCache = cacheExpressions ? new Dictionary<string, Ignixa.FhirPath.Expressions.Expression>() : null!;
     }
@@ -103,12 +104,12 @@ public class FhirPathIntegration
                 return cached;
             }
 
-            var compiled = _compiler.Parse(expression);
+            var compiled = _parser.Parse(expression);
             _expressionCache[expression] = compiled;
             return compiled;
         }
 
-        return _compiler.Parse(expression);
+        return _parser.Parse(expression);
     }
 
     /// <summary>

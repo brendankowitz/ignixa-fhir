@@ -7,12 +7,13 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 public class RemainingCoverageTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region FhirEvaluationContext Tests
@@ -50,7 +51,7 @@ public class RemainingCoverageTests
     public void GivenMultipleItems_WhenSelect_ThenProjectsAllItems()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3).select($this * 2)");
+        var expr = _parser.Parse("(1 | 2 | 3).select($this * 2)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -68,7 +69,7 @@ public class RemainingCoverageTests
     {
         // Arrange
         var patient = CreatePatientWithMultipleNames();
-        var expr = _compiler.Parse("name.select(given)");
+        var expr = _parser.Parse("name.select(given)");
 
         // Act
         var result = _evaluator.Evaluate(patient, expr).ToList();
@@ -85,7 +86,7 @@ public class RemainingCoverageTests
     public void GivenMultipleItems_WhenWhere_ThenFiltersCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3 | 4 | 5).where($this > 3)");
+        var expr = _parser.Parse("(1 | 2 | 3 | 4 | 5).where($this > 3)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -101,7 +102,7 @@ public class RemainingCoverageTests
     public void GivenComplexCondition_WhenWhere_ThenFiltersCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 | 2 | 3 | 4).where($this > 1 and $this < 4)");
+        var expr = _parser.Parse("(1 | 2 | 3 | 4).where($this > 1 and $this < 4)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -122,7 +123,7 @@ public class RemainingCoverageTests
     {
         // Arrange
         var patient = CreatePatientWithMultipleNames();
-        var expr = _compiler.Parse("repeat(children())");
+        var expr = _parser.Parse("repeat(children())");
 
         // Act
         var result = _evaluator.Evaluate(patient, expr).ToList();
@@ -136,7 +137,7 @@ public class RemainingCoverageTests
     {
         // Arrange
         // Repeat with empty projection should return just the input
-        var expr = _compiler.Parse("(1 | 2).repeat({})");
+        var expr = _parser.Parse("(1 | 2).repeat({})");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -154,7 +155,7 @@ public class RemainingCoverageTests
     public void GivenUniqueIntegers_WhenIsDistinct_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(5 | 10 | 15).`isDistinct`()");
+        var expr = _parser.Parse("(5 | 10 | 15).`isDistinct`()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -168,7 +169,7 @@ public class RemainingCoverageTests
     public void GivenUniqueStrings_WhenIsDistinct_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("('a' | 'b' | 'c').`isDistinct`()");
+        var expr = _parser.Parse("('a' | 'b' | 'c').`isDistinct`()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -186,7 +187,7 @@ public class RemainingCoverageTests
     public void GivenPrimitiveElement_WhenAccessName_ThenReturnsEmptyString()
     {
         // This tests the PrimitiveElement.Name property through evaluation
-        var expr = _compiler.Parse("42");
+        var expr = _parser.Parse("42");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).Single();
@@ -199,7 +200,7 @@ public class RemainingCoverageTests
     public void GivenPrimitiveElement_WhenAccessLocation_ThenReturnsEmptyString()
     {
         // This tests the PrimitiveElement.Location property
-        var expr = _compiler.Parse("'test'");
+        var expr = _parser.Parse("'test'");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).Single();
@@ -212,7 +213,7 @@ public class RemainingCoverageTests
     public void GivenPrimitiveElement_WhenAccessDefinition_ThenReturnsNull()
     {
         // This tests the PrimitiveElement.Definition property
-        var expr = _compiler.Parse("true");
+        var expr = _parser.Parse("true");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).Single();
@@ -225,7 +226,7 @@ public class RemainingCoverageTests
     public void GivenPrimitiveElement_WhenAccessChildren_ThenReturnsEmpty()
     {
         // This tests the PrimitiveElement.Children() method
-        var expr = _compiler.Parse("123");
+        var expr = _parser.Parse("123");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).Single();
@@ -243,7 +244,7 @@ public class RemainingCoverageTests
     {
         // This exercises the ChildExpression iterator
         var patient = CreatePatientWithMultipleNames();
-        var expr = _compiler.Parse("name.given");
+        var expr = _parser.Parse("name.given");
 
         var result = _evaluator.Evaluate(patient, expr).ToList();
 
@@ -255,7 +256,7 @@ public class RemainingCoverageTests
     {
         // This exercises nested child navigation
         var patient = CreatePatientWithMultipleNames();
-        var expr = _compiler.Parse("name.given.first()");
+        var expr = _parser.Parse("name.given.first()");
 
         var result = _evaluator.Evaluate(patient, expr).ToList();
 
@@ -270,8 +271,8 @@ public class RemainingCoverageTests
     public void GivenExpression_WhenCompared_ThenUsesLocationInfo()
     {
         // This tests the Expression base class methods
-        var expr1 = _compiler.Parse("Patient");
-        var expr2 = _compiler.Parse("name");
+        var expr1 = _parser.Parse("Patient");
+        var expr2 = _parser.Parse("name");
 
         Assert.NotEqual(expr1.Location, expr2.Location);
     }

@@ -33,6 +33,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.SqlOnFhir;
 using Microsoft.EntityFrameworkCore;
@@ -366,7 +367,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .AsSelf()
         .InstancePerDependency();
 
-    containerBuilder.RegisterType<Ignixa.FhirPath.FhirPathCompiler>()
+    containerBuilder.RegisterType<FhirPathParser>()
         .AsSelf()
         .InstancePerDependency();
 
@@ -374,7 +375,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     containerBuilder.Register<Ignixa.Application.Features.Patch.FhirPathPatchHelper>(c =>
     {
         var evaluator = c.Resolve<Ignixa.FhirPath.Evaluation.FhirPathEvaluator>();
-        var compiler = c.Resolve<Ignixa.FhirPath.FhirPathCompiler>();
+        var compiler = c.Resolve<FhirPathParser>();
         var versionContext = c.Resolve<IFhirVersionContext>();
 
         // Use R4 as default structure provider (Phase 1)
@@ -561,14 +562,14 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Tier is configured per-tenant via TenantConfiguration.ValidationTier
 
     // Register FhirPathCompiler (shared across FhirPath validation and PATCH operations)
-    containerBuilder.RegisterType<Ignixa.FhirPath.FhirPathCompiler>()
+    containerBuilder.RegisterType<FhirPathParser>()
         .AsSelf()
         .SingleInstance();
 
     // Register validation schema builder (shared, creates schemas from StructureDefinitions)
     containerBuilder.Register(c =>
         {
-            var compiler = c.Resolve<Ignixa.FhirPath.FhirPathCompiler>();
+            var compiler = c.Resolve<FhirPathParser>();
             return new Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder(compiler);
         })
         .AsSelf()

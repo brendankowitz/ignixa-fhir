@@ -6,9 +6,8 @@
  */
 
 using Ignixa.Abstractions;
-using System.Globalization;
 
-namespace Ignixa.FhirPath.Functions;
+namespace Ignixa.FhirPath.Evaluation.Functions;
 
 /// <summary>
 /// Date/Time component extraction functions for FhirPath expressions.

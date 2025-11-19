@@ -10,12 +10,13 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 public class FhirPathDateTimeComponentTests
 {
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region Year Extraction Tests
@@ -25,7 +26,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Official test: @2024-11-18.year() = 2024
-        var expr = _compiler.Parse("@2024-11-18.year()");
+        var expr = _parser.Parse("@2024-11-18.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -40,7 +41,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTime_WhenYear_ThenReturnsYearComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:45Z.year()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45Z.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -55,7 +56,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Date with only year precision
-        var expr = _compiler.Parse("@2024.year()");
+        var expr = _parser.Parse("@2024.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -69,7 +70,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenNullDate_WhenYear_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("{}.year()");
+        var expr = _parser.Parse("{}.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -88,7 +89,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Official test: @2024-11-18.month() = 11
-        var expr = _compiler.Parse("@2024-11-18.month()");
+        var expr = _parser.Parse("@2024-11-18.month()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -103,7 +104,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTime_WhenMonth_ThenReturnsMonthComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-01-15T10:00:00Z.month()");
+        var expr = _parser.Parse("@2024-01-15T10:00:00Z.month()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -117,7 +118,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDecemberDate_WhenMonth_ThenReturnsTwelve()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-12-25.month()");
+        var expr = _parser.Parse("@2024-12-25.month()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -132,7 +133,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // @2024 has no month component
-        var expr = _compiler.Parse("@2024.month()");
+        var expr = _parser.Parse("@2024.month()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -151,7 +152,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Official test: @2024-11-18.day() = 18
-        var expr = _compiler.Parse("@2024-11-18.day()");
+        var expr = _parser.Parse("@2024-11-18.day()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -166,7 +167,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTime_WhenDay_ThenReturnsDayComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-01-01T00:00:00Z.day()");
+        var expr = _parser.Parse("@2024-01-01T00:00:00Z.day()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -180,7 +181,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenLastDayOfMonth_WhenDay_ThenReturnsCorrectDay()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-02-29.day()");
+        var expr = _parser.Parse("@2024-02-29.day()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -195,7 +196,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // @2024-11 has no day component
-        var expr = _compiler.Parse("@2024-11.day()");
+        var expr = _parser.Parse("@2024-11.day()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -214,7 +215,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Official test: @2024-11-18T14:30:45.hour() = 14
-        var expr = _compiler.Parse("@2024-11-18T14:30:45Z.hour()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45Z.hour()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -229,7 +230,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenTime_WhenHour_ThenReturnsHourComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@T14:30:45.hour()");
+        var expr = _parser.Parse("@T14:30:45.hour()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -243,7 +244,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenMidnight_WhenHour_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T00:00:00Z.hour()");
+        var expr = _parser.Parse("@2024-11-18T00:00:00Z.hour()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -258,7 +259,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // @2024-11-18 has no time component
-        var expr = _compiler.Parse("@2024-11-18.hour()");
+        var expr = _parser.Parse("@2024-11-18.hour()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -277,7 +278,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Official test: @2024-11-18T14:30:45.minute() = 30
-        var expr = _compiler.Parse("@2024-11-18T14:30:45Z.minute()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45Z.minute()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -292,7 +293,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenTime_WhenMinute_ThenReturnsMinuteComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@T14:30:45.minute()");
+        var expr = _parser.Parse("@T14:30:45.minute()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -306,7 +307,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenZeroMinute_WhenMinute_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:00:00Z.minute()");
+        var expr = _parser.Parse("@2024-11-18T14:00:00Z.minute()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -325,7 +326,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Official test: @2024-11-18T14:30:45.second() = 45
-        var expr = _compiler.Parse("@2024-11-18T14:30:45Z.second()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45Z.second()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -340,7 +341,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenTime_WhenSecond_ThenReturnsSecondComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@T14:30:45.second()");
+        var expr = _parser.Parse("@T14:30:45.second()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -354,7 +355,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenZeroSecond_WhenSecond_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:00Z.second()");
+        var expr = _parser.Parse("@2024-11-18T14:30:00Z.second()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -372,7 +373,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTimeWithMilliseconds_WhenMillisecond_ThenReturnsMillisecondComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:45.123Z.millisecond()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45.123Z.millisecond()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -387,7 +388,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenTimeWithMilliseconds_WhenMillisecond_ThenReturnsMillisecondComponent()
     {
         // Arrange
-        var expr = _compiler.Parse("@T14:30:45.999.millisecond()");
+        var expr = _parser.Parse("@T14:30:45.999.millisecond()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -401,7 +402,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTimeWithoutMilliseconds_WhenMillisecond_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:45Z.millisecond()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45Z.millisecond()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -419,7 +420,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTimeWithUTC_WhenTimezone_ThenReturnsZulu()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:45Z.timezone()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45Z.timezone()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -434,7 +435,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTimeWithPositiveOffset_WhenTimezone_ThenReturnsOffset()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:45+05:30.timezone()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45+05:30.timezone()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -448,7 +449,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateTimeWithNegativeOffset_WhenTimezone_ThenReturnsOffset()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T14:30:45-08:00.timezone()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45-08:00.timezone()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -463,7 +464,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Local datetime without timezone
-        var expr = _compiler.Parse("@2024-11-18T14:30:45.timezone()");
+        var expr = _parser.Parse("@2024-11-18T14:30:45.timezone()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -477,7 +478,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenDateOnly_WhenTimezone_ThenReturnsEmpty()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18.timezone()");
+        var expr = _parser.Parse("@2024-11-18.timezone()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -497,7 +498,7 @@ public class FhirPathDateTimeComponentTests
         // Arrange
         // Age calculation: today().year() - Patient.birthDate.year()
         // Simulating: Patient born 1990-05-15, today is 2024-11-18 = 34 years
-        var expr = _compiler.Parse("2024 - 1990");
+        var expr = _parser.Parse("2024 - 1990");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -512,7 +513,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Patient.birthDate might only have year precision
-        var expr = _compiler.Parse("@1990.year()");
+        var expr = _parser.Parse("@1990.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -527,7 +528,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Filter patients born in specific year: Patient.where(birthDate.year() = 1990)
-        var expr = _compiler.Parse("@1990-05-15.year() = 1990");
+        var expr = _parser.Parse("@1990-05-15.year() = 1990");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -546,7 +547,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Observation.where(effective.year() = 2024)
-        var expr = _compiler.Parse("@2024-11-18T10:00:00Z.year() = 2024");
+        var expr = _parser.Parse("@2024-11-18T10:00:00Z.year() = 2024");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -561,7 +562,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Observation.where(effective.month() = 11) - November observations
-        var expr = _compiler.Parse("@2024-11-18T10:00:00Z.month() = 11");
+        var expr = _parser.Parse("@2024-11-18T10:00:00Z.month() = 11");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -576,7 +577,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Filter by specific day of month
-        var expr = _compiler.Parse("@2024-11-18T10:00:00Z.day() = 18");
+        var expr = _parser.Parse("@2024-11-18T10:00:00Z.day() = 18");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -595,7 +596,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Appointment.start.hour() between 9 and 17 (business hours)
-        var expr = _compiler.Parse("@2024-11-18T14:30:00Z.hour() >= 9 and @2024-11-18T14:30:00Z.hour() <= 17");
+        var expr = _parser.Parse("@2024-11-18T14:30:00Z.hour() >= 9 and @2024-11-18T14:30:00Z.hour() <= 17");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -609,7 +610,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenAppointmentOutsideHours_WhenCheckingBusinessHours_ThenReturnsFalse()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-11-18T20:00:00Z.hour() >= 9 and @2024-11-18T20:00:00Z.hour() <= 17");
+        var expr = _parser.Parse("@2024-11-18T20:00:00Z.hour() >= 9 and @2024-11-18T20:00:00Z.hour() <= 17");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -624,7 +625,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Check for half-hour slots: start.minute() = 30
-        var expr = _compiler.Parse("@2024-11-18T14:30:00Z.minute() = 30");
+        var expr = _parser.Parse("@2024-11-18T14:30:00Z.minute() = 30");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -642,7 +643,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenLeapYearDate_WhenExtractingComponents_ThenHandlesCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("@2024-02-29.year() = 2024 and @2024-02-29.month() = 2 and @2024-02-29.day() = 29");
+        var expr = _parser.Parse("@2024-02-29.year() = 2024 and @2024-02-29.month() = 2 and @2024-02-29.day() = 29");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -656,7 +657,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenMaxDateTime_WhenExtractingComponents_ThenHandlesCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("@9999-12-31T23:59:59.999Z.year()");
+        var expr = _parser.Parse("@9999-12-31T23:59:59.999Z.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -670,7 +671,7 @@ public class FhirPathDateTimeComponentTests
     public void GivenMinDateTime_WhenExtractingComponents_ThenHandlesCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("@0001-01-01T00:00:00Z.year()");
+        var expr = _parser.Parse("@0001-01-01T00:00:00Z.year()");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -685,7 +686,7 @@ public class FhirPathDateTimeComponentTests
     {
         // Arrange
         // Trying to get hour from date-only
-        var expr = _compiler.Parse("@2024-11-18.hour()");
+        var expr = _parser.Parse("@2024-11-18.hour()");
         var root = CreateIntegerElement(0);
 
         // Act

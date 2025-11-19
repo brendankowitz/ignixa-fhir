@@ -10,7 +10,6 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Lexer;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Abstractions;
 using Superpower;
@@ -20,7 +19,7 @@ namespace Ignixa.FhirPath.Tests;
 public class FhirPathQuantityLiteralTests
 {
     private readonly Tokenizer<FhirPathTokenKind> _tokenizer = FhirPathTokenizer.Create();
-    private readonly FhirPathCompiler _compiler = new();
+    private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
     #region Quantity Parsing Tests (Existing - Ensure No Regression)
@@ -101,7 +100,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenSimpleQuantity_WhenEvaluating_ThenReturnsQuantityValue()
     {
         // Arrange
-        var expr = _compiler.Parse("5 'mg'");
+        var expr = _parser.Parse("5 'mg'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -116,7 +115,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenDecimalQuantity_WhenEvaluating_ThenReturnsQuantityValue()
     {
         // Arrange
-        var expr = _compiler.Parse("37.5 'Cel'");
+        var expr = _parser.Parse("37.5 'Cel'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -130,7 +129,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenQuantityWithUCUMUnit_WhenEvaluating_ThenReturnsQuantityValue()
     {
         // Arrange - UCUM unit for millimeters of mercury
-        var expr = _compiler.Parse("120 'mm[Hg]'");
+        var expr = _parser.Parse("120 'mm[Hg]'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -149,7 +148,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (5 'mg') + (3 'mg') = 8 'mg'
-        var expr = _compiler.Parse("(5 'mg') + (3 'mg')");
+        var expr = _parser.Parse("(5 'mg') + (3 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -164,7 +163,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (10 'mg') - (3 'mg') = 7 'mg'
-        var expr = _compiler.Parse("(10 'mg') - (3 'mg')");
+        var expr = _parser.Parse("(10 'mg') - (3 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -180,7 +179,7 @@ public class FhirPathQuantityLiteralTests
         // Arrange
         // With UCUM support, mg + kg can be converted (both are mass)
         // This test verifies that TRULY incompatible units (e.g., mg + m) return empty
-        var expr = _compiler.Parse("(5 'mg') + (3 'm')");
+        var expr = _parser.Parse("(5 'mg') + (3 'm')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -195,7 +194,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (5 'mg') * 3 = 15 'mg'
-        var expr = _compiler.Parse("(5 'mg') * 3");
+        var expr = _parser.Parse("(5 'mg') * 3");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -210,7 +209,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (10 'mg') / 2 = 5 'mg'
-        var expr = _compiler.Parse("(10 'mg') / 2");
+        var expr = _parser.Parse("(10 'mg') / 2");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -225,7 +224,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // (10 'mg') / (4 'mg') = 2.5 (dimensionless)
-        var expr = _compiler.Parse("(10 'mg') / (4 'mg')");
+        var expr = _parser.Parse("(10 'mg') / (4 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -245,7 +244,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (5 'mg') = (5 'mg') = true
-        var expr = _compiler.Parse("(5 'mg') = (5 'mg')");
+        var expr = _parser.Parse("(5 'mg') = (5 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -259,7 +258,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenTwoQuantitiesSameUnit_WhenNotEqualComparison_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(5 'mg') != (3 'mg')");
+        var expr = _parser.Parse("(5 'mg') != (3 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -274,7 +273,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (3 'mg') < (5 'mg') = true
-        var expr = _compiler.Parse("(3 'mg') < (5 'mg')");
+        var expr = _parser.Parse("(3 'mg') < (5 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -288,7 +287,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenTwoQuantitiesSameUnit_WhenGreaterThanComparison_ThenReturnsTrue()
     {
         // Arrange
-        var expr = _compiler.Parse("(10 'mg') > (5 'mg')");
+        var expr = _parser.Parse("(10 'mg') > (5 'mg')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -304,7 +303,7 @@ public class FhirPathQuantityLiteralTests
         // Arrange
         // With UCUM support, mg and kg can be compared (both are mass)
         // This test verifies that TRULY incompatible units (e.g., mg and m) return empty
-        var expr = _compiler.Parse("(5 'mg') < (1 'm')");
+        var expr = _parser.Parse("(5 'mg') < (1 'm')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -323,7 +322,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: (1 'kg') = (1000 'g') should be true after conversion
-        var expr = _compiler.Parse("(1 'kg') = (1000 'g')");
+        var expr = _parser.Parse("(1 'kg') = (1000 'g')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -337,7 +336,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenMetersToMillimeters_WhenConversion_ThenConvertsCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("(1 'm') = (1000 'mm')");
+        var expr = _parser.Parse("(1 'm') = (1000 'mm')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -355,7 +354,7 @@ public class FhirPathQuantityLiteralTests
         // (Celsius, Fahrenheit) because they have different zero points.
         // This test verifies that incompatible conversions return empty.
         // Temperature intervals (K, Cel) can be converted, but absolute temperatures cannot.
-        var expr = _compiler.Parse("(0 'Cel') = (32 '[degF]')");
+        var expr = _parser.Parse("(0 'Cel') = (32 '[degF]')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -371,7 +370,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Cannot convert mass (kg) to length (m)
-        var expr = _compiler.Parse("(1 'kg') = (1 'm')");
+        var expr = _parser.Parse("(1 'kg') = (1 'm')");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -389,7 +388,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenYearDuration_WhenParsing_ThenReturnsQuantity()
     {
         // Arrange
-        var expr = _compiler.Parse("1 year");
+        var expr = _parser.Parse("1 year");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -404,7 +403,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Official test: 4 days
-        var expr = _compiler.Parse("4 days");
+        var expr = _parser.Parse("4 days");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -418,7 +417,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenHourDuration_WhenParsing_ThenReturnsQuantity()
     {
         // Arrange
-        var expr = _compiler.Parse("1 hour");
+        var expr = _parser.Parse("1 hour");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -433,7 +432,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // (2 days) + (3 days) = 5 days
-        var expr = _compiler.Parse("(2 days) + (3 days)");
+        var expr = _parser.Parse("(2 days) + (3 days)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -448,7 +447,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         // Cannot add years + days without conversion
-        var expr = _compiler.Parse("(1 year) + (5 days)");
+        var expr = _parser.Parse("(1 year) + (5 days)");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -468,7 +467,7 @@ public class FhirPathQuantityLiteralTests
         // Arrange
         // Simulates: Observation.valueQuantity = 120 'mm[Hg]'
         var observation = CreateObservationWithQuantity(120m, "mm[Hg]");
-        var expr = _compiler.Parse("value");
+        var expr = _parser.Parse("value");
 
         // Act
         var result = _evaluator.Evaluate(observation, expr).Single();
@@ -483,7 +482,7 @@ public class FhirPathQuantityLiteralTests
         // Arrange
         // Simulates: Observation.valueQuantity > 140 'mm[Hg]' (hypertension threshold)
         var observation = CreateObservationWithQuantity(150m, "mm[Hg]");
-        var expr = _compiler.Parse("value > (140 'mm[Hg]')");
+        var expr = _parser.Parse("value > (140 'mm[Hg]')");
 
         // Act
         var result = _evaluator.Evaluate(observation, expr).Single();
@@ -498,7 +497,7 @@ public class FhirPathQuantityLiteralTests
         // Arrange
         // Simulates: Observation.valueQuantity = 37.5 'Cel'
         var observation = CreateObservationWithQuantity(37.5m, "Cel");
-        var expr = _compiler.Parse("value");
+        var expr = _parser.Parse("value");
 
         // Act
         var result = _evaluator.Evaluate(observation, expr).Single();
@@ -516,7 +515,7 @@ public class FhirPathQuantityLiteralTests
     {
         // Arrange
         var observation = CreateObservationWithoutValue();
-        var expr = _compiler.Parse("value");
+        var expr = _parser.Parse("value");
 
         // Act
         var result = _evaluator.Evaluate(observation, expr).ToList();
@@ -529,7 +528,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenZeroQuantity_WhenEvaluating_ThenReturnsZero()
     {
         // Arrange
-        var expr = _compiler.Parse("0 'mg'");
+        var expr = _parser.Parse("0 'mg'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -543,7 +542,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenNegativeQuantity_WhenEvaluating_ThenReturnsNegative()
     {
         // Arrange
-        var expr = _compiler.Parse("-5 'mg'");
+        var expr = _parser.Parse("-5 'mg'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -557,7 +556,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenVeryLargeQuantity_WhenEvaluating_ThenHandlesCorrectly()
     {
         // Arrange
-        var expr = _compiler.Parse("9999999999.99 'kg'");
+        var expr = _parser.Parse("9999999999.99 'kg'");
         var root = CreateIntegerElement(0);
 
         // Act
@@ -571,7 +570,7 @@ public class FhirPathQuantityLiteralTests
     public void GivenQuantityPrecision_WhenEvaluating_ThenPreservesPrecision()
     {
         // Arrange
-        var expr = _compiler.Parse("3.14159 'rad'");
+        var expr = _parser.Parse("3.14159 'rad'");
         var root = CreateIntegerElement(0);
 
         // Act
