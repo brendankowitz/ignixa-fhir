@@ -20,7 +20,7 @@ public class FhirPathAggregateTests
 
     #region Sum Function Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenIntegerCollection_WhenSum_ThenReturnsIntegerSum()
     {
         // Arrange
@@ -36,7 +36,7 @@ public class FhirPathAggregateTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDecimalCollection_WhenSum_ThenReturnsDecimalSum()
     {
         // Arrange
@@ -51,7 +51,7 @@ public class FhirPathAggregateTests
         Assert.Equal("decimal", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMixedIntegerDecimal_WhenSum_ThenReturnsDecimalSum()
     {
         // Arrange
@@ -67,7 +67,7 @@ public class FhirPathAggregateTests
         Assert.Equal("decimal", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenQuantityCollection_WhenSum_ThenReturnsQuantitySum()
     {
         // Arrange
@@ -82,7 +82,7 @@ public class FhirPathAggregateTests
         Assert.Equal("Quantity", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenEmptyCollection_WhenSum_ThenReturnsEmpty()
     {
         // Arrange
@@ -97,7 +97,7 @@ public class FhirPathAggregateTests
         Assert.Empty(result);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenSingleItem_WhenSum_ThenReturnsThatItem()
     {
         // Arrange
@@ -111,7 +111,7 @@ public class FhirPathAggregateTests
         Assert.Equal(42, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenCollectionWithNull_WhenSum_ThenIgnoresNull()
     {
         // Arrange
@@ -130,7 +130,7 @@ public class FhirPathAggregateTests
 
     #region Min Function Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenIntegerCollection_WhenMin_ThenReturnsMinimum()
     {
         // Arrange
@@ -145,7 +145,7 @@ public class FhirPathAggregateTests
         Assert.Equal(1, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDecimalCollection_WhenMin_ThenReturnsMinimum()
     {
         // Arrange
@@ -159,7 +159,7 @@ public class FhirPathAggregateTests
         Assert.Equal(1.1m, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenStringCollection_WhenMin_ThenReturnsLexicographicMin()
     {
         // Arrange
@@ -173,7 +173,7 @@ public class FhirPathAggregateTests
         Assert.Equal("apple", result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateCollection_WhenMin_ThenReturnsEarliestDate()
     {
         // Arrange
@@ -188,7 +188,7 @@ public class FhirPathAggregateTests
         Assert.Equal("date", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenQuantityCollection_WhenMin_ThenReturnsMinimumQuantity()
     {
         // Arrange
@@ -202,7 +202,7 @@ public class FhirPathAggregateTests
         Assert.Equal("Quantity", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenEmptyCollection_WhenMin_ThenReturnsEmpty()
     {
         // Arrange
@@ -216,7 +216,7 @@ public class FhirPathAggregateTests
         Assert.Empty(result);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenSingleItem_WhenMin_ThenReturnsThatItem()
     {
         // Arrange
@@ -234,7 +234,7 @@ public class FhirPathAggregateTests
 
     #region Max Function Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenIntegerCollection_WhenMax_ThenReturnsMaximum()
     {
         // Arrange
@@ -249,7 +249,7 @@ public class FhirPathAggregateTests
         Assert.Equal(9, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDecimalCollection_WhenMax_ThenReturnsMaximum()
     {
         // Arrange
@@ -263,7 +263,7 @@ public class FhirPathAggregateTests
         Assert.Equal(8.9m, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenStringCollection_WhenMax_ThenReturnsLexicographicMax()
     {
         // Arrange
@@ -277,7 +277,7 @@ public class FhirPathAggregateTests
         Assert.Equal("cherry", result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeCollection_WhenMax_ThenReturnsLatestDateTime()
     {
         // Arrange
@@ -292,7 +292,7 @@ public class FhirPathAggregateTests
         Assert.Equal("dateTime", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenQuantityCollection_WhenMax_ThenReturnsMaximumQuantity()
     {
         // Arrange
@@ -306,7 +306,7 @@ public class FhirPathAggregateTests
         Assert.Equal("Quantity", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenEmptyCollection_WhenMax_ThenReturnsEmpty()
     {
         // Arrange
@@ -324,7 +324,7 @@ public class FhirPathAggregateTests
 
     #region Avg Function Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenIntegerCollection_WhenAvg_ThenReturnsDecimalAverage()
     {
         // Arrange
@@ -340,7 +340,7 @@ public class FhirPathAggregateTests
         Assert.Equal("decimal", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDecimalCollection_WhenAvg_ThenReturnsDecimalAverage()
     {
         // Arrange
@@ -354,7 +354,7 @@ public class FhirPathAggregateTests
         Assert.Equal(2.5m, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenQuantityCollection_WhenAvg_ThenReturnsQuantityAverage()
     {
         // Arrange
@@ -369,7 +369,7 @@ public class FhirPathAggregateTests
         Assert.Equal("Quantity", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenEmptyCollection_WhenAvg_ThenReturnsEmpty()
     {
         // Arrange
@@ -383,7 +383,7 @@ public class FhirPathAggregateTests
         Assert.Empty(result);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenSingleItem_WhenAvg_ThenReturnsThatItem()
     {
         // Arrange
@@ -397,7 +397,7 @@ public class FhirPathAggregateTests
         Assert.Equal(42m, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenOddNumberOfItems_WhenAvg_ThenReturnsExactAverage()
     {
         // Arrange
@@ -415,7 +415,7 @@ public class FhirPathAggregateTests
 
     #region FHIR Examples - Vital Signs
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenTemperatureReadings_WhenAvg_ThenReturnsAverageTemperature()
     {
         // Arrange
@@ -430,7 +430,7 @@ public class FhirPathAggregateTests
         Assert.Equal("Quantity", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMedicationDosages_WhenSum_ThenReturnsTotalDose()
     {
         // Arrange
@@ -449,7 +449,7 @@ public class FhirPathAggregateTests
 
     #region FHIR Examples - Validation Rules
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenEncounterDiagnoses_WhenMaxRank_ThenValidatesAgainstCount()
     {
         // Arrange
@@ -468,7 +468,7 @@ public class FhirPathAggregateTests
 
     #region Edge Cases
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenNegativeNumbers_WhenSum_ThenHandlesCorrectly()
     {
         // Arrange
@@ -482,7 +482,7 @@ public class FhirPathAggregateTests
         Assert.Equal(2, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenVeryLargeNumbers_WhenSum_ThenHandlesCorrectly()
     {
         // Arrange
@@ -496,7 +496,7 @@ public class FhirPathAggregateTests
         Assert.Equal(1000000000, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMixedTypesInvalid_WhenSum_ThenReturnsEmpty()
     {
         // Arrange
@@ -511,7 +511,7 @@ public class FhirPathAggregateTests
         Assert.Empty(result);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenQuantitiesDifferentUnits_WhenSum_ThenReturnsEmpty()
     {
         // Arrange

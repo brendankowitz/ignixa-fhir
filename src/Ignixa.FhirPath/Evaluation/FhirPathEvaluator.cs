@@ -6,6 +6,7 @@
  */
 
 using Ignixa.FhirPath.Expressions;
+using Ignixa.FhirPath.Functions;
 using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -45,7 +46,7 @@ public class FhirPathEvaluator
             VariableRefExpression var => EvaluateVariable(var, context),
             ParenthesizedExpression paren => EvaluateExpression(focus, paren.InnerExpression, context),
             EmptyExpression => Enumerable.Empty<ITypedElement>(),
-            QuantityExpression => throw new NotImplementedException("Quantity literals not yet supported in evaluation"),
+            QuantityExpression quantityExpr => QuantityEvaluator.EvaluateQuantity(quantityExpr),
             _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} is not yet supported")
         };
     }
@@ -86,6 +87,12 @@ public class FhirPathEvaluator
             "count" => EvaluateCount(focusElements),
             "distinct" => focusElements.Distinct(),
             "isdistinct" => EvaluateIsDistinct(focusElements),
+
+            // Aggregate functions (Phase 23)
+            "sum" => AggregateFunctions.Sum(focusElements),
+            "min" => AggregateFunctions.Min(focusElements),
+            "max" => AggregateFunctions.Max(focusElements),
+            "avg" => AggregateFunctions.Avg(focusElements),
 
             // Filtering and projection functions
             "where" => EvaluateWhere(focusElements, func.Arguments, context),
@@ -179,6 +186,16 @@ public class FhirPathEvaluator
             "now" => EvaluateNow(),
             "today" => EvaluateToday(),
             "timeofday" => EvaluateTimeOfDay(),
+
+            // Date/Time component extraction functions (Phase 23)
+            "year" => DateTimeFunctions.Year(focusElements),
+            "month" => DateTimeFunctions.Month(focusElements),
+            "day" => DateTimeFunctions.Day(focusElements),
+            "hour" => DateTimeFunctions.Hour(focusElements),
+            "minute" => DateTimeFunctions.Minute(focusElements),
+            "second" => DateTimeFunctions.Second(focusElements),
+            "millisecond" => DateTimeFunctions.Millisecond(focusElements),
+            "timezone" => DateTimeFunctions.Timezone(focusElements),
 
             // For bare identifiers (e.g., "Patient"), treat as child navigation
             _ when func.Arguments.Count == 0 && func.Focus == AxisExpression.That
@@ -1783,6 +1800,12 @@ public class FhirPathEvaluator
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
+        // Try quantity arithmetic first
+        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        {
+            return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
+        }
+
         // Try numeric addition with implicit Integer->Decimal conversion
         if (TryConvertToDecimal(leftValue, out var leftDecimal) && TryConvertToDecimal(rightValue, out var rightDecimal))
         {
@@ -1801,10 +1824,19 @@ public class FhirPathEvaluator
         if (left.Count != 1 || right.Count != 1)
             return Enumerable.Empty<ITypedElement>();
 
-        if (TryConvertToDecimal(left[0].Value, out var leftDecimal) && TryConvertToDecimal(right[0].Value, out var rightDecimal))
+        var leftValue = left[0].Value;
+        var rightValue = right[0].Value;
+
+        // Try quantity arithmetic first
+        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        {
+            return QuantityEvaluator.EvaluateArithmetic(left, "-", right);
+        }
+
+        if (TryConvertToDecimal(leftValue, out var leftDecimal) && TryConvertToDecimal(rightValue, out var rightDecimal))
         {
             var result = leftDecimal - rightDecimal;
-            return left[0].Value is int && right[0].Value is int && result == Math.Floor(result)
+            return leftValue is int && rightValue is int && result == Math.Floor(result)
                 ? new[] { CreateInteger((int)result) }
                 : new[] { CreateDecimal(result) };
         }
@@ -1817,10 +1849,19 @@ public class FhirPathEvaluator
         if (left.Count != 1 || right.Count != 1)
             return Enumerable.Empty<ITypedElement>();
 
-        if (TryConvertToDecimal(left[0].Value, out var leftDecimal) && TryConvertToDecimal(right[0].Value, out var rightDecimal))
+        var leftValue = left[0].Value;
+        var rightValue = right[0].Value;
+
+        // Try quantity arithmetic first
+        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        {
+            return QuantityEvaluator.EvaluateArithmetic(left, "*", right);
+        }
+
+        if (TryConvertToDecimal(leftValue, out var leftDecimal) && TryConvertToDecimal(rightValue, out var rightDecimal))
         {
             var result = leftDecimal * rightDecimal;
-            return left[0].Value is int && right[0].Value is int && result == Math.Floor(result)
+            return leftValue is int && rightValue is int && result == Math.Floor(result)
                 ? new[] { CreateInteger((int)result) }
                 : new[] { CreateDecimal(result) };
         }
@@ -1833,7 +1874,16 @@ public class FhirPathEvaluator
         if (left.Count != 1 || right.Count != 1)
             return Enumerable.Empty<ITypedElement>();
 
-        if (TryConvertToDecimal(left[0].Value, out var leftDecimal) && TryConvertToDecimal(right[0].Value, out var rightDecimal))
+        var leftValue = left[0].Value;
+        var rightValue = right[0].Value;
+
+        // Try quantity arithmetic first
+        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        {
+            return QuantityEvaluator.EvaluateArithmetic(left, "/", right);
+        }
+
+        if (TryConvertToDecimal(leftValue, out var leftDecimal) && TryConvertToDecimal(rightValue, out var rightDecimal))
         {
             if (rightDecimal == 0)
                 return Enumerable.Empty<ITypedElement>(); // Division by zero returns empty
@@ -2120,9 +2170,42 @@ public class FhirPathEvaluator
             int i => new[] { CreateInteger(i) },
             decimal d => new[] { CreateDecimal(d) },
             bool b => new[] { CreateBoolean(b) },
-            string s => new[] { CreateString(s) },
+            string s => new[] { CreateDateTimeOrString(s) },
             _ => new[] { CreateConstant(constant.Value) }
         };
+    }
+
+    /// <summary>
+    /// Creates a typed element from a string value.
+    /// Detects date/time literals (@YYYY, @YYYY-MM-DD, @YYYY-MM-DDTHH:MM:SS, @THH:MM:SS)
+    /// and creates elements with appropriate types (date, dateTime, time).
+    /// </summary>
+    private ITypedElement CreateDateTimeOrString(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return CreateString(value);
+
+        // Check for date/time literal prefix
+        if (!value.StartsWith("@", StringComparison.Ordinal))
+            return CreateString(value);
+
+        // Remove @ prefix for type detection
+        var dateTimeValue = value.Substring(1);
+
+        // Time literal: @THH:MM:SS
+        if (dateTimeValue.StartsWith("T", StringComparison.Ordinal))
+        {
+            return new PrimitiveElement(value, "time");
+        }
+
+        // DateTime literal: @YYYY-MM-DDTHH:MM:SS
+        if (dateTimeValue.Contains('T', StringComparison.Ordinal))
+        {
+            return new PrimitiveElement(value, "dateTime");
+        }
+
+        // Date literal: @YYYY, @YYYY-MM, @YYYY-MM-DD
+        return new PrimitiveElement(value, "date");
     }
 
     private IEnumerable<ITypedElement> EvaluateIndexer(IEnumerable<ITypedElement> focus, IndexerExpression indexer, EvaluationContext context)
@@ -2145,12 +2228,25 @@ public class FhirPathEvaluator
     {
         var operand = EvaluateExpression(focus, unary.Operand, context).ToList();
 
-        if (unary.Operator == "-" && operand.Count == 1 && operand[0].Value is IConvertible value)
+        if (unary.Operator == "-" && operand.Count == 1)
         {
+            var value = operand[0].Value;
             try
             {
-                var numeric = Convert.ToDecimal(value);
-                return new[] { CreateDecimal(-numeric) };
+                // Preserve integer type if possible
+                if (value is int i)
+                {
+                    return new[] { CreateInteger(-i) };
+                }
+                if (value is long l && l >= int.MinValue && l <= int.MaxValue)
+                {
+                    return new[] { CreateInteger(-(int)l) };
+                }
+                if (value is IConvertible)
+                {
+                    var numeric = Convert.ToDecimal(value);
+                    return new[] { CreateDecimal(-numeric) };
+                }
             }
             catch
             {
@@ -2177,6 +2273,14 @@ public class FhirPathEvaluator
         if (left.Count != right.Count)
             return !equals;
 
+        // Special handling for Quantity comparisons with unit conversion
+        if (left.Count == 1 && right.Count == 1 &&
+            (left[0].Value is Types.Quantity || right[0].Value is Types.Quantity))
+        {
+            var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
+            return result;
+        }
+
         for (int i = 0; i < left.Count; i++)
         {
             var isEqual = AreEqual(left[i].Value, right[i].Value);
@@ -2197,6 +2301,19 @@ public class FhirPathEvaluator
 
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
+
+        // Special handling for Quantity comparisons with unit conversion
+        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        {
+            var op = (greater, orEqual) switch
+            {
+                (true, false) => ">",
+                (true, true) => ">=",
+                (false, false) => "<",
+                (false, true) => "<="
+            };
+            return QuantityEvaluator.EvaluateComparison(left, op, right);
+        }
 
         if (leftValue is IComparable leftComparable && rightValue is IComparable rightComparable)
         {

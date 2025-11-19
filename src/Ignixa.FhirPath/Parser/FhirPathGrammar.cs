@@ -82,20 +82,8 @@ public static class FhirPathGrammar
                 t.ToStringValue(), // Store as string for now
                 CreatePosition(t)));
 
-    // Literal: any constant value
-    private static readonly TokenListParser<FhirPathTokenKind, Expression> Literal =
-        StringLiteral
-            .Or(DateTimeLiteral)
-            .Or(TimeLiteral)
-            .Or(DateLiteral)
-            .Or(BooleanLiteral)
-            .Or(DecimalLiteral)
-            .Or(IntegerLiteral)
-            .Select(c => (Expression)c);
-
     // Quantity: number followed by unit string (e.g., 5 'mg', 37.5 'Cel')
-    // Note: This is a separate public parser not integrated into Literal due to backtracking limitations.
-    // Quantities can be parsed explicitly in contexts where they are expected.
+    // Must be parsed before DecimalLiteral/IntegerLiteral to consume the number+unit pattern
     public static readonly TokenListParser<FhirPathTokenKind, QuantityExpression> Quantity =
         from valueToken in Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
@@ -104,6 +92,36 @@ public static class FhirPathGrammar
             decimal.Parse(valueToken.ToStringValue()),
             UnescapeString(unitToken.ToStringValue()),
             CreatePosition(valueToken, unitToken));
+
+    // Calendar Duration: number followed by calendar keyword (e.g., 1 year, 4 days, 1 hour)
+    // FHIRPath spec allows both singular and plural forms
+    private static readonly TokenListParser<FhirPathTokenKind, QuantityExpression> CalendarDuration =
+        from valueToken in Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
+            .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
+        from keywordToken in Token.EqualTo(FhirPathTokenKind.Identifier)
+            .Where(t =>
+            {
+                var keyword = t.ToStringValue();
+                return Types.CalendarDuration.IsCalendarKeyword(keyword);
+            })
+        select new QuantityExpression(
+            decimal.Parse(valueToken.ToStringValue()),
+            Types.CalendarDuration.GetUcumUnit(keywordToken.ToStringValue())!,
+            CreatePosition(valueToken, keywordToken));
+
+    // Literal: any constant value
+    // CalendarDuration and Quantity must be tried first before DecimalLiteral/IntegerLiteral
+    // to properly parse "1 year", "5 'mg'" vs "5"
+    private static readonly TokenListParser<FhirPathTokenKind, Expression> Literal =
+        CalendarDuration.Select(q => (Expression)q).Try()
+            .Or(Quantity.Select(q => (Expression)q).Try())
+            .Or(StringLiteral.Select(c => (Expression)c))
+            .Or(DateTimeLiteral.Select(c => (Expression)c))
+            .Or(TimeLiteral.Select(c => (Expression)c))
+            .Or(DateLiteral.Select(c => (Expression)c))
+            .Or(BooleanLiteral.Select(c => (Expression)c))
+            .Or(DecimalLiteral.Select(c => (Expression)c))
+            .Or(IntegerLiteral.Select(c => (Expression)c));
 
 
     // Axis: $this, $index, $total

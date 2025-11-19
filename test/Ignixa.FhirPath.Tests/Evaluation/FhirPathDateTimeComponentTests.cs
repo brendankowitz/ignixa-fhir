@@ -20,7 +20,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Year Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDate_WhenYear_ThenReturnsYearComponent()
     {
         // Arrange
@@ -36,7 +36,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTime_WhenYear_ThenReturnsYearComponent()
     {
         // Arrange
@@ -50,7 +50,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(2024, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenPartialDate_WhenYear_ThenReturnsYear()
     {
         // Arrange
@@ -65,7 +65,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(2024, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenNullDate_WhenYear_ThenReturnsEmpty()
     {
         // Arrange
@@ -83,7 +83,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Month Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDate_WhenMonth_ThenReturnsMonthComponent()
     {
         // Arrange
@@ -99,7 +99,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTime_WhenMonth_ThenReturnsMonthComponent()
     {
         // Arrange
@@ -113,7 +113,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(1, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDecemberDate_WhenMonth_ThenReturnsTwelve()
     {
         // Arrange
@@ -127,7 +127,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(12, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenPartialDateYearOnly_WhenMonth_ThenReturnsEmpty()
     {
         // Arrange
@@ -146,7 +146,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Day Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDate_WhenDay_ThenReturnsDayComponent()
     {
         // Arrange
@@ -162,7 +162,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTime_WhenDay_ThenReturnsDayComponent()
     {
         // Arrange
@@ -176,7 +176,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(1, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenLastDayOfMonth_WhenDay_ThenReturnsCorrectDay()
     {
         // Arrange
@@ -190,7 +190,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(29, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenPartialDateYearMonth_WhenDay_ThenReturnsEmpty()
     {
         // Arrange
@@ -209,7 +209,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Hour Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTime_WhenHour_ThenReturnsHourComponent()
     {
         // Arrange
@@ -225,7 +225,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenTime_WhenHour_ThenReturnsHourComponent()
     {
         // Arrange
@@ -239,7 +239,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(14, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMidnight_WhenHour_ThenReturnsZero()
     {
         // Arrange
@@ -253,7 +253,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(0, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateOnly_WhenHour_ThenReturnsEmpty()
     {
         // Arrange
@@ -272,7 +272,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Minute Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTime_WhenMinute_ThenReturnsMinuteComponent()
     {
         // Arrange
@@ -288,7 +288,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenTime_WhenMinute_ThenReturnsMinuteComponent()
     {
         // Arrange
@@ -302,7 +302,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(30, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenZeroMinute_WhenMinute_ThenReturnsZero()
     {
         // Arrange
@@ -320,7 +320,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Second Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTime_WhenSecond_ThenReturnsSecondComponent()
     {
         // Arrange
@@ -336,7 +336,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenTime_WhenSecond_ThenReturnsSecondComponent()
     {
         // Arrange
@@ -350,7 +350,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(45, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenZeroSecond_WhenSecond_ThenReturnsZero()
     {
         // Arrange
@@ -368,7 +368,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Millisecond Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeWithMilliseconds_WhenMillisecond_ThenReturnsMillisecondComponent()
     {
         // Arrange
@@ -383,7 +383,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("integer", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenTimeWithMilliseconds_WhenMillisecond_ThenReturnsMillisecondComponent()
     {
         // Arrange
@@ -397,7 +397,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(999, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeWithoutMilliseconds_WhenMillisecond_ThenReturnsZero()
     {
         // Arrange
@@ -415,7 +415,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Timezone Extraction Tests
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeWithUTC_WhenTimezone_ThenReturnsZulu()
     {
         // Arrange
@@ -430,7 +430,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("string", result.InstanceType);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeWithPositiveOffset_WhenTimezone_ThenReturnsOffset()
     {
         // Arrange
@@ -444,7 +444,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("+05:30", result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeWithNegativeOffset_WhenTimezone_ThenReturnsOffset()
     {
         // Arrange
@@ -458,7 +458,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal("-08:00", result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateTimeWithoutTimezone_WhenTimezone_ThenReturnsEmpty()
     {
         // Arrange
@@ -473,7 +473,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Empty(result);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenDateOnly_WhenTimezone_ThenReturnsEmpty()
     {
         // Arrange
@@ -491,7 +491,7 @@ public class FhirPathDateTimeComponentTests
 
     #region FHIR Examples - Patient Age Calculation
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenPatientBirthDate_WhenCalculatingAge_ThenReturnsYearDifference()
     {
         // Arrange
@@ -507,7 +507,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(34, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenPatientBirthDatePartial_WhenExtractingYear_ThenReturnsYear()
     {
         // Arrange
@@ -522,7 +522,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(1990, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMultiplePatients_WhenFilteringByBirthYear_ThenFiltersCorrectly()
     {
         // Arrange
@@ -541,7 +541,7 @@ public class FhirPathDateTimeComponentTests
 
     #region FHIR Examples - Temporal Filtering
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenObservations_WhenFilteringByYear_ThenFiltersCorrectly()
     {
         // Arrange
@@ -556,7 +556,7 @@ public class FhirPathDateTimeComponentTests
         Assert.True((bool)result.Value!);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenObservations_WhenFilteringByMonth_ThenFiltersCorrectly()
     {
         // Arrange
@@ -571,7 +571,7 @@ public class FhirPathDateTimeComponentTests
         Assert.True((bool)result.Value!);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenObservations_WhenFilteringByDay_ThenFiltersCorrectly()
     {
         // Arrange
@@ -590,7 +590,7 @@ public class FhirPathDateTimeComponentTests
 
     #region FHIR Examples - Appointment Scheduling
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenAppointment_WhenCheckingBusinessHours_ThenValidatesHour()
     {
         // Arrange
@@ -605,7 +605,7 @@ public class FhirPathDateTimeComponentTests
         Assert.True((bool)result.Value!);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenAppointmentOutsideHours_WhenCheckingBusinessHours_ThenReturnsFalse()
     {
         // Arrange
@@ -619,7 +619,7 @@ public class FhirPathDateTimeComponentTests
         Assert.False((bool)result.Value!);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenAppointment_WhenExtractingMinute_ThenReturnsCorrectMinute()
     {
         // Arrange
@@ -638,7 +638,7 @@ public class FhirPathDateTimeComponentTests
 
     #region Edge Cases
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenLeapYearDate_WhenExtractingComponents_ThenHandlesCorrectly()
     {
         // Arrange
@@ -652,7 +652,7 @@ public class FhirPathDateTimeComponentTests
         Assert.True((bool)result.Value!);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMaxDateTime_WhenExtractingComponents_ThenHandlesCorrectly()
     {
         // Arrange
@@ -666,7 +666,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(9999, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenMinDateTime_WhenExtractingComponents_ThenHandlesCorrectly()
     {
         // Arrange
@@ -680,7 +680,7 @@ public class FhirPathDateTimeComponentTests
         Assert.Equal(1, result.Value);
     }
 
-    [Fact(Skip = "Phase 23 Implementation")]
+    [Fact]
     public void GivenNonExistentComponent_WhenExtracting_ThenReturnsEmpty()
     {
         // Arrange

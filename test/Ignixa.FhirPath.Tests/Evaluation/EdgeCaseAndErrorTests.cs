@@ -483,7 +483,8 @@ public class EdgeCaseAndErrorTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Equal(-5m, result.Value); // Returns decimal
+        Assert.Equal(-5, result.Value); // Returns integer (preserves type)
+        Assert.Equal("integer", result.InstanceType);
     }
 
     [Fact]
