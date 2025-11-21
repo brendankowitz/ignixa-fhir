@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
+  </ItemGroup>
+
+  <!-- Note: We intentionally DO NOT reference Ignixa.Application here to avoid circular dependency.
+       The behavior will be registered in Ignixa.Application and used via interface contracts. -->
+
+  <ItemGroup>
+    <PackageReference Include="Medino" />
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

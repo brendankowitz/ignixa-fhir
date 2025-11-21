@@ -1,0 +1,308 @@
+###
+### US Core Data-Absent-Reason Extension Tests
+###
+### Prerequisites:
+### 1. US Core FHIR Package must be loaded for the tenant
+### 2. DataAbsentReasonBehavior must be registered in the application pipeline
+### 3. Server must be running (default: http://localhost:5000)
+###
+### About data-absent-reason:
+### - Automatically injected for missing mandatory elements in US Core profiles
+### - Only applied to elements with non-Required bindings or non-coded types
+### - Uses extension: http://hl7.org/fhir/StructureDefinition/data-absent-reason
+### - Default code: "unknown"
+###
+### US Core Patient Mandatory Elements (R4):
+### - identifier (1..*) - Eligible for data-absent-reason (complex type)
+### - name (1..*) - Eligible for data-absent-reason (complex type)
+### - gender (1..1) - NOT eligible (Required binding to AdministrativeGender)
+###
+
+@hostname = http://localhost:5000
+@tenantId = 1
+
+###############################################################################
+# Setup: Load US Core Package (if not already loaded)
+###############################################################################
+
+### Load US Core R4 Package (admin operation)
+# POST {{hostname}}/admin/packages
+# Content-Type: application/json
+#
+# {
+#   "packageId": "hl7.fhir.us.core",
+#   "version": "5.0.1",
+#   "fhirVersion": "4.0.1"
+# }
+
+###############################################################################
+# Test 1: Valid US Core Patient (all mandatory elements present)
+# Expected: 201 Created - no data-absent-reason extensions needed
+###############################################################################
+
+### Create valid US Core Patient
+PUT {{hostname}}/Patient/uscore-valid-patient
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-valid-patient",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "identifier": [
+    {
+      "system": "http://hospital.example.org",
+      "value": "12345"
+    }
+  ],
+  "name": [
+    {
+      "use": "official",
+      "family": "Smith",
+      "given": ["John"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-05-15"
+}
+
+### Retrieve valid patient (verify no data-absent-reason extensions)
+GET {{hostname}}/Patient/uscore-valid-patient
+
+###############################################################################
+# Test 2: Patient missing identifier (mandatory 1..*)
+# Expected: 201 Created - identifier should get data-absent-reason extension
+###############################################################################
+
+### Create patient without identifier
+PUT {{hostname}}/Patient/uscore-missing-identifier
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-missing-identifier",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "name": [
+    {
+      "use": "official",
+      "family": "Doe",
+      "given": ["Jane"]
+    }
+  ],
+  "gender": "female"
+}
+
+### Retrieve patient - should see data-absent-reason extension on identifier
+# Expected response should contain:
+# "identifier": [
+#   {
+#     "extension": [
+#       {
+#         "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+#         "valueCode": "unknown"
+#       }
+#     ]
+#   }
+# ]
+GET {{hostname}}/Patient/uscore-missing-identifier
+
+###############################################################################
+# Test 3: Patient missing name (mandatory 1..*)
+# Expected: 201 Created - name should get data-absent-reason extension
+###############################################################################
+
+### Create patient without name
+PUT {{hostname}}/Patient/uscore-missing-name
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-missing-name",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "identifier": [
+    {
+      "system": "http://hospital.example.org",
+      "value": "67890"
+    }
+  ],
+  "gender": "other"
+}
+
+### Retrieve patient - should see data-absent-reason extension on name
+GET {{hostname}}/Patient/uscore-missing-name
+
+###############################################################################
+# Test 4: Patient missing both identifier AND name
+# Expected: 201 Created - both should get data-absent-reason extensions
+###############################################################################
+
+### Create patient without identifier or name
+PUT {{hostname}}/Patient/uscore-missing-both
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-missing-both",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "gender": "unknown"
+}
+
+### Retrieve patient - should see data-absent-reason on both identifier and name
+GET {{hostname}}/Patient/uscore-missing-both
+
+###############################################################################
+# Test 5: Patient missing gender (Required binding - cannot use data-absent-reason)
+# Expected: 400 Bad Request OR resource returned with gender missing
+# Per US Core spec: "For required bindings without unknown code, return HTTP 404
+# for read or exclude from search results"
+###############################################################################
+
+### Create patient without gender (Required binding element)
+PUT {{hostname}}/Patient/uscore-missing-gender
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-missing-gender",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "identifier": [
+    {
+      "system": "http://hospital.example.org",
+      "value": "11111"
+    }
+  ],
+  "name": [
+    {
+      "family": "TestRequired",
+      "given": ["Binding"]
+    }
+  ]
+}
+
+### Retrieve patient - may fail with 404 or return without gender
+GET {{hostname}}/Patient/uscore-missing-gender
+
+###############################################################################
+# Test 6: Minimal patient (only gender provided)
+# Expected: 201 Created - identifier and name get data-absent-reason
+###############################################################################
+
+### Create minimal patient
+PUT {{hostname}}/Patient/uscore-minimal
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-minimal",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "gender": "male"
+}
+
+### Retrieve minimal patient - verify data-absent-reason extensions
+GET {{hostname}}/Patient/uscore-minimal
+
+###############################################################################
+# Test 7: US Core Observation (different resource type)
+###############################################################################
+
+### US Core Observation mandatory elements:
+# - status (1..1) - code with Required binding (NOT eligible)
+# - category (1..*) - CodeableConcept, may have Extensible binding (eligible)
+# - code (1..1) - CodeableConcept with Extensible binding (eligible)
+# - subject (1..1) - Reference(Patient) (eligible)
+
+### Create Observation without category, code, or subject
+PUT {{hostname}}/Observation/uscore-obs-missing-elements
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "uscore-obs-missing-elements",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab"]
+  },
+  "status": "final"
+}
+
+### Retrieve observation - should see data-absent-reason on category, code, subject
+GET {{hostname}}/Observation/uscore-obs-missing-elements
+
+###############################################################################
+# Test 8: Multi-tenant format (if multi-tenant mode enabled)
+###############################################################################
+
+### Create patient in specific tenant
+PUT {{hostname}}/tenant/{{tenantId}}/Patient/uscore-tenant-patient
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-tenant-patient",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "gender": "female"
+}
+
+### Retrieve tenant-specific patient
+GET {{hostname}}/tenant/{{tenantId}}/Patient/uscore-tenant-patient
+
+###############################################################################
+# Test 9: Verify behavior is disabled without US Core package
+###############################################################################
+
+### If US Core package is NOT loaded for tenant, no data-absent-reason injection
+# should occur. The behavior should pass through without modification.
+# To test: use a tenant without US Core loaded, or unload the package
+
+###############################################################################
+# Test 10: Update existing patient (PUT with missing elements)
+###############################################################################
+
+### Update patient, removing identifier
+PUT {{hostname}}/Patient/uscore-valid-patient
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "id": "uscore-valid-patient",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]
+  },
+  "name": [
+    {
+      "use": "official",
+      "family": "Smith",
+      "given": ["John", "Updated"]
+    }
+  ],
+  "gender": "male"
+}
+
+### Retrieve updated patient - identifier should have data-absent-reason
+GET {{hostname}}/Patient/uscore-valid-patient
+
+###############################################################################
+# Cleanup (optional)
+###############################################################################
+
+### Delete test patients
+# DELETE {{hostname}}/Patient/uscore-valid-patient
+# DELETE {{hostname}}/Patient/uscore-missing-identifier
+# DELETE {{hostname}}/Patient/uscore-missing-name
+# DELETE {{hostname}}/Patient/uscore-missing-both
+# DELETE {{hostname}}/Patient/uscore-missing-gender
+# DELETE {{hostname}}/Patient/uscore-minimal
+# DELETE {{hostname}}/Observation/uscore-obs-missing-elements
+# DELETE {{hostname}}/Patient/uscore-tenant-patient
