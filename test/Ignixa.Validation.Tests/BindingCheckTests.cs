@@ -1,0 +1,115 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using FluentAssertions;
+using Ignixa.Domain.Models;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Checks;
+using NSubstitute;
+using System.Text;
+using Xunit;
+
+namespace Ignixa.Validation.Tests;
+
+public class BindingCheckTests
+{
+    [Fact]
+    public async Task ExtensibleBinding_NormalMode_SkipsWarning()
+    {
+        // Arrange
+        var terminology = Substitute.For<ITerminologyService>();
+        terminology.ValidateBindingAsync(
+                Arg.Any<string>(),
+                Arg.Any<BindingStrength>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new BindingValidationResult(
+                IsValid: true,
+                Strength: BindingStrength.Extensible,
+                Severity: IssueSeverity.Warning,
+                Message: "not in ValueSet",
+                SuggestedDisplay: null));
+
+        var bindingCheck = new BindingCheck(
+            elementPath: "Patient.gender",
+            valueSetUrl: "http://example.org/vs",
+            bindingStrength: "Extensible",
+            terminologyService: terminology);
+
+        var json = """
+        {
+          "resourceType":"Patient",
+          "gender":"custom"
+        }
+        """;
+        var node = (await JsonSourceNodeFactory.Parse(new MemoryStream(Encoding.UTF8.GetBytes(json)))).ToSourceNode();
+
+        var settings = new ValidationSettings
+        {
+            ValidationMode = ValidationMode.Normal,
+            TerminologyService = terminology
+        };
+
+        // Act
+        var result = bindingCheck.Validate(node, settings, new ValidationState());
+
+        // Assert
+        result.IsValid.Should().BeTrue("extensible bindings are skipped in Normal mode");
+        result.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExtensibleBinding_FullMode_ReturnsWarning()
+    {
+        // Arrange
+        var terminology = Substitute.For<ITerminologyService>();
+        terminology.ValidateBindingAsync(
+                Arg.Any<string>(),
+                Arg.Any<BindingStrength>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new BindingValidationResult(
+                IsValid: true,
+                Strength: BindingStrength.Extensible,
+                Severity: IssueSeverity.Warning,
+                Message: "not in ValueSet",
+                SuggestedDisplay: null));
+
+        var bindingCheck = new BindingCheck(
+            elementPath: "Patient.gender",
+            valueSetUrl: "http://example.org/vs",
+            bindingStrength: "Extensible",
+            terminologyService: terminology);
+
+        var json = """
+        {
+          "resourceType":"Patient",
+          "gender":"custom"
+        }
+        """;
+        var node = (await JsonSourceNodeFactory.Parse(new MemoryStream(Encoding.UTF8.GetBytes(json)))).ToSourceNode();
+
+        var settings = new ValidationSettings
+        {
+            ValidationMode = ValidationMode.Full,
+            TerminologyService = terminology
+        };
+
+        // Act
+        var result = bindingCheck.Validate(node, settings, new ValidationState());
+
+        // Assert
+        result.IsValid.Should().BeTrue("extensible bindings in full mode should warn, not fail");
+        result.Issues.Should().ContainSingle(i => i.Severity == IssueSeverity.Warning);
+    }
+}

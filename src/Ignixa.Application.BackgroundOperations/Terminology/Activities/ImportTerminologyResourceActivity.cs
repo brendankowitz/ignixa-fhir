@@ -6,9 +6,11 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Terminology.Models;
 using Ignixa.DataLayer.SqlEntityFramework;
+using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -38,8 +40,19 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
     {
         // Create scope for this activity execution to get scoped services (FhirDbContext, ITerminologyImporter)
         using var scope = _serviceProvider.CreateScope();
-        var fhirDbContext = scope.ServiceProvider.GetRequiredService<FhirDbContext>();
-        var terminologyImporter = scope.ServiceProvider.GetRequiredService<ITerminologyImporter>();
+        var repositoryFactory = scope.ServiceProvider.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
+        var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+
+        var allowFullSystemExpansion = configuration.GetValue<bool>("Terminology:AllowFullSystemExpansion", false);
+
+        await using var fhirDbContext = await repositoryFactory.GetDbContextAsync(input.TenantId, CancellationToken.None);
+        var systemRepository = new SqlSystemRepository(fhirDbContext, loggerFactory.CreateLogger<SqlSystemRepository>());
+        ITerminologyImporter terminologyImporter = new SqlCodeSystemImporter(
+            fhirDbContext,
+            systemRepository,
+            loggerFactory.CreateLogger<SqlCodeSystemImporter>(),
+            allowFullSystemExpansion);
 
         try
         {
@@ -92,9 +105,9 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
             {
                 result = packageResource.ResourceType switch
                 {
-                    "CodeSystem" => await terminologyImporter.ImportCodeSystemAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
-                    "ValueSet" => await terminologyImporter.ImportValueSetAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
-                    "ConceptMap" => await terminologyImporter.ImportConceptMapAsync(packageResource, CancellationToken.None).ConfigureAwait(false),
+                    "CodeSystem" => await terminologyImporter.ImportCodeSystemAsync(input.TenantId, packageResource, CancellationToken.None).ConfigureAwait(false),
+                    "ValueSet" => await terminologyImporter.ImportValueSetAsync(input.TenantId, packageResource, CancellationToken.None).ConfigureAwait(false),
+                    "ConceptMap" => await terminologyImporter.ImportConceptMapAsync(input.TenantId, packageResource, CancellationToken.None).ConfigureAwait(false),
                     _ => throw new InvalidOperationException($"Unsupported ResourceType for terminology import: {packageResource.ResourceType}")
                 };
             }

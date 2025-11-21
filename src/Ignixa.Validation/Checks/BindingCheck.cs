@@ -5,13 +5,14 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Validation.Checks;
 
 /// <summary>
 /// Validates CodeableConcept and Coding elements against ValueSet bindings.
-/// Only validates REQUIRED bindings (not extensible, preferred, or example).
 /// Uses ITerminologyService for code validation with graceful degradation.
+/// Honors ValidationMode: Minimal (skip), Normal (required only), Full (required + extensible + display).
 /// Tier 3 validator - used in Profile validation tier.
 /// </summary>
 /// <remarks>
@@ -58,13 +59,7 @@ public class BindingCheck : IValidationCheck
     public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
     {
         // Skip terminology validation if configured
-        if (settings.SkipTerminologyValidation)
-        {
-            return ValidationResult.Success();
-        }
-
-        // Only validate REQUIRED bindings
-        if (!string.Equals(_bindingStrength, "Required", StringComparison.OrdinalIgnoreCase))
+        if (settings.SkipTerminologyValidation || settings.ValidationMode == ValidationMode.Minimal)
         {
             return ValidationResult.Success();
         }
@@ -155,13 +150,13 @@ public class BindingCheck : IValidationCheck
         }
 
         // Validate each coding - at least one must be valid
-        var results = new List<ValidationResult>();
+        var issues = new List<ValidationIssue>();
         var hasValidCoding = false;
 
         foreach (var coding in codings)
         {
             var result = await ValidateCoding(coding, $"{location}.coding", settings).ConfigureAwait(false);
-            results.Add(result);
+            issues.AddRange(result.Issues);
 
             // Track if we have at least one valid coding
             if (result.IsValid && !result.Issues.Any(i => i.Severity == IssueSeverity.Error))
@@ -174,11 +169,7 @@ public class BindingCheck : IValidationCheck
         // But we still want to return warnings from all validations
         if (hasValidCoding)
         {
-            // Collect all warnings (non-error issues)
-            var warnings = results.SelectMany(r => r.Issues)
-                .Where(i => i.Severity == IssueSeverity.Warning)
-                .ToList();
-
+            var warnings = issues.Where(i => i.Severity != IssueSeverity.Error).ToList();
             if (warnings.Any())
             {
                 return new ValidationResult(isValid: true, issues: warnings);
@@ -188,7 +179,11 @@ public class BindingCheck : IValidationCheck
         }
 
         // All codings failed - return combined errors
-        return ValidationResult.Combine(results);
+        if (issues.Count == 0)
+        {
+            issues.Add(new ValidationIssue(IssueSeverity.Error, "code-invalid", "No valid coding found", location));
+        }
+        return new ValidationResult(isValid: false, issues: issues);
     }
 
     private async Task<ValidationResult> ValidateCoding(
@@ -200,31 +195,43 @@ public class BindingCheck : IValidationCheck
         var code = node.Children("code").FirstOrDefault()?.Text;
         var display = node.Children("display").FirstOrDefault()?.Text;
 
-        return await ValidateCode(system, code, location, settings).ConfigureAwait(false);
+        return await ValidateCode(system, code, display, location, settings).ConfigureAwait(false);
     }
 
     private async Task<ValidationResult> ValidateCode(
         string? system,
         string? code,
+        string? display,
         string location,
         ValidationSettings settings)
     {
+        var strengthEnum = ParseStrength(_bindingStrength);
+
+        // Skip if validation mode is Normal and binding is not required
+        if (settings.ValidationMode == ValidationMode.Normal &&
+            strengthEnum is BindingStrength.Extensible or BindingStrength.Preferred or BindingStrength.Example)
+        {
+            return ValidationResult.Success();
+        }
+
         try
         {
-            var result = await _terminologyService.ValidateCodeAsync(
+            var result = await _terminologyService.ValidateBindingAsync(
+                _valueSetUrl,
+                strengthEnum,
                 system,
                 code,
-                display: null,
-                _valueSetUrl,
-                CancellationToken.None).ConfigureAwait(false);
+                display,
+                version: null,
+                cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
             // Handle different failure modes
-            if (!result.IsValid)
+            if (!result.IsValid || result.Severity == IssueSeverity.Error)
             {
                 // Terminology validation failed
                 return ValidationResult.Failure(
                     new ValidationIssue(
-                        result.Severity,
+                        IssueSeverity.Error,
                         "code-invalid",
                         location,
                         result.Message ?? "Code validation failed"));
@@ -258,7 +265,7 @@ public class BindingCheck : IValidationCheck
                     });
             }
 
-            // Validation succeeded
+            // Validation succeeded or informational
             return ValidationResult.Success();
         }
         catch (Exception ex)
@@ -280,4 +287,14 @@ public class BindingCheck : IValidationCheck
                 });
         }
     }
+
+    private static BindingStrength ParseStrength(string strength) =>
+        strength?.ToLowerInvariant() switch
+        {
+            "required" => BindingStrength.Required,
+            "extensible" => BindingStrength.Extensible,
+            "preferred" => BindingStrength.Preferred,
+            "example" => BindingStrength.Example,
+            _ => BindingStrength.Example
+        };
 }

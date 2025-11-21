@@ -16,12 +16,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 /// </summary>
 public class HybridTerminologyService : ITerminologyService
 {
-    private readonly SqlTerminologyService _sqlService;
+    private readonly ITerminologyService _sqlService;
     private readonly ITerminologyService _fallbackService;
     private readonly ILogger<HybridTerminologyService> _logger;
 
     public HybridTerminologyService(
-        SqlTerminologyService sqlService,
+        ITerminologyService sqlService,
         ITerminologyService fallbackService,
         ILogger<HybridTerminologyService> logger)
     {

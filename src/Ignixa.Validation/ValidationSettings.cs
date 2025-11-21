@@ -4,6 +4,7 @@
 // </copyright>
 
 using Ignixa.Validation.Abstractions;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Validation;
 
@@ -32,6 +33,11 @@ public class ValidationSettings
     /// If null, terminology validation will be skipped.
     /// </summary>
     public ITerminologyService? TerminologyService { get; set; }
+
+    /// <summary>
+    /// Validation mode controlling terminology binding depth (Minimal, Normal, Full).
+    /// </summary>
+    public ValidationMode ValidationMode { get; set; } = ValidationMode.Normal;
 }
 
 /// <summary>

@@ -20,7 +20,10 @@ public interface ITerminologyImporter
     /// <param name="packageResource">The PackageResource containing CodeSystem JSON.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Import result with status and concept count.</returns>
-    Task<TerminologyImportResult> ImportCodeSystemAsync(PackageResource packageResource, CancellationToken cancellationToken);
+    Task<TerminologyImportResult> ImportCodeSystemAsync(
+        int tenantId,
+        PackageResource packageResource,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Imports a ValueSet resource into TermValueSet and TermValueSetExpansion tables.
@@ -29,7 +32,10 @@ public interface ITerminologyImporter
     /// <param name="packageResource">The PackageResource containing ValueSet JSON.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Import result with status and expansion count.</returns>
-    Task<TerminologyImportResult> ImportValueSetAsync(PackageResource packageResource, CancellationToken cancellationToken);
+    Task<TerminologyImportResult> ImportValueSetAsync(
+        int tenantId,
+        PackageResource packageResource,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Imports a ConceptMap resource into TermConceptMap and TermConceptMapElement tables.
@@ -38,5 +44,8 @@ public interface ITerminologyImporter
     /// <param name="packageResource">The PackageResource containing ConceptMap JSON.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Import result with status and mapping count.</returns>
-    Task<TerminologyImportResult> ImportConceptMapAsync(PackageResource packageResource, CancellationToken cancellationToken);
+    Task<TerminologyImportResult> ImportConceptMapAsync(
+        int tenantId,
+        PackageResource packageResource,
+        CancellationToken cancellationToken);
 }

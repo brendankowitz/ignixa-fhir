@@ -12,6 +12,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Entities.Terminology;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 
@@ -24,18 +25,22 @@ public class SqlCodeSystemImporter : ITerminologyImporter
     private readonly FhirDbContext _context;
     private readonly ISystemRepository _systemRepository;
     private readonly ILogger<SqlCodeSystemImporter> _logger;
+    private readonly bool _allowFullSystemExpansion;
 
     public SqlCodeSystemImporter(
         FhirDbContext context,
         ISystemRepository systemRepository,
-        ILogger<SqlCodeSystemImporter> logger)
+        ILogger<SqlCodeSystemImporter> logger,
+        bool allowFullSystemExpansion = false)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _systemRepository = systemRepository ?? throw new ArgumentNullException(nameof(systemRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _allowFullSystemExpansion = allowFullSystemExpansion;
     }
 
     public async Task<TerminologyImportResult> ImportCodeSystemAsync(
+        int tenantId,
         PackageResource packageResource,
         CancellationToken cancellationToken)
     {
@@ -51,13 +56,18 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             packageResource.Canonical,
             packageResource.PackageResourceId);
 
+        var packageResourceEntity = await _context.PackageResources
+            .FirstOrDefaultAsync(pr => pr.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
+
+        if (packageResourceEntity == null)
+        {
+            throw new InvalidOperationException($"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
+        }
+
         // CRITICAL FIX #2: Import concurrency control
         // Check if another thread is already importing this resource
         // Reload from database to get latest status (avoid stale data from PackageResource parameter)
-        var currentStatus = await _context.PackageResources
-            .Where(pr => pr.PackageResourceId == packageResource.PackageResourceId)
-            .Select(pr => pr.TerminologyImportStatus)
-            .FirstOrDefaultAsync(cancellationToken);
+        var currentStatus = packageResourceEntity.TerminologyImportStatus;
 
         if (currentStatus == nameof(TerminologyImportStatus.InProgress))
         {
@@ -76,13 +86,18 @@ public class SqlCodeSystemImporter : ITerminologyImporter
 
             // 2. Check content hash (skip if unchanged)
             string newContentHash = packageResource.ComputeContentHash();
-            if (packageResource.ContentHash == newContentHash &&
-                packageResource.TerminologyImportStatus == TerminologyImportStatus.Completed)
+            if (string.Equals(packageResourceEntity.ContentHash, newContentHash, StringComparison.Ordinal) &&
+                string.Equals(packageResourceEntity.TerminologyImportStatus, nameof(TerminologyImportStatus.Completed), StringComparison.Ordinal))
             {
                 _logger.LogInformation(
                     "CodeSystem '{Canonical}' content unchanged (hash: {Hash}), skipping import",
                     packageResource.Canonical,
                     newContentHash);
+
+                packageResourceEntity.ContentHash = newContentHash;
+                packageResourceEntity.ImportStartDate ??= DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportCompletedDate ??= DateTimeOffset.UtcNow;
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return TerminologyImportResult.CreateSkipped();
             }
@@ -108,10 +123,10 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                     "CodeSystem '{Canonical}' has content=not-present, skipping import",
                     packageResource.Canonical);
 
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.Skipped;
-                packageResource.ContentHash = newContentHash;
-                packageResource.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Skipped);
+                packageResourceEntity.ContentHash = newContentHash;
+                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 return TerminologyImportResult.CreateSkipped();
@@ -130,11 +145,11 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                     "Supplement import not yet implemented (Week 4). Skipping.",
                     packageResource.Canonical);
 
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.Skipped;
-                packageResource.ContentHash = newContentHash;
-                packageResource.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResource.ImportErrorMessage = "Supplement import not yet implemented";
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Skipped);
+                packageResourceEntity.ContentHash = newContentHash;
+                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportErrorMessage = "Supplement import not yet implemented";
                 await _context.SaveChangesAsync(cancellationToken);
 
                 return TerminologyImportResult.CreateSkipped();
@@ -149,9 +164,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             try
             {
                 // Update import status to InProgress
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.InProgress;
-                packageResource.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResource.ContentHash = newContentHash;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
+                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ContentHash = newContentHash;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 // 6. Delete existing TermCodeSystem (cascade deletes TermConcepts)
@@ -225,10 +240,10 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 }
 
                 // 10. Update PackageResource import status
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.Completed;
-                packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResource.ImportedConceptCount = concepts.Count;
-                packageResource.ImportErrorMessage = null;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
+                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportedConceptCount = concepts.Count;
+                packageResourceEntity.ImportErrorMessage = null;
 
                 // Update ConceptCount if not specified in metadata
                 if (metadata.Count == null || metadata.Count == 0)
@@ -264,9 +279,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 ex.Message);
 
             // Update PackageResource with error
-            packageResource.TerminologyImportStatus = TerminologyImportStatus.Failed;
-            packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-            packageResource.ImportErrorMessage = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Failed);
+            packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+            packageResourceEntity.ImportErrorMessage = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
 
             try
             {
@@ -282,6 +297,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
     }
 
     public async Task<TerminologyImportResult> ImportValueSetAsync(
+        int tenantId,
         PackageResource packageResource,
         CancellationToken cancellationToken)
     {
@@ -297,11 +313,16 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             packageResource.Canonical,
             packageResource.PackageResourceId);
 
+        var packageResourceEntity = await _context.PackageResources
+            .FirstOrDefaultAsync(pr => pr.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
+
+        if (packageResourceEntity == null)
+        {
+            throw new InvalidOperationException($"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
+        }
+
         // Check if another thread is already importing this resource
-        var currentStatus = await _context.PackageResources
-            .Where(pr => pr.PackageResourceId == packageResource.PackageResourceId)
-            .Select(pr => pr.TerminologyImportStatus)
-            .FirstOrDefaultAsync(cancellationToken);
+        var currentStatus = packageResourceEntity.TerminologyImportStatus;
 
         if (currentStatus == nameof(TerminologyImportStatus.InProgress))
         {
@@ -320,13 +341,18 @@ public class SqlCodeSystemImporter : ITerminologyImporter
 
             // 2. Check content hash (skip if unchanged)
             string newContentHash = packageResource.ComputeContentHash();
-            if (packageResource.ContentHash == newContentHash &&
-                packageResource.TerminologyImportStatus == TerminologyImportStatus.Completed)
+            if (string.Equals(packageResourceEntity.ContentHash, newContentHash, StringComparison.Ordinal) &&
+                string.Equals(packageResourceEntity.TerminologyImportStatus, nameof(TerminologyImportStatus.Completed), StringComparison.Ordinal))
             {
                 _logger.LogInformation(
                     "ValueSet '{Canonical}' content unchanged (hash: {Hash}), skipping import",
                     packageResource.Canonical,
                     newContentHash);
+
+                packageResourceEntity.ContentHash = newContentHash;
+                packageResourceEntity.ImportStartDate ??= DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportCompletedDate ??= DateTimeOffset.UtcNow;
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return TerminologyImportResult.CreateSkipped();
             }
@@ -351,9 +377,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             try
             {
                 // Update import status to InProgress
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.InProgress;
-                packageResource.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResource.ContentHash = newContentHash;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
+                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ContentHash = newContentHash;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 // 5. Delete existing TermValueSet (cascade deletes TermValueSetExpansion)
@@ -385,7 +411,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 _context.TermValueSets.Add(termValueSet);
                 await _context.SaveChangesAsync(cancellationToken);
 
-                // 7. Import expansion entries if present
+                // 7. Import expansion entries if present, otherwise compute from compose
                 int importedCount = 0;
                 var expansion = valueSet["expansion"];
                 if (expansion != null)
@@ -394,21 +420,32 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                         expansion.AsObject(),
                         termValueSet.TermValueSetId,
                         cancellationToken);
-
-                    if (importedCount > 0)
+                }
+                else
+                {
+                    var compose = valueSet["compose"]?.AsObject();
+                    if (compose != null)
                     {
-                        termValueSet.IsExpanded = true;
-                        termValueSet.LastExpansionDate = DateTimeOffset.UtcNow;
-                        termValueSet.ExpansionCodeCount = importedCount;
-                        await _context.SaveChangesAsync(cancellationToken);
+                        importedCount = await ImportComposeExpansionAsync(
+                            compose,
+                            termValueSet.TermValueSetId,
+                            cancellationToken);
                     }
                 }
 
+                if (importedCount > 0)
+                {
+                    termValueSet.IsExpanded = true;
+                    termValueSet.LastExpansionDate = DateTimeOffset.UtcNow;
+                    termValueSet.ExpansionCodeCount = importedCount;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+
                 // 8. Update PackageResource import status
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.Completed;
-                packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResource.ImportedConceptCount = importedCount;
-                packageResource.ImportErrorMessage = null;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
+                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportedConceptCount = importedCount;
+                packageResourceEntity.ImportErrorMessage = null;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 // 9. Commit transaction
@@ -437,9 +474,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 ex.Message);
 
             // Update PackageResource with error
-            packageResource.TerminologyImportStatus = TerminologyImportStatus.Failed;
-            packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-            packageResource.ImportErrorMessage = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Failed);
+            packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+            packageResourceEntity.ImportErrorMessage = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
 
             try
             {
@@ -455,6 +492,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
     }
 
     public async Task<TerminologyImportResult> ImportConceptMapAsync(
+        int tenantId,
         PackageResource packageResource,
         CancellationToken cancellationToken)
     {
@@ -470,11 +508,16 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             packageResource.Canonical,
             packageResource.PackageResourceId);
 
+        var packageResourceEntity = await _context.PackageResources
+            .FirstOrDefaultAsync(pr => pr.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
+
+        if (packageResourceEntity == null)
+        {
+            throw new InvalidOperationException($"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
+        }
+
         // Check if another thread is already importing this resource
-        var currentStatus = await _context.PackageResources
-            .Where(pr => pr.PackageResourceId == packageResource.PackageResourceId)
-            .Select(pr => pr.TerminologyImportStatus)
-            .FirstOrDefaultAsync(cancellationToken);
+        var currentStatus = packageResourceEntity.TerminologyImportStatus;
 
         if (currentStatus == nameof(TerminologyImportStatus.InProgress))
         {
@@ -493,13 +536,18 @@ public class SqlCodeSystemImporter : ITerminologyImporter
 
             // 2. Check content hash (skip if unchanged)
             string newContentHash = packageResource.ComputeContentHash();
-            if (packageResource.ContentHash == newContentHash &&
-                packageResource.TerminologyImportStatus == TerminologyImportStatus.Completed)
+            if (string.Equals(packageResourceEntity.ContentHash, newContentHash, StringComparison.Ordinal) &&
+                string.Equals(packageResourceEntity.TerminologyImportStatus, nameof(TerminologyImportStatus.Completed), StringComparison.Ordinal))
             {
                 _logger.LogInformation(
                     "ConceptMap '{Canonical}' content unchanged (hash: {Hash}), skipping import",
                     packageResource.Canonical,
                     newContentHash);
+
+                packageResourceEntity.ContentHash = newContentHash;
+                packageResourceEntity.ImportStartDate ??= DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportCompletedDate ??= DateTimeOffset.UtcNow;
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return TerminologyImportResult.CreateSkipped();
             }
@@ -524,9 +572,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             try
             {
                 // Update import status to InProgress
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.InProgress;
-                packageResource.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResource.ContentHash = newContentHash;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
+                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ContentHash = newContentHash;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 // 5. Delete existing TermConceptMap (cascade deletes TermConceptMapElement)
@@ -565,10 +613,10 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                     cancellationToken);
 
                 // 8. Update PackageResource import status
-                packageResource.TerminologyImportStatus = TerminologyImportStatus.Completed;
-                packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResource.ImportedConceptCount = importedCount;
-                packageResource.ImportErrorMessage = null;
+                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
+                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                packageResourceEntity.ImportedConceptCount = importedCount;
+                packageResourceEntity.ImportErrorMessage = null;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 // 9. Commit transaction
@@ -597,9 +645,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 ex.Message);
 
             // Update PackageResource with error
-            packageResource.TerminologyImportStatus = TerminologyImportStatus.Failed;
-            packageResource.ImportCompletedDate = DateTimeOffset.UtcNow;
-            packageResource.ImportErrorMessage = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Failed);
+            packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+            packageResourceEntity.ImportErrorMessage = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
 
             try
             {
@@ -1045,6 +1093,441 @@ public class SqlCodeSystemImporter : ITerminologyImporter
         }
 
         return expansionEntries.Count;
+    }
+
+    /// <summary>
+    /// Builds expansion entries from ValueSet.compose (include/exclude) into TermValueSetExpansion.
+    /// Supports:
+    /// - include.concept (explicit codes)
+    /// - include.valueSet (pulls already-expanded ValueSets)
+    /// - include.system with filters (code/display) or full system when enabled
+    /// - exclude counterparts remove matching codes
+    /// Advanced filter operations (regex, is-a, property-based) are not implemented.
+    /// </summary>
+    private async Task<int> ImportComposeExpansionAsync(
+        JsonObject compose,
+        long termValueSetId,
+        CancellationToken cancellationToken)
+    {
+        var includeEntries = new List<TermValueSetExpansionEntity>();
+        var includedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var excludedKeys = new HashSet<string>(StringComparer.Ordinal);
+
+        static string MakeKey(int systemId, string code) => $"{systemId}:{code}";
+
+        async Task AddEntryAsync(int systemId, string systemUri, string code, string? display, string? systemVersion)
+        {
+            if (string.IsNullOrEmpty(code))
+            {
+                return;
+            }
+
+            var key = MakeKey(systemId, code);
+            if (!includedKeys.Add(key))
+            {
+                return;
+            }
+
+            includeEntries.Add(new TermValueSetExpansionEntity
+            {
+                TermValueSetId = termValueSetId,
+                SystemId = systemId,
+                Code = code,
+                Display = display,
+                SystemVersion = systemVersion,
+                IsActive = true,
+                Ordinal = includeEntries.Count
+            });
+        }
+
+        async Task AddFromValueSetAsync(string canonical)
+        {
+            var includedValueSet = await _context.TermValueSets
+                .AsNoTracking()
+                .Where(tvs => tvs.Canonical == canonical && tvs.IsExpanded)
+                .OrderByDescending(tvs => tvs.ImportedDate)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (includedValueSet == null)
+            {
+                _logger.LogWarning("Compose include references ValueSet '{Canonical}' that is not expanded", canonical);
+                return;
+            }
+
+            var expansions = await _context.TermValueSetExpansions
+                .AsNoTracking()
+                .Include(tvse => tvse.System)
+                .Where(tvse => tvse.TermValueSetId == includedValueSet.TermValueSetId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var entry in expansions)
+            {
+                var systemUri = entry.System.Value;
+                await AddEntryAsync(entry.SystemId, systemUri, entry.Code!, entry.Display, entry.SystemVersion);
+            }
+        }
+
+        async Task AddSystemAllCodesAsync(string systemUri, string? systemVersion)
+        {
+            if (!_allowFullSystemExpansion)
+            {
+                _logger.LogWarning("Skipping full-system include for ValueSet compose because AllowFullSystemExpansion is disabled: {System}", systemUri);
+                return;
+            }
+
+            var systemId = await _systemRepository.GetOrCreateAsync(systemUri, cancellationToken);
+
+            var allCodes = await _context.TermConcepts
+                .AsNoTracking()
+                .Include(tc => tc.CodeSystem)
+                .Where(tc => tc.CodeSystem.SystemId == systemId)
+                .Where(tc => systemVersion == null || tc.CodeSystem.Version == systemVersion)
+                .ToListAsync(cancellationToken);
+
+            foreach (var concept in allCodes)
+            {
+                await AddEntryAsync(systemId, systemUri, concept.Code, concept.Display, concept.CodeSystem.Version);
+            }
+        }
+
+        async Task AddSystemCodesWithFiltersAsync(string systemUri, string? systemVersion, JsonArray filters)
+        {
+            var systemId = await _systemRepository.GetOrCreateAsync(systemUri, cancellationToken);
+
+            var candidates = await _context.TermConcepts
+                .AsNoTracking()
+                .Include(tc => tc.CodeSystem)
+                .Where(tc => tc.CodeSystem.SystemId == systemId)
+                .Where(tc => systemVersion == null || tc.CodeSystem.Version == systemVersion)
+                .ToListAsync(cancellationToken);
+
+            // Build lookup for ancestry checks
+            var conceptById = candidates.ToDictionary(c => c.TermConceptId);
+
+            bool IsDescendantOfCode(Entities.Terminology.TermConceptEntity concept, string ancestorCode, Dictionary<long, Entities.Terminology.TermConceptEntity> lookup)
+            {
+                var current = concept;
+                var visited = new HashSet<long>();
+                while (current != null)
+                {
+                    if (string.Equals(current.Code, ancestorCode, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+
+                    if (current.ParentConceptId == null || !lookup.TryGetValue(current.ParentConceptId.Value, out var parent) || !visited.Add(parent.TermConceptId))
+                    {
+                        break;
+                    }
+                    current = parent;
+                }
+                return false;
+            }
+
+            bool MatchesFilter(Entities.Terminology.TermConceptEntity concept, JsonObject filterObj)
+            {
+                var property = filterObj["property"]?.GetValue<string>();
+                var op = filterObj["op"]?.GetValue<string>()?.ToLowerInvariant();
+                var value = filterObj["value"]?.GetValue<string>();
+
+                if (string.IsNullOrEmpty(property) || string.IsNullOrEmpty(op) || string.IsNullOrEmpty(value))
+                {
+                    return true; // ignore invalid filter
+                }
+
+                bool RegexMatch(string? target) => target != null && Regex.IsMatch(target, value, RegexOptions.IgnoreCase);
+
+                switch (property)
+                {
+                    case "code":
+                        return op switch
+                        {
+                            "=" => concept.Code == value,
+                            "in" => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(concept.Code),
+                            "regex" => RegexMatch(concept.Code),
+                            "is-a" or "descendent-of" => IsDescendantOfCode(concept, value, conceptById),
+                            _ => true
+                        };
+                    case "display":
+                        return op switch
+                        {
+                            "=" => string.Equals(concept.Display, value, StringComparison.Ordinal),
+                            "contains" => concept.Display != null && concept.Display.Contains(value, StringComparison.OrdinalIgnoreCase),
+                            "regex" => RegexMatch(concept.Display),
+                            _ => true
+                        };
+                    default:
+                        // Property-based filters: look into PropertiesJson for matching code/value
+                        var (properties, _) = ParsePropertiesJson(concept.PropertiesJson);
+                        var matchValue = properties?.Any(p =>
+                            string.Equals(p.Code, property, StringComparison.OrdinalIgnoreCase) &&
+                            p.Value != null &&
+                            (op switch
+                            {
+                                "=" => string.Equals(p.Value, value, StringComparison.Ordinal),
+                                "regex" => RegexMatch(p.Value),
+                                "in" => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(p.Value),
+                                _ => false
+                            }));
+                        return matchValue == true;
+                }
+            }
+
+            var filtered = candidates.Where(c =>
+            {
+                foreach (var filter in filters)
+                {
+                    var filterObj = filter?.AsObject();
+                    if (filterObj == null)
+                    {
+                        continue;
+                    }
+
+                    if (!MatchesFilter(c, filterObj))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }).ToList();
+
+            foreach (var concept in filtered)
+            {
+                await AddEntryAsync(systemId, systemUri, concept.Code, concept.Display, concept.CodeSystem.Version);
+            }
+        }
+
+        async Task ProcessIncludeAsync(JsonObject include)
+        {
+            var includeSystem = include["system"]?.GetValue<string>();
+            var includeVersion = include["version"]?.GetValue<string>();
+            var filters = include["filter"]?.AsArray();
+
+            // Explicit concepts
+            var concepts = include["concept"]?.AsArray();
+            if (concepts != null && concepts.Count > 0)
+            {
+                foreach (var conceptNode in concepts)
+                {
+                    var concept = conceptNode?.AsObject();
+                    if (concept == null)
+                    {
+                        continue;
+                    }
+
+                    var code = concept["code"]?.GetValue<string>();
+                    var display = concept["display"]?.GetValue<string>();
+                    var conceptSystem = concept["system"]?.GetValue<string>() ?? includeSystem;
+                    if (string.IsNullOrEmpty(conceptSystem) || string.IsNullOrEmpty(code))
+                    {
+                        continue;
+                    }
+
+                    var systemId = await _systemRepository.GetOrCreateAsync(conceptSystem, cancellationToken);
+                    await AddEntryAsync(systemId, conceptSystem, code!, display, includeVersion);
+                }
+            }
+
+            // Included ValueSets
+            var includeValueSets = include["valueSet"]?.AsArray();
+            if (includeValueSets != null)
+            {
+                foreach (var vs in includeValueSets)
+                {
+                    var canonical = vs?.GetValue<string>();
+                    if (!string.IsNullOrEmpty(canonical))
+                    {
+                        await AddFromValueSetAsync(canonical!);
+                    }
+                }
+            }
+
+            // System without filters => include all codes
+            if (includeSystem != null && filters != null && filters.Count > 0)
+            {
+                await AddSystemCodesWithFiltersAsync(includeSystem, includeVersion, filters);
+            }
+            else if (includeSystem != null && (concepts == null || concepts.Count == 0) && (includeValueSets == null || includeValueSets.Count == 0))
+            {
+                await AddSystemAllCodesAsync(includeSystem, includeVersion);
+            }
+        }
+
+        async Task ProcessExcludeAsync(JsonObject exclude)
+        {
+            var excludeSystem = exclude["system"]?.GetValue<string>();
+            var filters = exclude["filter"]?.AsArray();
+
+            var concepts = exclude["concept"]?.AsArray();
+            if (concepts != null && concepts.Count > 0 && excludeSystem != null)
+            {
+                var systemId = await _systemRepository.GetSystemIdAsync(excludeSystem, cancellationToken);
+                if (systemId.HasValue)
+                {
+                    foreach (var conceptNode in concepts)
+                    {
+                        var code = conceptNode?["code"]?.GetValue<string>();
+                        if (!string.IsNullOrEmpty(code))
+                        {
+                            excludedKeys.Add(MakeKey(systemId.Value, code!));
+                        }
+                    }
+                }
+            }
+
+            var excludeValueSets = exclude["valueSet"]?.AsArray();
+            if (excludeValueSets != null)
+            {
+                foreach (var vs in excludeValueSets)
+                {
+                    var canonical = vs?.GetValue<string>();
+                    if (string.IsNullOrEmpty(canonical))
+                    {
+                        continue;
+                    }
+
+                    var excludedValueSet = await _context.TermValueSets
+                        .AsNoTracking()
+                        .Where(tvs => tvs.Canonical == canonical && tvs.IsExpanded)
+                        .OrderByDescending(tvs => tvs.ImportedDate)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (excludedValueSet == null)
+                    {
+                        continue;
+                    }
+
+                    var expansions = await _context.TermValueSetExpansions
+                        .AsNoTracking()
+                        .Where(tvse => tvse.TermValueSetId == excludedValueSet.TermValueSetId)
+                        .ToListAsync(cancellationToken);
+
+                    foreach (var entry in expansions)
+                    {
+                        excludedKeys.Add(MakeKey(entry.SystemId, entry.Code!));
+                    }
+                }
+            }
+
+            if (excludeSystem != null && filters != null && filters.Count > 0)
+            {
+                var systemId = await _systemRepository.GetSystemIdAsync(excludeSystem, cancellationToken);
+                if (systemId.HasValue)
+                {
+                    var query = _context.TermConcepts
+                        .AsNoTracking()
+                        .Include(tc => tc.CodeSystem)
+                        .Where(tc => tc.CodeSystem.SystemId == systemId.Value);
+
+                    foreach (var filter in filters)
+                    {
+                        var filterObj = filter?.AsObject();
+                        if (filterObj == null)
+                        {
+                            continue;
+                        }
+
+                        var property = filterObj["property"]?.GetValue<string>();
+                        var op = filterObj["op"]?.GetValue<string>();
+                        var value = filterObj["value"]?.GetValue<string>();
+
+                        if (string.IsNullOrEmpty(property) || string.IsNullOrEmpty(op) || string.IsNullOrEmpty(value))
+                        {
+                            continue;
+                        }
+
+                        switch (property)
+                        {
+                            case "code":
+                                if (op == "=")
+                                {
+                                    query = query.Where(tc => tc.Code == value);
+                                }
+                                else if (op == "in")
+                                {
+                                    var codes = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                    query = query.Where(tc => codes.Contains(tc.Code));
+                                }
+                                break;
+                            case "display":
+                                if (op == "=")
+                                {
+                                    query = query.Where(tc => tc.Display == value);
+                                }
+                                else if (op == "contains")
+                                {
+                                    query = query.Where(tc => tc.Display != null && EF.Functions.Like(tc.Display, $"%{value}%"));
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+
+                    var filtered = await query.ToListAsync(cancellationToken);
+                    foreach (var concept in filtered)
+                    {
+                        excludedKeys.Add(MakeKey(systemId.Value, concept.Code));
+                    }
+                }
+            }
+            else if (excludeSystem != null && (concepts == null || concepts.Count == 0) && (excludeValueSets == null || excludeValueSets.Count == 0))
+            {
+                var systemId = await _systemRepository.GetSystemIdAsync(excludeSystem, cancellationToken);
+                if (systemId.HasValue)
+                {
+                    excludedKeys.Add(MakeKey(systemId.Value, "*"));
+                }
+            }
+        }
+
+        var includes = compose["include"]?.AsArray();
+        if (includes != null)
+        {
+            foreach (var includeNode in includes)
+            {
+                var include = includeNode?.AsObject();
+                if (include != null)
+                {
+                    await ProcessIncludeAsync(include);
+                }
+            }
+        }
+
+        var excludes = compose["exclude"]?.AsArray();
+        if (excludes != null)
+        {
+            foreach (var excludeNode in excludes)
+            {
+                var excludeObj = excludeNode?.AsObject();
+                if (excludeObj != null)
+                {
+                    await ProcessExcludeAsync(excludeObj);
+                }
+            }
+        }
+
+        // Apply exclusions and renumber ordinals
+        var filtered = new List<TermValueSetExpansionEntity>();
+        foreach (var entry in includeEntries)
+        {
+            var key = MakeKey(entry.SystemId, entry.Code!);
+            if (excludedKeys.Contains(key) || excludedKeys.Contains(MakeKey(entry.SystemId, "*")))
+            {
+                continue;
+            }
+
+            entry.Ordinal = filtered.Count;
+            filtered.Add(entry);
+        }
+
+        if (filtered.Count > 0)
+        {
+            _context.TermValueSetExpansions.AddRange(filtered);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return filtered.Count;
     }
 
     /// <summary>

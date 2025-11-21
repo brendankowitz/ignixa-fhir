@@ -54,6 +54,8 @@ builder.Services.AddMemoryCache();
 // Register RecyclableMemoryStreamManager as singleton
 builder.Services.AddSingleton<RecyclableMemoryStreamManager>();
 
+var terminologyAutoImportEnabled = builder.Configuration.GetValue<bool>("Terminology:EnableAutoImport", false);
+
 // Register MultiTenantSearchIndexCache as singleton (multi-tenant cache consolidation)
 // Provides per-tenant cache instances for search index reference data
 // Uses on-demand caching for large datasets (Systems, QuantityCodes) to prevent memory exhaustion
@@ -113,7 +115,11 @@ builder.Services.AddHostedService<IndexLoaderService>();
 builder.Services.AddHostedService<TenantPackagePreloadService>();
 
 // Bootstrap service to trigger terminology imports for existing packages (runs after preload)
-builder.Services.AddHostedService<TerminologyImportBootstrapService>();
+// DISABLED by default: previously caused startup performance issues. Enable via Terminology:EnableAutoImport=true.
+if (terminologyAutoImportEnabled)
+{
+    builder.Services.AddHostedService<TerminologyImportBootstrapService>();
+}
 
 // Register HTTP client factory for background operations (Import activities need this)
 builder.Services.AddHttpClient();
@@ -845,9 +851,13 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .InstancePerDependency();
 
     // Register PackageLoadedTerminologyImportHandler for automatic terminology import after package load
-    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedTerminologyImportHandler>()
-        .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
-        .InstancePerDependency();
+    // Guarded by Terminology:EnableAutoImport to avoid startup perf issues when large packages are present.
+    if (terminologyAutoImportEnabled)
+    {
+        containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedTerminologyImportHandler>()
+            .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
+            .InstancePerDependency();
+    }
 
     // Register TerminologyImportTriggeredHandler to start DurableTask orchestration
     containerBuilder.RegisterType<Ignixa.Application.BackgroundOperations.Terminology.EventHandlers.TerminologyImportTriggeredHandler>()
@@ -862,11 +872,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .As<ISystemRepository>()
         .InstancePerDependency();
 
-    // Register SqlCodeSystemImporter for terminology resource import
-    // Week 3: CodeSystem import only (ValueSet/ConceptMap in Week 4)
-    containerBuilder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Features.Terminology.SqlCodeSystemImporter>()
-        .As<Ignixa.Domain.Terminology.ITerminologyImporter>()
-        .InstancePerDependency();
+    // Terminology importer is constructed inside ImportTerminologyResourceActivity using tenant-scoped DbContext
+    // to avoid leaking DbContext through singleton registrations. No direct ITerminologyImporter registration here.
 
     // Register bundle processing services
     containerBuilder.RegisterType<BundleReferencePreProcessor>()

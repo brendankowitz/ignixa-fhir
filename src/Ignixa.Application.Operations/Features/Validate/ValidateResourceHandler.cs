@@ -189,14 +189,15 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 });
             }
             else
-            {
-                var settings = new ValidationSettings
                 {
-                    Tier = validationTier,
-                    TerminologyService = _terminologyService
-                };
-                var state = new ValidationState();
-                var validationResult = schema.Validate(sourceNode, settings, state);
+                    var settings = new ValidationSettings
+                    {
+                        Tier = validationTier,
+                        TerminologyService = _terminologyService,
+                        ValidationMode = request.ValidationMode
+                    };
+                    var state = new ValidationState();
+                    var validationResult = schema.Validate(sourceNode, settings, state);
 
                 if (!validationResult.IsValid)
                 {
@@ -217,27 +218,6 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                             diagnostics = issue.Message,
                             expression = string.IsNullOrEmpty(issue.Path) ? null : issue.Path  // Note: 'location' is deprecated, only use 'expression'
                         });
-                    }
-                }
-
-                // After structural validation, add terminology binding validation
-                if (request.ValidationMode != ValidationMode.Minimal)
-                {
-                    var terminologyIssues = await ValidateTerminologyBindingsAsync(
-                        resourceType,
-                        request.JsonNode,
-                        request.ValidationMode,
-                        cancellationToken);
-
-                    // Merge terminology issues into operation outcome
-                    if (terminologyIssues.Count > 0)
-                    {
-                        _logger.LogDebug(
-                            "Terminology validation found {IssueCount} issue(s) for {ResourceType}",
-                            terminologyIssues.Count,
-                            resourceType);
-
-                        issues.AddRange(terminologyIssues);
                     }
                 }
 
