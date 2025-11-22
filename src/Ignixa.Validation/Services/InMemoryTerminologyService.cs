@@ -240,16 +240,16 @@ public class InMemoryTerminologyService : ITerminologyService
         return strength switch
         {
             BindingStrength.Required => codeValidation.IsValid
-                ? (true, IssueSeverity.Information, null)
+                ? (true, codeValidation.Severity, codeValidation.Message)  // Preserve warnings from unknown ValueSets
                 : (false, IssueSeverity.Error, codeValidation.Message),
 
             BindingStrength.Extensible => codeValidation.IsValid
-                ? (true, IssueSeverity.Information, null)
+                ? (true, codeValidation.Severity, codeValidation.Message)  // Preserve warnings
                 : (true, IssueSeverity.Warning, codeValidation.Message), // Warning, not error for extensible
 
-            BindingStrength.Preferred => (true, IssueSeverity.Information, codeValidation.Message),
+            BindingStrength.Preferred => (true, codeValidation.Severity, codeValidation.Message),  // Preserve warnings
 
-            BindingStrength.Example => (true, IssueSeverity.Information, null), // No validation for examples
+            BindingStrength.Example => (true, codeValidation.Severity, codeValidation.Message),  // Preserve warnings
 
             _ => (true, IssueSeverity.Warning, "Unknown binding strength")
         };

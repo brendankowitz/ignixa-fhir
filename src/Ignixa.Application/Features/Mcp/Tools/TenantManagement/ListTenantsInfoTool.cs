@@ -53,9 +53,9 @@ Returns only active, non-system tenants that can be accessed via API.")]
             Id = t.TenantId,
             Name = t.DisplayName,
             FhirVersion = t.FhirVersion,
-            ValidationTier = t.ValidationTier,
+            ValidationTier = t.ValidationDepth,
             IsActive = t.IsActive,
-            Description = $"Tenant {t.TenantId}: {t.DisplayName} (FHIR {t.FhirVersion}, Validation: {t.ValidationTier})"
+            Description = $"Tenant {t.TenantId}: {t.DisplayName} (FHIR {t.FhirVersion}, Validation: {t.ValidationDepth})"
         }).ToList();
 
         return new ListTenantsInfoResultDto

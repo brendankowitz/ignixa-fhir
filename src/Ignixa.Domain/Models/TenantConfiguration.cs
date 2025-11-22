@@ -65,13 +65,13 @@ public record TenantConfiguration
     public TenantSearchConfiguration Search { get; init; } = new();
 
     /// <summary>
-    /// Validation tier for this tenant (None, Fast, Spec, Profile).
+    /// Validation depth for this tenant (Minimal, Spec, Full).
     /// Defaults to Spec (recommended for production).
-    /// Fast = Universal checks only (less than 25ms).
-    /// Spec = Fast + Schema checks (less than 200ms).
-    /// Profile = Spec + Advanced profile validation (less than 1000ms).
+    /// Minimal = Universal checks only (less than 25ms).
+    /// Spec = Minimal + Schema checks + required terminology (less than 200ms).
+    /// Full = Spec + Advanced profile validation + extensible terminology (less than 1000ms).
     /// </summary>
-    public string ValidationTier { get; init; } = "Spec";
+    public string ValidationDepth { get; init; } = "Spec";
 
     /// <summary>
     /// Package preload configuration for this tenant.

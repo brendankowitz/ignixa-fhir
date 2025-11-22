@@ -6,6 +6,7 @@
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Ignixa.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
@@ -30,7 +31,7 @@ public class FhirValidatorIntegrationTests
         _schemaResolver = new CachedValidationSchemaResolver(innerResolver);
     }
 
-    private ValidationResult ValidateResource(string resourceJson, ValidationTier tier = ValidationTier.Spec)
+    private ValidationResult ValidateResource(string resourceJson, ValidationDepth depth = ValidationDepth.Spec)
     {
         var json = JsonNode.Parse(resourceJson);
         var sourceNode = JsonNodeSourceNode.Create(json!);
@@ -43,7 +44,7 @@ public class FhirValidatorIntegrationTests
             throw new InvalidOperationException($"Schema not found for {resourceType}");
         }
 
-        var settings = new ValidationSettings { Tier = tier };
+        var settings = new ValidationSettings { Depth = depth };
         var state = new ValidationState();
         return schema.Validate(sourceNode, settings, state);
     }
@@ -58,7 +59,7 @@ public class FhirValidatorIntegrationTests
             ""resourceType"": ""Patient"",
             ""id"": ""example"",
             ""active"": true
-        }", ValidationTier.None);
+        }", ValidationDepth.Minimal);
 
         // Assert
         result.IsValid.Should().BeTrue();
@@ -73,7 +74,7 @@ public class FhirValidatorIntegrationTests
             ""resourceType"": ""Patient"",
             ""id"": ""invalid id with spaces"",
             ""active"": true
-        }", ValidationTier.Fast);
+        }", ValidationDepth.Minimal);
 
         // Assert - Fast tier runs universal checks (IdFormat)
         result.IsValid.Should().BeFalse();
@@ -87,7 +88,7 @@ public class FhirValidatorIntegrationTests
         var result = ValidateResource(@"{
             ""resourceType"": ""Observation"",
             ""id"": ""example""
-        }", ValidationTier.Spec);
+        }", ValidationDepth.Spec);
 
         // Assert - Spec tier runs universal + schema checks
         result.IsValid.Should().BeFalse();
@@ -235,7 +236,7 @@ public class FhirValidatorIntegrationTests
         var start = DateTime.UtcNow;
         for (int i = 0; i < 100; i++)
         {
-            var result = ValidateResource(json, ValidationTier.Fast);
+            var result = ValidateResource(json, ValidationDepth.Minimal);
             result.IsValid.Should().BeTrue();
         }
         var duration = DateTime.UtcNow - start;

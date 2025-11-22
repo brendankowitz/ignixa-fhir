@@ -28,7 +28,7 @@ public class TenantInfoDto
     public required string FhirVersion { get; init; }
 
     /// <summary>
-    /// Validation tier for this tenant (None, Fast, Spec, Profile).
+    /// Validation depth for this tenant (Minimal, Spec, Full).
     /// Indicates the level of FHIR validation applied to resources.
     /// </summary>
     public required string ValidationTier { get; init; }

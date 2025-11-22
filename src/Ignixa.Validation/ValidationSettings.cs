@@ -14,9 +14,9 @@ namespace Ignixa.Validation;
 public class ValidationSettings
 {
     /// <summary>
-    /// Gets or sets the validation tier to execute (Fast/Spec/Profile).
+    /// Gets or sets the validation depth to execute (Minimal/Spec/Full).
     /// </summary>
-    public ValidationTier Tier { get; set; } = ValidationTier.Spec;
+    public ValidationDepth Depth { get; set; } = ValidationDepth.Spec;
 
     /// <summary>
     /// Gets or sets a value indicating whether terminology validation should be performed.
@@ -35,35 +35,13 @@ public class ValidationSettings
     public ITerminologyService? TerminologyService { get; set; }
 
     /// <summary>
-    /// Validation mode controlling terminology binding depth (Minimal, Normal, Full).
+    /// Unified depth (alias for backward compatibility).
     /// </summary>
-    public ValidationMode ValidationMode { get; set; } = ValidationMode.Normal;
-}
-
-/// <summary>
-/// Validation tier levels.
-/// </summary>
-public enum ValidationTier
-{
-    /// <summary>
-    /// No validation (skip validation).
-    /// </summary>
-    None = 0,
-
-    /// <summary>
-    /// Fast validation: JSON structure + required fields (&lt;25ms).
-    /// </summary>
-    Fast = 1,
-
-    /// <summary>
-    /// Spec validation: + Cardinality, types, FHIRPath invariants (&lt;200ms).
-    /// </summary>
-    Spec = 2,
-
-    /// <summary>
-    /// Profile validation: + Custom profiles, slicing, terminology (&lt;1000ms).
-    /// </summary>
-    Profile = 3
+    public ValidationDepth ValidationDepth
+    {
+        get => Depth;
+        set => Depth = value;
+    }
 }
 
 /// <summary>

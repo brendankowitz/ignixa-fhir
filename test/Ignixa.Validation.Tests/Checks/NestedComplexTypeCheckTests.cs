@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -48,7 +49,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build AuditEvent schema (includes nested type checks for agent, source, entity)
@@ -83,7 +84,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build AuditEvent schema (includes nested type checks)
@@ -129,7 +130,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build AuditEvent schema
@@ -166,7 +167,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build Patient schema (includes nested type checks for address, name, contact, etc.)
@@ -202,7 +203,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build Patient schema
@@ -249,7 +250,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build Observation schema
@@ -278,7 +279,7 @@ public class NestedComplexTypeCheckTests
         }");
 
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Build AuditEvent schema

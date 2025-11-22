@@ -404,14 +404,14 @@ public static class FhirEndpoints
         // Extract deferred write coordinator from IFhirRequestContext (works for both regular and bundle requests)
         var coordinator = fhirContextAccessor.RequestContext?.DeferredWriteCoordinator;
 
-        // Extract validation tier preference from Prefer header, or from HttpContext.Items if in bundle
+        // Extract validation depth preference from Prefer header, or from HttpContext.Items if in bundle
         var validationOverride = PreferHeaderParser.TryParseValidationLevel(context.Request.Headers, logger);
         if (!validationOverride.HasValue &&
-            context.Items.TryGetValue("ValidationTierOverride", out var contextOverride) &&
-            contextOverride is ValidationTier bundleValidationTier)
+            context.Items.TryGetValue("ValidationDepthOverride", out var contextOverride) &&
+            contextOverride is ValidationDepth bundleValidationDepth)
         {
-            validationOverride = bundleValidationTier;
-            logger.LogDebug("Using bundle validation tier override: {ValidationTier}", validationOverride.Value);
+            validationOverride = bundleValidationDepth;
+            logger.LogDebug("Using bundle validation depth override: {ValidationDepth}", validationOverride.Value);
         }
 
         // Extract return preference from Prefer header (RFC 7240)
@@ -786,14 +786,14 @@ public static class FhirEndpoints
         // Extract deferred write coordinator from IFhirRequestContext (works for both regular and bundle requests)
         var coordinator = fhirContextAccessor.RequestContext?.DeferredWriteCoordinator;
 
-        // Extract validation tier preference from Prefer header, or from HttpContext.Items if in bundle
+        // Extract validation depth preference from Prefer header, or from HttpContext.Items if in bundle
         var validationOverride = PreferHeaderParser.TryParseValidationLevel(context.Request.Headers, logger);
         if (!validationOverride.HasValue &&
-            context.Items.TryGetValue("ValidationTierOverride", out var contextOverride) &&
-            contextOverride is ValidationTier bundleValidationTier)
+            context.Items.TryGetValue("ValidationDepthOverride", out var contextOverride) &&
+            contextOverride is ValidationDepth bundleValidationDepth)
         {
-            validationOverride = bundleValidationTier;
-            logger.LogDebug("Using bundle validation tier override: {ValidationTier}", validationOverride.Value);
+            validationOverride = bundleValidationDepth;
+            logger.LogDebug("Using bundle validation depth override: {ValidationDepth}", validationOverride.Value);
         }
 
         // Extract return preference from Prefer header (RFC 7240)
@@ -899,8 +899,8 @@ public static class FhirEndpoints
         var validationOverride = PreferHeaderParser.TryParseValidationLevel(context.Request.Headers, logger);
         if (validationOverride.HasValue)
         {
-            context.Items["ValidationTierOverride"] = validationOverride;
-            logger.LogInformation("Bundle validation preference set to {ValidationTier}", validationOverride.Value);
+            context.Items["ValidationDepthOverride"] = validationOverride;
+            logger.LogInformation("Bundle validation preference set to {ValidationDepth}", validationOverride.Value);
         }
 
         // ALWAYS parse with streaming parser - returns metadata + streaming entries

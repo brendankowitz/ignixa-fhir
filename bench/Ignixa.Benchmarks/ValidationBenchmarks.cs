@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using BenchmarkDotNet.Attributes;
 using Ignixa.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;
@@ -108,8 +109,8 @@ public class ValidationBenchmarks
         _patientSchema = schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")!;
         _observationSchema = schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Observation")!;
 
-        _fastSettings = new ValidationSettings { Tier = ValidationTier.Fast };
-        _specSettings = new ValidationSettings { Tier = ValidationTier.Spec };
+        _fastSettings = new ValidationSettings { Depth = ValidationDepth.Minimal };
+        _specSettings = new ValidationSettings { Depth = ValidationDepth.Spec };
         _state = new ValidationState();
     }
 

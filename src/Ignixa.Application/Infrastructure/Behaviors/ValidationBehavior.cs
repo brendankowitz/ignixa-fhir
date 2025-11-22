@@ -17,7 +17,7 @@ namespace Ignixa.Application.Infrastructure.Behaviors;
 /// <summary>
 /// Medino pipeline behavior that validates FHIR resources before CREATE/UPDATE operations.
 /// Runs AFTER CapabilityEnforcementBehavior to ensure validation only occurs for permitted operations.
-/// Uses tenant-configured validation tier (None/Fast/Spec/Profile) and FHIR version from HTTP headers.
+/// Uses tenant-configured validation depth (Minimal/Spec/Full) and FHIR version from HTTP headers.
 /// </summary>
 public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceCommand, ResourceKey>
 {
@@ -50,34 +50,34 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
         // Use FHIR version from context
         var fhirVersionEnum = context.FhirVersion;
 
-        // Get tenant configuration from context to determine validation tier
+        // Get tenant configuration from context to determine validation depth
         var currentTenantConfig = context.TenantConfiguration;
 
-        // Determine validation tier: Prefer header override takes precedence, then tenant config, then default to Spec
-        var validationTier = request.ValidationTierOverride
-            ?? ParseValidationTier(currentTenantConfig?.ValidationTier ?? "Spec");
+        // Determine validation depth: Prefer header override takes precedence, then tenant config, then default to Spec
+        var validationDepth = request.ValidationDepthOverride
+            ?? ParseValidationDepth(currentTenantConfig?.ValidationDepth ?? "Spec");
 
         // Log if header overrode tenant config
-        if (request.ValidationTierOverride.HasValue && currentTenantConfig != null)
+        if (request.ValidationDepthOverride.HasValue && currentTenantConfig != null)
         {
-            var tenantTier = ParseValidationTier(currentTenantConfig.ValidationTier);
-            if (request.ValidationTierOverride.Value != tenantTier)
+            var tenantDepth = ParseValidationDepth(currentTenantConfig.ValidationDepth);
+            if (request.ValidationDepthOverride.Value != tenantDepth)
             {
                 _logger.LogInformation(
-                    "Validation tier overridden by Prefer header: {HeaderTier} (tenant default: {TenantTier})",
-                    request.ValidationTierOverride.Value,
-                    tenantTier);
+                    "Validation depth overridden by Prefer header: {HeaderDepth} (tenant default: {TenantDepth})",
+                    request.ValidationDepthOverride.Value,
+                    tenantDepth);
             }
         }
 
-        // VALIDATE INCOMING RESOURCE using tier-aware ValidationSchema
-        if (validationTier != ValidationTier.None)
+        // VALIDATE INCOMING RESOURCE using depth-aware ValidationSchema
+        if (validationDepth != ValidationDepth.Minimal || validationDepth == ValidationDepth.Spec || validationDepth == ValidationDepth.Full)
         {
             _logger.LogDebug(
-                "Validating incoming resource {ResourceType}/{Id} with tier {Tier} (FHIR {Version})",
+                "Validating incoming resource {ResourceType}/{Id} with depth {Depth} (FHIR {Version})",
                 request.ResourceType,
                 request.Id,
-                validationTier,
+                validationDepth,
                 fhirVersionEnum);
 
             // Get version-specific schema resolver from factory
@@ -90,7 +90,7 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
                 var sourceNode = request.JsonNode.ToSourceNode(); // Use cached ISourceNode
                 var settings = new ValidationSettings
                 {
-                    Tier = validationTier,
+                    Depth = validationDepth,
                     TerminologyService = _terminologyService
                 };
                 var state = new ValidationState();
@@ -127,7 +127,7 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
         else
         {
             _logger.LogDebug(
-                "Validation skipped for {ResourceType}/{Id} (tier: None)",
+                "Validation running with minimal depth for {ResourceType}/{Id}",
                 request.ResourceType,
                 request.Id);
         }
@@ -137,19 +137,22 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
     }
 
     /// <summary>
-    /// Parses a validation tier string from tenant configuration.
+    /// Parses a validation depth string from tenant configuration.
     /// </summary>
-    /// <param name="tierString">The validation tier string (None, Fast, Spec, Profile).</param>
-    /// <returns>The parsed ValidationTier enum value.</returns>
-    private static ValidationTier ParseValidationTier(string tierString)
+    /// <param name="depthString">The validation depth string (Minimal, Spec, Full, or legacy None/Fast/Profile).</param>
+    /// <returns>The parsed ValidationDepth enum value.</returns>
+    private static ValidationDepth ParseValidationDepth(string depthString)
     {
-        return tierString switch
+        return depthString switch
         {
-            "None" => ValidationTier.None,
-            "Fast" => ValidationTier.Fast,
-            "Spec" => ValidationTier.Spec,
-            "Profile" => ValidationTier.Profile,
-            _ => ValidationTier.Spec // Default to Spec if unknown
+            "Minimal" => ValidationDepth.Minimal,
+            "Spec" => ValidationDepth.Spec,
+            "Full" => ValidationDepth.Full,
+            // Backward compatibility with old names
+            "None" => ValidationDepth.Minimal,
+            "Fast" => ValidationDepth.Minimal,
+            "Profile" => ValidationDepth.Full,
+            _ => ValidationDepth.Spec // Default to Spec if unknown
         };
     }
 }

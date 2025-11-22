@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Validation;
+using Ignixa.Domain.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -38,9 +38,9 @@ public enum ReturnPreference
 /// <summary>
 /// Parses and validates the Prefer header for FHIR validation level preferences and return preferences.
 /// Supports:
-///   - Prefer: validation=none|minimum|spec|full (FHIR profile validation)
+///   - Prefer: validation=minimal|spec|full (FHIR profile validation)
 ///   - Prefer: return=representation|minimal|OperationOutcome (RFC 7240)
-/// Maps validation to internal ValidationTier: None|Fast|Spec|Profile
+/// Maps validation to internal ValidationDepth: Minimal|Spec|Full
 /// </summary>
 public static class PreferHeaderParser
 {
@@ -49,17 +49,17 @@ public static class PreferHeaderParser
     /// </summary>
     /// <param name="headers">HTTP request headers.</param>
     /// <param name="logger">Optional logger for validation warnings.</param>
-    /// <returns>Parsed ValidationTier, or null if header not present or invalid.</returns>
+    /// <returns>Parsed ValidationDepth, or null if header not present or invalid.</returns>
     /// <remarks>
-    /// Supported format: Prefer: validation=none|minimum|spec|full
+    /// Supported format: Prefer: validation=minimal|spec|full
     /// Examples:
-    ///   - Prefer: validation=spec → ValidationTier.Spec
-    ///   - Prefer: validation=full → ValidationTier.Profile
-    ///   - Prefer: validation=minimum → ValidationTier.Fast
-    ///   - Prefer: validation=none → ValidationTier.None
+    ///   - Prefer: validation=minimal → ValidationDepth.Minimal
+    ///   - Prefer: validation=spec → ValidationDepth.Spec
+    ///   - Prefer: validation=full → ValidationDepth.Full
     /// Also supports multiple preferences: Prefer: return=representation, validation=spec
+    /// Backward compatibility: "none"/"minimum" map to Minimal
     /// </remarks>
-    public static ValidationTier? TryParseValidationLevel(IHeaderDictionary headers, ILogger? logger = null)
+    public static ValidationDepth? TryParseValidationLevel(IHeaderDictionary headers, ILogger? logger = null)
     {
         if (!headers.TryGetValue("Prefer", out var preferHeader))
         {
@@ -132,16 +132,15 @@ public static class PreferHeaderParser
     /// <summary>
     /// Converts the validation level to a response header value.
     /// </summary>
-    /// <param name="tier">The validation tier that was applied.</param>
+    /// <param name="depth">The validation depth that was applied.</param>
     /// <returns>Header value for Preference-Applied (e.g., "validation=spec").</returns>
-    public static string ToPreferenceAppliedHeader(ValidationTier tier)
+    public static string ToPreferenceAppliedHeader(ValidationDepth depth)
     {
-        return tier switch
+        return depth switch
         {
-            ValidationTier.None => "validation=none",
-            ValidationTier.Fast => "validation=minimum",
-            ValidationTier.Spec => "validation=spec",
-            ValidationTier.Profile => "validation=full",
+            ValidationDepth.Minimal => "validation=minimal",
+            ValidationDepth.Spec => "validation=spec",
+            ValidationDepth.Full => "validation=full",
             _ => "validation=spec"
         };
     }
@@ -165,7 +164,7 @@ public static class PreferHeaderParser
     /// <summary>
     /// Parses a single validation level value.
     /// </summary>
-    private static ValidationTier? ParseValidationLevelValue(string value, ILogger? logger)
+    private static ValidationDepth? ParseValidationLevelValue(string value, ILogger? logger)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -175,11 +174,13 @@ public static class PreferHeaderParser
 
         var result = value.ToUpperInvariant() switch
         {
-            "NONE" => ValidationTier.None,
-            "MINIMUM" => ValidationTier.Fast,
-            "SPEC" => ValidationTier.Spec,
-            "FULL" => ValidationTier.Profile,
-            _ => (ValidationTier?)null
+            "MINIMAL" => ValidationDepth.Minimal,
+            "SPEC" => ValidationDepth.Spec,
+            "FULL" => ValidationDepth.Full,
+            // Backward compatibility
+            "NONE" => ValidationDepth.Minimal,
+            "MINIMUM" => ValidationDepth.Minimal,
+            _ => (ValidationDepth?)null
         };
 
         if (result is null)

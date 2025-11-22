@@ -5,11 +5,13 @@
 
 using FluentAssertions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
 using NSubstitute;
+using System.IO;
 using System.Text;
 using Xunit;
 
@@ -18,7 +20,7 @@ namespace Ignixa.Validation.Tests;
 public class BindingCheckTests
 {
     [Fact]
-    public async Task ExtensibleBinding_NormalMode_SkipsWarning()
+    public async Task ExtensibleBinding_SpecDepth_SkipsWarning()
     {
         // Arrange
         var terminology = Substitute.For<ITerminologyService>();
@@ -38,7 +40,7 @@ public class BindingCheckTests
                 SuggestedDisplay: null));
 
         var bindingCheck = new BindingCheck(
-            elementPath: "Patient.gender",
+            elementPath: "gender",
             valueSetUrl: "http://example.org/vs",
             bindingStrength: "Extensible",
             terminologyService: terminology);
@@ -53,7 +55,7 @@ public class BindingCheckTests
 
         var settings = new ValidationSettings
         {
-            ValidationMode = ValidationMode.Normal,
+            Depth = ValidationDepth.Spec,
             TerminologyService = terminology
         };
 
@@ -61,12 +63,12 @@ public class BindingCheckTests
         var result = bindingCheck.Validate(node, settings, new ValidationState());
 
         // Assert
-        result.IsValid.Should().BeTrue("extensible bindings are skipped in Normal mode");
+        result.IsValid.Should().BeTrue("extensible bindings are skipped in Spec depth");
         result.Issues.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task ExtensibleBinding_FullMode_ReturnsWarning()
+    public async Task ExtensibleBinding_FullDepth_ReturnsWarning()
     {
         // Arrange
         var terminology = Substitute.For<ITerminologyService>();
@@ -86,7 +88,7 @@ public class BindingCheckTests
                 SuggestedDisplay: null));
 
         var bindingCheck = new BindingCheck(
-            elementPath: "Patient.gender",
+            elementPath: "gender",
             valueSetUrl: "http://example.org/vs",
             bindingStrength: "Extensible",
             terminologyService: terminology);
@@ -101,7 +103,7 @@ public class BindingCheckTests
 
         var settings = new ValidationSettings
         {
-            ValidationMode = ValidationMode.Full,
+            Depth = ValidationDepth.Full,
             TerminologyService = terminology
         };
 
@@ -109,7 +111,7 @@ public class BindingCheckTests
         var result = bindingCheck.Validate(node, settings, new ValidationState());
 
         // Assert
-        result.IsValid.Should().BeTrue("extensible bindings in full mode should warn, not fail");
+        result.IsValid.Should().BeTrue("extensible bindings in Full depth should warn, not fail");
         result.Issues.Should().ContainSingle(i => i.Severity == IssueSeverity.Warning);
     }
 }

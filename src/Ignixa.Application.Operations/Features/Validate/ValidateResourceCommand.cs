@@ -17,7 +17,7 @@ namespace Ignixa.Application.Operations.Features.Validate;
 /// <param name="TenantId">The tenant ID for multi-tenant isolation.</param>
 /// <param name="ResourceType">The FHIR resource type being validated (or null for system-level $validate).</param>
 /// <param name="JsonNode">The resource JSON to validate.</param>
-/// <param name="ValidationMode">Validation depth: Minimal (structure only), Normal (+ required bindings), Full (+ extensible bindings + display).</param>
+/// <param name="ValidationDepth">Validation depth: Minimal (structure only), Spec (+ required bindings), Full (+ extensible bindings + display).</param>
 /// <param name="Mode">Optional validation mode: 'create' | 'update' | 'delete' (default: no mode).</param>
 /// <param name="Profile">Optional profile URL to validate against specific profile.</param>
 /// <param name="InstanceId">Optional instance ID for instance-level validation (required for update/delete modes).</param>
@@ -26,7 +26,7 @@ public record ValidateResourceCommand(
     int TenantId,
     string? ResourceType,
     ResourceJsonNode JsonNode,
-    ValidationMode ValidationMode = ValidationMode.Minimal,
+    ValidationDepth ValidationDepth = ValidationDepth.Minimal,
     string? Mode = null,
     string? Profile = null,
     string? InstanceId = null,

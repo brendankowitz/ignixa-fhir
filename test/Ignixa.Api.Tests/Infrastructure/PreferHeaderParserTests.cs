@@ -5,6 +5,7 @@
 
 using FluentAssertions;
 using Ignixa.Api.Infrastructure;
+using Ignixa.Domain.Models;
 using Ignixa.Validation;
 using Microsoft.AspNetCore.Http;
 using Xunit;
@@ -20,7 +21,7 @@ public class PreferHeaderParserTests
     #region Valid Preference Values
 
     [Fact]
-    public void GivenValidationNonePreference_WhenParsing_ThenReturnsNone()
+    public void GivenValidationNonePreference_WhenParsing_ThenReturnsMinimal()
     {
         // Arrange
         var headers = new HeaderDictionary { { "Prefer", "validation=none" } };
@@ -29,11 +30,11 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.None);
+        result.Should().Be(ValidationDepth.Minimal);
     }
 
     [Fact]
-    public void GivenValidationMinimumPreference_WhenParsing_ThenReturnsFast()
+    public void GivenValidationMinimumPreference_WhenParsing_ThenReturnsMinimal()
     {
         // Arrange
         var headers = new HeaderDictionary { { "Prefer", "validation=minimum" } };
@@ -42,7 +43,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.Fast);
+        result.Should().Be(ValidationDepth.Minimal);
     }
 
     [Fact]
@@ -55,11 +56,11 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.Spec);
+        result.Should().Be(ValidationDepth.Spec);
     }
 
     [Fact]
-    public void GivenValidationFullPreference_WhenParsing_ThenReturnsProfile()
+    public void GivenValidationFullPreference_WhenParsing_ThenReturnsFull()
     {
         // Arrange
         var headers = new HeaderDictionary { { "Prefer", "validation=full" } };
@@ -68,7 +69,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.Profile);
+        result.Should().Be(ValidationDepth.Full);
     }
 
     #endregion
@@ -76,7 +77,7 @@ public class PreferHeaderParserTests
     #region Case Insensitivity
 
     [Fact]
-    public void GivenUpperCaseValidationPreference_WhenParsing_ThenReturnsCorrectTier()
+    public void GivenUpperCaseValidationPreference_WhenParsing_ThenReturnsCorrectDepth()
     {
         // Arrange
         var headers = new HeaderDictionary { { "Prefer", "VALIDATION=SPEC" } };
@@ -85,11 +86,11 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.Spec);
+        result.Should().Be(ValidationDepth.Spec);
     }
 
     [Fact]
-    public void GivenMixedCaseValidationValue_WhenParsing_ThenReturnsCorrectTier()
+    public void GivenMixedCaseValidationValue_WhenParsing_ThenReturnsCorrectDepth()
     {
         // Arrange
         var headers = new HeaderDictionary { { "Prefer", "Validation=Full" } };
@@ -98,7 +99,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.Profile);
+        result.Should().Be(ValidationDepth.Full);
     }
 
     #endregion
@@ -115,7 +116,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.Spec);
+        result.Should().Be(ValidationDepth.Spec);
     }
 
     [Fact]
@@ -128,7 +129,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationTier.None);
+        result.Should().Be(ValidationDepth.Minimal);
     }
 
     #endregion
@@ -218,40 +219,30 @@ public class PreferHeaderParserTests
     #region Preference-Applied Header Generation
 
     [Fact]
-    public void GivenNoneTier_WhenConvertingToHeader_ThenReturnsValidationNone()
+    public void GivenMinimalDepth_WhenConvertingToHeader_ThenReturnsValidationMinimum()
     {
         // Act
-        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationTier.None);
+        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationDepth.Minimal);
 
         // Assert
-        result.Should().Be("validation=none");
+        result.Should().Be("validation=minimal");
     }
 
     [Fact]
-    public void GivenFastTier_WhenConvertingToHeader_ThenReturnsValidationMinimum()
+    public void GivenSpecDepth_WhenConvertingToHeader_ThenReturnsValidationSpec()
     {
         // Act
-        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationTier.Fast);
-
-        // Assert
-        result.Should().Be("validation=minimum");
-    }
-
-    [Fact]
-    public void GivenSpecTier_WhenConvertingToHeader_ThenReturnsValidationSpec()
-    {
-        // Act
-        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationTier.Spec);
+        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationDepth.Spec);
 
         // Assert
         result.Should().Be("validation=spec");
     }
 
     [Fact]
-    public void GivenProfileTier_WhenConvertingToHeader_ThenReturnsValidationFull()
+    public void GivenFullDepth_WhenConvertingToHeader_ThenReturnsValidationFull()
     {
         // Act
-        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationTier.Profile);
+        var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationDepth.Full);
 
         // Assert
         result.Should().Be("validation=full");

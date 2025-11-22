@@ -48,19 +48,19 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
 
-        // Get tenant configuration from context to determine validation tier
+        // Get tenant configuration from context to determine validation depth
         var currentTenantConfig = context.TenantConfiguration;
 
         // Use FHIR version from context (defaults to R4)
         var fhirVersionEnum = context.FhirVersion;
 
-        // Determine validation tier: Default to Spec tier for $validate operation
-        var validationTier = ParseValidationTier(currentTenantConfig?.ValidationTier ?? "Spec");
+        // Determine validation depth: Default to Spec depth for $validate operation
+        var validationDepth = ParseValidationDepth(currentTenantConfig?.ValidationDepth ?? "Spec");
 
         _logger.LogDebug(
-            "Validating resource with $validate operation (FHIR {Version}, Tier: {Tier})",
+            "Validating resource with $validate operation (FHIR {Version}, Depth: {Depth})",
             fhirVersionEnum,
-            validationTier);
+            validationDepth);
 
         var sourceNode = request.JsonNode.ToSourceNode();
         var issues = new List<object>();
@@ -87,7 +87,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 diagnostics = "Resource must contain a 'resourceType' field"
             });
         }
-        else if (validationTier != ValidationTier.None && sourceNode is not null)
+        else if (sourceNode is not null)
         {
             // Handle mode-specific validation logic (FHIR spec requirement)
             var normalizedMode = request.Mode?.ToUpperInvariant();
@@ -192,9 +192,8 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 {
                     var settings = new ValidationSettings
                     {
-                        Tier = validationTier,
-                        TerminologyService = _terminologyService,
-                        ValidationMode = request.ValidationMode
+                        Depth = validationDepth,
+                        TerminologyService = _terminologyService
                     };
                     var state = new ValidationState();
                     var validationResult = schema.Validate(sourceNode, settings, state);
@@ -415,15 +414,18 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
         return new ValidateResourceResult(operationOutcomeJson);
     }
 
-    private static ValidationTier ParseValidationTier(string? tier)
+    private static ValidationDepth ParseValidationDepth(string? depth)
     {
-        return tier?.ToUpperInvariant() switch
+        return depth?.ToUpperInvariant() switch
         {
-            "NONE" => ValidationTier.None,
-            "FAST" => ValidationTier.Fast,
-            "SPEC" => ValidationTier.Spec,
-            "PROFILE" => ValidationTier.Profile,
-            _ => ValidationTier.Spec // Default
+            "MINIMAL" => ValidationDepth.Minimal,
+            "SPEC" => ValidationDepth.Spec,
+            "FULL" => ValidationDepth.Full,
+            // Backward compatibility
+            "NONE" => ValidationDepth.Minimal,
+            "FAST" => ValidationDepth.Minimal,
+            "PROFILE" => ValidationDepth.Full,
+            _ => ValidationDepth.Spec // Default
         };
     }
 
@@ -468,18 +470,20 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
     }
 
     /// <summary>
-    /// Validates terminology bindings for common coded elements based on ValidationMode.
+    /// Validates terminology bindings for common coded elements based on ValidationDepth.
+    /// NOTE: This method is currently unused as terminology validation is integrated into the main schema validation.
+    /// Kept for reference in case separate terminology validation is needed in the future.
     /// </summary>
     private async Task<List<object>> ValidateTerminologyBindingsAsync(
         string resourceType,
         ResourceJsonNode resource,
-        ValidationMode validationMode,
+        ValidationDepth validationDepth,
         CancellationToken cancellationToken)
     {
         var issues = new List<object>();
 
         // Skip terminology validation for Minimal mode
-        if (validationMode == ValidationMode.Minimal)
+        if (validationDepth == ValidationDepth.Minimal)
         {
             return issues;
         }
@@ -489,8 +493,8 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
 
         foreach (var (elementPath, valueSetUrl, strength) in bindings)
         {
-            // Skip extensible bindings in Normal mode (only validate in Full mode)
-            if (validationMode == ValidationMode.Normal && strength == Ignixa.Validation.Abstractions.BindingStrength.Extensible)
+            // Skip extensible bindings in Spec mode (only validate in Full mode)
+            if (validationDepth == ValidationDepth.Spec && strength == Ignixa.Validation.Abstractions.BindingStrength.Extensible)
             {
                 continue;
             }

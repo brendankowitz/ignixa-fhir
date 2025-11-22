@@ -9,6 +9,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Ignixa.DataLayer.SqlEntityFramework.Entities.Terminology;
+using Ignixa.Validation.Abstractions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -1227,7 +1228,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             bool MatchesFilter(Entities.Terminology.TermConceptEntity concept, JsonObject filterObj)
             {
                 var property = filterObj["property"]?.GetValue<string>();
-                var op = filterObj["op"]?.GetValue<string>()?.ToLowerInvariant();
+                var op = filterObj["op"]?.GetValue<string>()?.ToUpperInvariant();
                 var value = filterObj["value"]?.GetValue<string>();
 
                 if (string.IsNullOrEmpty(property) || string.IsNullOrEmpty(op) || string.IsNullOrEmpty(value))
@@ -1243,17 +1244,17 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                         return op switch
                         {
                             "=" => concept.Code == value,
-                            "in" => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(concept.Code),
-                            "regex" => RegexMatch(concept.Code),
-                            "is-a" or "descendent-of" => IsDescendantOfCode(concept, value, conceptById),
+                            "IN" => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(concept.Code),
+                            "REGEX" => RegexMatch(concept.Code),
+                            "IS-A" or "DESCENDENT-OF" => IsDescendantOfCode(concept, value, conceptById),
                             _ => true
                         };
                     case "display":
                         return op switch
                         {
                             "=" => string.Equals(concept.Display, value, StringComparison.Ordinal),
-                            "contains" => concept.Display != null && concept.Display.Contains(value, StringComparison.OrdinalIgnoreCase),
-                            "regex" => RegexMatch(concept.Display),
+                            "CONTAINS" => concept.Display != null && concept.Display.Contains(value, StringComparison.OrdinalIgnoreCase),
+                            "REGEX" => RegexMatch(concept.Display),
                             _ => true
                         };
                     default:
@@ -1265,8 +1266,8 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                             (op switch
                             {
                                 "=" => string.Equals(p.Value, value, StringComparison.Ordinal),
-                                "regex" => RegexMatch(p.Value),
-                                "in" => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(p.Value),
+                                "REGEX" => RegexMatch(p.Value),
+                                "IN" => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(p.Value),
                                 _ => false
                             }));
                         return matchValue == true;
@@ -1743,5 +1744,73 @@ public class SqlCodeSystemImporter : ITerminologyImporter
         public required string Name { get; init; }
         public string? SourceCanonical { get; init; }
         public string? TargetCanonical { get; init; }
+    }
+
+    /// <summary>
+    /// Parses PropertiesJson string into PropertyValue and Designation collections.
+    /// Format: { "property": [...], "designation": [...] }
+    /// </summary>
+    private (IReadOnlyList<PropertyValue>?, IReadOnlyList<Designation>?) ParsePropertiesJson(string? propertiesJson)
+    {
+        if (string.IsNullOrEmpty(propertiesJson))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var json = JsonNode.Parse(propertiesJson)?.AsObject();
+            if (json == null)
+            {
+                return (null, null);
+            }
+
+            // Parse properties
+            List<PropertyValue>? properties = null;
+            var propertyArray = json["property"]?.AsArray();
+            if (propertyArray != null && propertyArray.Count > 0)
+            {
+                properties = new List<PropertyValue>();
+                foreach (var prop in propertyArray)
+                {
+                    var code = prop?["code"]?.GetValue<string>();
+                    var value = prop?["valueString"]?.GetValue<string>()
+                        ?? prop?["valueCode"]?.GetValue<string>()
+                        ?? prop?["valueCoding"]?["code"]?.GetValue<string>()
+                        ?? prop?["valueBoolean"]?.GetValue<bool>().ToString();
+
+                    if (code != null)
+                    {
+                        properties.Add(new PropertyValue(code, value));
+                    }
+                }
+            }
+
+            // Parse designations
+            List<Designation>? designations = null;
+            var designationArray = json["designation"]?.AsArray();
+            if (designationArray != null && designationArray.Count > 0)
+            {
+                designations = new List<Designation>();
+                foreach (var desig in designationArray)
+                {
+                    var language = desig?["language"]?.GetValue<string>();
+                    var use = desig?["use"]?["code"]?.GetValue<string>();
+                    var value = desig?["value"]?.GetValue<string>();
+
+                    if (value != null)
+                    {
+                        designations.Add(new Designation(language, use, value));
+                    }
+                }
+            }
+
+            return (properties, designations);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to parse PropertiesJson: {ex.Message}");
+            return (null, null);
+        }
     }
 }

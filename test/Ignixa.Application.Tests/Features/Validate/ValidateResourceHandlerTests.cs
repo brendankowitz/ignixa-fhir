@@ -162,7 +162,7 @@ public class ValidateResourceHandlerTests
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "R4",
-            ValidationTier = "None"
+            ValidationDepth = "Minimal"
         };
 
         // Mock FHIR request context with tenant configuration
@@ -201,7 +201,7 @@ public class ValidateResourceHandlerTests
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "R4",
-            ValidationTier = "Fast"
+            ValidationDepth = "Minimal"
         };
         // Mock FHIR request context with tenant configuration
         var fhirContext = Substitute.For<IFhirRequestContext>();
@@ -240,7 +240,7 @@ public class ValidateResourceHandlerTests
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "R4",
-            ValidationTier = "Spec"
+            ValidationDepth = "Spec"
         };
         // Mock FHIR request context with tenant configuration
         var fhirContext = Substitute.For<IFhirRequestContext>();
@@ -383,7 +383,7 @@ public class ValidateResourceHandlerTests
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "R4",
-            ValidationTier = "Spec"
+            ValidationDepth = "Spec"
         };
         // Mock FHIR request context with tenant configuration
         var fhirContext = Substitute.For<IFhirRequestContext>();
@@ -423,7 +423,7 @@ public class ValidateResourceHandlerTests
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "R5",
-            ValidationTier = "Spec"
+            ValidationDepth = "Spec"
         };
         // Mock FHIR request context with tenant configuration
         var fhirContext = Substitute.For<IFhirRequestContext>();
@@ -515,7 +515,7 @@ public class ValidateResourceHandlerTests
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "R4",
-            ValidationTier = "Spec"
+            ValidationDepth = "Spec"
         };
         // Mock FHIR request context with tenant configuration
         var fhirContext = Substitute.For<IFhirRequestContext>();

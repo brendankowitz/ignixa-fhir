@@ -12,8 +12,7 @@ namespace Ignixa.Validation.Checks;
 /// <summary>
 /// Validates CodeableConcept and Coding elements against ValueSet bindings.
 /// Uses ITerminologyService for code validation with graceful degradation.
-/// Honors ValidationMode: Minimal (skip), Normal (required only), Full (required + extensible + display).
-/// Tier 3 validator - used in Profile validation tier.
+/// Honors ValidationDepth: Minimal (skip), Spec (required only), Full (required + extensible + display).
 /// </summary>
 /// <remarks>
 /// FHIR StructureDefinitions specify ValueSet bindings for coded elements.
@@ -59,7 +58,7 @@ public class BindingCheck : IValidationCheck
     public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
     {
         // Skip terminology validation if configured
-        if (settings.SkipTerminologyValidation || settings.ValidationMode == ValidationMode.Minimal)
+        if (settings.SkipTerminologyValidation || settings.Depth == ValidationDepth.Minimal)
         {
             return ValidationResult.Success();
         }
@@ -128,7 +127,7 @@ public class BindingCheck : IValidationCheck
             var codeValue = node.Text;
             if (!string.IsNullOrEmpty(codeValue))
             {
-                return await ValidateCode(null, codeValue, location, settings).ConfigureAwait(false);
+                return await ValidateCode(null, codeValue, null, location, settings).ConfigureAwait(false);
             }
         }
 
@@ -207,8 +206,8 @@ public class BindingCheck : IValidationCheck
     {
         var strengthEnum = ParseStrength(_bindingStrength);
 
-        // Skip if validation mode is Normal and binding is not required
-        if (settings.ValidationMode == ValidationMode.Normal &&
+        // Skip if validation depth is Spec and binding is not required
+        if (settings.Depth == ValidationDepth.Spec &&
             strengthEnum is BindingStrength.Extensible or BindingStrength.Preferred or BindingStrength.Example)
         {
             return ValidationResult.Success();
@@ -258,10 +257,10 @@ public class BindingCheck : IValidationCheck
                     issues: new[]
                     {
                         new ValidationIssue(
-                            IssueSeverity.Warning,
-                            "terminology-unavailable",
+                            result.Severity, // Use the actual severity from the terminology result
+                            "terminology-validation-warning", // Use a generic code as BindingValidationResult doesn't have one
                             location,
-                            result.Message ?? "Terminology validation unavailable")
+                            result.Message ?? "Terminology validation unavailable") // Use original message or fallback
                     });
             }
 
@@ -289,12 +288,12 @@ public class BindingCheck : IValidationCheck
     }
 
     private static BindingStrength ParseStrength(string strength) =>
-        strength?.ToLowerInvariant() switch
+        strength?.ToUpperInvariant() switch
         {
-            "required" => BindingStrength.Required,
-            "extensible" => BindingStrength.Extensible,
-            "preferred" => BindingStrength.Preferred,
-            "example" => BindingStrength.Example,
+            "REQUIRED" => BindingStrength.Required,
+            "EXTENSIBLE" => BindingStrength.Extensible,
+            "PREFERRED" => BindingStrength.Preferred,
+            "EXAMPLE" => BindingStrength.Example,
             _ => BindingStrength.Example
         };
 }

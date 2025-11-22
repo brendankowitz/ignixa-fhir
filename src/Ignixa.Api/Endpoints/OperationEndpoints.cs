@@ -301,16 +301,16 @@ public static class OperationEndpoints
             }
         }
 
-        // Parse ValidationMode from Prefer header
+        // Parse ValidationDepth from Prefer header
         var preferHeader = context.Request.Headers["Prefer"].ToString();
-        var validationMode = ParseValidationModeFromPreferHeader(preferHeader);
+        var validationMode = ParseValidationDepthFromPreferHeader(preferHeader);
 
         // Create validation command
         var command = new ValidateResourceCommand(
             tenantId,
             resourceType,
             jsonNode,
-            ValidationMode: validationMode,
+            ValidationDepth: validationMode,
             Mode: mode,
             Profile: profile,
             InstanceId: instanceId);
@@ -323,35 +323,36 @@ public static class OperationEndpoints
     }
 
     /// <summary>
-    /// Parses ValidationMode from Prefer header.
-    /// Expects: Prefer: handling=strict, mode=minimal|normal|full
-    /// Defaults to Normal if not specified or invalid.
+    /// Parses ValidationDepth from Prefer header.
+    /// Expects: Prefer: handling=strict, mode=minimal|spec|full
+    /// Defaults to Spec if not specified or invalid.
     /// </summary>
-    private static ValidationMode ParseValidationModeFromPreferHeader(string? preferHeader)
+    private static ValidationDepth ParseValidationDepthFromPreferHeader(string? preferHeader)
     {
         if (string.IsNullOrWhiteSpace(preferHeader))
         {
-            return ValidationMode.Normal; // Default to Normal per FHIR spec
+            return ValidationDepth.Spec; // Default to Spec per FHIR spec
         }
 
-        // Parse "mode=minimal|normal|full" from Prefer header
+        // Parse "mode=minimal|spec|full" from Prefer header
         // Example: "handling=strict, mode=full" → Full
         var parts = preferHeader.Split(',', StringSplitOptions.TrimEntries);
         var modePart = parts.FirstOrDefault(p => p.StartsWith("mode=", StringComparison.OrdinalIgnoreCase));
 
         if (modePart == null)
         {
-            return ValidationMode.Normal;
+            return ValidationDepth.Spec;
         }
 
         var modeValue = modePart.Substring(5).Trim(); // Remove "mode=" prefix
 
         return modeValue.ToUpperInvariant() switch
         {
-            "MINIMAL" => ValidationMode.Minimal,
-            "NORMAL" => ValidationMode.Normal,
-            "FULL" => ValidationMode.Full,
-            _ => ValidationMode.Normal // Unknown value, default to Normal
+            "MINIMAL" => ValidationDepth.Minimal,
+            "SPEC" => ValidationDepth.Spec,
+            "NORMAL" => ValidationDepth.Spec, // Backward compatibility
+            "FULL" => ValidationDepth.Full,
+            _ => ValidationDepth.Spec // Unknown value, default to Spec
         };
     }
 }

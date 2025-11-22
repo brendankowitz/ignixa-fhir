@@ -23,7 +23,7 @@ namespace Ignixa.Application.Features.Resource;
 /// <param name="HttpMethod">The HTTP method used (POST or PUT). POST means CREATE (always new resource), PUT means UPSERT (create or update).</param>
 /// <param name="Coordinator">Optional deferred write coordinator for bundle operations. When provided, the handler queues the write for batch processing. When null, the handler writes immediately.</param>
 /// <param name="IfMatch">Optional ETag for optimistic concurrency control. If specified, update only succeeds if resource version matches. Format: version ID (e.g., "5"), not weak ETag format.</param>
-/// <param name="ValidationTierOverride">Optional validation tier override from Prefer header. When provided, overrides tenant configuration. Null means use tenant default.</param>
+/// <param name="ValidationDepthOverride">Optional validation depth override from Prefer header. When provided, overrides tenant configuration. Null means use tenant default.</param>
 public record CreateOrUpdateResourceCommand(
     string ResourceType,
     string Id,
@@ -31,7 +31,7 @@ public record CreateOrUpdateResourceCommand(
     HttpMethod HttpMethod,
     DeferredWriteCoordinator? Coordinator = null,
     string? IfMatch = null,
-    ValidationTier? ValidationTierOverride = null) : IRequest<UpdateResult>, IRequireCapability
+    ValidationDepth? ValidationDepthOverride = null) : IRequest<UpdateResult>, IRequireCapability
 {
     /// <summary>
     /// Returns FHIRPath expression to validate update capability for this resource type.

@@ -4,6 +4,7 @@
 // </copyright>
 
 using Ignixa.Abstractions;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Validation.Abstractions;
 
@@ -11,22 +12,22 @@ namespace Ignixa.Validation.Abstractions;
 /// Represents a compiled validation schema for a FHIR resource type or profile.
 /// Contains pre-built validation checks derived from StructureDefinition metadata.
 /// Immutable after construction for thread-safe caching.
-/// Tier-aware: Organizes checks into Fast (universal), Spec (schema-driven), and Profile (advanced) tiers.
+/// Depth-aware: Organizes checks into Minimal (universal), Spec (schema-driven), and Full (advanced) tiers.
 /// </summary>
 public sealed class ValidationSchema
 {
-    private readonly IReadOnlyList<IValidationCheck> _universalChecks;  // Tier.Fast
-    private readonly IReadOnlyList<IValidationCheck> _specChecks;       // Tier.Spec
-    private readonly IReadOnlyList<IValidationCheck> _profileChecks;    // Tier.Profile
+    private readonly IReadOnlyList<IValidationCheck> _universalChecks;  // Depth.Minimal
+    private readonly IReadOnlyList<IValidationCheck> _specChecks;       // Depth.Spec
+    private readonly IReadOnlyList<IValidationCheck> _profileChecks;    // Depth.Full
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ValidationSchema"/> class.
     /// </summary>
     /// <param name="canonicalUrl">The canonical URL of the StructureDefinition.</param>
     /// <param name="resourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
-    /// <param name="universalChecks">Universal checks (Fast tier) - JsonStructure, IdFormat, Narrative.</param>
-    /// <param name="specChecks">Spec checks (Spec tier) - Cardinality, Type, Required, etc.</param>
-    /// <param name="profileChecks">Profile checks (Profile tier) - Slicing, advanced terminology, etc.</param>
+    /// <param name="universalChecks">Universal checks (Minimal depth) - JsonStructure, IdFormat, Narrative.</param>
+    /// <param name="specChecks">Spec checks (Spec depth) - Cardinality, Type, Required, etc.</param>
+    /// <param name="profileChecks">Profile checks (Full depth) - Slicing, advanced terminology, etc.</param>
     public ValidationSchema(
         string canonicalUrl,
         string resourceType,
@@ -59,28 +60,21 @@ public sealed class ValidationSchema
         _universalChecks.Concat(_specChecks).Concat(_profileChecks).ToList();
 
     /// <summary>
-    /// Validates a source node using tier-appropriate checks.
-    /// Tier.None: Skip validation.
-    /// Tier.Fast: Run universal checks only.
-    /// Tier.Spec: Run universal + spec checks.
-    /// Tier.Profile: Run universal + spec + profile checks.
+    /// Validates a source node using depth-appropriate checks.
+    /// Depth.Minimal: Run universal checks only.
+    /// Depth.Spec: Run universal + spec checks.
+    /// Depth.Full: Run universal + spec + profile checks.
     /// </summary>
     /// <param name="node">The source node to validate.</param>
-    /// <param name="settings">Validation settings (including tier).</param>
+    /// <param name="settings">Validation settings (including depth).</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>Combined validation result from all checks.</returns>
     public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
     {
-        // Tier.None: Skip validation
-        if (settings.Tier == ValidationTier.None)
-        {
-            return ValidationResult.Success();
-        }
-
         var results = new List<ValidationResult>();
 
-        // Tier.Fast+: Run universal checks
-        if (settings.Tier >= ValidationTier.Fast)
+        // Depth.Minimal+: Run universal checks
+        if (settings.Depth >= ValidationDepth.Minimal)
         {
             foreach (var check in _universalChecks)
             {
@@ -88,8 +82,8 @@ public sealed class ValidationSchema
             }
         }
 
-        // Tier.Spec+: Run spec checks
-        if (settings.Tier >= ValidationTier.Spec)
+        // Depth.Spec+: Run spec checks
+        if (settings.Depth >= ValidationDepth.Spec)
         {
             foreach (var check in _specChecks)
             {
@@ -97,8 +91,8 @@ public sealed class ValidationSchema
             }
         }
 
-        // Tier.Profile: Run profile checks
-        if (settings.Tier >= ValidationTier.Profile)
+        // Depth.Full: Run profile checks
+        if (settings.Depth >= ValidationDepth.Full)
         {
             foreach (var check in _profileChecks)
             {
