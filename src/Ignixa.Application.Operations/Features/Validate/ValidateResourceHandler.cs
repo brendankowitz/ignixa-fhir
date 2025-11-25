@@ -40,7 +40,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<ValidateResourceResult> HandleAsync(
+    public Task<ValidateResourceResult> HandleAsync(
         ValidateResourceCommand request,
         CancellationToken cancellationToken)
     {
@@ -157,7 +157,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                     issue = issues.ToArray()
                 };
                 var deleteJson = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(deleteOutcome));
-                return new ValidateResourceResult(deleteJson ?? throw new InvalidOperationException("Failed to serialize OperationOutcome"));
+                return Task.FromResult(new ValidateResourceResult(deleteJson ?? throw new InvalidOperationException("Failed to serialize OperationOutcome")));
             }
 
             // Determine which schema to use
@@ -411,7 +411,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
             throw new InvalidOperationException("Failed to serialize OperationOutcome");
         }
 
-        return new ValidateResourceResult(operationOutcomeJson);
+        return Task.FromResult(new ValidateResourceResult(operationOutcomeJson));
     }
 
     private static ValidationDepth ParseValidationDepth(string? depth)

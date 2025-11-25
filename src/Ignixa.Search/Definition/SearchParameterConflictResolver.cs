@@ -151,7 +151,8 @@ public class SearchParameterConflictResolver
             var conflictInfo = string.Join(", ", candidates.Select(c =>
                 $"{c.Metadata.PackageId}#{c.Metadata.PackageVersion} (URL: {c.Parameter.Url}, rank {_options.GetPriorityRank(c.Metadata.PackageId)})"));
 
-            _logger.LogWarning(
+            // Debug level: Expected behavior when loading multi-IG configurations (e.g., US Core + base FHIR)
+            _logger.LogDebug(
                 "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. " +
                 "Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, priority rank {WinnerRank}, resolution: explicit priority)",
                 code,
@@ -193,7 +194,8 @@ public class SearchParameterConflictResolver
             var conflictInfo = string.Join(", ", sorted.Select(s =>
                 $"{s.Candidate.Metadata.PackageId}#{s.Candidate.Metadata.PackageVersion} (URL: {s.Candidate.Parameter.Url})"));
 
-            _logger.LogWarning(
+            // Debug level: Expected behavior when multiple versions of same parameter exist
+            _logger.LogDebug(
                 "SearchParameter '{Code}' for {ResourceType}: Conflict between [{Conflicts}]. " +
                 "Winner: {WinnerPackage}#{WinnerVersion} (URL: {WinnerUrl}, resolution: semantic version {WinnerSemanticVersion})",
                 code,
@@ -324,7 +326,8 @@ public class SearchParameterConflictResolver
         if (baseParameter != null && baseParameter.Url != null && winner.Url != baseParameter.Url)
         {
             winner.OverridesUrl = baseParameter.Url;
-            _logger.LogInformation(
+            // Debug level: Expected behavior when IGs override base FHIR parameters
+            _logger.LogDebug(
                 "SearchParameter {WinnerUrl} overrides base parameter {BaseUrl} (code: {Code})",
                 winner.Url,
                 baseParameter.Url,

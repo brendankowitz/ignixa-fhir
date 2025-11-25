@@ -4,6 +4,7 @@
 // </copyright>
 
 using System.Text.Json.Nodes;
+using Ignixa.Domain.Models;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
@@ -52,7 +53,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"id\":\"123\",\"gender\":\"male\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -86,7 +87,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse("{}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -134,7 +135,7 @@ public class FhirPathInvariantCheckTests
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -176,7 +177,7 @@ public class FhirPathInvariantCheckTests
         }");
         var sourceNode = JsonNodeSourceNode.Create(json)!.Children("contact").First();
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -211,7 +212,7 @@ public class FhirPathInvariantCheckTests
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -255,7 +256,7 @@ public class FhirPathInvariantCheckTests
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -290,7 +291,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -308,17 +309,17 @@ public class FhirPathInvariantCheckTests
     #region Tier Filtering
 
     /// <summary>
-    /// Tests that invariant checks are skipped when ValidationTier is Fast.
+    /// Tests that invariant checks are skipped when ValidationDepth is Minimal.
     /// </summary>
     [Fact]
-    public void GivenFastTier_WhenValidating_ThenSkipsInvariantCheck()
+    public void GivenMinimalDepth_WhenValidating_ThenSkipsInvariantCheck()
     {
         // Arrange
         var constraint = new ConstraintDefinition
         {
             Key = "test-constraint",
             Severity = ConstraintSeverity.Error,
-            Human = "This should not run in Fast tier",
+            Human = "This should not run in Minimal depth",
             Expression = "false", // Always fails
             Xpath = null,
             AppliesTo = new[] { "Patient" }
@@ -327,7 +328,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Fast };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Minimal };
         var state = new ValidationState();
 
         // Act
@@ -362,7 +363,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -394,7 +395,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -426,7 +427,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act
@@ -461,7 +462,7 @@ public class FhirPathInvariantCheckTests
         var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _provider, _parser);
-        var settings = new ValidationSettings { Tier = ValidationTier.Spec };
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
         // Act - Run validation multiple times

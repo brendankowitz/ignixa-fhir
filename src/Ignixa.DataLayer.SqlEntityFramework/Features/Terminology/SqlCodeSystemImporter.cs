@@ -26,18 +26,31 @@ public class SqlCodeSystemImporter : ITerminologyImporter
     private readonly FhirDbContext _context;
     private readonly ISystemRepository _systemRepository;
     private readonly ILogger<SqlCodeSystemImporter> _logger;
-    private readonly bool _allowFullSystemExpansion;
+
+    // Cache system IDs across imports to avoid repeated database lookups
+    private readonly Dictionary<string, int> _systemIdCache = new(StringComparer.Ordinal);
 
     public SqlCodeSystemImporter(
         FhirDbContext context,
         ISystemRepository systemRepository,
-        ILogger<SqlCodeSystemImporter> logger,
-        bool allowFullSystemExpansion = false)
+        ILogger<SqlCodeSystemImporter> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _systemRepository = systemRepository ?? throw new ArgumentNullException(nameof(systemRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _allowFullSystemExpansion = allowFullSystemExpansion;
+    }
+
+    /// <summary>
+    /// Gets or creates a system ID, using class-level cache for performance.
+    /// </summary>
+    private async Task<int> GetOrCreateSystemIdCachedAsync(string systemUri, CancellationToken cancellationToken)
+    {
+        if (!_systemIdCache.TryGetValue(systemUri, out var systemId))
+        {
+            systemId = await _systemRepository.GetOrCreateAsync(systemUri, cancellationToken);
+            _systemIdCache[systemUri] = systemId;
+        }
+        return systemId;
     }
 
     public async Task<TerminologyImportResult> ImportCodeSystemAsync(
@@ -63,21 +76,6 @@ public class SqlCodeSystemImporter : ITerminologyImporter
         if (packageResourceEntity == null)
         {
             throw new InvalidOperationException($"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
-        }
-
-        // CRITICAL FIX #2: Import concurrency control
-        // Check if another thread is already importing this resource
-        // Reload from database to get latest status (avoid stale data from PackageResource parameter)
-        var currentStatus = packageResourceEntity.TerminologyImportStatus;
-
-        if (currentStatus == nameof(TerminologyImportStatus.InProgress))
-        {
-            _logger.LogInformation(
-                "Import already in progress for '{Canonical}' (PackageResourceId: {PackageResourceId}), skipping",
-                packageResource.Canonical,
-                packageResource.PackageResourceId);
-
-            return TerminologyImportResult.CreateSkipped();
         }
 
         try
@@ -159,116 +157,120 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             // 4. Get or create SystemId
             int systemId = await _systemRepository.GetOrCreateAsync(metadata.Url, cancellationToken);
 
-            // 5. Begin transaction
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
-            try
+            // 5. Execute within resilient transaction (supports SqlServerRetryingExecutionStrategy)
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                // Update import status to InProgress
-                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
-                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResourceEntity.ContentHash = newContentHash;
-                await _context.SaveChangesAsync(cancellationToken);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                // 6. Delete existing TermCodeSystem (cascade deletes TermConcepts)
-                var existingCodeSystem = await _context.TermCodeSystems
-                    .FirstOrDefaultAsync(tcs => tcs.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
-
-                if (existingCodeSystem != null)
+                try
                 {
-                    _logger.LogInformation(
-                        "Deleting existing TermCodeSystem {TermCodeSystemId} for re-import",
-                        existingCodeSystem.TermCodeSystemId);
-
-                    _context.TermCodeSystems.Remove(existingCodeSystem);
+                    // Update import status to InProgress
+                    packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
+                    packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                    packageResourceEntity.ContentHash = newContentHash;
                     await _context.SaveChangesAsync(cancellationToken);
-                }
 
-                // 7. Create TermCodeSystem entity
-                var termCodeSystem = new TermCodeSystemEntity
-                {
-                    PackageResourceId = packageResource.PackageResourceId,
-                    SystemId = systemId,
-                    Version = metadata.Version,
-                    ConceptCount = metadata.Count ?? 0,
-                    Content = metadata.Content,
-                    IsHierarchical = metadata.IsHierarchical,
-                    CaseSensitive = metadata.CaseSensitive,
-                    Compositional = metadata.Compositional,
-                    ImportedDate = DateTimeOffset.UtcNow
-                };
+                    // 6. Delete existing TermCodeSystem (cascade deletes TermConcepts)
+                    var existingCodeSystem = await _context.TermCodeSystems
+                        .FirstOrDefaultAsync(tcs => tcs.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
 
-                _context.TermCodeSystems.Add(termCodeSystem);
-                await _context.SaveChangesAsync(cancellationToken);
+                    if (existingCodeSystem != null)
+                    {
+                        _logger.LogInformation(
+                            "Deleting existing TermCodeSystem {TermCodeSystemId} for re-import",
+                            existingCodeSystem.TermCodeSystemId);
 
-                // 8. Flatten concept hierarchy
-                var (concepts, parentMap) = FlattenConcepts(codeSystem["concept"]?.AsArray(), termCodeSystem.TermCodeSystemId, null, 0);
+                        _context.TermCodeSystems.Remove(existingCodeSystem);
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
 
-                _logger.LogInformation(
-                    "Importing {ConceptCount} concepts for CodeSystem '{Canonical}'",
-                    concepts.Count,
-                    packageResource.Canonical);
+                    // 7. Create TermCodeSystem entity
+                    var termCodeSystem = new TermCodeSystemEntity
+                    {
+                        PackageResourceId = packageResource.PackageResourceId,
+                        SystemId = systemId,
+                        Version = metadata.Version,
+                        ConceptCount = metadata.Count ?? 0,
+                        Content = metadata.Content,
+                        IsHierarchical = metadata.IsHierarchical,
+                        CaseSensitive = metadata.CaseSensitive,
+                        Compositional = metadata.Compositional,
+                        ImportedDate = DateTimeOffset.UtcNow
+                    };
 
-                // 9. Save concepts - Week 5: SqlBulkCopy optimization for large CodeSystems
-                const int BulkInsertThreshold = 1000;
-
-                if (concepts.Count > BulkInsertThreshold)
-                {
-                    // Large CodeSystem: Use SqlBulkCopy
-                    _logger.LogInformation(
-                        "CodeSystem '{Canonical}' has {Count} concepts (>{Threshold}), using SqlBulkCopy",
-                        packageResource.Canonical,
-                        concepts.Count,
-                        BulkInsertThreshold);
-
-                    // Pass 1: Bulk insert concepts (ParentConceptId will be NULL initially)
-                    await BulkInsertConceptsAsync(termCodeSystem.TermCodeSystemId, concepts, cancellationToken);
-
-                    // Pass 2: Update parent references
-                    await UpdateParentReferencesAsync(termCodeSystem.TermCodeSystemId, parentMap, cancellationToken);
-                }
-                else
-                {
-                    // Small CodeSystem: Use EF AddRange (simpler, no performance issue)
-                    _logger.LogInformation(
-                        "CodeSystem '{Canonical}' has {Count} concepts (<={Threshold}), using EF AddRange",
-                        packageResource.Canonical,
-                        concepts.Count,
-                        BulkInsertThreshold);
-
-                    _context.TermConcepts.AddRange(concepts);
+                    _context.TermCodeSystems.Add(termCodeSystem);
                     await _context.SaveChangesAsync(cancellationToken);
+
+                    // 8. Flatten concept hierarchy
+                    var (concepts, parentMap) = FlattenConcepts(codeSystem["concept"]?.AsArray(), termCodeSystem.TermCodeSystemId, null, 0);
+
+                    _logger.LogInformation(
+                        "Importing {ConceptCount} concepts for CodeSystem '{Canonical}'",
+                        concepts.Count,
+                        packageResource.Canonical);
+
+                    // 9. Save concepts - Week 5: SqlBulkCopy optimization for large CodeSystems
+                    const int BulkInsertThreshold = 1000;
+
+                    if (concepts.Count > BulkInsertThreshold)
+                    {
+                        // Large CodeSystem: Use SqlBulkCopy
+                        _logger.LogInformation(
+                            "CodeSystem '{Canonical}' has {Count} concepts (>{Threshold}), using SqlBulkCopy",
+                            packageResource.Canonical,
+                            concepts.Count,
+                            BulkInsertThreshold);
+
+                        // Pass 1: Bulk insert concepts (ParentConceptId will be NULL initially)
+                        await BulkInsertConceptsAsync(termCodeSystem.TermCodeSystemId, concepts, cancellationToken);
+
+                        // Pass 2: Update parent references
+                        await UpdateParentReferencesAsync(termCodeSystem.TermCodeSystemId, parentMap, cancellationToken);
+                    }
+                    else
+                    {
+                        // Small CodeSystem: Use EF AddRange (simpler, no performance issue)
+                        _logger.LogInformation(
+                            "CodeSystem '{Canonical}' has {Count} concepts (<={Threshold}), using EF AddRange",
+                            packageResource.Canonical,
+                            concepts.Count,
+                            BulkInsertThreshold);
+
+                        _context.TermConcepts.AddRange(concepts);
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
+
+                    // 10. Update PackageResource import status
+                    packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
+                    packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                    packageResourceEntity.ImportedConceptCount = concepts.Count;
+                    packageResourceEntity.ImportErrorMessage = null;
+
+                    // Update ConceptCount if not specified in metadata
+                    if (metadata.Count == null || metadata.Count == 0)
+                    {
+                        termCodeSystem.ConceptCount = concepts.Count;
+                    }
+
+                    await _context.SaveChangesAsync(cancellationToken);
+
+                    // 11. Commit transaction
+                    await transaction.CommitAsync(cancellationToken);
+
+                    _logger.LogInformation(
+                        "Successfully imported CodeSystem '{Canonical}' with {ConceptCount} concepts",
+                        packageResource.Canonical,
+                        concepts.Count);
+
+                    return TerminologyImportResult.CreateSuccess(concepts.Count);
                 }
-
-                // 10. Update PackageResource import status
-                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
-                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResourceEntity.ImportedConceptCount = concepts.Count;
-                packageResourceEntity.ImportErrorMessage = null;
-
-                // Update ConceptCount if not specified in metadata
-                if (metadata.Count == null || metadata.Count == 0)
+                catch
                 {
-                    termCodeSystem.ConceptCount = concepts.Count;
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
                 }
-
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // 11. Commit transaction
-                await transaction.CommitAsync(cancellationToken);
-
-                _logger.LogInformation(
-                    "Successfully imported CodeSystem '{Canonical}' with {ConceptCount} concepts",
-                    packageResource.Canonical,
-                    concepts.Count);
-
-                return TerminologyImportResult.CreateSuccess(concepts.Count);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -322,19 +324,6 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             throw new InvalidOperationException($"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
         }
 
-        // Check if another thread is already importing this resource
-        var currentStatus = packageResourceEntity.TerminologyImportStatus;
-
-        if (currentStatus == nameof(TerminologyImportStatus.InProgress))
-        {
-            _logger.LogInformation(
-                "Import already in progress for '{Canonical}' (PackageResourceId: {PackageResourceId}), skipping",
-                packageResource.Canonical,
-                packageResource.PackageResourceId);
-
-            return TerminologyImportResult.CreateSkipped();
-        }
-
         try
         {
             // 1. Parse ValueSet JSON
@@ -372,98 +361,138 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 throw new InvalidOperationException("ValueSet.name is required");
             }
 
-            // 4. Begin transaction
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
-            try
+            // 4. Execute within resilient transaction (supports SqlServerRetryingExecutionStrategy)
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                // Update import status to InProgress
-                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
-                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResourceEntity.ContentHash = newContentHash;
-                await _context.SaveChangesAsync(cancellationToken);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                // 5. Delete existing TermValueSet (cascade deletes TermValueSetExpansion)
-                var existingValueSet = await _context.TermValueSets
-                    .FirstOrDefaultAsync(tvs => tvs.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
-
-                if (existingValueSet != null)
+                try
                 {
-                    _logger.LogInformation(
-                        "Deleting existing TermValueSet {TermValueSetId} for re-import",
-                        existingValueSet.TermValueSetId);
-
-                    _context.TermValueSets.Remove(existingValueSet);
+                    // Update import status to InProgress
+                    packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
+                    packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                    packageResourceEntity.ContentHash = newContentHash;
                     await _context.SaveChangesAsync(cancellationToken);
-                }
 
-                // 6. Create TermValueSet entity
-                var termValueSet = new TermValueSetEntity
-                {
-                    PackageResourceId = packageResource.PackageResourceId,
-                    Canonical = metadata.Url,
-                    Version = metadata.Version,
-                    Name = metadata.Name,
-                    Immutable = metadata.Immutable,
-                    IsExpanded = false,  // Will be set to true if expansion entries imported
-                    ImportedDate = DateTimeOffset.UtcNow
-                };
+                    // 5. Delete existing TermValueSet (cascade deletes TermValueSetExpansion)
+                    var existingValueSet = await _context.TermValueSets
+                        .FirstOrDefaultAsync(tvs => tvs.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
 
-                _context.TermValueSets.Add(termValueSet);
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // 7. Import expansion entries if present, otherwise compute from compose
-                int importedCount = 0;
-                var expansion = valueSet["expansion"];
-                if (expansion != null)
-                {
-                    importedCount = await ImportExpansionEntries(
-                        expansion.AsObject(),
-                        termValueSet.TermValueSetId,
-                        cancellationToken);
-                }
-                else
-                {
-                    var compose = valueSet["compose"]?.AsObject();
-                    if (compose != null)
+                    if (existingValueSet != null)
                     {
-                        importedCount = await ImportComposeExpansionAsync(
-                            compose,
+                        _logger.LogInformation(
+                            "Deleting existing TermValueSet {TermValueSetId} for re-import",
+                            existingValueSet.TermValueSetId);
+
+                        _context.TermValueSets.Remove(existingValueSet);
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
+
+                    // 6. Create TermValueSet entity
+                    var termValueSet = new TermValueSetEntity
+                    {
+                        PackageResourceId = packageResource.PackageResourceId,
+                        Canonical = metadata.Url,
+                        Version = metadata.Version,
+                        Name = metadata.Name,
+                        Immutable = metadata.Immutable,
+                        IsExpanded = false,  // Will be set to true if expansion entries imported
+                        ImportedDate = DateTimeOffset.UtcNow
+                    };
+
+                    _context.TermValueSets.Add(termValueSet);
+                    await _context.SaveChangesAsync(cancellationToken);
+
+                    // 7. Import expansion entries if present, otherwise compute from compose
+                    int importedCount = 0;
+                    bool isPartialExpansion = false;
+                    string? partialExpansionReason = null;
+
+                    var expansion = valueSet["expansion"];
+                    if (expansion != null)
+                    {
+                        importedCount = await ImportExpansionEntries(
+                            expansion.AsObject(),
                             termValueSet.TermValueSetId,
                             cancellationToken);
+                        // Pre-computed expansions are assumed to be complete
                     }
-                }
+                    else
+                    {
+                        var compose = valueSet["compose"]?.AsObject();
+                        if (compose != null)
+                        {
+                            var composeResult = await ImportComposeExpansionAsync(
+                                compose,
+                                termValueSet.TermValueSetId,
+                                cancellationToken);
+                            importedCount = composeResult.ImportedCount;
+                            isPartialExpansion = composeResult.IsPartial;
 
-                if (importedCount > 0)
-                {
-                    termValueSet.IsExpanded = true;
-                    termValueSet.LastExpansionDate = DateTimeOffset.UtcNow;
-                    termValueSet.ExpansionCodeCount = importedCount;
+                            // Build reason string if partial
+                            if (isPartialExpansion)
+                            {
+                                var reasons = new List<string>();
+                                if (composeResult.ExternalSystems.Count > 0)
+                                {
+                                    reasons.Add($"External systems not imported: {string.Join(", ", composeResult.ExternalSystems)}");
+                                }
+                                if (composeResult.MissingValueSets.Count > 0)
+                                {
+                                    reasons.Add($"Referenced ValueSets not expanded: {string.Join(", ", composeResult.MissingValueSets)}");
+                                }
+                                partialExpansionReason = string.Join("; ", reasons);
+                                if (partialExpansionReason.Length > 1024)
+                                {
+                                    partialExpansionReason = string.Concat(partialExpansionReason.AsSpan(0, 1021), "...");
+                                }
+                            }
+                        }
+                    }
+
+                    if (importedCount > 0 || isPartialExpansion)
+                    {
+                        termValueSet.IsExpanded = true;
+                        termValueSet.LastExpansionDate = DateTimeOffset.UtcNow;
+                        termValueSet.ExpansionCodeCount = importedCount;
+                        termValueSet.IsPartialExpansion = isPartialExpansion;
+                        termValueSet.PartialExpansionReason = partialExpansionReason;
+                        await _context.SaveChangesAsync(cancellationToken);
+
+                        if (isPartialExpansion)
+                        {
+                            _logger.LogWarning(
+                                "ValueSet '{Canonical}' has partial expansion ({Count} codes). Reason: {Reason}",
+                                packageResource.Canonical,
+                                importedCount,
+                                partialExpansionReason);
+                        }
+                    }
+
+                    // 8. Update PackageResource import status
+                    packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
+                    packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                    packageResourceEntity.ImportedConceptCount = importedCount;
+                    packageResourceEntity.ImportErrorMessage = null;
                     await _context.SaveChangesAsync(cancellationToken);
+
+                    // 9. Commit transaction
+                    await transaction.CommitAsync(cancellationToken);
+
+                    _logger.LogInformation(
+                        "Successfully imported ValueSet '{Canonical}' with {ConceptCount} expansion entries",
+                        packageResource.Canonical,
+                        importedCount);
+
+                    return TerminologyImportResult.CreateSuccess(importedCount);
                 }
-
-                // 8. Update PackageResource import status
-                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
-                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResourceEntity.ImportedConceptCount = importedCount;
-                packageResourceEntity.ImportErrorMessage = null;
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // 9. Commit transaction
-                await transaction.CommitAsync(cancellationToken);
-
-                _logger.LogInformation(
-                    "Successfully imported ValueSet '{Canonical}' with {ConceptCount} expansion entries",
-                    packageResource.Canonical,
-                    importedCount);
-
-                return TerminologyImportResult.CreateSuccess(importedCount);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -517,19 +546,6 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             throw new InvalidOperationException($"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
         }
 
-        // Check if another thread is already importing this resource
-        var currentStatus = packageResourceEntity.TerminologyImportStatus;
-
-        if (currentStatus == nameof(TerminologyImportStatus.InProgress))
-        {
-            _logger.LogInformation(
-                "Import already in progress for '{Canonical}' (PackageResourceId: {PackageResourceId}), skipping",
-                packageResource.Canonical,
-                packageResource.PackageResourceId);
-
-            return TerminologyImportResult.CreateSkipped();
-        }
-
         try
         {
             // 1. Parse ConceptMap JSON
@@ -567,74 +583,78 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 throw new InvalidOperationException("ConceptMap.name is required");
             }
 
-            // 4. Begin transaction
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
-            try
+            // 4. Execute within resilient transaction (supports SqlServerRetryingExecutionStrategy)
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                // Update import status to InProgress
-                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
-                packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
-                packageResourceEntity.ContentHash = newContentHash;
-                await _context.SaveChangesAsync(cancellationToken);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                // 5. Delete existing TermConceptMap (cascade deletes TermConceptMapElement)
-                var existingConceptMap = await _context.TermConceptMaps
-                    .FirstOrDefaultAsync(tcm => tcm.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
-
-                if (existingConceptMap != null)
+                try
                 {
-                    _logger.LogInformation(
-                        "Deleting existing TermConceptMap {TermConceptMapId} for re-import",
-                        existingConceptMap.TermConceptMapId);
-
-                    _context.TermConceptMaps.Remove(existingConceptMap);
+                    // Update import status to InProgress
+                    packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.InProgress);
+                    packageResourceEntity.ImportStartDate = DateTimeOffset.UtcNow;
+                    packageResourceEntity.ContentHash = newContentHash;
                     await _context.SaveChangesAsync(cancellationToken);
+
+                    // 5. Delete existing TermConceptMap (cascade deletes TermConceptMapElement)
+                    var existingConceptMap = await _context.TermConceptMaps
+                        .FirstOrDefaultAsync(tcm => tcm.PackageResourceId == packageResource.PackageResourceId, cancellationToken);
+
+                    if (existingConceptMap != null)
+                    {
+                        _logger.LogInformation(
+                            "Deleting existing TermConceptMap {TermConceptMapId} for re-import",
+                            existingConceptMap.TermConceptMapId);
+
+                        _context.TermConceptMaps.Remove(existingConceptMap);
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
+
+                    // 6. Create TermConceptMap entity
+                    var termConceptMap = new TermConceptMapEntity
+                    {
+                        PackageResourceId = packageResource.PackageResourceId,
+                        Canonical = metadata.Url,
+                        Version = metadata.Version,
+                        Name = metadata.Name,
+                        SourceCanonical = metadata.SourceCanonical,
+                        TargetCanonical = metadata.TargetCanonical,
+                        ImportedDate = DateTimeOffset.UtcNow
+                    };
+
+                    _context.TermConceptMaps.Add(termConceptMap);
+                    await _context.SaveChangesAsync(cancellationToken);
+
+                    // 7. Import mapping elements from groups
+                    int importedCount = await ImportConceptMapElements(
+                        conceptMap,
+                        termConceptMap.TermConceptMapId,
+                        cancellationToken);
+
+                    // 8. Update PackageResource import status
+                    packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
+                    packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
+                    packageResourceEntity.ImportedConceptCount = importedCount;
+                    packageResourceEntity.ImportErrorMessage = null;
+                    await _context.SaveChangesAsync(cancellationToken);
+
+                    // 9. Commit transaction
+                    await transaction.CommitAsync(cancellationToken);
+
+                    _logger.LogInformation(
+                        "Successfully imported ConceptMap '{Canonical}' with {Count} mapping elements",
+                        packageResource.Canonical,
+                        importedCount);
+
+                    return TerminologyImportResult.CreateSuccess(importedCount);
                 }
-
-                // 6. Create TermConceptMap entity
-                var termConceptMap = new TermConceptMapEntity
+                catch
                 {
-                    PackageResourceId = packageResource.PackageResourceId,
-                    Canonical = metadata.Url,
-                    Version = metadata.Version,
-                    Name = metadata.Name,
-                    SourceCanonical = metadata.SourceCanonical,
-                    TargetCanonical = metadata.TargetCanonical,
-                    ImportedDate = DateTimeOffset.UtcNow
-                };
-
-                _context.TermConceptMaps.Add(termConceptMap);
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // 7. Import mapping elements from groups
-                int importedCount = await ImportConceptMapElements(
-                    conceptMap,
-                    termConceptMap.TermConceptMapId,
-                    cancellationToken);
-
-                // 8. Update PackageResource import status
-                packageResourceEntity.TerminologyImportStatus = nameof(TerminologyImportStatus.Completed);
-                packageResourceEntity.ImportCompletedDate = DateTimeOffset.UtcNow;
-                packageResourceEntity.ImportedConceptCount = importedCount;
-                packageResourceEntity.ImportErrorMessage = null;
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // 9. Commit transaction
-                await transaction.CommitAsync(cancellationToken);
-
-                _logger.LogInformation(
-                    "Successfully imported ConceptMap '{Canonical}' with {Count} mapping elements",
-                    packageResource.Canonical,
-                    importedCount);
-
-                return TerminologyImportResult.CreateSuccess(importedCount);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -1068,11 +1088,11 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 continue;
             }
 
-            // Get SystemId (0 if system is null/empty)
+            // Get SystemId using class-level cache (0 if system is null/empty)
             int systemId = 0;
             if (!string.IsNullOrEmpty(system))
             {
-                systemId = await _systemRepository.GetOrCreateAsync(system, cancellationToken);
+                systemId = await GetOrCreateSystemIdCachedAsync(system, cancellationToken);
             }
 
             expansionEntries.Add(new TermValueSetExpansionEntity
@@ -1097,6 +1117,15 @@ public class SqlCodeSystemImporter : ITerminologyImporter
     }
 
     /// <summary>
+    /// Result of compose expansion import.
+    /// </summary>
+    private record ComposeExpansionResult(
+        int ImportedCount,
+        bool IsPartial,
+        List<string> ExternalSystems,
+        List<string> MissingValueSets);
+
+    /// <summary>
     /// Builds expansion entries from ValueSet.compose (include/exclude) into TermValueSetExpansion.
     /// Supports:
     /// - include.concept (explicit codes)
@@ -1105,7 +1134,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
     /// - exclude counterparts remove matching codes
     /// Advanced filter operations (regex, is-a, property-based) are not implemented.
     /// </summary>
-    private async Task<int> ImportComposeExpansionAsync(
+    private async Task<ComposeExpansionResult> ImportComposeExpansionAsync(
         JsonObject compose,
         long termValueSetId,
         CancellationToken cancellationToken)
@@ -1113,20 +1142,22 @@ public class SqlCodeSystemImporter : ITerminologyImporter
         var includeEntries = new List<TermValueSetExpansionEntity>();
         var includedKeys = new HashSet<string>(StringComparer.Ordinal);
         var excludedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var externalSystems = new List<string>();
+        var missingValueSets = new List<string>();
 
         static string MakeKey(int systemId, string code) => $"{systemId}:{code}";
 
-        async Task AddEntryAsync(int systemId, string systemUri, string code, string? display, string? systemVersion)
+        Task AddEntryAsync(int systemId, string systemUri, string code, string? display, string? systemVersion)
         {
             if (string.IsNullOrEmpty(code))
             {
-                return;
+                return Task.CompletedTask;
             }
 
             var key = MakeKey(systemId, code);
             if (!includedKeys.Add(key))
             {
-                return;
+                return Task.CompletedTask;
             }
 
             includeEntries.Add(new TermValueSetExpansionEntity
@@ -1139,6 +1170,8 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 IsActive = true,
                 Ordinal = includeEntries.Count
             });
+
+            return Task.CompletedTask;
         }
 
         async Task AddFromValueSetAsync(string canonical)
@@ -1152,6 +1185,10 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             if (includedValueSet == null)
             {
                 _logger.LogWarning("Compose include references ValueSet '{Canonical}' that is not expanded", canonical);
+                if (!missingValueSets.Contains(canonical))
+                {
+                    missingValueSets.Add(canonical);
+                }
                 return;
             }
 
@@ -1170,13 +1207,9 @@ public class SqlCodeSystemImporter : ITerminologyImporter
 
         async Task AddSystemAllCodesAsync(string systemUri, string? systemVersion)
         {
-            if (!_allowFullSystemExpansion)
-            {
-                _logger.LogWarning("Skipping full-system include for ValueSet compose because AllowFullSystemExpansion is disabled: {System}", systemUri);
-                return;
-            }
-
-            var systemId = await _systemRepository.GetOrCreateAsync(systemUri, cancellationToken);
+            // Always expand CodeSystems that are in our database
+            // If the CodeSystem isn't imported, mark expansion as partial
+            var systemId = await GetOrCreateSystemIdCachedAsync(systemUri, cancellationToken);
 
             var allCodes = await _context.TermConcepts
                 .AsNoTracking()
@@ -1184,6 +1217,17 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 .Where(tc => tc.CodeSystem.SystemId == systemId)
                 .Where(tc => systemVersion == null || tc.CodeSystem.Version == systemVersion)
                 .ToListAsync(cancellationToken);
+
+            // Track external systems that have no locally imported codes
+            if (allCodes.Count == 0 && !externalSystems.Contains(systemUri))
+            {
+                _logger.LogDebug("CodeSystem '{System}' has no imported concepts - marking expansion as partial", systemUri);
+                externalSystems.Add(systemUri);
+            }
+            else if (allCodes.Count > 0)
+            {
+                _logger.LogDebug("Including all {Count} codes from CodeSystem '{System}' in expansion", allCodes.Count, systemUri);
+            }
 
             foreach (var concept in allCodes)
             {
@@ -1193,7 +1237,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
 
         async Task AddSystemCodesWithFiltersAsync(string systemUri, string? systemVersion, JsonArray filters)
         {
-            var systemId = await _systemRepository.GetOrCreateAsync(systemUri, cancellationToken);
+            var systemId = await GetOrCreateSystemIdCachedAsync(systemUri, cancellationToken);
 
             var candidates = await _context.TermConcepts
                 .AsNoTracking()
@@ -1201,6 +1245,14 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                 .Where(tc => tc.CodeSystem.SystemId == systemId)
                 .Where(tc => systemVersion == null || tc.CodeSystem.Version == systemVersion)
                 .ToListAsync(cancellationToken);
+
+            // Track external systems that have no locally imported codes
+            if (candidates.Count == 0 && !externalSystems.Contains(systemUri))
+            {
+                _logger.LogDebug("CodeSystem '{System}' has no imported concepts to filter - marking expansion as partial", systemUri);
+                externalSystems.Add(systemUri);
+                return;
+            }
 
             // Build lookup for ancestry checks
             var conceptById = candidates.ToDictionary(c => c.TermConceptId);
@@ -1324,7 +1376,7 @@ public class SqlCodeSystemImporter : ITerminologyImporter
                         continue;
                     }
 
-                    var systemId = await _systemRepository.GetOrCreateAsync(conceptSystem, cancellationToken);
+                    var systemId = await GetOrCreateSystemIdCachedAsync(conceptSystem, cancellationToken);
                     await AddEntryAsync(systemId, conceptSystem, code!, display, includeVersion);
                 }
             }
@@ -1528,7 +1580,12 @@ public class SqlCodeSystemImporter : ITerminologyImporter
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        return filtered.Count;
+        var isPartial = externalSystems.Count > 0 || missingValueSets.Count > 0;
+        return new ComposeExpansionResult(
+            ImportedCount: filtered.Count,
+            IsPartial: isPartial,
+            ExternalSystems: externalSystems,
+            MissingValueSets: missingValueSets);
     }
 
     /// <summary>

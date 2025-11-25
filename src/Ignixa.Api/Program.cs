@@ -28,6 +28,7 @@ using Ignixa.Search.Parsing;
 using Ignixa.Search.Definition;
 using Ignixa.Specification;
 using Ignixa.Domain;
+using Ignixa.Domain.Constants;
 // using Ignixa.Validation.SourceNodeValidation; // Removed - migrating to new FastValidator in Phase 3
 using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Infrastructure;
@@ -40,6 +41,10 @@ using Ignixa.SqlOnFhir;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// STARTUP TIMING DIAGNOSTICS
+// Enable via Diagnostics:StartupTiming:Enabled = true (default: true in Development)
+builder.Services.AddStartupTimingDiagnostics();
 
 // Configure Autofac as the service provider factory
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
@@ -1083,21 +1088,35 @@ app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     var configStore = app.Services.GetRequiredService<ITenantConfigurationStore>();
     var repositoryFactory = app.Services.GetRequiredService<IFhirRepositoryFactory>();
+    var startupTiming = app.Services.GetRequiredService<StartupTimingDiagnostics>();
 
     logger.LogInformation("===== Database Initialization =====");
 
+    // Include system partition (tenant 0) which GetAllTenantsAsync excludes
+    // This ensures system partition DB is initialized upfront rather than lazily during package loading
+    var systemPartition = await configStore.GetTenantConfigurationAsync(SystemConstants.SystemPartitionId);
     var tenants = await configStore.GetAllTenantsAsync();
-    foreach (var tenant in tenants)
+    var allTenantsToInit = new List<TenantConfiguration>();
+    if (systemPartition?.IsActive == true)
+    {
+        allTenantsToInit.Add(systemPartition);
+    }
+    allTenantsToInit.AddRange(tenants);
+
+    foreach (var tenant in allTenantsToInit)
     {
         try
         {
-            logger.LogInformation("Initializing database for tenant {TenantId} ({DisplayName})...", tenant.TenantId, tenant.DisplayName);
+            using (startupTiming.StartPhase($"Database.Init.Tenant{tenant.TenantId}"))
+            {
+                logger.LogInformation("Initializing database for tenant {TenantId} ({DisplayName})...", tenant.TenantId, tenant.DisplayName);
 
-            // This will trigger SqlEntityFrameworkRepositoryFactory to create the repository
-            // which internally calls DatabaseInitializer.InitializeAsync() to apply migrations
-            var repository = await repositoryFactory.GetRepositoryAsync(tenant.TenantId);
+                // This will trigger SqlEntityFrameworkRepositoryFactory to create the repository
+                // which internally calls DatabaseInitializer.InitializeAsync() to apply migrations
+                var repository = await repositoryFactory.GetRepositoryAsync(tenant.TenantId);
 
-            logger.LogInformation("✅ Database initialized for tenant {TenantId}", tenant.TenantId);
+                logger.LogInformation("✅ Database initialized for tenant {TenantId}", tenant.TenantId);
+            }
         }
         catch (Exception ex)
         {
@@ -1108,6 +1127,9 @@ app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",
     }
 
     logger.LogInformation("===== All Databases Initialized =====");
+
+    // Log startup timing summary
+    startupTiming.LogSummary();
 }
 
 await app.RunAsync();

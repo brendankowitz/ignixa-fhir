@@ -911,9 +911,20 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                         .HasColumnType("bit")
                         .HasColumnName("IsExpanded");
 
+                    b.Property<bool>("IsPartialExpansion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("IsPartialExpansion");
+
                     b.Property<DateTimeOffset?>("LastExpansionDate")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("LastExpansionDate");
+
+                    b.Property<string>("PartialExpansionReason")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)")
+                        .HasColumnName("PartialExpansionReason");
 
                     b.Property<string>("Name")
                         .IsRequired()

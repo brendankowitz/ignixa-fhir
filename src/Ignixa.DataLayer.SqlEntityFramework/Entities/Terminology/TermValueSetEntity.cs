@@ -51,6 +51,21 @@ public class TermValueSetEntity
     [Column("ExpansionCodeCount")]
     public int? ExpansionCodeCount { get; set; }
 
+    /// <summary>
+    /// True if the expansion is incomplete due to external CodeSystems not being imported.
+    /// Per FHIR spec, this should be returned as expansion.parameter.incomplete = true.
+    /// </summary>
+    [Required]
+    [Column("IsPartialExpansion")]
+    public bool IsPartialExpansion { get; set; }
+
+    /// <summary>
+    /// Human-readable reason for partial expansion (e.g., "External systems: http://snomed.info/sct, http://loinc.org").
+    /// </summary>
+    [Column("PartialExpansionReason")]
+    [MaxLength(1024)]
+    public string? PartialExpansionReason { get; set; }
+
     [Required]
     [Column("ImportedDate")]
     public DateTimeOffset ImportedDate { get; set; }

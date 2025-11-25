@@ -209,7 +209,8 @@ public class SqlTerminologyService : ITerminologyService
                 Timestamp: termValueSet.LastExpansionDate ?? termValueSet.ImportedDate,
                 Total: totalCount,
                 Offset: offset,
-                Contains: expandedConcepts);
+                Contains: expandedConcepts,
+                Incomplete: termValueSet.IsPartialExpansion);
 
             // 10. Cache result (1-hour sliding expiration)
             CacheResult(cacheKey, result);

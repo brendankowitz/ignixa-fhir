@@ -14,12 +14,14 @@ namespace Ignixa.Validation.Abstractions;
 /// <param name="Total">Total number of codes in complete expansion (may exceed returned count).</param>
 /// <param name="Offset">Offset used for pagination (0 if not paginated).</param>
 /// <param name="Contains">List of codes in the expansion.</param>
+/// <param name="Incomplete">True if the expansion is incomplete due to external CodeSystems not being imported.</param>
 public record ExpandResult(
     string? Identifier,
     DateTimeOffset Timestamp,
     int Total,
     int Offset,
-    IReadOnlyList<ExpandedConcept> Contains);
+    IReadOnlyList<ExpandedConcept> Contains,
+    bool Incomplete = false);
 
 /// <summary>
 /// A single code in a ValueSet expansion.

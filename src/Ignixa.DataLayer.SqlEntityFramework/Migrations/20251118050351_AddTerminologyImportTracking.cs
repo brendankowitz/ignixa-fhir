@@ -140,6 +140,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Migrations
                     IsExpanded = table.Column<bool>(type: "bit", nullable: false),
                     LastExpansionDate = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     ExpansionCodeCount = table.Column<int>(type: "int", nullable: true),
+                    IsPartialExpansion = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    PartialExpansionReason = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
                     ImportedDate = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false, defaultValueSql: "GETUTCDATE()")
                 },
                 constraints: table =>

@@ -10,7 +10,6 @@ using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -42,17 +41,13 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
         using var scope = _serviceProvider.CreateScope();
         var repositoryFactory = scope.ServiceProvider.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
         var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-
-        var allowFullSystemExpansion = configuration.GetValue<bool>("Terminology:AllowFullSystemExpansion", false);
 
         await using var fhirDbContext = await repositoryFactory.GetDbContextAsync(input.TenantId, CancellationToken.None);
         var systemRepository = new SqlSystemRepository(fhirDbContext, loggerFactory.CreateLogger<SqlSystemRepository>());
         ITerminologyImporter terminologyImporter = new SqlCodeSystemImporter(
             fhirDbContext,
             systemRepository,
-            loggerFactory.CreateLogger<SqlCodeSystemImporter>(),
-            allowFullSystemExpansion);
+            loggerFactory.CreateLogger<SqlCodeSystemImporter>());
 
         try
         {

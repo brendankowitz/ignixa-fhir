@@ -28,11 +28,11 @@ GET {{hostname}}/tenant/{{tenantId}}/ValueSet/$expand?url=http://hl7.org/fhir/Va
 Accept: application/fhir+json
 
 ### $expand - Tenant-explicit with all parameters
-GET {{baseUrl}}/tenant/{{tenantId}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender&filter=fem&count=10&offset=0&includeDesignations=true
+GET {{hostname}}/tenant/{{tenantId}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender&filter=fem&count=10&offset=0&includeDesignations=true
 Accept: application/fhir+json
 
 ### $expand - Missing URL parameter (should return 400)
-GET {{baseUrl}}/ValueSet/$expand
+GET {{hostname}}/ValueSet/$expand
 Accept: application/fhir+json
 
 ###############################################################################
@@ -40,7 +40,7 @@ Accept: application/fhir+json
 ###############################################################################
 
 ### $translate - Basic translation (tenant-agnostic)
-POST {{baseUrl}}/ConceptMap/$translate
+POST {{hostname}}/ConceptMap/$translate
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -51,7 +51,7 @@ Accept: application/fhir+json
 }
 
 ### $translate - With source and target (tenant-agnostic)
-POST {{baseUrl}}/ConceptMap/$translate
+POST {{hostname}}/ConceptMap/$translate
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -63,7 +63,7 @@ Accept: application/fhir+json
 }
 
 ### $translate - Reverse translation (tenant-agnostic)
-POST {{baseUrl}}/ConceptMap/$translate
+POST {{hostname}}/ConceptMap/$translate
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -74,7 +74,7 @@ Accept: application/fhir+json
 }
 
 ### $translate - Tenant-explicit route
-POST {{baseUrl}}/tenant/{{tenantId}}/ConceptMap/$translate
+POST {{hostname}}/tenant/{{tenantId}}/ConceptMap/$translate
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -85,7 +85,7 @@ Accept: application/fhir+json
 }
 
 ### $translate - Missing required parameters (should return 400)
-POST {{baseUrl}}/ConceptMap/$translate
+POST {{hostname}}/ConceptMap/$translate
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -98,7 +98,7 @@ Accept: application/fhir+json
 ###############################################################################
 
 ### $subsumes - Basic subsumption test (tenant-agnostic)
-POST {{baseUrl}}/CodeSystem/$subsumes
+POST {{hostname}}/CodeSystem/$subsumes
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -109,7 +109,7 @@ Accept: application/fhir+json
 }
 
 ### $subsumes - With version (tenant-agnostic)
-POST {{baseUrl}}/CodeSystem/$subsumes
+POST {{hostname}}/CodeSystem/$subsumes
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -121,7 +121,7 @@ Accept: application/fhir+json
 }
 
 ### $subsumes - Tenant-explicit route
-POST {{baseUrl}}/tenant/{{tenantId}}/CodeSystem/$subsumes
+POST {{hostname}}/tenant/{{tenantId}}/CodeSystem/$subsumes
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -132,7 +132,7 @@ Accept: application/fhir+json
 }
 
 ### $subsumes - Missing required parameters (should return 400)
-POST {{baseUrl}}/CodeSystem/$subsumes
+POST {{hostname}}/CodeSystem/$subsumes
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -145,11 +145,11 @@ Accept: application/fhir+json
 ###############################################################################
 
 ### Missing URL parameter for $expand (400 Bad Request)
-GET {{baseUrl}}/ValueSet/$expand?filter=test
+GET {{hostname}}/ValueSet/$expand?filter=test
 Accept: application/fhir+json
 
 ### Missing code/system for $translate (400 Bad Request)
-POST {{baseUrl}}/ConceptMap/$translate
+POST {{hostname}}/ConceptMap/$translate
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -158,7 +158,7 @@ Accept: application/fhir+json
 }
 
 ### Missing codeA/codeB/system for $subsumes (400 Bad Request)
-POST {{baseUrl}}/CodeSystem/$subsumes
+POST {{hostname}}/CodeSystem/$subsumes
 Content-Type: application/fhir+json
 Accept: application/fhir+json
 
@@ -167,7 +167,7 @@ Accept: application/fhir+json
 }
 
 ### Non-existent ValueSet (404 Not Found)
-GET {{baseUrl}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/does-not-exist
+GET {{hostname}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/does-not-exist
 Accept: application/fhir+json
 
 ###############################################################################
@@ -175,15 +175,15 @@ Accept: application/fhir+json
 ###############################################################################
 
 ### Tenant 1 - $expand
-GET {{baseUrl}}/tenant/1/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+GET {{hostname}}/tenant/1/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
 Accept: application/fhir+json
 
 ### Tenant 2 - $expand (if multi-tenant enabled)
-GET {{baseUrl}}/tenant/2/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+GET {{hostname}}/tenant/2/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
 Accept: application/fhir+json
 
 ### Tenant 0 - Should be blocked (400 Bad Request per CLAUDE.md)
-GET {{baseUrl}}/tenant/0/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
+GET {{hostname}}/tenant/0/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/administrative-gender
 Accept: application/fhir+json
 
 ###############################################################################
@@ -191,9 +191,9 @@ Accept: application/fhir+json
 ###############################################################################
 
 ### Large ValueSet expansion (test pagination)
-GET {{baseUrl}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/ucum-common&count=100&offset=0
+GET {{hostname}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/ucum-common&count=100&offset=0
 Accept: application/fhir+json
 
 ### Next page
-GET {{baseUrl}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/ucum-common&count=100&offset=100
+GET {{hostname}}/ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/ucum-common&count=100&offset=100
 Accept: application/fhir+json

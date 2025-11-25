@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Ignixa.Validation.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,11 @@ namespace Ignixa.Application.Operations.Features.Terminology.Expand;
 /// </summary>
 public class ExpandValueSetHandler : IRequestHandler<ExpandValueSetQuery, ExpandValueSetResult>
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ExpandValueSetHandler> _logger;
 
@@ -73,7 +79,7 @@ public class ExpandValueSetHandler : IRequestHandler<ExpandValueSetQuery, Expand
             }
         };
 
-        var jsonNode = JsonNode.Parse(JsonSerializer.Serialize(valueSetJson))
+        var jsonNode = JsonNode.Parse(JsonSerializer.Serialize(valueSetJson, SerializerOptions))
             ?? throw new InvalidOperationException("Failed to serialize ValueSet");
 
         return new ExpandValueSetResult(jsonNode);

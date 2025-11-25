@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics;
+using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -41,11 +43,13 @@ public class TenantPackagePreloadService : BackgroundService
     {
         try
         {
+            var overallStopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Starting package preload service...");
 
             using var scope = _serviceProvider.CreateScope();
             var configStore = scope.ServiceProvider.GetRequiredService<ITenantConfigurationStore>();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            var startupTiming = scope.ServiceProvider.GetRequiredService<StartupTimingDiagnostics>();
 
             // Get all tenants (includes system partition and regular tenants)
             var tenants = await configStore.GetAllTenantsAsync(stoppingToken);
@@ -114,21 +118,24 @@ public class TenantPackagePreloadService : BackgroundService
                 {
                     try
                     {
-                        _logger.LogInformation(
-                            "Loading package {PackageId}@{Version} for tenant {TenantId}",
-                            packageId,
-                            version,
-                            tenant.TenantId);
+                        using (startupTiming.StartPhase($"PackageLoad.{packageId}@{version}"))
+                        {
+                            _logger.LogInformation(
+                                "Loading package {PackageId}@{Version} for tenant {TenantId}",
+                                packageId,
+                                version,
+                                tenant.TenantId);
 
-                        var command = new LoadPackageCommand(tenant.TenantId.ToString(), packageId, version);
-                        var result = await mediator.SendAsync(command, stoppingToken);
+                            var command = new LoadPackageCommand(tenant.TenantId.ToString(), packageId, version);
+                            var result = await mediator.SendAsync(command, stoppingToken);
 
-                        _logger.LogInformation(
-                            "Successfully loaded {PackageId}@{Version} for tenant {TenantId}. Imported {Count} resources",
-                            packageId,
-                            version,
-                            tenant.TenantId,
-                            result.ImportedResources);
+                            _logger.LogInformation(
+                                "Successfully loaded {PackageId}@{Version} for tenant {TenantId}. Imported {Count} resources",
+                                packageId,
+                                version,
+                                tenant.TenantId,
+                                result.ImportedResources);
+                        }
                     }
                     catch (InvalidOperationException ex) when (ex.Message.Contains("already loaded", StringComparison.OrdinalIgnoreCase))
                     {
@@ -168,22 +175,31 @@ public class TenantPackagePreloadService : BackgroundService
             {
                 try
                 {
-                    _logger.LogDebug("Warming providers for tenant {TenantId}", tenant.TenantId);
+                    using (startupTiming.StartPhase($"WarmProviders.Tenant{tenant.TenantId}"))
+                    {
+                        _logger.LogDebug("Warming providers for tenant {TenantId}", tenant.TenantId);
 
-                    // Warm schema providers for tenant's default FHIR version only
-                    var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
+                        // Warm schema providers for tenant's default FHIR version only
+                        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
 
-                    // Accessing the provider triggers eager loading of package StructureDefinitions
-                    var schemaProvider = fhirVersionContext.GetSchemaProvider(fhirVersion, tenant.TenantId);
+                        // Accessing the provider triggers eager loading of package StructureDefinitions
+                        using (startupTiming.StartPhase($"SchemaProvider.Tenant{tenant.TenantId}"))
+                        {
+                            var schemaProvider = fhirVersionContext.GetSchemaProvider(fhirVersion, tenant.TenantId);
+                        }
 
-                    // Accessing the manager triggers eager loading of package SearchParameters
-                    var searchParamManager = fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenant.TenantId);
+                        // Accessing the manager triggers eager loading of package SearchParameters
+                        using (startupTiming.StartPhase($"SearchParamManager.Tenant{tenant.TenantId}"))
+                        {
+                            var searchParamManager = fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenant.TenantId);
+                        }
 
-                    _logger.LogInformation(
-                        "Warmed schema providers and search parameter managers for tenant {TenantId} ({DisplayName}) - FHIR {FhirVersion}",
-                        tenant.TenantId,
-                        tenant.DisplayName,
-                        tenant.FhirVersion);
+                        _logger.LogInformation(
+                            "Warmed schema providers and search parameter managers for tenant {TenantId} ({DisplayName}) - FHIR {FhirVersion}",
+                            tenant.TenantId,
+                            tenant.DisplayName,
+                            tenant.FhirVersion);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -194,7 +210,10 @@ public class TenantPackagePreloadService : BackgroundService
                 }
             }
 
-            _logger.LogInformation("Package preload service completed successfully");
+            overallStopwatch.Stop();
+            _logger.LogInformation(
+                "Package preload service completed successfully in {Elapsed:N0}ms",
+                overallStopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
