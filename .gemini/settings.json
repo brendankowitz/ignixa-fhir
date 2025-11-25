@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "roslyn": {
+      "command": "dotnet-roslyn-mcp",
+      "args": []
+    },
+    "sqlserver": {
+      "command": "sqlserverlocal-mcp",
+      "args": [],
+      "env": {
+        "SQL_SERVER_CONNECTION_STRING": "Server=(localdb)\\mssqllocaldb;Database=FhirDatabase;Integrated Security=true;"
+      }
+    }
+  }
+}
