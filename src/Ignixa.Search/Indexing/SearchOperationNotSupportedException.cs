@@ -7,6 +7,7 @@ using System.Diagnostics;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Constants;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Search.Indexing;
 
@@ -31,7 +32,7 @@ public class SearchOperationNotSupportedException : FhirException
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(message), $"{nameof(message)} should not be null or whitespace.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,

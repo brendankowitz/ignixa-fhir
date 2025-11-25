@@ -52,122 +52,15 @@ public class BundleJsonNode : ResourceJsonNode
     [JsonIgnore]
     public int? Total
     {
-        get => MutableNode["total"]?.GetValue<int>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("total");
-            }
-            else
-            {
-                MutableNode["total"] = value.Value;
-            }
-        }
+        get => GetProperty<int?>("total");
+        set => SetProperty("total", value);
     }
 
     [JsonIgnore]
-    public IReadOnlyList<BundleLinkJsonNode> Link
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("link", out var linkNode) || linkNode is not JsonArray array)
-            {
-                return null;
-            }
-
-            var list = new List<BundleLinkJsonNode>();
-            foreach (var item in array)
-            {
-                if (item != null)
-                {
-                    var json = item.ToJsonString();
-                    list.Add(JsonSerializer.Deserialize<BundleLinkJsonNode>(json));
-                }
-            }
-
-            return list;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("link");
-            }
-            else
-            {
-                var array = new JsonArray();
-                foreach (var item in value)
-                {
-                    array.Add(item.MutableNode);
-                }
-
-                MutableNode["link"] = array;
-            }
-        }
-    }
+    public MutableJsonList<BundleLinkJsonNode> Link => GetListProperty<BundleLinkJsonNode>("link");
 
     [JsonIgnore]
-    public IReadOnlyList<BundleComponentJsonNode> Entry
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("entry", out var entryNode) || entryNode is not JsonArray array)
-            {
-                return Array.Empty<BundleComponentJsonNode>();
-            }
-
-            var list = new List<BundleComponentJsonNode>();
-            foreach (var item in array)
-            {
-                if (item != null)
-                {
-                    var json = item.ToJsonString();
-                    list.Add(JsonSerializer.Deserialize<BundleComponentJsonNode>(json));
-                }
-            }
-
-            return list;
-        }
-    }
-
-    /// <summary>
-    /// Helper method to add a bundle entry to the underlying JSON array.
-    /// This ensures the addition is persisted to the MutableNode.
-    /// </summary>
-    public void AddEntry(BundleComponentJsonNode entry)
-    {
-        ArgumentNullException.ThrowIfNull(entry);
-
-        if (!MutableNode.TryGetPropertyValue("entry", out var node) || node is not JsonArray array)
-        {
-            array = new JsonArray();
-            MutableNode["entry"] = array;
-        }
-
-        array.Add(entry.MutableNode);
-    }
-
-    /// <summary>
-    /// Helper method to replace all bundle entries.
-    /// </summary>
-    public void SetEntries(IEnumerable<BundleComponentJsonNode> entries)
-    {
-        if (entries == null)
-        {
-            MutableNode.Remove("entry");
-        }
-        else
-        {
-            var array = new JsonArray();
-            foreach (var item in entries)
-            {
-                array.Add(item.MutableNode);
-            }
-
-            MutableNode["entry"] = array;
-        }
-    }
+    public MutableJsonList<BundleComponentJsonNode> Entry => GetListProperty<BundleComponentJsonNode>("entry");
 
     private static BundleType? ParseBundleType(string value)
     {

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Serialization.SourceNodes;
 
@@ -10,20 +11,22 @@ namespace Ignixa.Serialization.Models;
 
 public class BundleComponentSearchJsonNode : BaseJsonNode
 {
+    public BundleComponentSearchJsonNode()
+        : this(new JsonObject(), null)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    public BundleComponentSearchJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
     [JsonIgnore]
     public string Mode
     {
-        get => MutableNode["mode"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("mode");
-            }
-            else
-            {
-                MutableNode["mode"] = value;
-            }
-        }
+        get => GetProperty<string>("mode");
+        set => SetProperty("mode", value);
     }
 }

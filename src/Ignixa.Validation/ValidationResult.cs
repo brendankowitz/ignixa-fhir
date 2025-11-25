@@ -4,6 +4,7 @@
 // </copyright>
 
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Validation;
 
@@ -97,7 +98,7 @@ public sealed record ValidationResult
 
         foreach (var issue in Issues)
         {
-            var issueComponent = new OperationOutcomeJsonNode.IssueComponent
+            var issueComponent = new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
             {
                 Severity = MapSeverity(issue.Severity),
                 Code = DetermineIssueType(issue.Code),
@@ -105,12 +106,12 @@ public sealed record ValidationResult
             };
 
             // Add expression using the new method to ensure persistence
-            issueComponent.AddExpression(issue.Path);
+            issueComponent.Expression.Add(issue.Path);
 
             // Set details if available
             if (issue.Details != null)
             {
-                var detailsNode = new CodeableConceptJsonNode
+                var detailsNode = new CodeableConceptJsonNode(new JsonObject(), null)
                 {
                     Text = issue.Details.Text ?? string.Empty
                 };
@@ -119,7 +120,7 @@ public sealed record ValidationResult
                 {
                     foreach (var coding in issue.Details.Coding)
                     {
-                        detailsNode.AddCoding(new CodingJsonNode
+                        detailsNode.Coding.Add(new CodingJsonNode(new JsonObject(), null)
                         {
                             System = coding.System ?? string.Empty,
                             Code = coding.Code ?? string.Empty,
@@ -133,7 +134,7 @@ public sealed record ValidationResult
             else
             {
                 // Fallback: Use code as text
-                issueComponent.Details = new CodeableConceptJsonNode
+                issueComponent.Details = new CodeableConceptJsonNode(new JsonObject(), null)
                 {
                     Text = issue.Code
                 };
@@ -143,7 +144,10 @@ public sealed record ValidationResult
         }
 
         // Use the new method to properly set the issues in the mutable node
-        outcome.SetIssues(issueList);
+        foreach (var item in issueList)
+        {
+            outcome.Issue.Add(item);
+        }
 
         return outcome;
     }

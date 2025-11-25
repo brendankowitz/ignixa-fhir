@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -82,5 +83,62 @@ public abstract class BaseJsonNode : IMutableJsonNode
         {
             _internalNode[name] = value;
         }
+    }
+
+    protected T? GetProperty<T>(string name)
+    {
+        if (MutableNode.TryGetPropertyValue(name, out var node) && node is JsonValue valueNode)
+        {
+            return valueNode.GetValue<T>();
+        }
+        return default;
+    }
+
+    protected void SetProperty<T>(string name, T? value)
+    {
+        if (value == null)
+        {
+            MutableNode.Remove(name);
+        }
+        else if (value is JsonNode jsonNodeValue)
+        {
+            MutableNode[name] = jsonNodeValue;
+        }
+        else
+        {
+            MutableNode[name] = JsonValue.Create(value);
+        }
+    }
+
+    protected T? GetComplexProperty<T>(string name) where T : BaseJsonNode
+    {
+        if (MutableNode.TryGetPropertyValue(name, out var node) && node is JsonObject jsonObject)
+        {
+            // Assuming T has a constructor that takes a JsonObject and optional FhirSpecification
+            return (T)Activator.CreateInstance(typeof(T), jsonObject, FhirVersion);
+        }
+        return default;
+    }
+
+    protected MutableJsonList<T> GetListProperty<T>(string name) where T : BaseJsonNode
+    {
+        if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
+        {
+            // If property doesn't exist or is not an array, create a new array and set it
+            jsonArray = new JsonArray();
+            MutableNode[name] = jsonArray;
+        }
+        return new MutableJsonList<T>(jsonArray);
+    }
+
+    protected MutablePrimitiveList<T> GetPrimitiveListProperty<T>(string name)
+    {
+        if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
+        {
+            // If property doesn't exist or is not an array, create a new array and set it
+            jsonArray = new JsonArray();
+            MutableNode[name] = jsonArray;
+        }
+        return new MutablePrimitiveList<T>(jsonArray);
     }
 }

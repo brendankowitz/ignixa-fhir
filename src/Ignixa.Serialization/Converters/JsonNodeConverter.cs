@@ -66,7 +66,7 @@ public class JsonNodeConverter<TJsonNodeType> : JsonConverter<TJsonNodeType>
             actualType,
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             null,
-            [jsonObject],
+            [jsonObject, null],
             CultureInfo.InvariantCulture)!;
     }
 

@@ -5,6 +5,7 @@
 
 using System.Diagnostics;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Domain.Exceptions;
 
@@ -20,7 +21,7 @@ public class EverythingOperationException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,
@@ -33,7 +34,7 @@ public class EverythingOperationException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,

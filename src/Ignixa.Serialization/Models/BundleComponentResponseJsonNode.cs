@@ -11,77 +11,46 @@ namespace Ignixa.Serialization.Models;
 
 public class BundleComponentResponseJsonNode : BaseJsonNode
 {
+    public BundleComponentResponseJsonNode()
+        : this(new JsonObject(), null)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    public BundleComponentResponseJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
     // Cached wrapper for Outcome property
     private ResourceJsonNode? _cachedOutcome;
 
     [JsonIgnore]
     public string Status
     {
-        get => MutableNode["status"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("status");
-            }
-            else
-            {
-                MutableNode["status"] = value;
-            }
-        }
+        get => GetProperty<string>("status");
+        set => SetProperty("status", value);
     }
 
     [JsonIgnore]
     public string Location
     {
-        get => MutableNode["location"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("location");
-            }
-            else
-            {
-                MutableNode["location"] = value;
-            }
-        }
+        get => GetProperty<string>("location");
+        set => SetProperty("location", value);
     }
 
     [JsonIgnore]
     public string Etag
     {
-        get => MutableNode["etag"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("etag");
-            }
-            else
-            {
-                MutableNode["etag"] = value;
-            }
-        }
+        get => GetProperty<string>("etag");
+        set => SetProperty("etag", value);
     }
 
     [JsonIgnore]
     public DateTimeOffset? LastModified
     {
-        get
-        {
-            var internalNode = MutableNode;
-            if (internalNode.TryGetPropertyValue("lastModified", out var node) && node != null)
-            {
-                var value = node.GetValue<string>();
-                if (DateTimeOffset.TryParse(value, out var result))
-                {
-                    return result;
-                }
-            }
-
-            return null;
-        }
+        get => GetProperty<DateTimeOffset?>("lastModified");
         set
         {
             if (value == null)
@@ -99,19 +68,7 @@ public class BundleComponentResponseJsonNode : BaseJsonNode
     [JsonIgnore]
     public ResourceJsonNode Outcome
     {
-        get
-        {
-            if (_cachedOutcome == null)
-            {
-                var internalNode = MutableNode;
-                if (internalNode.TryGetPropertyValue("outcome", out var outcomeNode) && outcomeNode is JsonObject outcomeObject)
-                {
-                    _cachedOutcome = new ResourceJsonNode(outcomeObject);
-                }
-            }
-
-            return _cachedOutcome;
-        }
+        get => GetComplexProperty<ResourceJsonNode>("outcome");
         set
         {
             if (value == null)

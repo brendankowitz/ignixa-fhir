@@ -24,74 +24,15 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
     }
 
     /// <summary>
-    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    internal OperationOutcomeJsonNode(JsonObject jsonObject)
-        : base(jsonObject)
+    internal OperationOutcomeJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
     {
     }
 
     [JsonIgnore]
-    public IReadOnlyList<IssueComponent> Issue
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("issue", out var issueNode) || issueNode is not JsonArray array)
-            {
-                return Array.Empty<IssueComponent>();
-            }
-
-            var list = new List<IssueComponent>();
-            foreach (var item in array)
-            {
-                if (item != null)
-                {
-                    var json = item.ToJsonString();
-                    list.Add(JsonSerializer.Deserialize<IssueComponent>(json));
-                }
-            }
-
-            return list;
-        }
-    }
-
-    /// <summary>
-    /// Helper method to add an issue to the underlying JSON array.
-    /// This ensures the addition is persisted to the MutableNode.
-    /// </summary>
-    public void AddIssue(IssueComponent issue)
-    {
-        ArgumentNullException.ThrowIfNull(issue);
-
-        if (!MutableNode.TryGetPropertyValue("issue", out var node) || node is not JsonArray array)
-        {
-            array = new JsonArray();
-            MutableNode["issue"] = array;
-        }
-
-        array.Add(issue.MutableNode);
-    }
-
-    /// <summary>
-    /// Helper method to replace all issues.
-    /// </summary>
-    public void SetIssues(IEnumerable<IssueComponent> issues)
-    {
-        if (issues == null)
-        {
-            MutableNode.Remove("issue");
-        }
-        else
-        {
-            var array = new JsonArray();
-            foreach (var item in issues)
-            {
-                array.Add(item.MutableNode);
-            }
-
-            MutableNode["issue"] = array;
-        }
-    }
+    public MutableJsonList<IssueComponent> Issue => GetListProperty<IssueComponent>("issue");
 
     /// <summary>
     /// Represents an issue detected during validation or processing.
@@ -104,12 +45,22 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         // Cached wrapper for Details property
         private CodeableConceptJsonNode? _cachedDetails;
 
+        public IssueComponent()
+            : this(new JsonObject(), null)
+        {
+        }
+
+        public IssueComponent(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+            : base(jsonObject, fhirVersion)
+        {
+        }
+
         [JsonIgnore]
         public IssueSeverity? Severity
         {
             get
             {
-                var severityStr = MutableNode["severity"]?.GetValue<string>();
+                var severityStr = GetProperty<string>("severity");
                 return severityStr != null ? ParseIssueSeverity(severityStr) : null;
             }
             set
@@ -120,7 +71,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
                 }
                 else
                 {
-                    MutableNode["severity"] = GetIssueSeverityLiteral(value.Value);
+                    SetProperty("severity", GetIssueSeverityLiteral(value.Value));
                 }
             }
         }
@@ -130,7 +81,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         {
             get
             {
-                var codeStr = MutableNode["code"]?.GetValue<string>();
+                var codeStr = GetProperty<string>("code");
                 return codeStr != null ? ParseIssueType(codeStr) : null;
             }
             set
@@ -141,7 +92,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
                 }
                 else
                 {
-                    MutableNode["code"] = GetIssueTypeLiteral(value.Value);
+                    SetProperty("code", GetIssueTypeLiteral(value.Value));
                 }
             }
         }
@@ -149,103 +100,17 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         [JsonIgnore]
         public string Diagnostics
         {
-            get => MutableNode["diagnostics"]?.GetValue<string>();
-            set
-            {
-                if (value == null)
-                {
-                    MutableNode.Remove("diagnostics");
-                }
-                else
-                {
-                    MutableNode["diagnostics"] = value;
-                }
-            }
+            get => GetProperty<string>("diagnostics");
+            set => SetProperty("diagnostics", value);
         }
 
         [JsonIgnore]
-        public IReadOnlyList<string> Expression
-        {
-            get
-            {
-                if (!MutableNode.TryGetPropertyValue("expression", out var expressionNode) || expressionNode is not JsonArray array)
-                {
-                    return Array.Empty<string>();
-                }
-
-                var list = new List<string>();
-                foreach (var item in array)
-                {
-                    var value = item?.GetValue<string>();
-                    if (value != null)
-                    {
-                        list.Add(value);
-                    }
-                }
-
-                return list;
-            }
-        }
-
-        /// <summary>
-        /// Helper method to add an expression to the underlying JSON array.
-        /// This ensures the addition is persisted to the MutableNode.
-        /// </summary>
-        public void AddExpression(string expression)
-        {
-            if (string.IsNullOrEmpty(expression))
-            {
-                throw new ArgumentException("Expression cannot be null or empty", nameof(expression));
-            }
-
-            if (!MutableNode.TryGetPropertyValue("expression", out var node) || node is not JsonArray array)
-            {
-                array = new JsonArray();
-                MutableNode["expression"] = array;
-            }
-
-            array.Add(JsonValue.Create(expression));
-        }
-
-        /// <summary>
-        /// Helper method to replace all expressions.
-        /// </summary>
-        public void SetExpressions(IEnumerable<string> expressions)
-        {
-            if (expressions == null)
-            {
-                MutableNode.Remove("expression");
-            }
-            else
-            {
-                var array = new JsonArray();
-                foreach (var item in expressions)
-                {
-                    array.Add(JsonValue.Create(item));
-                }
-
-                MutableNode["expression"] = array;
-            }
-        }
+        public MutablePrimitiveList<string> Expression => GetPrimitiveListProperty<string>("expression");
 
         [JsonIgnore]
         public CodeableConceptJsonNode Details
         {
-            get
-            {
-                if (_cachedDetails == null)
-                {
-                    var internalNode = MutableNode;
-                    if (internalNode.TryGetPropertyValue("details", out var detailsNode) && detailsNode is JsonObject detailsObject)
-                    {
-                        _cachedDetails = new CodeableConceptJsonNode { };
-                        var json = detailsNode.ToJsonString();
-                        _cachedDetails = JsonSerializer.Deserialize<CodeableConceptJsonNode>(json);
-                    }
-                }
-
-                return _cachedDetails;
-            }
+            get => GetComplexProperty<CodeableConceptJsonNode>("details");
             set
             {
                 if (value == null)
@@ -489,83 +354,24 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
 [SuppressMessage("Design", "CA1819", Justification = "POCO style model")]
 public class CodeableConceptJsonNode : BaseJsonNode
 {
+    public CodeableConceptJsonNode()
+        : this(new JsonObject(), null)
+    {
+    }
+
+    public CodeableConceptJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     [JsonIgnore]
-    public IReadOnlyList<CodingJsonNode> Coding
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("coding", out var codingNode) || codingNode is not JsonArray array)
-            {
-                return Array.Empty<CodingJsonNode>();
-            }
-
-            var list = new List<CodingJsonNode>();
-            foreach (var item in array)
-            {
-                if (item != null)
-                {
-                    var json = item.ToJsonString();
-                    list.Add(JsonSerializer.Deserialize<CodingJsonNode>(json));
-                }
-            }
-
-            return list;
-        }
-    }
-
-    /// <summary>
-    /// Helper method to add a coding to the underlying JSON array.
-    /// This ensures the addition is persisted to the MutableNode.
-    /// </summary>
-    public void AddCoding(CodingJsonNode coding)
-    {
-        ArgumentNullException.ThrowIfNull(coding);
-
-        if (!MutableNode.TryGetPropertyValue("coding", out var node) || node is not JsonArray array)
-        {
-            array = new JsonArray();
-            MutableNode["coding"] = array;
-        }
-
-        array.Add(coding.MutableNode);
-    }
-
-    /// <summary>
-    /// Helper method to replace all codings.
-    /// </summary>
-    public void SetCodings(IEnumerable<CodingJsonNode> codings)
-    {
-        if (codings == null)
-        {
-            MutableNode.Remove("coding");
-        }
-        else
-        {
-            var array = new JsonArray();
-            foreach (var item in codings)
-            {
-                array.Add(item.MutableNode);
-            }
-
-            MutableNode["coding"] = array;
-        }
-    }
+    public MutableJsonList<CodingJsonNode> Coding => GetListProperty<CodingJsonNode>("coding");
 
     [JsonIgnore]
     public string Text
     {
-        get => MutableNode["text"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("text");
-            }
-            else
-            {
-                MutableNode["text"] = value;
-            }
-        }
+        get => GetProperty<string>("text");
+        set => SetProperty("text", value);
     }
 }
 
@@ -574,88 +380,48 @@ public class CodeableConceptJsonNode : BaseJsonNode
 /// </summary>
 public class CodingJsonNode : BaseJsonNode
 {
+    public CodingJsonNode()
+        : this(new JsonObject(), null)
+    {
+    }
+
+    public CodingJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     [JsonIgnore]
     public string System
     {
-        get => MutableNode["system"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("system");
-            }
-            else
-            {
-                MutableNode["system"] = value;
-            }
-        }
+        get => GetProperty<string>("system");
+        set => SetProperty("system", value);
     }
 
     [JsonIgnore]
     public string Version
     {
-        get => MutableNode["version"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("version");
-            }
-            else
-            {
-                MutableNode["version"] = value;
-            }
-        }
+        get => GetProperty<string>("version");
+        set => SetProperty("version", value);
     }
 
     [JsonIgnore]
     public string Code
     {
-        get => MutableNode["code"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("code");
-            }
-            else
-            {
-                MutableNode["code"] = value;
-            }
-        }
+        get => GetProperty<string>("code");
+        set => SetProperty("code", value);
     }
 
     [JsonIgnore]
     public string Display
     {
-        get => MutableNode["display"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("display");
-            }
-            else
-            {
-                MutableNode["display"] = value;
-            }
-        }
+        get => GetProperty<string>("display");
+        set => SetProperty("display", value);
     }
 
     [JsonIgnore]
     public bool? UserSelected
     {
-        get => MutableNode["userSelected"]?.GetValue<bool>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("userSelected");
-            }
-            else
-            {
-                MutableNode["userSelected"] = value.Value;
-            }
-        }
+        get => GetProperty<bool?>("userSelected");
+        set => SetProperty("userSelected", value);
     }
 }

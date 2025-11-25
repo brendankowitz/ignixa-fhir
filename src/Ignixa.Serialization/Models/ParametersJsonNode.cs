@@ -27,10 +27,10 @@ public class ParametersJsonNode : ResourceJsonNode
     }
 
     /// <summary>
-    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    internal ParametersJsonNode(JsonObject jsonObject)
-        : base(jsonObject)
+    public ParametersJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
     {
     }
 
@@ -38,26 +38,7 @@ public class ParametersJsonNode : ResourceJsonNode
     /// Gets the parameter array from the internal JsonObject.
     /// </summary>
     [JsonIgnore]
-    public IReadOnlyList<ParameterJsonNode> Parameter
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("parameter", out var node) || node is not JsonArray array)
-            {
-                return Array.Empty<ParameterJsonNode>();
-            }
-
-            var parameters = new List<ParameterJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                // Directly wrap the JsonObject in ParameterJsonNode to avoid deserialization issues
-                var param = new ParameterJsonNode(item);
-                parameters.Add(param);
-            }
-
-            return parameters;
-        }
-    }
+    public MutableJsonList<ParameterJsonNode> Parameter => GetListProperty<ParameterJsonNode>("parameter");
 
     /// <summary>
     /// Finds a parameter by name.
@@ -83,10 +64,10 @@ public class ParameterJsonNode : BaseJsonNode
     }
 
     /// <summary>
-    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    internal ParameterJsonNode(JsonObject jsonObject)
-        : base(jsonObject)
+    public ParameterJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
     {
     }
 
@@ -96,10 +77,8 @@ public class ParameterJsonNode : BaseJsonNode
     [JsonIgnore]
     public string Name
     {
-        get => MutableNode.TryGetPropertyValue("name", out var node) && node is JsonValue value
-            ? value.GetValue<string>()
-            : null;
-        set => SetProperty("name", value != null ? JsonValue.Create(value) : null);
+        get => GetProperty<string>("name");
+        set => SetProperty("name", value);
     }
 
     /// <summary>
@@ -107,26 +86,7 @@ public class ParameterJsonNode : BaseJsonNode
     /// </summary>
     [JsonIgnore]
     [SuppressMessage("Naming", "CA1721:Property names should not match method names", Justification = "FHIR specification uses 'part'")]
-    public IReadOnlyList<ParameterJsonNode> Part
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("part", out var node) || node is not JsonArray array)
-            {
-                return Array.Empty<ParameterJsonNode>();
-            }
-
-            var parts = new List<ParameterJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                // Directly wrap the JsonObject in ParameterJsonNode to avoid deserialization issues
-                var part = new ParameterJsonNode(item);
-                parts.Add(part);
-            }
-
-            return parts;
-        }
-    }
+    public MutableJsonList<ParameterJsonNode> Part => GetListProperty<ParameterJsonNode>("part");
 
     /// <summary>
     /// Finds a part by name.

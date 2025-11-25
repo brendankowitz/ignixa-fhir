@@ -18,6 +18,7 @@ using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -230,14 +231,17 @@ public class BundleEntryExecutor
             var operationOutcome = new OperationOutcomeJsonNode();
             var issueList = new List<OperationOutcomeJsonNode.IssueComponent>
             {
-                new OperationOutcomeJsonNode.IssueComponent
+                new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
                 {
                     Severity = severity,
                     Code = code,
                     Diagnostics = ex.Message
                 }
             };
-            operationOutcome.SetIssues(issueList);
+            foreach (var item in issueList)
+            {
+                operationOutcome.Issue.Add(item);
+            }
 
             var resourceJson = operationOutcome.SerializeToString();
 

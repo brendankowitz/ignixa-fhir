@@ -5,6 +5,7 @@
 
 using Ignixa.Serialization.Models;
 using Ignixa.Validation;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -27,20 +28,20 @@ public static class ValidationResultExtensions
 
         foreach (var issue in validationResult.Issues)
         {
-            var issueComponent = new OperationOutcomeJsonNode.IssueComponent
+            var issueComponent = new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
             {
                 Severity = MapSeverity(issue.Severity),
                 Code = OperationOutcomeJsonNode.IssueType.Invalid,
                 Diagnostics = issue.Message
             };
-            issueComponent.AddExpression(issue.Path);
+            issueComponent.Expression.Add(issue.Path);
             issueList.Add(issueComponent);
         }
 
         // If no issues, add a success message
         if (issueList.Count == 0)
         {
-            issueList.Add(new OperationOutcomeJsonNode.IssueComponent
+            issueList.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
             {
                 Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
                 Code = OperationOutcomeJsonNode.IssueType.Informational,
@@ -48,7 +49,10 @@ public static class ValidationResultExtensions
             });
         }
 
-        outcome.SetIssues(issueList);
+        foreach (var item in issueList)
+        {
+            outcome.Issue.Add(item);
+        }
         return outcome;
     }
 

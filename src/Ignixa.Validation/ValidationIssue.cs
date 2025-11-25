@@ -4,6 +4,7 @@
 // </copyright>
 
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Validation;
 
@@ -118,13 +119,13 @@ public sealed record ValidationIssue
             ? $"The provided code '{system}#{code}' was not found in the value set '{valueSet}'"
             : $"Unknown code '{code}' in the CodeSystem '{system}'";
 
-        var details = new CodeableConceptJsonNode
+        var details = new CodeableConceptJsonNode(new JsonObject(), null)
         {
             Text = message
         };
 
         // Add coding using the new method to ensure persistence
-        details.AddCoding(new CodingJsonNode
+        details.Coding.Add(new CodingJsonNode(new JsonObject(), null)
         {
             System = "http://hl7.org/fhir/tools/CodeSystem/tx-issue-type",
             Code = issueType

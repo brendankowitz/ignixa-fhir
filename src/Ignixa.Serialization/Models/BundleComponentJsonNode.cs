@@ -15,6 +15,13 @@ namespace Ignixa.Serialization.Models;
 [SuppressMessage("Design", "CA1056", Justification = "POCO style model")]
 public class BundleComponentJsonNode : BaseJsonNode
 {
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// </summary>
+    public BundleComponentJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
     // Cached wrappers for child object properties
     private ResourceJsonNode? _cachedResource;
     private BundleComponentRequestJsonNode? _cachedRequest;
@@ -76,13 +83,9 @@ public class BundleComponentJsonNode : BaseJsonNode
         {
             if (_cachedRequest == null)
             {
-                var internalNode = MutableNode;
-                if (internalNode.TryGetPropertyValue("request", out var requestNode) && requestNode is JsonObject requestObject)
+                if (MutableNode.TryGetPropertyValue("request", out var requestNode) && requestNode is JsonObject requestObject)
                 {
-                    _cachedRequest = new BundleComponentRequestJsonNode { };
-                    // Copy properties from JsonObject to the wrapper
-                    var json = requestNode.ToJsonString();
-                    _cachedRequest = JsonSerializer.Deserialize<BundleComponentRequestJsonNode>(json);
+                    _cachedRequest = new BundleComponentRequestJsonNode(requestObject, FhirVersion);
                 }
             }
 
@@ -110,11 +113,9 @@ public class BundleComponentJsonNode : BaseJsonNode
         {
             if (_cachedResponse == null)
             {
-                var internalNode = MutableNode;
-                if (internalNode.TryGetPropertyValue("response", out var responseNode) && responseNode is JsonObject responseObject)
+                if (MutableNode.TryGetPropertyValue("response", out var responseNode) && responseNode is JsonObject responseObject)
                 {
-                    var json = responseNode.ToJsonString();
-                    _cachedResponse = JsonSerializer.Deserialize<BundleComponentResponseJsonNode>(json);
+                    _cachedResponse = new BundleComponentResponseJsonNode(responseObject, FhirVersion);
                 }
             }
 
@@ -142,11 +143,9 @@ public class BundleComponentJsonNode : BaseJsonNode
         {
             if (_cachedSearch == null)
             {
-                var internalNode = MutableNode;
-                if (internalNode.TryGetPropertyValue("search", out var searchNode) && searchNode is JsonObject searchObject)
+                if (MutableNode.TryGetPropertyValue("search", out var searchNode) && searchNode is JsonObject searchObject)
                 {
-                    var json = searchNode.ToJsonString();
-                    _cachedSearch = JsonSerializer.Deserialize<BundleComponentSearchJsonNode>(json);
+                    _cachedSearch = new BundleComponentSearchJsonNode(searchObject, FhirVersion);
                 }
             }
 

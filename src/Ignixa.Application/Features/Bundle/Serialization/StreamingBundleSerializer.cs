@@ -12,6 +12,7 @@ using Ignixa.Serialization;
 using Ignixa.Specification;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Bundle.Serialization;
 
@@ -468,7 +469,7 @@ public static class StreamingBundleSerializer
 
         if (!string.IsNullOrEmpty(selfLink))
         {
-            links.Add(new BundleLinkJsonNode
+            links.Add(new BundleLinkJsonNode(new JsonObject(), null)
             {
                 Relation = "self",
                 Url = selfLink
@@ -477,7 +478,7 @@ public static class StreamingBundleSerializer
 
         if (!string.IsNullOrEmpty(nextLink))
         {
-            links.Add(new BundleLinkJsonNode
+            links.Add(new BundleLinkJsonNode(new JsonObject(), null)
             {
                 Relation = "next",
                 Url = nextLink

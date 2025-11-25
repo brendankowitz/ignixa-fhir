@@ -9,6 +9,7 @@ using Ignixa.Application.Features.History;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -51,7 +52,7 @@ public class BundleResponseBuilder
         foreach (var response in responses)
         {
             var entryComponent = BuildEntryComponent(response);
-            bundle.AddEntry(entryComponent);
+            bundle.Entry.Add(entryComponent);
         }
 
         _logger.LogDebug("Successfully built {Type} response bundle", bundleType);
@@ -61,9 +62,9 @@ public class BundleResponseBuilder
 
     private BundleComponentJsonNode BuildEntryComponent(BundleEntryResponse response)
     {
-        var entry = new BundleComponentJsonNode
+        var entry = new BundleComponentJsonNode(new JsonObject(), null)
         {
-            Response = new BundleComponentResponseJsonNode
+            Response = new BundleComponentResponseJsonNode(new JsonObject(), null)
             {
                 Status = response.Status ?? response.StatusCode.ToString()
             }
@@ -106,14 +107,11 @@ public class BundleResponseBuilder
 
                 // Add OperationOutcome if parsing fails
                 var outcome = new OperationOutcomeJsonNode();
-                outcome.SetIssues(new List<OperationOutcomeJsonNode.IssueComponent>
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
                 {
-                    new OperationOutcomeJsonNode.IssueComponent
-                    {
-                        Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
-                        Code = OperationOutcomeJsonNode.IssueType.Invalid,
-                        Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
-                    }
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
+                    Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                    Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
                 });
                 entry.Response.Outcome = outcome;
             }

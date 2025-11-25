@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Domain.Exceptions;
 
@@ -17,7 +18,7 @@ public class BadRequestException : FhirException
     public BadRequestException(string message)
         : base(message)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,
@@ -28,7 +29,7 @@ public class BadRequestException : FhirException
     public BadRequestException(string message, Exception innerException)
         : base(message, innerException)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,

@@ -224,7 +224,7 @@ internal static class SearchParameterDefinitionBuilder
 
         void AddIssue(string format, params object[] args)
         {
-            issues.Add(new OperationOutcomeJsonNode.IssueComponent
+            issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
             {
                 Severity = OperationOutcomeJsonNode.IssueSeverity.Fatal,
                 Code = OperationOutcomeJsonNode.IssueType.Invalid,

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.Bundle;
 
@@ -508,29 +509,23 @@ public class BundleProcessor
     private BundleJsonNode CreateErrorBundle(string message, string details)
     {
         var outcome = new OperationOutcomeJsonNode();
-        outcome.SetIssues(new List<OperationOutcomeJsonNode.IssueComponent>
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
         {
-            new OperationOutcomeJsonNode.IssueComponent
-            {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.Processing,
-                Diagnostics = $"{message}: {details}"
-            }
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.Processing,
+            Diagnostics = $"{message}: {details}"
         });
 
         var bundle = new BundleJsonNode
         {
             Type = BundleJsonNode.BundleType.TransactionResponse
         };
-        bundle.SetEntries(new List<BundleComponentJsonNode>
+        bundle.Entry.Add(new BundleComponentJsonNode(new JsonObject(), null)
         {
-            new BundleComponentJsonNode
+            Response = new BundleComponentResponseJsonNode(new JsonObject(), null)
             {
-                Response = new BundleComponentResponseJsonNode
-                {
-                    Status = "500",
-                    Outcome = outcome
-                }
+                Status = "500",
+                Outcome = outcome
             }
         });
         return bundle;

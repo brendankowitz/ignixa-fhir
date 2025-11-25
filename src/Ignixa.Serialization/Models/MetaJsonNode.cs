@@ -22,28 +22,26 @@ public class MetaJsonNode : BaseJsonNode
     }
 
     /// <summary>
-    /// Internal constructor for wrapping existing JsonObject (used by ResourceJsonNode.Meta).
+    /// Public constructor for wrapping existing JsonObject (used by ResourceJsonNode.Meta).
     /// </summary>
-    internal MetaJsonNode(JsonObject jsonObject)
-        : base(jsonObject)
+    public MetaJsonNode(JsonObject jsonObject)
+        : this(jsonObject, null)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    public MetaJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
     {
     }
 
     [JsonIgnore]
     public string? VersionId
     {
-        get => MutableNode["versionId"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("versionId");
-            }
-            else
-            {
-                MutableNode["versionId"] = value;
-            }
-        }
+        get => GetProperty<string>("versionId");
+        set => SetProperty("versionId", value);
     }
 
     [JsonIgnore]
@@ -51,16 +49,14 @@ public class MetaJsonNode : BaseJsonNode
     {
         get
         {
-            var internalNode = MutableNode;
-            if (internalNode.TryGetPropertyValue("lastUpdated", out var node) && node != null)
+            if (MutableNode.TryGetPropertyValue("lastUpdated", out var node) && node is JsonValue valueNode)
             {
-                var value = node.GetValue<string>();
+                var value = valueNode.GetValue<string>();
                 if (DateTimeOffset.TryParse(value, out var result))
                 {
                     return result;
                 }
             }
-
             return null;
         }
         set

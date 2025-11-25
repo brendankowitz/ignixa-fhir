@@ -5,6 +5,7 @@
 
 using EnsureThat;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Domain.Exceptions;
 
@@ -20,7 +21,7 @@ public class RequestTooCostlyException : FhirException
     {
         EnsureArg.IsNotNull(message, nameof(message));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.TooCostly,
@@ -33,7 +34,7 @@ public class RequestTooCostlyException : FhirException
     {
         EnsureArg.IsNotNull(message, nameof(message));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.TooCostly,

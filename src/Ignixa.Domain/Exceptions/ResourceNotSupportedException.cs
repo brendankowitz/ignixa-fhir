@@ -6,6 +6,7 @@
 using System.Globalization;
 using EnsureThat;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Domain.Exceptions;
 
@@ -28,7 +29,7 @@ public class ResourceNotSupportedException : FhirException
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,
@@ -41,7 +42,7 @@ public class ResourceNotSupportedException : FhirException
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,

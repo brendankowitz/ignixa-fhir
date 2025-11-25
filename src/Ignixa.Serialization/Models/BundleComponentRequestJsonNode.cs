@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Serialization.SourceNodes;
 
@@ -13,37 +14,29 @@ namespace Ignixa.Serialization.Models;
 [SuppressMessage("Design", "CA1056", Justification = "POCO style model")]
 public class BundleComponentRequestJsonNode : BaseJsonNode
 {
+    public BundleComponentRequestJsonNode()
+        : this(new JsonObject(), null)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    public BundleComponentRequestJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
     [JsonIgnore]
     public string Method
     {
-        get => MutableNode["method"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("method");
-            }
-            else
-            {
-                MutableNode["method"] = value;
-            }
-        }
+        get => GetProperty<string>("method");
+        set => SetProperty("method", value);
     }
 
     [JsonIgnore]
     public string Url
     {
-        get => MutableNode["url"]?.GetValue<string>();
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("url");
-            }
-            else
-            {
-                MutableNode["url"] = value;
-            }
-        }
+        get => GetProperty<string>("url");
+        set => SetProperty("url", value);
     }
 }

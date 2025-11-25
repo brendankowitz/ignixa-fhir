@@ -57,7 +57,10 @@ public abstract class FhirException : Exception
         get
         {
             var outcome = new OperationOutcomeJsonNode();
-            outcome.SetIssues(Issues);
+            foreach (var issue in Issues)
+            {
+                outcome.Issue.Add(issue);
+            }
             return outcome;
         }
     }

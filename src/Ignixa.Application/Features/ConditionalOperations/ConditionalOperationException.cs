@@ -5,6 +5,7 @@
 
 using Ignixa.Domain.Exceptions;
 using Ignixa.Serialization.Models;
+using System.Text.Json.Nodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations;
 
@@ -62,7 +63,7 @@ public class ConditionalOperationException : FhirException
     {
         var issueCode = matchCount == 0 ? OperationOutcomeJsonNode.IssueType.NotFound : OperationOutcomeJsonNode.IssueType.Duplicate;
 
-        var issue = new OperationOutcomeJsonNode.IssueComponent
+        var issue = new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = issueCode,
@@ -71,7 +72,7 @@ public class ConditionalOperationException : FhirException
 
         if (!string.IsNullOrEmpty(searchCriteria))
         {
-            issue.AddExpression(searchCriteria);
+            issue.Expression.Add(searchCriteria);
         }
 
         return issue;
