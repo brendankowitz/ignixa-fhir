@@ -1,3 +1,3 @@
 # Best Practices Reminder
 
-Respect claude.md, delegate to @agent-fast-coding-agent when possible.
+Delegate to @agent-fast-coding-agent when possible, respect claude.md, use MCP servers to assist.
