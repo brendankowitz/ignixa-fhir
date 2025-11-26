@@ -23,8 +23,6 @@ public class BundleComponentResponseJsonNode : BaseJsonNode
         : base(jsonObject, fhirVersion)
     {
     }
-    // Cached wrapper for Outcome property
-    private ResourceJsonNode? _cachedOutcome;
 
     [JsonIgnore]
     public string Status
@@ -74,12 +72,10 @@ public class BundleComponentResponseJsonNode : BaseJsonNode
             if (value == null)
             {
                 MutableNode.Remove("outcome");
-                _cachedOutcome = null;
             }
             else
             {
                 MutableNode["outcome"] = value.MutableNode;
-                _cachedOutcome = value;
             }
         }
     }

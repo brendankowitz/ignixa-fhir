@@ -24,9 +24,9 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
     }
 
     /// <summary>
-    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    internal OperationOutcomeJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public OperationOutcomeJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -42,9 +42,6 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
     [SuppressMessage("Design", "CA1819", Justification = "POCO style model")]
     public class IssueComponent : BaseJsonNode
     {
-        // Cached wrapper for Details property
-        private CodeableConceptJsonNode? _cachedDetails;
-
         public IssueComponent()
             : this(new JsonObject(), null)
         {
@@ -116,12 +113,10 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
                 if (value == null)
                 {
                     MutableNode.Remove("details");
-                    _cachedDetails = null;
                 }
                 else
                 {
                     MutableNode["details"] = value.MutableNode;
-                    _cachedDetails = value;
                 }
             }
         }

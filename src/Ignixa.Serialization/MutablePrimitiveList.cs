@@ -5,22 +5,24 @@ using System.Text.Json.Nodes;
 namespace Ignixa.Serialization;
     public class MutablePrimitiveList<T> : IList<T>
     {
-        private readonly JsonArray _jsonArray;
+        private readonly Func<JsonArray> _arrayFactory;
+        private JsonArray? _jsonArray;
 
-        public MutablePrimitiveList(JsonArray jsonArray)
+        public MutablePrimitiveList(Func<JsonArray> arrayFactory, JsonArray? existingArray)
         {
-            _jsonArray = jsonArray ?? new JsonArray();
+            _arrayFactory = arrayFactory;
+            _jsonArray = existingArray;
         }
+
+        private JsonArray JsonArray => _jsonArray ??= _arrayFactory();
 
         public T this[int index]
         {
             get
             {
-                if (index < 0 || index >= _jsonArray.Count)
-                {
-                    throw new System.ArgumentOutOfRangeException(nameof(index));
-                }
-                var node = _jsonArray[index];
+                System.ArgumentOutOfRangeException.ThrowIfNegative(index);
+                System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, JsonArray.Count, nameof(index));
+                var node = JsonArray[index];
                 if (node == null)
                 {
                     return default!; // If T is a reference type, this will be null. If T is a value type, it will be its default value.
@@ -29,31 +31,29 @@ namespace Ignixa.Serialization;
             }
             set
             {
-                if (index < 0 || index >= _jsonArray.Count)
-                {
-                    throw new System.ArgumentOutOfRangeException(nameof(index));
-                }
-                _jsonArray[index] = JsonValue.Create(value);
+                System.ArgumentOutOfRangeException.ThrowIfNegative(index);
+                System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, JsonArray.Count, nameof(index));
+                JsonArray[index] = JsonValue.Create(value);
             }
         }
 
-        public int Count => _jsonArray.Count;
+        public int Count => JsonArray.Count;
 
         public bool IsReadOnly => false;
 
         public void Add(T item)
         {
-            _jsonArray.Add(JsonValue.Create(item));
+            JsonArray.Add(JsonValue.Create(item));
         }
 
         public void Clear()
         {
-            _jsonArray.Clear();
+            JsonArray.Clear();
         }
 
         public bool Contains(T item)
         {
-            foreach (var node in _jsonArray)
+            foreach (var node in JsonArray)
             {
                 // Handle null nodes in array
                 if (node == null)
@@ -74,11 +74,11 @@ namespace Ignixa.Serialization;
         {
             System.ArgumentNullException.ThrowIfNull(array);
             System.ArgumentOutOfRangeException.ThrowIfNegative(arrayIndex);
-            if (array.Length - arrayIndex < _jsonArray.Count) System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(arrayIndex + _jsonArray.Count, array.Length, nameof(arrayIndex));
+            if (array.Length - arrayIndex < JsonArray.Count) System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(arrayIndex + JsonArray.Count, array.Length, nameof(arrayIndex));
 
-            for (int i = 0; i < _jsonArray.Count; i++)
+            for (int i = 0; i < JsonArray.Count; i++)
             {
-                var node = _jsonArray[i];
+                var node = JsonArray[i];
                 if (node == null)
                 {
                     array[arrayIndex + i] = default!; // Assign default if node is null
@@ -92,7 +92,7 @@ namespace Ignixa.Serialization;
 
         public IEnumerator<T> GetEnumerator()
         {
-            foreach (var node in _jsonArray)
+            foreach (var node in JsonArray)
             {
                 if (node == null)
                 {
@@ -107,9 +107,9 @@ namespace Ignixa.Serialization;
 
         public int IndexOf(T item)
         {
-            for (int i = 0; i < _jsonArray.Count; i++)
+            for (int i = 0; i < JsonArray.Count; i++)
             {
-                var node = _jsonArray[i];
+                var node = JsonArray[i];
                 // Handle null nodes in array
                 if (node == null)
                 {
@@ -127,20 +127,20 @@ namespace Ignixa.Serialization;
 
         public void Insert(int index, T item)
         {
-            _jsonArray.Insert(index, JsonValue.Create(item));
+            JsonArray.Insert(index, JsonValue.Create(item));
         }
 
         public bool Remove(T item)
         {
-            for (int i = 0; i < _jsonArray.Count; i++)
+            for (int i = 0; i < JsonArray.Count; i++)
             {
-                var node = _jsonArray[i];
+                var node = JsonArray[i];
                 // Handle null nodes in array
                 if (node == null)
                 {
                     if (item == null)
                     {
-                        _jsonArray.RemoveAt(i);
+                        JsonArray.RemoveAt(i);
                         return true;
                     }
                     continue;
@@ -148,7 +148,7 @@ namespace Ignixa.Serialization;
                 // Handle non-null nodes
                 if (item != null && node.GetValue<T>()!.Equals(item))
                 {
-                    _jsonArray.RemoveAt(i);
+                    JsonArray.RemoveAt(i);
                     return true;
                 }
             }
@@ -157,7 +157,7 @@ namespace Ignixa.Serialization;
 
         public void RemoveAt(int index)
         {
-            _jsonArray.RemoveAt(index);
+            JsonArray.RemoveAt(index);
         }
 
         IEnumerator IEnumerable.GetEnumerator()

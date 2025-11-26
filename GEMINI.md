@@ -111,3 +111,12 @@ cd codegen
 *   **`README.md`:** The primary source for project overview, features, and setup instructions.
 *   **`CLAUDE.md`:** A detailed development guide created specifically for AI assistants, containing architectural rules, common patterns, and checklists. **This is a crucial resource for understanding the "how-to" of development in this repo.**
 *   **`docs/adr/`:** A directory of Architecture Decision Records (ADRs) that explain key design choices and the project's history.
+
+### Git Workflow
+
+**CRITICAL**: Never commit without user approval.
+1. Make changes & test
+2. Show diff + status
+3. Ask: "Should I commit: [message]?"
+4. Wait for confirmation
+5. Execute git commit

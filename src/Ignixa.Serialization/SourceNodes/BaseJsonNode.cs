@@ -124,21 +124,27 @@ public abstract class BaseJsonNode : IMutableJsonNode
     {
         if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
         {
-            // If property doesn't exist or is not an array, create a new array and set it
-            jsonArray = new JsonArray();
-            MutableNode[name] = jsonArray;
+            jsonArray = null;
         }
-        return new MutableJsonList<T>(jsonArray);
+        return new MutableJsonList<T>(() => GetOrCreateArray(name), jsonArray);
     }
 
     protected MutablePrimitiveList<T> GetPrimitiveListProperty<T>(string name)
     {
         if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
         {
-            // If property doesn't exist or is not an array, create a new array and set it
+            jsonArray = null;
+        }
+        return new MutablePrimitiveList<T>(() => GetOrCreateArray(name), jsonArray);
+    }
+
+    private JsonArray GetOrCreateArray(string name)
+    {
+        if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
+        {
             jsonArray = new JsonArray();
             MutableNode[name] = jsonArray;
         }
-        return new MutablePrimitiveList<T>(jsonArray);
+        return jsonArray;
     }
 }
