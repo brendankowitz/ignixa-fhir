@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
 
@@ -24,4 +25,5 @@ public record ConditionalCreateCommand(
     string ResourceType,
     string IfNoneExist,
     ResourceJsonNode JsonNode,
+    ProvenanceJsonNode? ProvenanceResource = null,
     string? RequestId = null) : IRequest<ConditionalCreateResult>;

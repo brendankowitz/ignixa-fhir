@@ -118,4 +118,30 @@ public static class ProvenanceHeaderHelper
         return provenanceNode;
     }
 
+    /// <summary>
+    /// Attempts to parse the X-Provenance header for standalone operations only.
+    /// When a coordinator is present (bundle operations), returns null since provenance
+    /// should be handled via bundle entries, not headers.
+    /// </summary>
+    /// <param name="headers">HTTP request headers.</param>
+    /// <param name="coordinator">Deferred write coordinator (null for standalone operations).</param>
+    /// <param name="memoryStreamManager">Memory stream manager for efficient parsing.</param>
+    /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Parsed Provenance resource, or null if not applicable.</returns>
+    public static async Task<ProvenanceJsonNode?> TryParseForStandaloneOperationAsync(
+        IHeaderDictionary headers,
+        object? coordinator,
+        RecyclableMemoryStreamManager memoryStreamManager,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        // Only process provenance for standalone operations (not bundle operations)
+        if (coordinator != null)
+        {
+            return null;
+        }
+
+        return await TryParseProvenanceHeaderAsync(headers, memoryStreamManager, logger, cancellationToken);
+    }
 }

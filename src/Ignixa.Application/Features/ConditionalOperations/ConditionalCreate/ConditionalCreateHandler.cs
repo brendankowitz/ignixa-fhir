@@ -14,6 +14,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
@@ -121,6 +122,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
                 request.ResourceType,
                 request.JsonNode,
                 request.TenantId,
+                request.ProvenanceResource,
                 cancellationToken);
 
             return new ConditionalCreateResult(
@@ -156,6 +158,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
                     request.ResourceType,
                     request.JsonNode,
                     request.TenantId,
+                    request.ProvenanceResource,
                     cancellationToken);
 
                 return new ConditionalCreateResult(
@@ -198,6 +201,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
         string resourceType,
         ResourceJsonNode jsonNode,
         int tenantId,
+        ProvenanceJsonNode? provenanceResource,
         CancellationToken cancellationToken)
     {
         // Get FHIR request context to check for bundle-assigned IDs
@@ -226,7 +230,8 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
             Id: newId,
             JsonNode: jsonNode,
             HttpMethod: System.Net.Http.HttpMethod.Post,
-            Coordinator: null); // No bundle context for conditional create
+            Coordinator: null, // No bundle context for conditional create
+            ProvenanceResource: provenanceResource);
 
         var updateResult = await _mediator.SendAsync(createCommand, cancellationToken);
 

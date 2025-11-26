@@ -90,8 +90,9 @@ public static class FhirEndpoints
         // PUT /{resourceType} - Conditional Update (no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
         tenantGroup.MapPut("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, CancellationToken ct) =>
-            HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+            [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, logger, ct))
             .WithName("ConditionalUpdateResourceExplicit")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -182,8 +183,9 @@ public static class FhirEndpoints
         // PUT /{resourceType} - Conditional Update (agnostic, no ID in URL, uses query string)
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
         agnosticGroup.MapPut("/{resourceType}", (HttpContext context, string resourceType,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
-            HandleConditionalUpdateResource(context, resourceType, mediator, memoryStreamManager, fhirContextAccessor, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleConditionalUpdateResource(context, resourceType, mediator, memoryStreamManager, fhirContextAccessor, logger, ct))
             .WithName("ConditionalUpdateResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -433,16 +435,13 @@ public static class FhirEndpoints
             }
         }
 
-        // Extract X-Provenance header if present
-        ProvenanceJsonNode? provenanceResource = null;
-        if (coordinator == null) // Only process provenance for standalone operations (not bundle operations)
-        {
-            provenanceResource = await ProvenanceHeaderHelper.TryParseProvenanceHeaderAsync(
-                context.Request.Headers,
-                memoryStreamManager,
-                logger,
-                ct);
-        }
+        // Extract X-Provenance header if present (only for standalone operations)
+        var provenanceResource = await ProvenanceHeaderHelper.TryParseForStandaloneOperationAsync(
+            context.Request.Headers,
+            coordinator,
+            memoryStreamManager,
+            logger,
+            ct);
 
         // Send generic command with optional coordinator and validation override
         var command = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Put, coordinator, parsedIfMatch, validationOverride, provenanceResource);
@@ -680,12 +679,21 @@ public static class FhirEndpoints
                 conditionalJsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
             }
 
+            // Extract X-Provenance header if present (only for standalone operations)
+            var conditionalProvenanceResource = await ProvenanceHeaderHelper.TryParseForStandaloneOperationAsync(
+                context.Request.Headers,
+                null, // No coordinator for conditional create (standalone only)
+                memoryStreamManager,
+                logger,
+                ct);
+
             // Execute conditional create
             var command = new Application.Features.ConditionalOperations.ConditionalCreate.ConditionalCreateCommand(
                 TenantId: tenantId,
                 ResourceType: resourceType,
                 IfNoneExist: ifNoneExist.ToString(),
                 JsonNode: conditionalJsonNode,
+                ProvenanceResource: conditionalProvenanceResource,
                 RequestId: context.TraceIdentifier);
 
             var result = await mediator.SendAsync(command, ct);
@@ -810,16 +818,13 @@ public static class FhirEndpoints
         // Extract return preference from Prefer header (RFC 7240)
         var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
 
-        // Extract X-Provenance header if present
-        ProvenanceJsonNode? provenanceResource = null;
-        if (coordinator == null) // Only process provenance for standalone operations (not bundle operations)
-        {
-            provenanceResource = await ProvenanceHeaderHelper.TryParseProvenanceHeaderAsync(
-                context.Request.Headers,
-                memoryStreamManager,
-                logger,
-                ct);
-        }
+        // Extract X-Provenance header if present (only for standalone operations)
+        var provenanceResource = await ProvenanceHeaderHelper.TryParseForStandaloneOperationAsync(
+            context.Request.Headers,
+            coordinator,
+            memoryStreamManager,
+            logger,
+            ct);
 
         // Send generic command with HTTP POST method
         var createCommand = new CreateOrUpdateResourceCommand(resourceType, id, jsonNode, System.Net.Http.HttpMethod.Post, coordinator, null, validationOverride, provenanceResource);
@@ -1046,10 +1051,11 @@ public static class FhirEndpoints
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
         IFhirRequestContextAccessor fhirContextAccessor,
+        ILogger<Program> logger,
         CancellationToken ct)
     {
         var tenantId = fhirContextAccessor.RequestContext!.TenantId;
-        return await HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, ct);
+        return await HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, logger, ct);
     }
 
     /// <summary>
@@ -1065,6 +1071,7 @@ public static class FhirEndpoints
         string resourceType,
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
+        ILogger<Program> logger,
         CancellationToken ct)
     {
         // Extract query string (search criteria)
@@ -1087,12 +1094,21 @@ public static class FhirEndpoints
             jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
         }
 
+        // Extract X-Provenance header if present (only for standalone operations)
+        var provenanceResource = await ProvenanceHeaderHelper.TryParseForStandaloneOperationAsync(
+            context.Request.Headers,
+            null, // No coordinator for conditional update (standalone only)
+            memoryStreamManager,
+            logger,
+            ct);
+
         // Execute conditional update via mediator
         var command = new Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate.ConditionalUpdateCommand(
             TenantId: tenantId,
             ResourceType: resourceType,
             SearchCriteria: searchCriteria,
             JsonNode: jsonNode,
+            ProvenanceResource: provenanceResource,
             RequestId: context.TraceIdentifier);
 
         var result = await mediator.SendAsync(command, ct);

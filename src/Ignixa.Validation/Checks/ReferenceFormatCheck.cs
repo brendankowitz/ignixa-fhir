@@ -12,6 +12,7 @@ namespace Ignixa.Validation.Checks;
 /// Validates FHIR Reference.reference format.
 /// Valid formats:
 /// - ResourceType/id (relative)
+/// - ResourceType/id/_history/version (versioned relative)
 /// - http(s)://server/ResourceType/id (absolute)
 /// - urn:uuid:... (UUID)
 /// - #fragment (contained resource)
@@ -104,8 +105,23 @@ public class ReferenceFormatCheck : IValidationCheck
             return parts.Length >= 2; // At minimum: http://server/Type/id
         }
 
-        // Relative reference: ResourceType/id
+        // Relative reference: ResourceType/id or ResourceType/id/_history/version
         var segments = reference.Split('/');
-        return segments.Length == 2 && !string.IsNullOrEmpty(segments[0]) && !string.IsNullOrEmpty(segments[1]);
+
+        // Simple relative reference: ResourceType/id (2 segments)
+        if (segments.Length == 2)
+        {
+            return !string.IsNullOrEmpty(segments[0]) && !string.IsNullOrEmpty(segments[1]);
+        }
+
+        // Versioned relative reference: ResourceType/id/_history/version (4 segments)
+        if (segments.Length == 4 && segments[2] == "_history")
+        {
+            return !string.IsNullOrEmpty(segments[0]) &&
+                   !string.IsNullOrEmpty(segments[1]) &&
+                   !string.IsNullOrEmpty(segments[3]);
+        }
+
+        return false;
     }
 }

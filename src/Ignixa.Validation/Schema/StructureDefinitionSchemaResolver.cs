@@ -63,19 +63,28 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
     }
 
     /// <summary>
-    /// Extracts the resource type from a canonical URL.
+    /// Extracts the resource type from a canonical URL or returns the input if it's already a resource type name.
     /// </summary>
-    /// <param name="canonicalUrl">The canonical URL (e.g., "http://hl7.org/fhir/StructureDefinition/Patient").</param>
-    /// <returns>The resource type (last segment of the URL), or null if extraction fails.</returns>
-    private static string? ExtractResourceType(string canonicalUrl)
+    /// <param name="canonicalUrlOrTypeName">
+    /// Either a canonical URL (e.g., "http://hl7.org/fhir/StructureDefinition/Patient")
+    /// or just the resource type name (e.g., "Patient").
+    /// </param>
+    /// <returns>The resource type name, or null if extraction fails.</returns>
+    private static string? ExtractResourceType(string canonicalUrlOrTypeName)
     {
+        // If no slash, assume it's already a resource type name
+        var lastSlashIndex = canonicalUrlOrTypeName.LastIndexOf('/');
+        if (lastSlashIndex < 0)
+        {
+            return canonicalUrlOrTypeName;
+        }
+
         // Extract last segment from URL
-        var lastSlashIndex = canonicalUrl.LastIndexOf('/');
-        if (lastSlashIndex < 0 || lastSlashIndex == canonicalUrl.Length - 1)
+        if (lastSlashIndex == canonicalUrlOrTypeName.Length - 1)
         {
             return null;
         }
 
-        return canonicalUrl.Substring(lastSlashIndex + 1);
+        return canonicalUrlOrTypeName.Substring(lastSlashIndex + 1);
     }
 }

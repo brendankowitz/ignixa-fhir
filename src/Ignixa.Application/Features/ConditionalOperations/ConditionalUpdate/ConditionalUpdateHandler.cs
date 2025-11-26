@@ -13,6 +13,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.ConditionalOperations.ConditionalUpdate;
@@ -107,6 +108,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 request.ResourceType,
                 request.JsonNode,
                 request.TenantId,
+                request.ProvenanceResource,
                 cancellationToken);
 
             return new ConditionalUpdateResult(
@@ -133,6 +135,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 existingVersionId,
                 request.JsonNode,
                 request.TenantId,
+                request.ProvenanceResource,
                 cancellationToken);
 
             return new ConditionalUpdateResult(
@@ -165,6 +168,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         string resourceType,
         ResourceJsonNode jsonNode,
         int tenantId,
+        ProvenanceJsonNode? provenanceResource,
         CancellationToken cancellationToken)
     {
         // Generate new ID (server-assigned)
@@ -175,13 +179,18 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             resourceType,
             newId);
 
+        // IMPORTANT: Set the ID on the JsonNode since we're using PUT (not POST)
+        // CreateOrUpdateResourceHandler only sets ID for POST, but conditional update uses PUT
+        jsonNode.Id = newId;
+
         // Create resource via CreateOrUpdateResourceHandler
         var createCommand = new CreateOrUpdateResourceCommand(
             ResourceType: resourceType,
             Id: newId,
             JsonNode: jsonNode,
             HttpMethod: System.Net.Http.HttpMethod.Put,
-            Coordinator: null); // No bundle context for conditional update
+            Coordinator: null, // No bundle context for conditional update
+            ProvenanceResource: provenanceResource);
 
         var updateResult = await _mediator.SendAsync(createCommand, cancellationToken);
 
@@ -213,6 +222,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         string existingVersionId,
         ResourceJsonNode jsonNode,
         int tenantId,
+        ProvenanceJsonNode? provenanceResource,
         CancellationToken cancellationToken)
     {
         // Log warning if client provided ID differs from existing ID
@@ -239,7 +249,8 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
             JsonNode: jsonNode,
             HttpMethod: System.Net.Http.HttpMethod.Put,
             Coordinator: null, // No bundle context for conditional update
-            IfMatch: existingVersionId); // Pass version ID for optimistic concurrency control
+            IfMatch: existingVersionId, // Pass version ID for optimistic concurrency control
+            ProvenanceResource: provenanceResource);
 
         var updateResult = await _mediator.SendAsync(updateCommand, cancellationToken);
 

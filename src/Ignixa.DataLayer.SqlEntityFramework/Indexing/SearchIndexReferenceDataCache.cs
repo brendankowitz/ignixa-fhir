@@ -17,11 +17,13 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Indexing;
 /// Caches lookup IDs for search parameter indexing (SearchParamId, SystemId, QuantityCodeId, ResourceTypeId).
 /// Provides thread-safe get-or-create operations for reference data.
 /// Uses on-demand caching for large datasets (Systems, QuantityCodes) to prevent memory exhaustion.
+/// CRITICAL: Uses SemaphoreSlim to ensure thread-safe database access since DbContext is not thread-safe.
 /// </summary>
 public class SearchIndexReferenceDataCache : IDisposable
 {
     private readonly FhirDbContext _context;
     private readonly ILogger<SearchIndexReferenceDataCache> _logger;
+    private readonly SemaphoreSlim _dbLock = new(1, 1); // Ensures only one database operation at a time
     private bool _disposed;
 
     // Caches: Key -> ID
@@ -56,23 +58,32 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        var searchParams = await _context.SearchParams
-            .AsNoTracking()
-            .Select(sp => new { sp.Uri, sp.SearchParamId })
-            .ToListAsync(cancellationToken);
-
-        foreach (var sp in searchParams)
+        await _dbLock.WaitAsync(cancellationToken);
+        try
         {
-            _searchParamCache.TryAdd(sp.Uri, sp.SearchParamId);
-        }
+            var searchParams = await _context.SearchParams
+                .AsNoTracking()
+                .Select(sp => new { sp.Uri, sp.SearchParamId })
+                .ToListAsync(cancellationToken);
 
-        _logger.LogInformation("Initialized SearchIndexReferenceDataCache with {Count} search parameters", searchParams.Count);
+            foreach (var sp in searchParams)
+            {
+                _searchParamCache.TryAdd(sp.Uri, sp.SearchParamId);
+            }
+
+            _logger.LogInformation("Initialized SearchIndexReferenceDataCache with {Count} search parameters", searchParams.Count);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
     /// Gets the SearchParamId for a given search parameter URI.
     /// Returns null if the search parameter is not registered in the database.
     /// Caches both positive results (found) and negative results (not found) to avoid repeated database queries.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="uri">The search parameter URI (e.g., "http://hl7.org/fhir/SearchParameter/Patient-name").</param>
     /// <returns>The SearchParamId, or null if not found.</returns>
@@ -90,22 +101,37 @@ public class SearchIndexReferenceDataCache : IDisposable
             return cachedId == -1 ? null : cachedId;
         }
 
-        // Query database
-        var entity = await _context.SearchParams
-            .AsNoTracking()
-            .FirstOrDefaultAsync(sp => sp.Uri == uri);
-
-        if (entity == null)
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync();
+        try
         {
-            _logger.LogWarning("SearchParam not found for URI: {Uri}", uri);
-            // Cache the negative result using sentinel value -1 to avoid repeated database queries
-            _searchParamCache.TryAdd(uri, -1);
-            return null;
-        }
+            // Double-check cache after acquiring lock (another thread may have loaded it)
+            if (_searchParamCache.TryGetValue(uri, out cachedId))
+            {
+                return cachedId == -1 ? null : cachedId;
+            }
 
-        // Cache positive result and return
-        _searchParamCache.TryAdd(uri, entity.SearchParamId);
-        return entity.SearchParamId;
+            // Query database
+            var entity = await _context.SearchParams
+                .AsNoTracking()
+                .FirstOrDefaultAsync(sp => sp.Uri == uri);
+
+            if (entity == null)
+            {
+                _logger.LogWarning("SearchParam not found for URI: {Uri}", uri);
+                // Cache the negative result using sentinel value -1 to avoid repeated database queries
+                _searchParamCache.TryAdd(uri, -1);
+                return null;
+            }
+
+            // Cache positive result and return
+            _searchParamCache.TryAdd(uri, entity.SearchParamId);
+            return entity.SearchParamId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
@@ -141,6 +167,7 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// <summary>
     /// Gets or creates the SystemId for a given system URI.
     /// Creates a new entry if the system doesn't exist.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="systemUri">The system URI (e.g., "http://loinc.org").</param>
     /// <returns>The SystemId, or null if systemUri is null/empty.</returns>
@@ -157,36 +184,52 @@ public class SearchIndexReferenceDataCache : IDisposable
             return cachedId;
         }
 
-        // Query database
-        var entity = await _context.Systems
-            .FirstOrDefaultAsync(s => s.Value == systemUri);
-
-        if (entity != null)
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync();
+        try
         {
-            // Cache existing entry
-            _systemCache.TryAdd(systemUri, entity.SystemId);
-            return entity.SystemId;
+            // Double-check cache after acquiring lock
+            if (_systemCache.TryGetValue(systemUri, out cachedId))
+            {
+                return cachedId;
+            }
+
+            // Query database
+            var entity = await _context.Systems
+                .FirstOrDefaultAsync(s => s.Value == systemUri);
+
+            if (entity != null)
+            {
+                // Cache existing entry
+                _systemCache.TryAdd(systemUri, entity.SystemId);
+                return entity.SystemId;
+            }
+
+            // Create new entry
+            var newEntity = new SystemEntity
+            {
+                Value = systemUri
+            };
+
+            _context.Systems.Add(newEntity);
+            await _context.SaveChangesAsync();
+
+            _logger.LogDebug("Created new System entry: {SystemUri} -> {SystemId}", systemUri, newEntity.SystemId);
+
+            // Cache and return
+            _systemCache.TryAdd(systemUri, newEntity.SystemId);
+            return newEntity.SystemId;
         }
-
-        // Create new entry
-        var newEntity = new SystemEntity
+        finally
         {
-            Value = systemUri
-        };
-
-        _context.Systems.Add(newEntity);
-        await _context.SaveChangesAsync();
-
-        _logger.LogDebug("Created new System entry: {SystemUri} -> {SystemId}", systemUri, newEntity.SystemId);
-
-        // Cache and return
-        _systemCache.TryAdd(systemUri, newEntity.SystemId);
-        return newEntity.SystemId;
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
     /// Gets or creates the QuantityCodeId for a given unit code.
     /// Creates a new entry if the code doesn't exist.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="code">The unit code (e.g., "mg", "kg").</param>
     /// <returns>The QuantityCodeId, or null if code is null/empty.</returns>
@@ -203,37 +246,53 @@ public class SearchIndexReferenceDataCache : IDisposable
             return cachedId;
         }
 
-        // Query database
-        var entity = await _context.QuantityCodes
-            .FirstOrDefaultAsync(qc => qc.Value == code);
-
-        if (entity != null)
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync();
+        try
         {
-            // Cache existing entry
-            _quantityCodeCache.TryAdd(code, entity.QuantityCodeId);
-            return entity.QuantityCodeId;
+            // Double-check cache after acquiring lock
+            if (_quantityCodeCache.TryGetValue(code, out cachedId))
+            {
+                return cachedId;
+            }
+
+            // Query database
+            var entity = await _context.QuantityCodes
+                .FirstOrDefaultAsync(qc => qc.Value == code);
+
+            if (entity != null)
+            {
+                // Cache existing entry
+                _quantityCodeCache.TryAdd(code, entity.QuantityCodeId);
+                return entity.QuantityCodeId;
+            }
+
+            // Create new entry
+            var newEntity = new QuantityCodeEntity
+            {
+                Value = code
+            };
+
+            _context.QuantityCodes.Add(newEntity);
+            await _context.SaveChangesAsync();
+
+            _logger.LogDebug("Created new QuantityCode entry: {Code} -> {QuantityCodeId}", code, newEntity.QuantityCodeId);
+
+            // Cache and return
+            _quantityCodeCache.TryAdd(code, newEntity.QuantityCodeId);
+            return newEntity.QuantityCodeId;
         }
-
-        // Create new entry
-        var newEntity = new QuantityCodeEntity
+        finally
         {
-            Value = code
-        };
-
-        _context.QuantityCodes.Add(newEntity);
-        await _context.SaveChangesAsync();
-
-        _logger.LogDebug("Created new QuantityCode entry: {Code} -> {QuantityCodeId}", code, newEntity.QuantityCodeId);
-
-        // Cache and return
-        _quantityCodeCache.TryAdd(code, newEntity.QuantityCodeId);
-        return newEntity.QuantityCodeId;
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
     /// Gets the ResourceTypeId for a given resource type name.
     /// Returns null if the resource type is not registered.
     /// Caches both positive results (found) and negative results (not found) to avoid repeated database queries.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="resourceTypeName">The resource type name (e.g., "Patient").</param>
     /// <returns>The ResourceTypeId, or null if not found.</returns>
@@ -251,22 +310,37 @@ public class SearchIndexReferenceDataCache : IDisposable
             return cachedId == -1 ? null : cachedId;
         }
 
-        // Query database
-        var entity = await _context.ResourceTypes
-            .AsNoTracking()
-            .FirstOrDefaultAsync(rt => rt.Name == resourceTypeName);
-
-        if (entity == null)
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync();
+        try
         {
-            _logger.LogWarning("ResourceType not found: {ResourceTypeName}", resourceTypeName);
-            // Cache the negative result using sentinel value -1 to avoid repeated database queries
-            _resourceTypeCache.TryAdd(resourceTypeName, -1);
-            return null;
-        }
+            // Double-check cache after acquiring lock
+            if (_resourceTypeCache.TryGetValue(resourceTypeName, out cachedId))
+            {
+                return cachedId == -1 ? null : cachedId;
+            }
 
-        // Cache positive result and return
-        _resourceTypeCache.TryAdd(resourceTypeName, entity.ResourceTypeId);
-        return entity.ResourceTypeId;
+            // Query database
+            var entity = await _context.ResourceTypes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(rt => rt.Name == resourceTypeName);
+
+            if (entity == null)
+            {
+                _logger.LogWarning("ResourceType not found: {ResourceTypeName}", resourceTypeName);
+                // Cache the negative result using sentinel value -1 to avoid repeated database queries
+                _resourceTypeCache.TryAdd(resourceTypeName, -1);
+                return null;
+            }
+
+            // Cache positive result and return
+            _resourceTypeCache.TryAdd(resourceTypeName, entity.ResourceTypeId);
+            return entity.ResourceTypeId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
@@ -274,46 +348,64 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// Call this during initialization to avoid repeated database queries.
     /// SAFETY: Use maxRows parameter to limit memory usage for large datasets.
     /// For databases with 10K+ search parameters, rely on on-demand loading instead.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="maxRows">Optional maximum number of rows to load. Prevents memory exhaustion for large datasets.</param>
     public async Task PreloadSearchParamsAsync(int? maxRows = null)
     {
-        var query = _context.SearchParams.AsNoTracking();
-
-        if (maxRows.HasValue)
+        await _dbLock.WaitAsync();
+        try
         {
-            query = query.Take(maxRows.Value);
+            var query = _context.SearchParams.AsNoTracking();
+
+            if (maxRows.HasValue)
+            {
+                query = query.Take(maxRows.Value);
+            }
+
+            var searchParams = await query.ToListAsync();
+
+            foreach (var sp in searchParams)
+            {
+                _searchParamCache.TryAdd(sp.Uri, sp.SearchParamId);
+            }
+
+            _logger.LogInformation(
+                "Preloaded {Count} search parameters into cache{MaxRowsInfo}",
+                searchParams.Count,
+                maxRows.HasValue ? $" (limited to {maxRows.Value} rows)" : string.Empty);
         }
-
-        var searchParams = await query.ToListAsync();
-
-        foreach (var sp in searchParams)
+        finally
         {
-            _searchParamCache.TryAdd(sp.Uri, sp.SearchParamId);
+            _dbLock.Release();
         }
-
-        _logger.LogInformation(
-            "Preloaded {Count} search parameters into cache{MaxRowsInfo}",
-            searchParams.Count,
-            maxRows.HasValue ? $" (limited to {maxRows.Value} rows)" : string.Empty);
     }
 
     /// <summary>
     /// Pre-loads all ResourceType entries into cache for better performance.
     /// Call this during initialization to avoid repeated database queries.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     public async Task PreloadResourceTypesAsync()
     {
-        var resourceTypes = await _context.ResourceTypes
-            .AsNoTracking()
-            .ToListAsync();
-
-        foreach (var rt in resourceTypes)
+        await _dbLock.WaitAsync();
+        try
         {
-            _resourceTypeCache.TryAdd(rt.Name, rt.ResourceTypeId);
-        }
+            var resourceTypes = await _context.ResourceTypes
+                .AsNoTracking()
+                .ToListAsync();
 
-        _logger.LogInformation("Preloaded {Count} resource types into cache", resourceTypes.Count);
+            foreach (var rt in resourceTypes)
+            {
+                _resourceTypeCache.TryAdd(rt.Name, rt.ResourceTypeId);
+            }
+
+            _logger.LogInformation("Preloaded {Count} resource types into cache", resourceTypes.Count);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
@@ -520,6 +612,7 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// are persisted to the SearchParam table for indexing pipeline.
     /// CRITICAL: Without this, package search parameters won't be found during row generation,
     /// causing "SearchParam URL not found" warnings and failed indexing.
+    /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="searchParameterUrls">List of search parameter canonical URLs to sync.</param>
     /// <param name="searchParamManager">Search parameter manager to check for OverridesUrl aliasing.</param>
@@ -541,85 +634,93 @@ public class SearchIndexReferenceDataCache : IDisposable
 
         _logger.LogInformation("Syncing {Count} search parameter URLs to database", urls.Count);
 
-        var syncedCount = 0;
-        var existingList = await _context.SearchParams
-            .AsNoTracking()
-            .ToListAsync();
-
-        foreach (var url in urls)
+        await _dbLock.WaitAsync();
+        try
         {
-            // Check if already exists in database
-            
-            var existing = existingList.FirstOrDefault(sp => sp.Uri == url);
+            var syncedCount = 0;
+            var existingList = await _context.SearchParams
+                .AsNoTracking()
+                .ToListAsync();
 
-            if (existing != null)
+            foreach (var url in urls)
             {
-                // Already exists - update cache if needed
-                _searchParamCache.TryAdd(url, existing.SearchParamId);
-                continue;
-            }
+                // Check if already exists in database
 
-            // Get search parameter definition from manager to check for OverridesUrl
-            SearchParameterInfo? paramInfo = null;
-            if (searchParamManager != null && searchParamManager.TryGetSearchParameter(new Uri(url), out var param))
-            {
-                paramInfo = param;
-            }
+                var existing = existingList.FirstOrDefault(sp => sp.Uri == url);
 
-            short? searchParamIdToCache = null;
-
-            // Check if this parameter overrides another one
-            if (paramInfo?.OverridesUrl != null)
-            {
-                // Look up the overridden parameter's ID in the database
-                var overriddenParam = await _context.SearchParams
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(sp => sp.Uri == paramInfo.OverridesUrl.ToString());
-
-                if (overriddenParam != null)
+                if (existing != null)
                 {
-                    searchParamIdToCache = overriddenParam.SearchParamId;
-                    _logger.LogInformation(
-                        "Search parameter {Url} overrides {OverriddenUrl} - will use SearchParamId {SearchParamId} for indexing",
-                        url,
-                        paramInfo.OverridesUrl,
-                        searchParamIdToCache);
+                    // Already exists - update cache if needed
+                    _searchParamCache.TryAdd(url, existing.SearchParamId);
+                    continue;
                 }
+
+                // Get search parameter definition from manager to check for OverridesUrl
+                SearchParameterInfo? paramInfo = null;
+                if (searchParamManager != null && searchParamManager.TryGetSearchParameter(new Uri(url), out var param))
+                {
+                    paramInfo = param;
+                }
+
+                short? searchParamIdToCache = null;
+
+                // Check if this parameter overrides another one
+                if (paramInfo?.OverridesUrl != null)
+                {
+                    // Look up the overridden parameter's ID in the database
+                    var overriddenParam = await _context.SearchParams
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(sp => sp.Uri == paramInfo.OverridesUrl.ToString());
+
+                    if (overriddenParam != null)
+                    {
+                        searchParamIdToCache = overriddenParam.SearchParamId;
+                        _logger.LogInformation(
+                            "Search parameter {Url} overrides {OverriddenUrl} - will use SearchParamId {SearchParamId} for indexing",
+                            url,
+                            paramInfo.OverridesUrl,
+                            searchParamIdToCache);
+                    }
+                }
+
+                // Create new entry in database
+                var newEntity = new Entities.SearchParamEntity
+                {
+                    Uri = url,
+                    Status = "Enabled",
+                    LastUpdated = DateTimeOffset.UtcNow,
+                    IsPartiallySupported = false
+                };
+
+                _context.SearchParams.Add(newEntity);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Synced search parameter {Url} to database with ID {SearchParamId}", url, newEntity.SearchParamId);
+
+                // Cache using the OVERRIDE ID if present, otherwise use the new ID
+                var idToCache = searchParamIdToCache ?? newEntity.SearchParamId;
+                _searchParamCache.TryAdd(url, idToCache);
+
+                if (searchParamIdToCache.HasValue)
+                {
+                    _logger.LogInformation(
+                        "Cached search parameter {Url} with aliased SearchParamId {AliasedId} (own ID is {OwnId})",
+                        url,
+                        idToCache,
+                        newEntity.SearchParamId);
+                }
+
+                syncedCount++;
             }
 
-            // Create new entry in database
-            var newEntity = new Entities.SearchParamEntity
-            {
-                Uri = url,
-                Status = "Enabled",
-                LastUpdated = DateTimeOffset.UtcNow,
-                IsPartiallySupported = false
-            };
+            _logger.LogInformation("Successfully synced {Count} search parameters to database", syncedCount);
 
-            _context.SearchParams.Add(newEntity);
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Synced search parameter {Url} to database with ID {SearchParamId}", url, newEntity.SearchParamId);
-
-            // Cache using the OVERRIDE ID if present, otherwise use the new ID
-            var idToCache = searchParamIdToCache ?? newEntity.SearchParamId;
-            _searchParamCache.TryAdd(url, idToCache);
-
-            if (searchParamIdToCache.HasValue)
-            {
-                _logger.LogInformation(
-                    "Cached search parameter {Url} with aliased SearchParamId {AliasedId} (own ID is {OwnId})",
-                    url,
-                    idToCache,
-                    newEntity.SearchParamId);
-            }
-
-            syncedCount++;
+            return syncedCount;
         }
-
-        _logger.LogInformation("Successfully synced {Count} search parameters to database", syncedCount);
-
-        return syncedCount;
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
     /// <summary>
@@ -775,6 +876,7 @@ public class SearchIndexReferenceDataCache : IDisposable
             {
                 // Dispose managed resources
                 _context?.Dispose();
+                _dbLock?.Dispose();
             }
 
             // No unmanaged resources to release
