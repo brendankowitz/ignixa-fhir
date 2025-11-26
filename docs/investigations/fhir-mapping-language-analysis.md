@@ -996,3 +996,1015 @@ The Ignixa FHIR Mapping Language implementation provides **excellent coverage of
 4. Performance testing
 
 **Recommendation**: Prioritize Phase 1 (ConceptMap declarations, rule names, constants) to achieve full specification compliance for authoring complete, self-contained mapping files.
+
+---
+
+# Part 2: Using Mapping Files for Conversion in FHIR Services
+
+**Date**: 2025-01-26
+**Status**: Implementation Specification
+**Related**: [FHIR $transform Operation](https://build.fhir.org/structuremap-operation-transform.html)
+
+This section describes how FHIR Mapping Language files are integrated with FHIR Services to perform resource transformations at runtime.
+
+---
+
+## Overview: The $transform Operation
+
+The FHIR specification defines the `$transform` operation for executing StructureMap transformations. This is the standard mechanism for invoking mapping files within a FHIR Service.
+
+### Operation Endpoints
+
+```
+POST [base]/StructureMap/$transform           # Map provided in request
+POST [base]/StructureMap/{id}/$transform      # Map retrieved by ID
+```
+
+### Input Parameters
+
+| Parameter | Cardinality | Type | Description |
+|-----------|-------------|------|-------------|
+| `source` | 0..1 | uri | Canonical URL of the StructureMap to apply |
+| `sourceMap` | 0..1 | StructureMap | The map resource itself (inline) |
+| `supportingMap` | 0..* | StructureMap | Additional maps for dependencies |
+| `srcMap` | 0..* | string | Maps in FML text format (R6+) |
+| `content` | 1..1 | Resource | The input content to transform |
+
+### Output
+
+| Parameter | Cardinality | Type | Description |
+|-----------|-------------|------|-------------|
+| `return` | 1..1 | Resource | The transformed result |
+
+### Example Request
+
+```http
+POST /StructureMap/patient-r5-to-r6/$transform
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "content",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "example",
+        "name": [{"family": "Smith", "given": ["John"]}]
+      }
+    }
+  ]
+}
+```
+
+### Example Response
+
+```json
+{
+  "resourceType": "Patient",
+  "id": "example",
+  "name": [{"family": "Smith", "given": ["John"]}]
+}
+```
+
+---
+
+## StructureMap Resource vs FML Text
+
+The FHIR Mapping Language (FML) has two representations:
+
+### 1. FML Text (Human-Readable)
+
+```fml
+map "http://example.org/PatientR5toR6" = "PatientTransform"
+
+uses "http://hl7.org/fhir/5.0/StructureDefinition/Patient" alias PatientR5 as source
+uses "http://hl7.org/fhir/6.0/StructureDefinition/Patient" alias PatientR6 as target
+
+group Patient(source src : PatientR5, target tgt : PatientR6) {
+  src.identifier -> tgt.identifier;
+  src.active -> tgt.active;
+  src.name -> tgt.name;
+}
+```
+
+### 2. StructureMap Resource (Structured JSON/XML)
+
+```json
+{
+  "resourceType": "StructureMap",
+  "id": "patient-r5-to-r6",
+  "url": "http://example.org/PatientR5toR6",
+  "name": "PatientTransform",
+  "status": "active",
+  "structure": [
+    {
+      "url": "http://hl7.org/fhir/5.0/StructureDefinition/Patient",
+      "mode": "source",
+      "alias": "PatientR5"
+    },
+    {
+      "url": "http://hl7.org/fhir/6.0/StructureDefinition/Patient",
+      "mode": "target",
+      "alias": "PatientR6"
+    }
+  ],
+  "group": [
+    {
+      "name": "Patient",
+      "input": [
+        {"name": "src", "type": "PatientR5", "mode": "source"},
+        {"name": "tgt", "type": "PatientR6", "mode": "target"}
+      ],
+      "rule": [
+        {"name": "identifier", "source": [{"context": "src", "element": "identifier"}], "target": [{"context": "tgt", "element": "identifier"}]},
+        {"name": "active", "source": [{"context": "src", "element": "active"}], "target": [{"context": "tgt", "element": "active"}]},
+        {"name": "name", "source": [{"context": "src", "element": "name"}], "target": [{"context": "tgt", "element": "name"}]}
+      ]
+    }
+  ]
+}
+```
+
+### Key Differences
+
+| Aspect | FML Text | StructureMap Resource |
+|--------|----------|----------------------|
+| **Format** | Domain-specific language | JSON/XML |
+| **Storage** | `.map` files, embedded | FHIR resource store |
+| **Authoring** | Human-friendly | Machine-friendly |
+| **Versioning** | Via file system | Via FHIR versioning |
+| **Validation** | Parser-based | Schema-based |
+| **FHIR R6** | `srcMap` parameter | `sourceMap` parameter |
+
+### Conversion Between Formats
+
+Most implementations support bidirectional conversion:
+
+```
+FML Text ⇄ StructureMap Resource
+```
+
+**Use Cases**:
+- **Authoring**: Write in FML text, convert to StructureMap for storage
+- **Editing**: Retrieve StructureMap, convert to FML for editing, save back
+- **Execution**: Either format can be executed after parsing
+
+---
+
+### 2-Way Lossless Conversion Requirement
+
+**Critical Requirement**: The implementation MUST support lossless bidirectional conversion between:
+
+1. **FML Text** (human-readable mapping language)
+2. **StructureMap Resource** (FHIR JSON/XML representation)
+
+```
+┌─────────────┐         ┌──────────────────┐         ┌─────────────────┐
+│  FML Text   │ ──────> │   Intermediate   │ ──────> │  StructureMap   │
+│  (.map)     │ <────── │   Expressions    │ <────── │  Resource       │
+└─────────────┘         └──────────────────┘         └─────────────────┘
+```
+
+#### The Intermediate Expression Model
+
+The **mapping language expressions** (AST from the parser) serve as the **canonical intermediate representation**:
+
+| Format | Converts To | Converts From |
+|--------|-------------|---------------|
+| FML Text | `MapExpression` AST via `MappingCompiler.Parse()` | `MapExpression` AST via `FmlSerializer.Serialize()` |
+| StructureMap | `MapExpression` AST via `StructureMapParser.Parse()` | `MapExpression` AST via `StructureMapBuilder.Build()` |
+
+#### Lossless Requirements
+
+For **FML → StructureMap → FML** round-trip:
+- All semantic information preserved (groups, rules, sources, targets, transforms)
+- Comments and whitespace NOT required to be preserved (acceptable loss)
+- Rule ordering MUST be preserved
+- Variable names MUST be preserved
+- FHIRPath expressions MUST be preserved exactly
+
+For **StructureMap → FML → StructureMap** round-trip:
+- All resource elements preserved
+- Extension data MUST be preserved
+- Meta elements (id, version, status) MUST be preserved
+- Contained resources MUST be preserved
+
+#### Implementation Classes Needed
+
+```csharp
+// FML Text → MapExpression (EXISTING)
+public class MappingCompiler
+{
+    public MapExpression Parse(string fmlText);
+}
+
+// MapExpression → FML Text (NEW)
+public class FmlSerializer
+{
+    public string Serialize(MapExpression map);
+}
+
+// StructureMap Resource → MapExpression (NEW)
+public class StructureMapParser
+{
+    public MapExpression Parse(StructureMap resource);
+}
+
+// MapExpression → StructureMap Resource (NEW)
+public class StructureMapBuilder
+{
+    public StructureMap Build(MapExpression map);
+}
+```
+
+#### Validation Strategy
+
+Round-trip tests MUST validate lossless conversion:
+
+```csharp
+[Fact]
+public void FmlToStructureMapToFml_PreservesSemantics()
+{
+    var originalFml = LoadTestMap("patient-r5-to-r6.map");
+
+    // FML → AST → StructureMap → AST → FML
+    var ast1 = compiler.Parse(originalFml);
+    var structureMap = builder.Build(ast1);
+    var ast2 = parser.Parse(structureMap);
+    var roundTrippedFml = serializer.Serialize(ast2);
+
+    // Re-parse both and compare ASTs (ignores whitespace/formatting)
+    var finalAst = compiler.Parse(roundTrippedFml);
+    AstComparer.AssertEquivalent(ast1, finalAst);
+}
+
+[Fact]
+public void StructureMapToFmlToStructureMap_PreservesResource()
+{
+    var originalResource = LoadTestResource("patient-transform.json");
+
+    // StructureMap → AST → FML → AST → StructureMap
+    var ast1 = parser.Parse(originalResource);
+    var fml = serializer.Serialize(ast1);
+    var ast2 = compiler.Parse(fml);
+    var roundTrippedResource = builder.Build(ast2);
+
+    // Compare resources (ignoring meta.lastUpdated, etc.)
+    ResourceComparer.AssertEquivalent(originalResource, roundTrippedResource);
+}
+```
+
+#### Why This Matters
+
+1. **Authoring Experience**: Users author in FML, store as StructureMap
+2. **Editing Workflow**: Load StructureMap, edit as FML, save back
+3. **Version Control**: FML is diff-friendly for Git workflows
+4. **FHIR API Compliance**: StructureMap is the official resource format
+5. **Tooling Interoperability**: Other implementations use StructureMap format
+
+---
+
+## Integration Architecture
+
+### High-Level Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           FHIR Service                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────┐    ┌───────────────┐    ┌─────────────────────────┐  │
+│  │   $transform │───>│ Transform     │───>│ MappingCompiler         │  │
+│  │   Endpoint   │    │ Handler       │    │ (Parse FML → AST)       │  │
+│  └──────────────┘    └───────────────┘    └─────────────────────────┘  │
+│                             │                          │                 │
+│                             ▼                          ▼                 │
+│  ┌──────────────┐    ┌───────────────┐    ┌─────────────────────────┐  │
+│  │ StructureMap │───>│ Map Registry  │───>│ MappingEvaluator        │  │
+│  │   Storage    │    │ (URL → AST)   │    │ (Execute transformation)│  │
+│  └──────────────┘    └───────────────┘    └─────────────────────────┘  │
+│                                                        │                 │
+│                                                        ▼                 │
+│  ┌──────────────┐    ┌───────────────┐    ┌─────────────────────────┐  │
+│  │ ConceptMap   │<───│ Transform     │<───│ MappingContext          │  │
+│  │   Service    │    │ Functions     │    │ (Sources, Targets, Vars)│  │
+│  └──────────────┘    └───────────────┘    └─────────────────────────┘  │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Component Responsibilities
+
+| Component | Responsibility |
+|-----------|----------------|
+| **$transform Endpoint** | HTTP handling, parameter extraction, response formatting |
+| **Transform Handler** | Orchestrates the transformation workflow |
+| **MappingCompiler** | Parses FML text into executable AST |
+| **Map Registry** | Caches compiled maps by URL for reuse |
+| **MappingEvaluator** | Executes transformation rules against resources |
+| **MappingContext** | Holds execution state (sources, targets, variables) |
+| **Transform Functions** | Built-in functions (create, copy, translate, etc.) |
+| **ConceptMap Service** | Terminology translation support |
+
+---
+
+## Ignixa Implementation Approach
+
+### Current State
+
+The `Ignixa.FhirMappingLanguage` library provides:
+
+✅ **Complete Parser** - FML text → `MapExpression` AST
+✅ **Evaluator Engine** - Executes rules with visitor pattern
+✅ **Map Registry** - In-memory storage with URL-based lookup
+✅ **Import Resolver** - Handles recursive imports
+✅ **Transform Functions** - 15+ standard transforms
+✅ **FHIRPath Integration** - Embedded expression evaluation
+✅ **Error Handling** - Strict/Graceful modes
+
+❌ **Not Yet Integrated**:
+- `$transform` endpoint in API layer
+- Application layer handler/command
+- StructureMap resource storage/retrieval
+- Terminology service connection
+
+### Proposed Implementation
+
+#### 1. API Endpoint
+
+**File**: `src/Ignixa.Api/Infrastructure/TransformEndpoints.cs`
+
+```csharp
+public static class TransformEndpoints
+{
+    public static IEndpointRouteBuilder MapTransformEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        // Type-level operation
+        endpoints.MapPost("/StructureMap/$transform", HandleTransform);
+
+        // Instance-level operation
+        endpoints.MapPost("/StructureMap/{id}/$transform", HandleTransformById);
+
+        return endpoints;
+    }
+
+    private static async Task<IResult> HandleTransform(
+        HttpContext ctx,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        // Extract parameters from body
+        var parameters = await ctx.Request.ReadFromJsonAsync<Parameters>(cancellationToken);
+
+        var command = new TransformResourceCommand
+        {
+            Source = parameters.GetParameter<string>("source"),
+            SourceMap = parameters.GetParameter<StructureMap>("sourceMap"),
+            Content = parameters.GetParameter<Resource>("content")
+        };
+
+        var result = await mediator.SendAsync(command, cancellationToken);
+        return Results.Ok(result);
+    }
+}
+```
+
+#### 2. Application Layer Command
+
+**File**: `src/Ignixa.Application/Features/Transform/TransformResourceCommand.cs`
+
+```csharp
+public record TransformResourceCommand : IRequest<Resource>
+{
+    /// <summary>
+    /// Canonical URL of the StructureMap to apply.
+    /// </summary>
+    public string? Source { get; init; }
+
+    /// <summary>
+    /// Inline StructureMap resource.
+    /// </summary>
+    public StructureMap? SourceMap { get; init; }
+
+    /// <summary>
+    /// Maps in FML text format (R6+).
+    /// </summary>
+    public IReadOnlyList<string>? SrcMaps { get; init; }
+
+    /// <summary>
+    /// Supporting maps for dependencies.
+    /// </summary>
+    public IReadOnlyList<StructureMap>? SupportingMaps { get; init; }
+
+    /// <summary>
+    /// The input content to transform.
+    /// </summary>
+    public required Resource Content { get; init; }
+}
+```
+
+#### 3. Application Layer Handler
+
+**File**: `src/Ignixa.Application/Features/Transform/TransformResourceHandler.cs`
+
+```csharp
+public class TransformResourceHandler : IRequestHandler<TransformResourceCommand, Resource>
+{
+    private readonly IStructureMapRepository _repository;
+    private readonly IMapRegistry _mapRegistry;
+    private readonly MappingCompiler _compiler;
+    private readonly IConceptMapService _conceptMapService;
+    private readonly IFhirPathEngine _fhirPathEngine;
+
+    public TransformResourceHandler(
+        IStructureMapRepository repository,
+        IMapRegistry mapRegistry,
+        MappingCompiler compiler,
+        IConceptMapService conceptMapService,
+        IFhirPathEngine fhirPathEngine)
+    {
+        _repository = repository;
+        _mapRegistry = mapRegistry;
+        _compiler = compiler;
+        _conceptMapService = conceptMapService;
+        _fhirPathEngine = fhirPathEngine;
+    }
+
+    public async Task<Resource> HandleAsync(
+        TransformResourceCommand request,
+        CancellationToken cancellationToken)
+    {
+        // 1. Resolve the mapping
+        var map = await ResolveMapAsync(request, cancellationToken);
+
+        // 2. Register supporting maps
+        await RegisterSupportingMapsAsync(request.SupportingMaps, cancellationToken);
+
+        // 3. Create execution context
+        var context = CreateContext(request.Content);
+
+        // 4. Execute transformation
+        var evaluator = _compiler.CreateEvaluator();
+        evaluator.Execute(map, context);
+
+        // 5. Extract and return result
+        return ExtractResult(context);
+    }
+
+    private async Task<MapExpression> ResolveMapAsync(
+        TransformResourceCommand request,
+        CancellationToken cancellationToken)
+    {
+        // Priority: srcMaps (FML text) > sourceMap (resource) > source (URL)
+
+        if (request.SrcMaps?.Any() == true)
+        {
+            // Parse FML text directly
+            return _compiler.Parse(request.SrcMaps.First());
+        }
+
+        if (request.SourceMap != null)
+        {
+            // Convert StructureMap resource to FML, then parse
+            var fmlText = StructureMapToFml.Convert(request.SourceMap);
+            return _compiler.Parse(fmlText);
+        }
+
+        if (!string.IsNullOrEmpty(request.Source))
+        {
+            // Check registry cache first
+            var cached = _mapRegistry.GetByUrl(request.Source);
+            if (cached != null) return cached;
+
+            // Load from repository
+            var structureMap = await _repository.GetByUrlAsync(request.Source, cancellationToken);
+            if (structureMap == null)
+            {
+                throw new InvalidOperationException($"StructureMap not found: {request.Source}");
+            }
+
+            var fmlText = StructureMapToFml.Convert(structureMap);
+            var map = _compiler.Parse(fmlText);
+            _mapRegistry.Register(map);
+            return map;
+        }
+
+        throw new InvalidOperationException("No mapping source provided");
+    }
+
+    private MappingContext CreateContext(Resource content)
+    {
+        var context = new MappingContext
+        {
+            ErrorMode = ErrorMode.Strict,
+            Logger = msg => Log.Debug("Mapping: {Message}", msg)
+        };
+
+        // Wire up FHIRPath evaluator
+        context.FhirPathEvaluator = (expression, element) =>
+            _fhirPathEngine.Evaluate(expression, element);
+
+        // Wire up ConceptMap resolver for translate() function
+        context.ConceptMapResolver = (sourceCode, mapUrl, targetSystem) =>
+            _conceptMapService.Translate(sourceCode, mapUrl, targetSystem);
+
+        // Wire up resource creator for create() function
+        context.ResourceCreator = resourceType =>
+            ResourceFactory.Create(resourceType);
+
+        // Set the source content
+        var typedElement = content.ToTypedElement();
+        context.SetSource("src", typedElement);
+
+        // Create empty target
+        var targetType = DetermineTargetType(content.TypeName);
+        var target = ResourceFactory.Create(targetType);
+        context.SetTarget("tgt", target.ToTypedElement());
+
+        return context;
+    }
+}
+```
+
+---
+
+## Runtime Execution Flow
+
+### Step-by-Step Process
+
+```
+1. REQUEST RECEIVED
+   POST /StructureMap/patient-r5-r6/$transform
+   Body: { content: Patient R5 }
+
+2. PARAMETER EXTRACTION
+   - source: "http://example.org/PatientR5toR6" (from URL)
+   - content: Patient resource (from body)
+
+3. MAP RESOLUTION
+   a. Check MapRegistry cache → Miss
+   b. Load StructureMap from repository
+   c. Convert to FML text (if needed)
+   d. Parse to MapExpression AST
+   e. Cache in MapRegistry
+
+4. IMPORT RESOLUTION
+   a. Scan map for imports
+   b. Recursively load imported maps
+   c. Register all in MapRegistry
+
+5. CONTEXT SETUP
+   a. Create MappingContext
+   b. Set source: Patient R5 as ITypedElement
+   c. Create empty target: Patient R6
+   d. Wire callbacks: FHIRPath, ConceptMap, ResourceCreator
+
+6. EVALUATION
+   a. Find entry group (first group or explicit)
+   b. Bind parameters to context
+   c. For each rule:
+      - Evaluate source expression
+      - Apply where clause filter
+      - Execute check clause validation
+      - For each source match:
+        - Evaluate target transform
+        - Apply to target element
+        - Process nested rules/group calls
+   d. Log statements executed if present
+
+7. RESULT EXTRACTION
+   a. Get target from context
+   b. Convert ITypedElement to Resource
+   c. Serialize to JSON/XML
+
+8. RESPONSE
+   Return transformed Patient R6
+```
+
+### Execution Example
+
+**Input**: Patient R5
+```json
+{
+  "resourceType": "Patient",
+  "id": "example",
+  "identifier": [{"system": "http://example.org", "value": "12345"}],
+  "name": [{"family": "Smith", "given": ["John", "Jacob"]}],
+  "gender": "male"
+}
+```
+
+**Mapping Execution Trace**:
+```
+[TRACE] Starting map: http://example.org/PatientR5toR6
+[TRACE] Entering group: Patient
+[TRACE]   Binding src → Patient/example
+[TRACE]   Creating target: Patient
+[TRACE] Rule: src.identifier -> tgt.identifier
+[TRACE]   Source: 1 match(es)
+[TRACE]   Transform: copy
+[TRACE]   Target: identifier[0] = {...}
+[TRACE] Rule: src.name -> tgt.name
+[TRACE]   Source: 1 match(es)
+[TRACE]   Transform: copy
+[TRACE]   Target: name[0] = {...}
+[TRACE] Rule: src.gender -> tgt.gender
+[TRACE]   Source: 1 match(es)
+[TRACE]   Transform: copy
+[TRACE]   Target: gender = "male"
+[TRACE] Completed group: Patient
+```
+
+**Output**: Patient R6 (identical structure in this case)
+
+---
+
+## Transform Functions
+
+The mapping evaluator provides standard transform functions:
+
+### Core Transforms
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `create(type)` | Creates a new FHIR element | `create('Identifier')` |
+| `copy(source)` | Copies source value | `copy(src.name)` |
+| `uuid()` | Generates a UUID | `uuid()` |
+| `reference(resource)` | Creates a reference | `reference(src)` |
+
+### String Transforms
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `truncate(str, len)` | Truncates to length | `truncate(src.text, 100)` |
+| `append(str1, str2)` | Concatenates strings | `append(src.prefix, src.family)` |
+| `escape(str)` | Escapes special chars | `escape(src.html)` |
+
+### Type Transforms
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `cast(value, type)` | Type conversion | `cast(src.value, 'decimal')` |
+| `evaluate(expr)` | Evaluates FHIRPath | `evaluate('name.given.first()')` |
+| `dateOp(value)` | Date parsing | `dateOp(src.birthDate)` |
+
+### FHIR DataType Constructors
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `Coding(system, code)` | Creates Coding | `Coding('http://loinc.org', '12345')` |
+| `CodeableConcept(...)` | Creates CC | `CodeableConcept(Coding(...))` |
+| `Quantity(value, unit)` | Creates Quantity | `Quantity(5.0, 'mg')` |
+| `Identifier(system, value)` | Creates Identifier | `Identifier('urn:oid:...', '123')` |
+
+### Terminology Transforms
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `translate(code, map, target)` | Translates via ConceptMap | `translate(src.code, '#genderMap', 'code')` |
+
+---
+
+## Dependency Management
+
+### Import Resolution
+
+Maps can import other maps for reuse:
+
+```fml
+map "http://example.org/main" = "MainMap"
+
+imports "http://hl7.org/fhir/StructureMap/datatypes"
+imports "http://example.org/extensions"
+
+group Main(source src, target tgt) {
+  src.name -> tgt.name then DataType_Name(src.name, tgt.name);
+}
+```
+
+### Resolution Strategy
+
+```csharp
+public class ImportResolver
+{
+    private readonly IMapRegistry _registry;
+    private readonly MappingCompiler _compiler;
+    private readonly IMapLoader _loader;
+    private readonly HashSet<string> _resolving = new();
+
+    public async Task ResolveImportsAsync(MapExpression map)
+    {
+        // Detect circular imports
+        if (_resolving.Contains(map.Url))
+        {
+            throw new InvalidOperationException($"Circular import detected: {map.Url}");
+        }
+
+        _resolving.Add(map.Url);
+
+        try
+        {
+            foreach (var import in map.Imports)
+            {
+                if (!_registry.Contains(import))
+                {
+                    // Load and parse the imported map
+                    var text = await _loader.LoadAsync(import);
+                    if (text == null)
+                    {
+                        throw new InvalidOperationException($"Import not found: {import}");
+                    }
+
+                    var importedMap = _compiler.Parse(text);
+                    _registry.Register(importedMap);
+
+                    // Recursively resolve nested imports
+                    await ResolveImportsAsync(importedMap);
+                }
+            }
+        }
+        finally
+        {
+            _resolving.Remove(map.Url);
+        }
+    }
+}
+```
+
+### Map Loader Implementations
+
+```csharp
+// File system loader
+public class FileSystemMapLoader : IMapLoader
+{
+    public bool CanLoad(string url) => url.StartsWith("file://");
+
+    public async Task<string?> LoadAsync(string url)
+    {
+        var path = url.Replace("file://", "");
+        return await File.ReadAllTextAsync(path);
+    }
+}
+
+// HTTP loader
+public class HttpMapLoader : IMapLoader
+{
+    public bool CanLoad(string url) => url.StartsWith("http://") || url.StartsWith("https://");
+
+    public async Task<string?> LoadAsync(string url)
+    {
+        using var client = new HttpClient();
+        return await client.GetStringAsync(url);
+    }
+}
+
+// FHIR Server loader (fetches StructureMap resource)
+public class FhirServerMapLoader : IMapLoader
+{
+    private readonly IFhirClient _client;
+
+    public bool CanLoad(string url) => url.Contains("/StructureMap/");
+
+    public async Task<string?> LoadAsync(string url)
+    {
+        var structureMap = await _client.ReadAsync<StructureMap>(url);
+        return StructureMapToFml.Convert(structureMap);
+    }
+}
+
+// Composite loader (chains multiple loaders)
+public class CompositeMapLoader : IMapLoader
+{
+    private readonly List<IMapLoader> _loaders = new();
+
+    public void AddLoader(IMapLoader loader) => _loaders.Add(loader);
+
+    public bool CanLoad(string url) => _loaders.Any(l => l.CanLoad(url));
+
+    public async Task<string?> LoadAsync(string url)
+    {
+        var loader = _loaders.FirstOrDefault(l => l.CanLoad(url));
+        return loader != null ? await loader.LoadAsync(url) : null;
+    }
+}
+```
+
+---
+
+## Terminology Integration
+
+### ConceptMap Resolution
+
+The `translate()` transform function requires terminology service integration:
+
+```csharp
+public class ConceptMapService : IConceptMapService
+{
+    private readonly IConceptMapRepository _repository;
+
+    public string? Translate(string sourceCode, string mapUrl, string targetSystem)
+    {
+        // Load the ConceptMap
+        var conceptMap = _repository.GetByUrl(mapUrl);
+        if (conceptMap == null) return null;
+
+        // Find matching group
+        var group = conceptMap.Group.FirstOrDefault(g =>
+            g.Target == targetSystem || string.IsNullOrEmpty(targetSystem));
+        if (group == null) return null;
+
+        // Find mapping for source code
+        var element = group.Element.FirstOrDefault(e => e.Code == sourceCode);
+        if (element == null) return null;
+
+        // Return first target (or apply equivalence rules)
+        return element.Target.FirstOrDefault()?.Code;
+    }
+}
+```
+
+### Integration in MappingContext
+
+```csharp
+// Wire up ConceptMap resolver
+context.ConceptMapResolver = (sourceCode, mapUrl, targetSystem) =>
+{
+    // Handle inline ConceptMaps (prefixed with #)
+    if (mapUrl.StartsWith("#"))
+    {
+        var inlineMap = map.ConceptMaps.FirstOrDefault(cm => cm.Identifier == mapUrl);
+        return ResolveInlineConceptMap(inlineMap, sourceCode, targetSystem);
+    }
+
+    // Delegate to terminology service
+    return _conceptMapService.Translate(sourceCode, mapUrl, targetSystem);
+};
+```
+
+---
+
+## Error Handling
+
+### Error Modes
+
+```csharp
+public enum ErrorMode
+{
+    /// <summary>
+    /// Throws exception on first error.
+    /// </summary>
+    Strict,
+
+    /// <summary>
+    /// Collects errors and continues execution.
+    /// </summary>
+    Graceful
+}
+```
+
+### Error Types
+
+| Error Type | Cause | Handling |
+|------------|-------|----------|
+| **ParseException** | Invalid FML syntax | Return 400 Bad Request |
+| **TypeValidationException** | Type mismatches | Return 422 Unprocessable |
+| **MappingExecutionException** | Runtime evaluation error | Return 500 or include in OperationOutcome |
+| **ImportNotFoundException** | Missing import | Return 400 with details |
+
+### OperationOutcome Response
+
+```json
+{
+  "resourceType": "OperationOutcome",
+  "issue": [
+    {
+      "severity": "error",
+      "code": "processing",
+      "diagnostics": "Failed to execute rule at line 15: Source element 'birthDate' not found",
+      "location": ["StructureMap.group[0].rule[3]"]
+    }
+  ]
+}
+```
+
+---
+
+## Performance Considerations
+
+### Caching Strategy
+
+```csharp
+public class CachingMapRegistry : IMapRegistry
+{
+    private readonly ConcurrentDictionary<string, MapExpression> _cache = new();
+    private readonly IMapLoader _loader;
+    private readonly MappingCompiler _compiler;
+
+    public async Task<MapExpression> GetOrLoadAsync(string url)
+    {
+        // Check cache
+        if (_cache.TryGetValue(url, out var cached))
+        {
+            return cached;
+        }
+
+        // Load and parse
+        var text = await _loader.LoadAsync(url);
+        var map = _compiler.Parse(text);
+
+        // Cache for future use
+        _cache.TryAdd(url, map);
+
+        return map;
+    }
+
+    public void Invalidate(string url) => _cache.TryRemove(url, out _);
+    public void InvalidateAll() => _cache.Clear();
+}
+```
+
+### Recommendations
+
+| Aspect | Recommendation |
+|--------|----------------|
+| **Compilation** | Cache compiled `MapExpression` by URL |
+| **Context Reuse** | Create new context per request (not thread-safe) |
+| **Large Maps** | Consider lazy group loading |
+| **FHIRPath** | Cache compiled FHIRPath expressions |
+| **Transforms** | Standard transforms are stateless, safe to reuse |
+
+---
+
+## Available Implementations
+
+### Reference Implementations
+
+| Implementation | Language | Notes |
+|----------------|----------|-------|
+| **HAPI FHIR** | Java | Full StructureMapUtilities implementation |
+| **matchbox** | Java | HAPI-based, production server |
+| **fhir-net-mappinglanguage** | C# | Port of Java impl, Firely SDK compatible |
+| **Ignixa** | C# | Native implementation, Superpower parser |
+
+### Live Servers
+
+- **Java**: https://test.ahdis.ch/matchboxv3/fhir/StructureMap/$transform
+- **C#**: https://fhir-mapping-lab.azurewebsites.net/StructureMap/$transform
+
+### Command-Line Tools
+
+```bash
+# FHIR Validator CLI (Java)
+java -jar validator_cli.jar input.json \
+  -output output.json \
+  -transform http://example.org/MyMap \
+  -version 4.0 \
+  -ig hl7.fhir.r4.core#4.0.1
+```
+
+---
+
+## Implementation Checklist
+
+### Phase 1: Core Integration
+
+- [ ] Create `TransformEndpoints.cs` in API layer
+- [ ] Create `TransformResourceCommand.cs` in Application layer
+- [ ] Create `TransformResourceHandler.cs` with basic execution
+- [ ] Register services in DI container
+- [ ] Add endpoint routing in `Program.cs`
+
+### Phase 2: Storage Integration
+
+- [ ] Create `IStructureMapRepository` interface
+- [ ] Implement repository for StructureMap storage
+- [ ] Add StructureMap CRUD endpoints
+- [ ] Implement FML ↔ StructureMap conversion
+
+### Phase 3: Advanced Features
+
+- [ ] Integrate terminology services for `translate()`
+- [ ] Add caching with invalidation
+- [ ] Implement import resolution
+- [ ] Add metrics/tracing
+- [ ] Performance optimization
+
+### Phase 4: Production Hardening
+
+- [ ] Comprehensive error handling
+- [ ] OperationOutcome responses
+- [ ] Rate limiting
+- [ ] Timeout handling for complex maps
+- [ ] Audit logging
+
+---
+
+## References
+
+- [FHIR $transform Operation](https://build.fhir.org/structuremap-operation-transform.html)
+- [StructureMap Resource](https://build.fhir.org/structuremap.html)
+- [FHIR Mapping Language Grammar](https://build.fhir.org/mapping.g4)
+- [FHIR Mapping Tutorial](https://build.fhir.org/mapping-tutorial.html)
+- [matchbox Implementation](https://github.com/ahdis/matchbox)
+- [fhir-net-mappinglanguage](https://github.com/brianpos/fhir-net-mappinglanguage)
