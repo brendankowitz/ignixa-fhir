@@ -63,7 +63,7 @@ public class ConditionalOperationException : FhirException
     {
         var issueCode = matchCount == 0 ? OperationOutcomeJsonNode.IssueType.NotFound : OperationOutcomeJsonNode.IssueType.Duplicate;
 
-        var issue = new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+        var issue = new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = issueCode,

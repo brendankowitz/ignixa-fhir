@@ -28,7 +28,7 @@ public static class ValidationResultExtensions
 
         foreach (var issue in validationResult.Issues)
         {
-            var issueComponent = new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+            var issueComponent = new OperationOutcomeJsonNode.IssueComponent()
             {
                 Severity = MapSeverity(issue.Severity),
                 Code = OperationOutcomeJsonNode.IssueType.Invalid,
@@ -41,7 +41,7 @@ public static class ValidationResultExtensions
         // If no issues, add a success message
         if (issueList.Count == 0)
         {
-            issueList.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+            issueList.Add(new OperationOutcomeJsonNode.IssueComponent()
             {
                 Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
                 Code = OperationOutcomeJsonNode.IssueType.Informational,

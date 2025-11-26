@@ -33,7 +33,7 @@ public class InvalidSearchOperationException : FhirException
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(message), $"{nameof(message)} should not be null.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,

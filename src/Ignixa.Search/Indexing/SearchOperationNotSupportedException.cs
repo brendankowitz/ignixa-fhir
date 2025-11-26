@@ -32,7 +32,7 @@ public class SearchOperationNotSupportedException : FhirException
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(message), $"{nameof(message)} should not be null or whitespace.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,

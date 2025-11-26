@@ -62,9 +62,9 @@ public class BundleResponseBuilder
 
     private BundleComponentJsonNode BuildEntryComponent(BundleEntryResponse response)
     {
-        var entry = new BundleComponentJsonNode(new JsonObject(), null)
+        var entry = new BundleComponentJsonNode()
         {
-            Response = new BundleComponentResponseJsonNode(new JsonObject(), null)
+            Response = new BundleComponentResponseJsonNode()
             {
                 Status = response.Status ?? response.StatusCode.ToString()
             }
@@ -107,7 +107,7 @@ public class BundleResponseBuilder
 
                 // Add OperationOutcome if parsing fails
                 var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
                 {
                     Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
                     Code = OperationOutcomeJsonNode.IssueType.Invalid,

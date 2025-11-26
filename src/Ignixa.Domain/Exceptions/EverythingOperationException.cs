@@ -21,7 +21,7 @@ public class EverythingOperationException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,
@@ -34,7 +34,7 @@ public class EverythingOperationException : FhirException
     {
         Debug.Assert(!string.IsNullOrEmpty(message), "Exception message should not be empty.");
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Invalid,

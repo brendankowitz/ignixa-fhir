@@ -231,7 +231,7 @@ public class BundleEntryExecutor
             var operationOutcome = new OperationOutcomeJsonNode();
             var issueList = new List<OperationOutcomeJsonNode.IssueComponent>
             {
-                new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+                new OperationOutcomeJsonNode.IssueComponent()
                 {
                     Severity = severity,
                     Code = code,

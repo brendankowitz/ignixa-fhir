@@ -76,7 +76,7 @@ public static class HistoryPaginationLinkBuilder
         HistoryQueryParameters parameters)
     {
         var url = BuildUrl(baseUrl, requestPath, parameters);
-        return new BundleLinkJsonNode(new JsonObject(), null) { Relation = "self", Url = url };
+        return new BundleLinkJsonNode() { Relation = "self", Url = url };
     }
 
     private static BundleLinkJsonNode BuildFirstLink(
@@ -86,7 +86,7 @@ public static class HistoryPaginationLinkBuilder
     {
         var firstPageParams = parameters with { Offset = 0 };
         var url = BuildUrl(baseUrl, requestPath, firstPageParams);
-        return new BundleLinkJsonNode(new JsonObject(), null) { Relation = "first", Url = url };
+        return new BundleLinkJsonNode() { Relation = "first", Url = url };
     }
 
     private static BundleLinkJsonNode BuildPreviousLink(
@@ -98,7 +98,7 @@ public static class HistoryPaginationLinkBuilder
         var previousOffset = Math.Max(0, parameters.Offset - parameters.Count);
         var previousPageParams = parameters with { Offset = previousOffset };
         var url = BuildUrl(baseUrl, requestPath, previousPageParams);
-        return new BundleLinkJsonNode(new JsonObject(), null) { Relation = "previous", Url = url };
+        return new BundleLinkJsonNode() { Relation = "previous", Url = url };
     }
 
     private static BundleLinkJsonNode BuildNextLink(
@@ -108,7 +108,7 @@ public static class HistoryPaginationLinkBuilder
     {
         var nextPageParams = parameters with { Offset = parameters.Offset + parameters.Count };
         var url = BuildUrl(baseUrl, requestPath, nextPageParams);
-        return new BundleLinkJsonNode(new JsonObject(), null) { Relation = "next", Url = url };
+        return new BundleLinkJsonNode() { Relation = "next", Url = url };
     }
 
     private static BundleLinkJsonNode BuildLastLink(
@@ -121,7 +121,7 @@ public static class HistoryPaginationLinkBuilder
         var lastPageOffset = Math.Max(0, ((totalCount - 1) / parameters.Count) * parameters.Count);
         var lastPageParams = parameters with { Offset = lastPageOffset };
         var url = BuildUrl(baseUrl, requestPath, lastPageParams);
-        return new BundleLinkJsonNode(new JsonObject(), null) { Relation = "last", Url = url };
+        return new BundleLinkJsonNode() { Relation = "last", Url = url };
     }
 
     private static string BuildUrl(

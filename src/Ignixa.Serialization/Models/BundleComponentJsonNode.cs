@@ -15,8 +15,13 @@ namespace Ignixa.Serialization.Models;
 [SuppressMessage("Design", "CA1056", Justification = "POCO style model")]
 public class BundleComponentJsonNode : BaseJsonNode
 {
+    public BundleComponentJsonNode()
+        : this(new JsonObject(), null)
+    {
+    }
+
     /// <summary>
-    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject).
+    /// Public constructor for JsonConverter (accepts pre-parsed JsonObject).
     /// </summary>
     public BundleComponentJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
         : base(jsonObject, fhirVersion)

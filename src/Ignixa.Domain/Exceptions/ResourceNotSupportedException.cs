@@ -29,7 +29,7 @@ public class ResourceNotSupportedException : FhirException
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,
@@ -42,7 +42,7 @@ public class ResourceNotSupportedException : FhirException
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new System.Text.Json.Nodes.JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,

@@ -509,7 +509,7 @@ public class BundleProcessor
     private BundleJsonNode CreateErrorBundle(string message, string details)
     {
         var outcome = new OperationOutcomeJsonNode();
-        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.Processing,
@@ -520,9 +520,9 @@ public class BundleProcessor
         {
             Type = BundleJsonNode.BundleType.TransactionResponse
         };
-        bundle.Entry.Add(new BundleComponentJsonNode(new JsonObject(), null)
+        bundle.Entry.Add(new BundleComponentJsonNode()
         {
-            Response = new BundleComponentResponseJsonNode(new JsonObject(), null)
+            Response = new BundleComponentResponseJsonNode()
             {
                 Status = "500",
                 Outcome = outcome

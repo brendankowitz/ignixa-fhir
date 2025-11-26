@@ -98,7 +98,7 @@ public sealed record ValidationResult
 
         foreach (var issue in Issues)
         {
-            var issueComponent = new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+            var issueComponent = new OperationOutcomeJsonNode.IssueComponent()
             {
                 Severity = MapSeverity(issue.Severity),
                 Code = DetermineIssueType(issue.Code),
@@ -111,7 +111,7 @@ public sealed record ValidationResult
             // Set details if available
             if (issue.Details != null)
             {
-                var detailsNode = new CodeableConceptJsonNode(new JsonObject(), null)
+                var detailsNode = new CodeableConceptJsonNode()
                 {
                     Text = issue.Details.Text ?? string.Empty
                 };
@@ -120,7 +120,7 @@ public sealed record ValidationResult
                 {
                     foreach (var coding in issue.Details.Coding)
                     {
-                        detailsNode.Coding.Add(new CodingJsonNode(new JsonObject(), null)
+                        detailsNode.Coding.Add(new CodingJsonNode()
                         {
                             System = coding.System ?? string.Empty,
                             Code = coding.Code ?? string.Empty,
@@ -134,7 +134,7 @@ public sealed record ValidationResult
             else
             {
                 // Fallback: Use code as text
-                issueComponent.Details = new CodeableConceptJsonNode(new JsonObject(), null)
+                issueComponent.Details = new CodeableConceptJsonNode()
                 {
                     Text = issue.Code
                 };

@@ -84,7 +84,7 @@ public class SearchParameterNotSupportedException : FhirException
 
     private void AddIssue(string diagnostics)
     {
-        Issues.Add(new OperationOutcomeJsonNode.IssueComponent(new JsonObject(), null)
+        Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
             Code = OperationOutcomeJsonNode.IssueType.NotSupported,
