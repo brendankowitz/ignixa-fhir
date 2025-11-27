@@ -103,7 +103,7 @@ public static class OperationEndpoints
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
         // GET /Patient/{id}/$everything - Patient $everything operation (agnostic route)
-        endpoints.MapGet("/Patient/{id}/$everything", HandlePatientEverythingAgnostic)
+        endpoints.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
             .WithName("PatientEverythingAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
@@ -374,12 +374,13 @@ public static class OperationEndpoints
     }
 
     /// <summary>
-    /// Handles tenant-explicit Patient $everything operation.
-    /// GET /tenant/{tenantId}/Patient/{id}/$everything
+    /// Handles Patient $everything operation.
+    /// GET /tenant/{tenantId}/Patient/{id}/$everything (tenant-explicit)
+    /// GET /Patient/{id}/$everything (agnostic, single-tenant only)
+    /// Tenant resolution is handled by TenantResolutionMiddleware and FhirRequestContextMiddleware.
     /// </summary>
     private static async Task<IResult> HandlePatientEverything(
         HttpContext context,
-        int tenantId,
         string id,
         [FromServices] IMediator mediator,
         [FromQuery] DateOnly? start,
@@ -387,58 +388,13 @@ public static class OperationEndpoints
         [FromQuery] DateTimeOffset? _since,
         [FromQuery] string? _type,
         [FromQuery] int? _count,
-        CancellationToken cancellationToken)
-    {
-        return await HandlePatientEverythingInternal(context, tenantId, id, start, end, _since, _type, _count, mediator, cancellationToken);
-    }
-
-    /// <summary>
-    /// Handles agnostic Patient $everything operation (single-tenant only).
-    /// GET /Patient/{id}/$everything
-    /// </summary>
-    private static async Task<IResult> HandlePatientEverythingAgnostic(
-        HttpContext context,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromQuery] DateOnly? start,
-        [FromQuery] DateOnly? end,
-        [FromQuery] DateTimeOffset? _since,
-        [FromQuery] string? _type,
-        [FromQuery] int? _count,
-        CancellationToken cancellationToken)
-    {
-        // For agnostic route, determine tenant from context
-        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
-        {
-            return Results.BadRequest(CreateOperationOutcomeError(
-                "error",
-                "required",
-                "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/Patient/{id}/$everything"));
-        }
-
-        return await HandlePatientEverythingInternal(context, tenantId, id, start, end, _since, _type, _count, mediator, cancellationToken);
-    }
-
-    /// <summary>
-    /// Core Patient $everything handler used by both tenant-explicit and agnostic endpoints.
-    /// </summary>
-    private static async Task<IResult> HandlePatientEverythingInternal(
-        HttpContext context,
-        int tenantId,
-        string patientId,
-        DateOnly? start,
-        DateOnly? end,
-        DateTimeOffset? since,
-        string? typeParam,
-        int? count,
-        IMediator mediator,
         CancellationToken cancellationToken)
     {
         // Parse _type parameter (comma-delimited list of resource types)
         ISet<string>? types = null;
-        if (!string.IsNullOrEmpty(typeParam))
+        if (!string.IsNullOrEmpty(_type))
         {
-            types = new HashSet<string>(typeParam.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            types = new HashSet<string>(_type.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
         // Convert DateOnly to DateTimeOffset for filtering
@@ -451,12 +407,12 @@ public static class OperationEndpoints
 
         // Create Patient $everything query
         var query = new PatientEverythingQuery(
-            PatientId: patientId,
+            PatientId: id,
             Start: startOffset,
             End: endOffset,
-            Since: since,
+            Since: _since,
             Types: types,
-            Count: count);
+            Count: _count);
 
         // Execute via mediator (returns streaming IAsyncEnumerable<SearchEntryResult>)
         var result = await mediator.SendAsync(query, cancellationToken);

@@ -158,20 +158,24 @@ public class PatientEverythingQueryGenerator
         ISet<string>? filteredResourceTypes,
         CancellationToken ct)
     {
+        // Convert ISet to IReadOnlyCollection for the API
+        IReadOnlyCollection<string>? resourceTypes = filteredResourceTypes != null
+            ? filteredResourceTypes.ToList()
+            : null;
+
         // For single patient, use existing compartment search directly
         if (patientIds.Count == 1)
         {
             return await _compartmentQueryGenerator.GenerateCompartmentQueryAsync(
                 compartmentType: "Patient",
                 compartmentId: patientIds[0],
-                resourceTypesToSearch: filteredResourceTypes,
+                resourceTypesToSearch: resourceTypes,
                 ct);
         }
 
         // For multiple patients (Group $everything), we need to generate UNION of compartment queries
-        // or modify the compartment query to use IN clause for patient IDs
-        // For MVP, we'll UNION multiple compartment queries
-        // TODO: Optimize this by modifying CompartmentSearchQueryGenerator to accept multiple IDs
+        // Currently using UNION approach for simplicity; could be optimized by modifying
+        // CompartmentSearchQueryGenerator to accept multiple patient IDs in a single query.
         IQueryable<long>? unionedQuery = null;
 
         foreach (var patientId in patientIds)
@@ -179,7 +183,7 @@ public class PatientEverythingQueryGenerator
             var compartmentQuery = await _compartmentQueryGenerator.GenerateCompartmentQueryAsync(
                 compartmentType: "Patient",
                 compartmentId: patientId,
-                resourceTypesToSearch: filteredResourceTypes,
+                resourceTypesToSearch: resourceTypes,
                 ct);
 
             unionedQuery = unionedQuery == null
@@ -193,41 +197,48 @@ public class PatientEverythingQueryGenerator
     /// <summary>
     /// Applies date filters (start/end) to compartment resources.
     /// Filters resources based on clinical date search parameters.
-    /// NOTE: This uses INNER JOIN which excludes resources without date parameters.
-    /// Resources like Patient, RelatedPerson, etc. without date params will be excluded.
-    /// For a full $everything implementation, consider LEFT JOIN or resource-type-aware filtering.
+    /// Uses UNION approach: resources WITH date params matching filter UNION resources WITHOUT date params.
+    /// This ensures resources like Patient, RelatedPerson, Device (which lack date params) are always included.
     /// </summary>
     private IQueryable<long> ApplyDateFilters(
         IQueryable<long> baseQuery,
         DateTimeOffset? startDate,
         DateTimeOffset? endDate)
     {
-        // Filter using DateTimeSearchParam table for resources with clinical dates
-        // Resources with date parameters: Encounter.period, Observation.effective[x], Procedure.performed[x], etc.
-        // INNER JOIN: Only includes resources that HAVE date parameters matching the filter
-        var dateFilteredQuery = from resourceId in baseQuery
-                                join dateParam in _context.DateTimeSearchParams
-                                    on resourceId equals dateParam.ResourceSurrogateId
-                                where (startDate == null || dateParam.EndDateTime >= startDate.Value)
-                                    && (endDate == null || dateParam.StartDateTime <= endDate.Value)
-                                select resourceId;
+        // Get resource IDs that HAVE date parameters matching the filter
+        var resourcesWithMatchingDates = from resourceId in baseQuery
+                                         join dateParam in _context.DateTimeSearchParams
+                                             on resourceId equals dateParam.ResourceSurrogateId
+                                         where (startDate == null || dateParam.EndDateTime >= startDate.Value)
+                                             && (endDate == null || dateParam.StartDateTime <= endDate.Value)
+                                         select resourceId;
 
-        return dateFilteredQuery.Distinct();
+        // Get resource IDs that DON'T have any date parameters at all
+        var resourcesWithoutDateParams = from resourceId in baseQuery
+                                         where !_context.DateTimeSearchParams.Any(dp => dp.ResourceSurrogateId == resourceId)
+                                         select resourceId;
+
+        // UNION: Include both sets - resources with matching dates AND resources without date params
+        return resourcesWithMatchingDates.Union(resourcesWithoutDateParams).Distinct();
     }
 
     /// <summary>
     /// Applies _since filter to resources based on meta.lastUpdated.
     /// Used for incremental updates to retrieve only changed resources.
+    /// Uses Transaction.VisibleDate as a proxy for resource lastUpdated timestamp.
     /// </summary>
     private IQueryable<long> ApplySinceFilter(
         IQueryable<long> baseQuery,
         DateTimeOffset sinceDate)
     {
-        // Filter using Resource.LastUpdated column
+        // Filter using Transaction.VisibleDate (when the resource became visible)
+        // This is used as a proxy for meta.lastUpdated
         var sinceFilteredQuery = from resourceId in baseQuery
                                  join resource in _context.Resources
                                      on resourceId equals resource.ResourceSurrogateId
-                                 where resource.LastUpdated >= sinceDate
+                                 join transaction in _context.Transactions
+                                     on resource.TransactionId equals transaction.SurrogateIdRangeFirstValue
+                                 where transaction.VisibleDate >= sinceDate.DateTime
                                  select resourceId;
 
         return sinceFilteredQuery;
@@ -241,19 +252,26 @@ public class PatientEverythingQueryGenerator
     private IQueryable<long> GetReferencedResourceIds(IQueryable<long> compartmentResourceIds)
     {
         // Get resource type IDs for referenced resource types
-        // ReferencedResourceTypes is already a HashSet, no need to call ToList()
-        var referencedTypeIds = from rt in _context.ResourceTypes
-                                where EF.Constant(ReferencedResourceTypes).Contains(rt.Name)
-                                select rt.ResourceTypeId;
+        // NOTE: .ToList() materializes the query here because EF Core cannot translate
+        // .Contains() on an IQueryable in the subsequent join. This is a small list (4 items)
+        // so the performance impact is negligible. Alternative: cache as static field since values are constant.
+        var referencedTypeIdsList = _context.ResourceTypes
+            .Where(rt => ReferencedResourceTypes.Contains(rt.Name))
+            .Select(rt => rt.ResourceTypeId)
+            .ToList();
 
         // Query ReferenceSearchParam for outbound references from compartment resources
         // to Practitioner, Organization, Location, Medication resources
-        // Filter out null ReferenceResourceSurrogateId values for safety
+        // Join with Resource table to get the actual ResourceSurrogateId of the referenced resource
         var referencedIds = from refParam in _context.ReferenceSearchParams
                             where compartmentResourceIds.Contains(refParam.ResourceSurrogateId)
-                                && referencedTypeIds.Contains(refParam.ReferenceResourceTypeId)
-                                && refParam.ReferenceResourceSurrogateId != null
-                            select refParam.ReferenceResourceSurrogateId.Value;
+                                && refParam.ReferenceResourceTypeId.HasValue
+                                && referencedTypeIdsList.Contains(refParam.ReferenceResourceTypeId.Value)
+                            join referencedResource in _context.Resources
+                                on new { TypeId = (short)refParam.ReferenceResourceTypeId!, ResourceId = refParam.ReferenceResourceId }
+                                equals new { TypeId = referencedResource.ResourceTypeId, ResourceId = referencedResource.ResourceId }
+                            where referencedResource.IsDeleted == false
+                            select referencedResource.ResourceSurrogateId;
 
         return referencedIds.Distinct();
     }

@@ -76,13 +76,13 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
         {
             ResourceType = null, // Multi-resource type search
             Expression = patientEverythingExpression,
-            Count = request.Count ?? 50, // Default to 50 if not specified
-            SortParams = null, // TODO: Support _sort parameter in future
-            IncludeParams = null, // Not applicable for $everything (already includes everything)
-            RevIncludeParams = null, // Not applicable for $everything
-            Total = TotalType.None, // TODO: Support total count in future
-            SummaryType = null,
-            ElementsParams = null
+            MaxItemCount = request.Count ?? 50, // Default to 50 if not specified
+            Sort = Array.Empty<SortExpression>(), // _sort parameter not currently supported for $everything
+            Include = Array.Empty<IncludeExpression>(), // Not applicable for $everything (already includes everything)
+            RevInclude = Array.Empty<IncludeExpression>(), // Not applicable for $everything
+            Total = TotalType.None, // Total count calculation not currently enabled for $everything
+            Summary = SummaryType.False,
+            Elements = new HashSet<string>()
         };
 
         // Determine partition(s) using IPartitionStrategy
@@ -112,12 +112,12 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
             searchOptions,
             cancellationToken);
 
-        // TODO: Calculate total count if requested
+        // Total count calculation not currently implemented for $everything operation
         int? total = null;
         if (searchOptions.Total != TotalType.None)
         {
             _logger.LogWarning(
-                "Total count requested but not yet supported for Patient $everything on patient {PatientId}",
+                "Total count requested but not currently supported for Patient $everything on patient {PatientId}",
                 request.PatientId);
             total = null;
         }
@@ -125,8 +125,8 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
         var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
-            ContinuationToken: null, // TODO: Implement paging token generation
-            HasMore: false, // TODO: Implement hasMore detection
+            ContinuationToken: null, // Paging tokens not yet generated for $everything
+            HasMore: false, // HasMore detection not yet implemented for $everything
             SearchOptions: searchOptions); // Include SearchOptions for bundle serialization
 
         return Task.FromResult(result);
