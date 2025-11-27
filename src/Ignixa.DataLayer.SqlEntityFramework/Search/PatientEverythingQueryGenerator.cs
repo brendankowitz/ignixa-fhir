@@ -22,13 +22,12 @@ public class PatientEverythingQueryGenerator
     private readonly ILogger<PatientEverythingQueryGenerator> _logger;
 
     // Resource types to include as "referenced resources" outside the patient compartment
-    private static readonly HashSet<string> ReferencedResourceTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Practitioner",
-        "Organization",
-        "Location",
-        "Medication"
-    };
+    // Note: Using List<string> instead of string[] because EF Core 9's expression interpreter
+    // has issues with arrays being incorrectly inferred as ReadOnlySpan<string> at runtime
+    private static readonly List<string> ReferencedResourceTypes = new List<string> { "Practitioner", "Organization", "Location", "Medication" };
+
+    // Cache for referenced type IDs (lazy-loaded)
+    private List<short>? _cachedReferencedTypeIds;
 
     public PatientEverythingQueryGenerator(
         FhirDbContext context,
@@ -102,7 +101,7 @@ public class PatientEverythingQueryGenerator
         if (expression.IncludeReferencedResources)
         {
             _logger.LogDebug("Including referenced resources (Practitioner, Organization, Location, Medication)");
-            referencedResourceIds = GetReferencedResourceIds(compartmentResourceIds);
+            referencedResourceIds = await GetReferencedResourceIdsAsync(compartmentResourceIds, ct);
         }
 
         // Step 6: UNION all results
@@ -143,7 +142,7 @@ public class PatientEverythingQueryGenerator
         var query = from resource in _context.Resources
                     where resource.ResourceTypeId == patientTypeId
                         && EF.Constant(patientIds).Contains(resource.ResourceId)
-                        && resource.IsDeleted == false
+                        && !resource.IsDeleted
                     select resource.ResourceSurrogateId;
 
         return query;
@@ -245,20 +244,33 @@ public class PatientEverythingQueryGenerator
     }
 
     /// <summary>
+    /// Gets cached referenced type IDs (Practitioner, Organization, Location, Medication).
+    /// Lazy-loads on first call and caches for subsequent calls.
+    /// </summary>
+    private async Task<List<short>> GetReferencedTypeIdsAsync(CancellationToken ct)
+    {
+        if (_cachedReferencedTypeIds == null)
+        {
+            // Capture as local variable to avoid EF Core expression interpreter issues
+            // with static array fields being incorrectly inferred as ReadOnlySpan<string>
+            var referencedTypes = ReferencedResourceTypes;
+            _cachedReferencedTypeIds = await _context.ResourceTypes
+                .Where(rt => referencedTypes.Contains(rt.Name))
+                .Select(rt => rt.ResourceTypeId)
+                .ToListAsync(ct);
+        }
+        return _cachedReferencedTypeIds;
+    }
+
+    /// <summary>
     /// Gets referenced resource IDs (Practitioners, Organizations, Locations, Medications)
     /// that are referenced by resources in the patient compartment.
     /// These resources are outside the patient compartment but are included per FHIR spec.
     /// </summary>
-    private IQueryable<long> GetReferencedResourceIds(IQueryable<long> compartmentResourceIds)
+    private async Task<IQueryable<long>> GetReferencedResourceIdsAsync(IQueryable<long> compartmentResourceIds, CancellationToken ct)
     {
-        // Get resource type IDs for referenced resource types
-        // NOTE: .ToList() materializes the query here because EF Core cannot translate
-        // .Contains() on an IQueryable in the subsequent join. This is a small list (4 items)
-        // so the performance impact is negligible. Alternative: cache as static field since values are constant.
-        var referencedTypeIdsList = _context.ResourceTypes
-            .Where(rt => ReferencedResourceTypes.Contains(rt.Name))
-            .Select(rt => rt.ResourceTypeId)
-            .ToList();
+        // Get cached resource type IDs for referenced resource types
+        var referencedTypeIdsList = await GetReferencedTypeIdsAsync(ct);
 
         // Query ReferenceSearchParam for outbound references from compartment resources
         // to Practitioner, Organization, Location, Medication resources
@@ -270,7 +282,7 @@ public class PatientEverythingQueryGenerator
                             join referencedResource in _context.Resources
                                 on new { TypeId = (short)refParam.ReferenceResourceTypeId!, ResourceId = refParam.ReferenceResourceId }
                                 equals new { TypeId = referencedResource.ResourceTypeId, ResourceId = referencedResource.ResourceId }
-                            where referencedResource.IsDeleted == false
+                            where !referencedResource.IsDeleted
                             select referencedResource.ResourceSurrogateId;
 
         return referencedIds.Distinct();

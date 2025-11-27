@@ -64,6 +64,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Rest", "Rest", "{5DB93B3E-6
 		docs\rest\SqlOnFhir.http = docs\rest\SqlOnFhir.http
 		docs\rest\Terminology.http = docs\rest\Terminology.http
 		docs\rest\export.http = docs\rest\export.http
+		docs\rest\PatientEverything.http = docs\rest\PatientEverything.http
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bench", "bench", "{760AB15A-8938-8D9B-BEDE-5CE1484B84C3}"

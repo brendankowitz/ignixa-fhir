@@ -185,6 +185,8 @@ public class PatientEverythingHandlerTests
         result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
         expression.FilteredResourceTypes.Should().BeEquivalentTo(types);
+        // When _type filter is specified, referenced resources should NOT be included
+        expression.IncludeReferencedResources.Should().BeFalse();
     }
 
     [Fact]
@@ -236,11 +238,12 @@ public class PatientEverythingHandlerTests
         expression.EndDate.Should().Be(endDate);
         expression.SinceDate.Should().Be(sinceDate);
         expression.FilteredResourceTypes.Should().BeEquivalentTo(types);
-        expression.IncludeReferencedResources.Should().BeTrue();
+        // When _type filter is specified, referenced resources should NOT be included
+        expression.IncludeReferencedResources.Should().BeFalse();
     }
 
     [Fact]
-    public async Task GivenRequest_WhenHandling_ThenAlwaysIncludesReferencedResources()
+    public async Task GivenNoTypeFilter_WhenHandling_ThenIncludesReferencedResources()
     {
         // Arrange
         SetupDefaultMocks();

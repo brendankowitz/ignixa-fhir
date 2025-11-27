@@ -26,47 +26,39 @@ namespace Ignixa.Application.Operations.Features.PatientEverything;
 /// 3. Delegate to normal search execution strategy
 /// 4. Data layer intercepts PatientEverythingExpression and optimizes with PatientEverythingQueryGenerator
 /// </summary>
-public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, SearchResourcesResult>
+public class PatientEverythingHandler(
+    IPartitionStrategy partitionStrategy,
+    IQueryExecutionStrategy executionStrategy,
+    IFhirRequestContextAccessor contextAccessor,
+    ILogger<PatientEverythingHandler> logger) : IRequestHandler<PatientEverythingQuery, SearchResourcesResult>
 {
-    private readonly IPartitionStrategy _partitionStrategy;
-    private readonly IQueryExecutionStrategy _executionStrategy;
-    private readonly IFhirRequestContextAccessor _contextAccessor;
-    private readonly ILogger<PatientEverythingHandler> _logger;
-
-    public PatientEverythingHandler(
-        IPartitionStrategy partitionStrategy,
-        IQueryExecutionStrategy executionStrategy,
-        IFhirRequestContextAccessor contextAccessor,
-        ILogger<PatientEverythingHandler> logger)
-    {
-        _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
-        _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
-        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
 
     public Task<SearchResourcesResult> HandleAsync(
         PatientEverythingQuery request,
         CancellationToken cancellationToken)
     {
         // Get FHIR request context (populated by FhirRequestContextMiddleware)
-        var context = _contextAccessor.RequestContext
+        var context = contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "Executing Patient $everything for patient {PatientId}",
             request.PatientId);
 
         // Create PatientEverythingExpression with all filters
+        // Only include referenced resources (Practitioner, Organization, etc.) when NO _type filter is specified
+        // When _type is specified, only return resources of those exact types
+        var includeReferencedResources = request.Types == null || request.Types.Count == 0;
+
         var patientEverythingExpression = new PatientEverythingExpression(
             patientId: request.PatientId,
             startDate: request.Start,
             endDate: request.End,
             sinceDate: request.Since,
             filteredResourceTypes: request.Types,
-            includeReferencedResources: true); // Always include referenced resources per FHIR spec
+            includeReferencedResources: includeReferencedResources);
 
-        _logger.LogDebug(
+        logger.LogDebug(
             "Created Patient $everything expression: {Expression}",
             patientEverythingExpression);
 
@@ -77,9 +69,9 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
             ResourceType = null, // Multi-resource type search
             Expression = patientEverythingExpression,
             MaxItemCount = request.Count ?? 50, // Default to 50 if not specified
-            Sort = Array.Empty<SortExpression>(), // _sort parameter not currently supported for $everything
-            Include = Array.Empty<IncludeExpression>(), // Not applicable for $everything (already includes everything)
-            RevInclude = Array.Empty<IncludeExpression>(), // Not applicable for $everything
+            Sort = [], // _sort parameter not currently supported for $everything
+            Include = [], // Not applicable for $everything (already includes everything)
+            RevInclude = [], // Not applicable for $everything
             Total = TotalType.None, // Total count calculation not currently enabled for $everything
             Summary = SummaryType.False,
             Elements = new HashSet<string>()
@@ -94,12 +86,12 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
 
         var queryParams = new Dictionary<string, string>();
 
-        var partition = _partitionStrategy.DetermineReadPartition(
+        var partition = partitionStrategy.DetermineReadPartition(
             partitionContext,
             "Patient", // Use Patient as the primary resource type
             queryParams);
 
-        _logger.LogDebug(
+        logger.LogDebug(
             "Partition(s) determined: [{PartitionIds}] (Mode: {Mode})",
             string.Join(",", partition.PartitionIds),
             partition.Mode);
@@ -107,7 +99,7 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
         // Execute using IQueryExecutionStrategy (same as regular search)
         // The PatientEverythingExpression will be intercepted by SearchExpressionQueryBuilder
         // which delegates to PatientEverythingQueryGenerator for optimized single-query generation
-        var resourceStream = _executionStrategy.SearchStreamAsync(
+        var resourceStream = executionStrategy.SearchStreamAsync(
             partition,
             searchOptions,
             cancellationToken);
@@ -116,7 +108,7 @@ public class PatientEverythingHandler : IRequestHandler<PatientEverythingQuery, 
         int? total = null;
         if (searchOptions.Total != TotalType.None)
         {
-            _logger.LogWarning(
+            logger.LogWarning(
                 "Total count requested but not currently supported for Patient $everything on patient {PatientId}",
                 request.PatientId);
             total = null;

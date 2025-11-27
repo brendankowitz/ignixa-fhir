@@ -1,0 +1,211 @@
+@hostname = https://localhost:7058
+
+###############################################################################
+# Patient $everything Operation Tests
+# FHIR R4/R5 Patient $everything operation
+# Retrieves all resources related to a patient
+###############################################################################
+
+### Setup: Create test patient with related resources
+# @name setupData
+POST {{hostname}}
+Content-Type: application/fhir+json
+Prefer: return=minimal
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        {
+            "resource": {
+                "resourceType": "Patient",
+                "id": "everything-test-patient",
+                "name": [{ "family": "EverythingTest", "given": ["John"] }],
+                "birthDate": "1980-01-15",
+                "gender": "male"
+            },
+            "request": { "method": "PUT", "url": "Patient/everything-test-patient" }
+        },
+        {
+            "resource": {
+                "resourceType": "Practitioner",
+                "id": "dr-smith",
+                "name": [{ "family": "Smith", "given": ["Jane"], "prefix": ["Dr."] }]
+            },
+            "request": { "method": "PUT", "url": "Practitioner/dr-smith" }
+        },
+        {
+            "resource": {
+                "resourceType": "Organization",
+                "id": "acme-hospital",
+                "name": "Acme General Hospital"
+            },
+            "request": { "method": "PUT", "url": "Organization/acme-hospital" }
+        },
+        {
+            "resource": {
+                "resourceType": "Encounter",
+                "id": "encounter-1",
+                "status": "finished",
+                "class": { "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB" },
+                "subject": { "reference": "Patient/everything-test-patient" },
+                "participant": [{ "individual": { "reference": "Practitioner/dr-smith" } }],
+                "serviceProvider": { "reference": "Organization/acme-hospital" },
+                "period": { "start": "2024-01-15", "end": "2024-01-15" }
+            },
+            "request": { "method": "PUT", "url": "Encounter/encounter-1" }
+        },
+        {
+            "resource": {
+                "resourceType": "Observation",
+                "id": "obs-bp-1",
+                "status": "final",
+                "code": { "coding": [{ "system": "http://loinc.org", "code": "85354-9", "display": "Blood pressure" }] },
+                "subject": { "reference": "Patient/everything-test-patient" },
+                "effectiveDateTime": "2024-01-15T10:30:00Z",
+                "performer": [{ "reference": "Practitioner/dr-smith" }]
+            },
+            "request": { "method": "PUT", "url": "Observation/obs-bp-1" }
+        },
+        {
+            "resource": {
+                "resourceType": "Observation",
+                "id": "obs-weight-1",
+                "status": "final",
+                "code": { "coding": [{ "system": "http://loinc.org", "code": "29463-7", "display": "Body weight" }] },
+                "subject": { "reference": "Patient/everything-test-patient" },
+                "effectiveDateTime": "2024-06-20T14:00:00Z",
+                "valueQuantity": { "value": 75, "unit": "kg" }
+            },
+            "request": { "method": "PUT", "url": "Observation/obs-weight-1" }
+        },
+        {
+            "resource": {
+                "resourceType": "Condition",
+                "id": "condition-hypertension",
+                "clinicalStatus": { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active" }] },
+                "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "38341003", "display": "Hypertension" }] },
+                "subject": { "reference": "Patient/everything-test-patient" },
+                "onsetDateTime": "2020-03-01"
+            },
+            "request": { "method": "PUT", "url": "Condition/condition-hypertension" }
+        },
+        {
+            "resource": {
+                "resourceType": "MedicationRequest",
+                "id": "medrx-1",
+                "status": "active",
+                "intent": "order",
+                "medicationCodeableConcept": { "coding": [{ "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "197884", "display": "Lisinopril 10 MG" }] },
+                "subject": { "reference": "Patient/everything-test-patient" },
+                "requester": { "reference": "Practitioner/dr-smith" },
+                "authoredOn": "2024-01-15"
+            },
+            "request": { "method": "PUT", "url": "MedicationRequest/medrx-1" }
+        }
+    ]
+}
+
+###############################################################################
+# Basic $everything Operations
+###############################################################################
+
+### Get everything for a patient (basic)
+# Returns: Patient + all compartment resources + referenced Practitioners, Organizations, etc.
+GET {{hostname}}/Patient/everything-test-patient/$everything
+Accept: application/fhir+json
+
+### Get everything with pagination
+GET {{hostname}}/Patient/everything-test-patient/$everything?_count=5
+Accept: application/fhir+json
+
+###############################################################################
+# Date Filtering
+###############################################################################
+
+### Get everything with start date filter
+# Only includes resources with clinical dates >= 2024-01-01
+GET {{hostname}}/Patient/everything-test-patient/$everything?start=2024-01-01
+Accept: application/fhir+json
+
+### Get everything with end date filter
+# Only includes resources with clinical dates <= 2024-03-31
+GET {{hostname}}/Patient/everything-test-patient/$everything?end=2024-03-31
+Accept: application/fhir+json
+
+### Get everything with date range
+# Only includes resources with clinical dates between 2024-01-01 and 2024-06-30
+GET {{hostname}}/Patient/everything-test-patient/$everything?start=2024-01-01&end=2024-06-30
+Accept: application/fhir+json
+
+###############################################################################
+# Incremental Updates (_since)
+###############################################################################
+
+### Get everything modified since a specific timestamp
+# Useful for syncing/caching - only returns resources modified after this time
+GET {{hostname}}/Patient/everything-test-patient/$everything?_since=2024-01-01T00:00:00Z
+Accept: application/fhir+json
+
+###############################################################################
+# Resource Type Filtering (_type)
+###############################################################################
+
+### Get only Observations for a patient
+GET {{hostname}}/Patient/everything-test-patient/$everything?_type=Observation
+Accept: application/fhir+json
+
+### Get Observations and Conditions only
+GET {{hostname}}/Patient/everything-test-patient/$everything?_type=Observation,Condition
+Accept: application/fhir+json
+
+### Get Encounters and MedicationRequests only
+GET {{hostname}}/Patient/everything-test-patient/$everything?_type=Encounter,MedicationRequest
+Accept: application/fhir+json
+
+###############################################################################
+# Combined Parameters
+###############################################################################
+
+### Get Observations from 2024, limited to 10 results
+GET {{hostname}}/Patient/everything-test-patient/$everything?_type=Observation&start=2024-01-01&end=2024-12-31&_count=10
+Accept: application/fhir+json
+
+### Get everything modified since date, filtered by type
+GET {{hostname}}/Patient/everything-test-patient/$everything?_since=2024-06-01T00:00:00Z&_type=Observation,Condition
+Accept: application/fhir+json
+
+###############################################################################
+# Tenant-Explicit Routes (Multi-tenant mode)
+###############################################################################
+
+### Get everything using tenant-explicit route
+GET {{hostname}}/tenant/1/Patient/everything-test-patient/$everything
+Accept: application/fhir+json
+
+### Tenant-explicit with parameters
+GET {{hostname}}/tenant/1/Patient/everything-test-patient/$everything?_type=Observation&_count=5
+Accept: application/fhir+json
+
+###############################################################################
+# Cleanup
+###############################################################################
+
+### Delete test patient and related resources
+POST {{hostname}}
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        { "request": { "method": "DELETE", "url": "MedicationRequest/medrx-1" } },
+        { "request": { "method": "DELETE", "url": "Condition/condition-hypertension" } },
+        { "request": { "method": "DELETE", "url": "Observation/obs-weight-1" } },
+        { "request": { "method": "DELETE", "url": "Observation/obs-bp-1" } },
+        { "request": { "method": "DELETE", "url": "Encounter/encounter-1" } },
+        { "request": { "method": "DELETE", "url": "Organization/acme-hospital" } },
+        { "request": { "method": "DELETE", "url": "Practitioner/dr-smith" } },
+        { "request": { "method": "DELETE", "url": "Patient/everything-test-patient" } }
+    ]
+}

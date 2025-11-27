@@ -273,6 +273,23 @@ public void GivenAPatient_WhenGettingById_ThenReturnsPatient() {
 | **Nullability** | Enabled for Domain, Application, DataLayer, Api |
 | **Warnings** | Treat as errors (use suppressions sparingly) |
 
+### .NET 9+ Language Features
+
+Prefer modern C# language features supported by .NET 9+:
+
+| Feature | Use | Avoid |
+|---------|-----|-------|
+| **Primary constructors** | `class Foo(IService svc) : IHandler` | Traditional constructor with field assignment |
+| **Collection expressions** | `[]`, `[1, 2, 3]` (**not** in EF Core static fields - causes `ReadOnlySpan` runtime error) | `new List<T>()`, `new string[] { }` |
+| **FrozenSet/FrozenDictionary** | For static readonly collections (**not** in EF Core `.Contains()` queries) | `List<T>` for data used in EF queries |
+| **Static arrays in EF queries** | Use `List<T>` when array is used in `.Contains()` within EF Core expressions | `string[]` may cause EF Core 9 interpreter issues |
+| **Target-typed new** | `List<int> x = new()` | `List<int> x = new List<int>()` |
+| **File-scoped namespaces** | `namespace Foo;` | `namespace Foo { }` |
+| **ArgumentNullException.ThrowIfNull** | `ArgumentNullException.ThrowIfNull(arg)` | `if (arg == null) throw...` |
+| **Pattern matching** | `is not null`, `is { } x` | `!= null` |
+| **Raw string literals** | `"""json"""` | Escaped strings for JSON/XML |
+| **Idiomatic boolean** | `!flag`, `flag` | `flag == false`, `flag == true` |
+
 ---
 
 ## High-Quality Task Output Checklist
