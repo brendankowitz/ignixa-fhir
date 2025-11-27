@@ -34,6 +34,14 @@ public class ProvenanceJsonNode : ResourceJsonNode
     }
 
     /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    internal ProvenanceJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
+    /// <summary>
     /// The resource(s) that this Provenance record relates to.
     /// For X-Provenance header, this is auto-filled by the server.
     /// </summary>
@@ -238,6 +246,21 @@ public class ProvenanceJsonNode : ResourceJsonNode
     [SuppressMessage("Design", "CA1034", Justification = "Nested type matches FHIR structure")]
     public class ReferenceComponent : BaseJsonNode
     {
+        /// <summary>
+        /// Default constructor for deserialization.
+        /// </summary>
+        public ReferenceComponent()
+        {
+        }
+
+        /// <summary>
+        /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+        /// </summary>
+        internal ReferenceComponent(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+            : base(jsonObject, fhirVersion)
+        {
+        }
+
         [JsonIgnore]
         public string? Reference
         {
@@ -279,6 +302,21 @@ public class ProvenanceJsonNode : ResourceJsonNode
     [SuppressMessage("Design", "CA1034", Justification = "Nested type matches FHIR structure")]
     public class AgentComponent : BaseJsonNode
     {
+        /// <summary>
+        /// Default constructor for deserialization.
+        /// </summary>
+        public AgentComponent()
+        {
+        }
+
+        /// <summary>
+        /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+        /// </summary>
+        internal AgentComponent(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+            : base(jsonObject, fhirVersion)
+        {
+        }
+
         [JsonIgnore]
         public ReferenceComponent? Who
         {

@@ -1,14 +1,12 @@
 using System.Collections;
-using System.Collections.Generic;
-using System.Reflection;
 using System.Text.Json.Nodes;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization;
-    public class MutableJsonList<T> : IList<T> where T : BaseJsonNode
+    public class MutableJsonList<T>(Func<JsonArray> arrayFactory, JsonArray? existingArray) : IList<T>
+        where T : BaseJsonNode
     {
-        private readonly Func<JsonArray> _arrayFactory;
-        private JsonArray? _jsonArray;
+        private JsonArray? _jsonArray = existingArray;
 
         private static readonly Func<JsonNode, FhirSpecification?, T> _factory = CreateFactory();
 
@@ -20,16 +18,10 @@ namespace Ignixa.Serialization;
                 throw new InvalidOperationException(
                     $"Type {typeof(T).Name} must have a constructor (JsonObject, FhirSpecification?)");
             }
-            return (node, fhirVersion) => (T)ctor.Invoke(new object?[] { node, fhirVersion });
+            return (node, fhirVersion) => (T)ctor.Invoke([node, fhirVersion]);
         }
 
-        public MutableJsonList(Func<JsonArray> arrayFactory, JsonArray? existingArray)
-        {
-            _arrayFactory = arrayFactory;
-            _jsonArray = existingArray;
-        }
-
-        private JsonArray JsonArray => _jsonArray ??= _arrayFactory();
+        private JsonArray JsonArray => _jsonArray ??= arrayFactory();
 
         public T this[int index]
         {

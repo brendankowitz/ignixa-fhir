@@ -28,6 +28,14 @@ public class SearchParameterJsonNode : ResourceJsonNode
     {
     }
 
+    /// <summary>
+    /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    internal SearchParameterJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     [JsonIgnore]
     public string Name
     {

@@ -28,6 +28,14 @@ public class BundleJsonNode : ResourceJsonNode
     {
     }
 
+    /// <summary>
+    /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
+    /// </summary>
+    public BundleJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
+    {
+    }
+
     [JsonIgnore]
     public BundleType? Type
     {
