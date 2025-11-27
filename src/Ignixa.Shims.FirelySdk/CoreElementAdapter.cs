@@ -6,6 +6,9 @@
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Specification;
 using Ignixa.Abstractions;
+// Disambiguate between Ignixa and Firely types
+using CoreXmlRep = Ignixa.Abstractions.XmlRepresentation;
+using FirelyElementDef = Hl7.Fhir.Specification.IElementDefinitionSummary;
 
 namespace Ignixa.Shims.FirelySdk;
 
@@ -83,10 +86,10 @@ public class CoreElementAdapter : IElement
     /// </summary>
     private class TypeAdapter : IType
     {
-        private readonly IElementDefinitionSummary _definition;
+        private readonly FirelyElementDef _definition;
         private TypeInfo? _cachedInfo;
 
-        public TypeAdapter(IElementDefinitionSummary definition)
+        public TypeAdapter(FirelyElementDef definition)
         {
             _definition = definition ?? throw new ArgumentNullException(nameof(definition));
         }
@@ -118,7 +121,7 @@ public class CoreElementAdapter : IElement
         public bool IsRequired => _definition.IsRequired;
         public bool InSummary => _definition.InSummary;
         public int Order => _definition.Order;
-        public XmlRepresentation Representation => _definition.Representation;
+        public CoreXmlRep Representation => (CoreXmlRep)_definition.Representation;
 
         public IReadOnlyList<IType> Children => Array.Empty<IType>();  // Not supported in adapter
     }

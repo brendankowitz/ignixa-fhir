@@ -73,7 +73,9 @@ public sealed class SlicingMetadata
         Ordered = ordered;
     }
 
+#pragma warning disable CA1819 // Properties should not return arrays - Codegen metadata requires arrays for slicing discriminators
     public string[] Discriminators { get; }
+#pragma warning restore CA1819
     public string Rules { get; }
     public bool Ordered { get; }
 }

@@ -35,8 +35,7 @@ public static class CoreExtensions
     /// </example>
     public static IElement ToCoreElement(this Hl7.Fhir.ElementModel.ITypedElement element)
     {
-        if (element == null)
-            throw new ArgumentNullException(nameof(element));
+        ArgumentNullException.ThrowIfNull(element);
 
         // If already an Ignixa element wrapped in TypedElementAdapter, unwrap it
         if (element is TypedElementAdapter adapter)
@@ -56,8 +55,7 @@ public static class CoreExtensions
     /// <returns>Ignixa element adapters</returns>
     public static IEnumerable<IElement> ToCoreElements(this IEnumerable<Hl7.Fhir.ElementModel.ITypedElement> elements)
     {
-        if (elements == null)
-            throw new ArgumentNullException(nameof(elements));
+        ArgumentNullException.ThrowIfNull(elements);
 
         return elements.Select(e => e.ToCoreElement());
     }

@@ -6,6 +6,11 @@
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Specification;
 using Ignixa.Abstractions;
+// Firely SDK types - use these for implementing Firely interfaces
+using FirelyElementDef = Hl7.Fhir.Specification.IElementDefinitionSummary;
+using FirelyTypeInfo = Hl7.Fhir.Specification.ITypeSerializationInfo;
+using FirelyXmlRep = Hl7.Fhir.Specification.XmlRepresentation;
+using FirelyStructureRef = Hl7.Fhir.Specification.IStructureDefinitionReference;
 
 namespace Ignixa.Shims.FirelySdk;
 
@@ -43,7 +48,7 @@ public class TypedElementAdapter : Hl7.Fhir.ElementModel.ITypedElement
     public string Location => _coreElement.Location;
 
     /// <inheritdoc/>
-    public IElementDefinitionSummary? Definition => _coreElement.Type != null
+    public FirelyElementDef? Definition => _coreElement.Type != null
         ? new ElementDefinitionAdapter(_coreElement.Type)
         : null;
 
@@ -68,7 +73,7 @@ public class TypedElementAdapter : Hl7.Fhir.ElementModel.ITypedElement
     /// <summary>
     /// Adapter for Ignixa's IType → Firely's IElementDefinitionSummary.
     /// </summary>
-    private class ElementDefinitionAdapter : IElementDefinitionSummary
+    private class ElementDefinitionAdapter : FirelyElementDef
     {
         private readonly IType _type;
 
@@ -85,25 +90,25 @@ public class TypedElementAdapter : Hl7.Fhir.ElementModel.ITypedElement
         public bool IsResource => _type.Info.IsResource;
         public bool IsModifier => _type.Info.IsModifier;
 
-        public ITypeSerializationInfo[] Type
+        public FirelyTypeInfo[] Type
         {
             get
             {
                 // Create a StructureDefinitionReference for the type
-                return new ITypeSerializationInfo[] { new StructureDefinitionRef(_type.Info.Name) };
+                return new FirelyTypeInfo[] { new StructureDefinitionRef(_type.Info.Name) };
             }
         }
 
         public string? DefaultTypeName => _type.Info.Name;
         public string? NonDefaultNamespace => null;  // Not supported
-        public XmlRepresentation Representation => _type.Representation;
+        public FirelyXmlRep Representation => (FirelyXmlRep)_type.Representation;
         public int Order => _type.Order;
     }
 
     /// <summary>
     /// Simple IStructureDefinitionReference implementation.
     /// </summary>
-    private class StructureDefinitionRef : IStructureDefinitionReference
+    private class StructureDefinitionRef : FirelyStructureRef, FirelyTypeInfo
     {
         public StructureDefinitionRef(string referredType)
         {

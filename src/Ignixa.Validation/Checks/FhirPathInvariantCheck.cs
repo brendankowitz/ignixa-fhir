@@ -11,6 +11,7 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
+using ConstraintDefinition = Ignixa.Specification.ConstraintDefinition;
 
 namespace Ignixa.Validation.Checks;
 

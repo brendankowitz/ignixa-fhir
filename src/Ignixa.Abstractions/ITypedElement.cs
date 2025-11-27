@@ -18,17 +18,13 @@ namespace Ignixa.Abstractions;
 /// the instance or derived from fully aware of the FHIR definitions and types.
 ///
 /// <para>
-/// <strong>OBSOLETE:</strong> This interface is deprecated in favor of <see cref="IElement"/>.
-/// The new interface provides better performance with <see cref="IReadOnlyList{T}"/> return types
-/// and uses <see cref="TypeInfo"/> for strongly-typed metadata.
+/// Note: A new <see cref="IElement"/> interface is being developed for better performance
+/// with <see cref="IReadOnlyList{T}"/> return types and <see cref="TypeInfo"/> for strongly-typed metadata.
 /// </para>
 /// </remarks>
-[Obsolete("Use IElement instead. ITypedElement will be removed in a future version. " +
-          "Migrate by implementing IElement which uses IReadOnlyList<IElement> for Children() " +
-          "and IType instead of IElementDefinitionSummary for type metadata.")]
-#pragma warning disable CS0618 // Type or member is obsolete
+#pragma warning disable CS0618 // IBaseElementNavigator is marked obsolete as internal warning but must be inherited for ITypedElement
 public interface ITypedElement : IBaseElementNavigator<ITypedElement>
-#pragma warning restore CS0618 // Type or member is obsolete
+#pragma warning restore CS0618
 {
     /// <summary>
     /// An indication of the location of this node within the data represented by the <c>ITypedElement</c>.

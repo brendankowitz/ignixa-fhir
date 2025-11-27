@@ -35,8 +35,7 @@ public static class FirelySdkExtensions
     /// </example>
     public static Hl7.Fhir.ElementModel.ITypedElement ToTypedElement(this IElement element)
     {
-        if (element == null)
-            throw new ArgumentNullException(nameof(element));
+        ArgumentNullException.ThrowIfNull(element);
 
         // If already a Firely element wrapped in CoreElementAdapter, unwrap it
         if (element is CoreElementAdapter adapter)
@@ -56,8 +55,7 @@ public static class FirelySdkExtensions
     /// <returns>Firely SDK typed element adapters</returns>
     public static IEnumerable<Hl7.Fhir.ElementModel.ITypedElement> ToTypedElements(this IEnumerable<IElement> elements)
     {
-        if (elements == null)
-            throw new ArgumentNullException(nameof(elements));
+        ArgumentNullException.ThrowIfNull(elements);
 
         return elements.Select(e => e.ToTypedElement());
     }
@@ -69,8 +67,7 @@ public static class FirelySdkExtensions
     /// <returns>Firely SDK typed element adapters</returns>
     public static IEnumerable<Hl7.Fhir.ElementModel.ITypedElement> ToTypedElements(this IReadOnlyList<IElement> elements)
     {
-        if (elements == null)
-            throw new ArgumentNullException(nameof(elements));
+        ArgumentNullException.ThrowIfNull(elements);
 
         return elements.Select(e => e.ToTypedElement());
     }
