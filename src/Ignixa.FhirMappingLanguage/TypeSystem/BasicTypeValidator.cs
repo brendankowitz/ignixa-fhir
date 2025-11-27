@@ -141,7 +141,7 @@ public class BasicTypeValidator : ITypeValidator
         return typeInfo;
     }
 
-    public TypeValidationError? ValidateElement(ITypedElement element, string expectedType)
+    public TypeValidationError? ValidateElement(IElement element, string expectedType)
     {
         if (element == null)
         {

@@ -6,8 +6,7 @@
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Specification;
 using Ignixa.Abstractions;
-// Disambiguate between Ignixa and Firely types
-using CoreXmlRep = Ignixa.Abstractions.XmlRepresentation;
+// Firely SDK types
 using FirelyElementDef = Hl7.Fhir.Specification.IElementDefinitionSummary;
 
 namespace Ignixa.Shims.FirelySdk;
@@ -71,13 +70,13 @@ public class CoreElementAdapter : IElement
     }
 
     /// <inheritdoc/>
-    public T? Annotation<T>() where T : class
+    public T? Meta<T>() where T : class
     {
-        // Store the original Firely element as an annotation for unwrapping
+        // Store the original Firely element as metadata for unwrapping
         if (typeof(T) == typeof(Hl7.Fhir.ElementModel.ITypedElement))
             return _firelyElement as T;
 
-        // ITypedElement doesn't have a general annotation mechanism
+        // ITypedElement doesn't have a general metadata mechanism
         return null;
     }
 
@@ -121,7 +120,6 @@ public class CoreElementAdapter : IElement
         public bool IsRequired => _definition.IsRequired;
         public bool InSummary => _definition.InSummary;
         public int Order => _definition.Order;
-        public CoreXmlRep Representation => (CoreXmlRep)_definition.Representation;
 
         public IReadOnlyList<IType> Children => Array.Empty<IType>();  // Not supported in adapter
     }

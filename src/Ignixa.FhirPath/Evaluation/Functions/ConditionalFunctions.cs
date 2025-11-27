@@ -19,11 +19,11 @@ internal static class ConditionalFunctions
     /// iif() - Conditional expression (if-then-else).
     /// Syntax: iif(criterion, true-result [, false-result])
     /// </summary>
-    public static IEnumerable<ITypedElement> Iif(
-        IEnumerable<ITypedElement> focus,
+    public static IEnumerable<IElement> Iif(
+        IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
         EvaluationContext context,
-        Func<IEnumerable<ITypedElement>, Expression, EvaluationContext, IEnumerable<ITypedElement>> evaluateExpression)
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count < 2)
             throw new ArgumentException("iif() requires at least criterion and true-result arguments");
@@ -32,7 +32,7 @@ internal static class ConditionalFunctions
 
         // Empty condition returns empty
         if (criterion.Count == 0)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         // True condition returns true branch
         if (FunctionHelpers.IsTrue(criterion))
@@ -46,6 +46,6 @@ internal static class ConditionalFunctions
             return evaluateExpression(focus, arguments[2], context);
         }
 
-        return Enumerable.Empty<ITypedElement>();
+        return [];
     }
 }

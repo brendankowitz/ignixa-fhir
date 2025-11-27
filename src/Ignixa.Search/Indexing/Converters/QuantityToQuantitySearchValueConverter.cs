@@ -12,14 +12,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Quantity"/> to a list of <see cref="QuantitySearchValue"/>.
 /// </summary>
-public class QuantityToQuantitySearchValueConverter : FhirTypedElementToSearchValueConverter<QuantitySearchValue>
+public class QuantityToQuantitySearchValueConverter : FhirElementToSearchValueConverter<QuantitySearchValue>
 {
     public QuantityToQuantitySearchValueConverter()
         : base("Quantity", "System.Quantity")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         decimal? decimalValue = (decimal?)value.Scalar("value");
 

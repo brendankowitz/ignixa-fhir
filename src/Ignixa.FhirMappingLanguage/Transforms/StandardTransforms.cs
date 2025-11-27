@@ -258,9 +258,9 @@ public class EvaluateTransform : ITransformFunction
         var source = arguments[0];
         var path = arguments[1].ToString()!;
 
-        // Source should be an ITypedElement
-        if (source is not ITypedElement element)
-            throw new ArgumentException("evaluate() requires source to be an ITypedElement");
+        // Source should be an IElement
+        if (source is not IElement element)
+            throw new ArgumentException("evaluate() requires source to be an IElement");
 
         var results = context.FhirPathEvaluator(path, element);
         return results.FirstOrDefault()?.Value ?? string.Empty;
@@ -438,14 +438,14 @@ public class ReferenceTransform : ITransformFunction
 
         var source = arguments[0];
 
-        // If source is an ITypedElement with an id, create a reference
-        if (source is ITypedElement element)
+        // If source is an IElement with an id, create a reference
+        if (source is IElement element)
         {
             var resourceType = element.InstanceType;
 
             // Try to get id from children first, then from element value
-            var id = element.Children("id").FirstOrDefault()?.Value?.ToString()
-                     ?? element.Value?.ToString();
+            var idChildren = element.Children("id");
+            var id = idChildren.Count > 0 ? idChildren[0].Value?.ToString() : element.Value?.ToString();
 
             if (resourceType != null && id != null)
             {
@@ -513,7 +513,7 @@ public class PointerTransform : ITransformFunction
 
         var source = arguments[0];
 
-        if (source is ITypedElement element)
+        if (source is IElement element)
         {
             return string.IsNullOrEmpty(element.Location) ? "/" : element.Location;
         }

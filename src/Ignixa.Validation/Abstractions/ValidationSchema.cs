@@ -4,7 +4,6 @@
 // </copyright>
 
 using Ignixa.Abstractions;
-using Ignixa.Domain.Models;
 
 namespace Ignixa.Validation.Abstractions;
 
@@ -60,16 +59,16 @@ public sealed class ValidationSchema
         _universalChecks.Concat(_specChecks).Concat(_profileChecks).ToList();
 
     /// <summary>
-    /// Validates a source node using depth-appropriate checks.
+    /// Validates an element using depth-appropriate checks.
     /// Depth.Minimal: Run universal checks only.
     /// Depth.Spec: Run universal + spec checks.
     /// Depth.Full: Run universal + spec + profile checks.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings (including depth).</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>Combined validation result from all checks.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var results = new List<ValidationResult>();
 
@@ -78,7 +77,7 @@ public sealed class ValidationSchema
         {
             foreach (var check in _universalChecks)
             {
-                results.Add(check.Validate(node, settings, state));
+                results.Add(check.Validate(element, settings, state));
             }
         }
 
@@ -87,7 +86,7 @@ public sealed class ValidationSchema
         {
             foreach (var check in _specChecks)
             {
-                results.Add(check.Validate(node, settings, state));
+                results.Add(check.Validate(element, settings, state));
             }
         }
 
@@ -96,7 +95,7 @@ public sealed class ValidationSchema
         {
             foreach (var check in _profileChecks)
             {
-                results.Add(check.Validate(node, settings, state));
+                results.Add(check.Validate(element, settings, state));
             }
         }
 

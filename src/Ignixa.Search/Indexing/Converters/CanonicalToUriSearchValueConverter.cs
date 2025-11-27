@@ -11,14 +11,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Canonical"/> to a list of <see cref="UriSearchValue"/>.
 /// </summary>
-public class CanonicalToUriSearchValueConverter : FhirTypedElementToSearchValueConverter<UriSearchValue>
+public class CanonicalToUriSearchValueConverter : FhirElementToSearchValueConverter<UriSearchValue>
 {
     public CanonicalToUriSearchValueConverter()
         : base("canonical")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         if (value?.Value == null) yield break;
 

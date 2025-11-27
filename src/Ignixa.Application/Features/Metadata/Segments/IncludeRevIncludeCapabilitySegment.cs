@@ -7,8 +7,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
-using Ignixa.Search.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
@@ -131,7 +132,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
     /// </summary>
     private List<string> BuildSearchIncludes(
         string resourceType,
-        List<Search.Models.SearchParameterInfo> searchParams)
+        List<SearchParameterInfo> searchParams)
     {
         var includes = new List<string>();
 

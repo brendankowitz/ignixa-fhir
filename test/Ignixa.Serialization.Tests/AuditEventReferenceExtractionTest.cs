@@ -8,16 +8,18 @@ using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
-using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
 using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using IElement = Ignixa.Abstractions.IElement;
+
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode used for legacy tests
 
 namespace Ignixa.Serialization.Tests;
 
 public class AuditEventReferenceExtractionTest
 {
     private readonly ITestOutputHelper _output;
-    private readonly R4StructureDefinitionSummaryProvider _provider = new();
+    private readonly R4CoreSchemaProvider _provider = new();
 
     public AuditEventReferenceExtractionTest(ITestOutputHelper output)
     {
@@ -57,16 +59,16 @@ public class AuditEventReferenceExtractionTest
 }";
 
         // Act
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
-        ITypedElement typedElement = sourceNode.ToTypedElement(_provider);
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
+        IElement element = sourceNode.ToElement(_provider);
 
         _output.WriteLine("=== Root AuditEvent ===");
-        _output.WriteLine($"InstanceType: {typedElement.InstanceType}");
-        _output.WriteLine($"Name: {typedElement.Name}");
+        _output.WriteLine($"InstanceType: {element.InstanceType}");
+        _output.WriteLine($"Name: {element.Name}");
 
         // Test AuditEvent.agent.who expression
         var agentWhoExpression = "AuditEvent.agent.who";
-        var agentWhoResults = typedElement.Select(agentWhoExpression).ToArray();
+        var agentWhoResults = element.Select(agentWhoExpression).ToArray();
 
         _output.WriteLine($"\n=== FHIRPath: {agentWhoExpression} ===");
         _output.WriteLine($"Results count: {agentWhoResults.Length}");
@@ -78,47 +80,45 @@ public class AuditEventReferenceExtractionTest
             _output.WriteLine($"  InstanceType: {result.InstanceType ?? "NULL"}");
             _output.WriteLine($"  Value: {result.Value}");
 
-            var referenceChild = result.Children("reference").FirstOrDefault();
-            if (referenceChild != null)
+            var referenceChildren = result.Children("reference").ToArray();
+            if (referenceChildren.Length > 0)
             {
+                var referenceChild = referenceChildren[0];
                 _output.WriteLine($"  reference child:");
                 _output.WriteLine($"    Name: {referenceChild.Name}");
                 _output.WriteLine($"    InstanceType: {referenceChild.InstanceType ?? "NULL"}");
                 _output.WriteLine($"    Value: {referenceChild.Value}");
             }
 
-            // Get the Definition to understand the type information
-            if (result.Definition != null)
+            // Get the Type to understand the type information
+            if (result is IElement elementResult && elementResult.Type != null)
             {
-                _output.WriteLine($"  Definition:");
-                _output.WriteLine($"    ElementName: {result.Definition.ElementName}");
-                _output.WriteLine($"    IsChoiceElement: {result.Definition.IsChoiceElement}");
-                _output.WriteLine($"    Type count: {result.Definition.Type.Length}");
-                foreach (var type in result.Definition.Type)
+                _output.WriteLine($"  Type:");
+                _output.WriteLine($"    ElementName: {elementResult.Type.Info.Name}");
+                _output.WriteLine($"    IsChoiceElement: {elementResult.Type.Info.IsChoiceElement}");
+                _output.WriteLine($"    Type count: {elementResult.Type.Children.Count}");
+                foreach (var type in elementResult.Type.Children)
                 {
-                    if (type is IStructureDefinitionSummary summary)
+                    var referredType = type?.GetType().GetProperty("ReferredType")?.GetValue(type)?.ToString();
+                    if (referredType != null)
                     {
-                        _output.WriteLine($"      - TypeName: {summary.TypeName}");
-                    }
-                    else if (type is IStructureDefinitionReference reference)
-                    {
-                        _output.WriteLine($"      - ReferredType: {reference.ReferredType}");
+                        _output.WriteLine($"      - ReferredType: {referredType}");
                     }
                     else
                     {
-                        _output.WriteLine($"      - Type: {type.GetType().Name}");
+                        _output.WriteLine($"      - Type: {type?.GetType().Name}");
                     }
                 }
             }
             else
             {
-                _output.WriteLine($"  Definition: NULL");
+                _output.WriteLine($"  Type: NULL");
             }
         }
 
         // Test AuditEvent.entity.what expression
         var entityWhatExpression = "AuditEvent.entity.what";
-        var entityWhatResults = typedElement.Select(entityWhatExpression).ToArray();
+        var entityWhatResults = element.Select(entityWhatExpression).ToArray();
 
         _output.WriteLine($"\n=== FHIRPath: {entityWhatExpression} ===");
         _output.WriteLine($"Results count: {entityWhatResults.Length}");
@@ -145,61 +145,43 @@ public class AuditEventReferenceExtractionTest
     public void GivenAuditEvent_WhenInspectingStructureDefinition_ThenAgentWhoHasReferenceType()
     {
         // Arrange
-        var auditEventSummary = _provider.Provide("AuditEvent");
-        Assert.NotNull(auditEventSummary);
+        var auditEventType = _provider.GetTypeDefinition("AuditEvent");
+        Assert.NotNull(auditEventType);
 
         // Act
-        var elements = auditEventSummary.GetElements();
-        var agentElement = elements.FirstOrDefault(e => e.ElementName == "agent");
+        var elements = auditEventType.Children;
+        var agentElement = elements.FirstOrDefault(e => e.Info.Name == "agent");
 
         _output.WriteLine("=== AuditEvent.agent ===");
         if (agentElement != null)
         {
-            _output.WriteLine($"ElementName: {agentElement.ElementName}");
+            _output.WriteLine($"ElementName: {agentElement.Info.Name}");
             _output.WriteLine($"IsCollection: {agentElement.IsCollection}");
-            _output.WriteLine($"Type count: {agentElement.Type.Length}");
 
-            // Check if we can get the BackboneElement type
-            if (agentElement.Type.Length > 0)
+            // Get child elements (BackboneElement)
+            var backboneChildren = agentElement.Children;
+            _output.WriteLine($"Child count: {backboneChildren.Count}");
+
+            var whoElement = backboneChildren.FirstOrDefault(e => e.Info.Name == "who");
+
+            _output.WriteLine($"\n=== AuditEvent.agent.who (from BackboneElement) ===");
+            if (whoElement != null)
             {
-                foreach (var type in agentElement.Type)
+                _output.WriteLine($"  ElementName: {whoElement.Info.Name}");
+
+                // Check if this has type information (cast to ITypeExtended for Types property)
+                if (whoElement is ITypeExtended whoExtended)
                 {
-                    if (type is IStructureDefinitionSummary summary)
+                    _output.WriteLine($"  Type count: {whoExtended.Types.Count}");
+                    foreach (var whoType in whoExtended.Types)
                     {
-                        _output.WriteLine($"  Type: {summary.TypeName}");
-                        _output.WriteLine($"  IsAbstract: {summary.IsAbstract}");
-
-                        // Get the elements of the BackboneElement
-                        var backboneElements = summary.GetElements();
-                        var whoElement = backboneElements.FirstOrDefault(e => e.ElementName == "who");
-
-                        _output.WriteLine($"\n=== AuditEvent.agent.who (from BackboneElement) ===");
-                        if (whoElement != null)
-                        {
-                            _output.WriteLine($"  ElementName: {whoElement.ElementName}");
-                            _output.WriteLine($"  Type count: {whoElement.Type.Length}");
-                            foreach (var whoType in whoElement.Type)
-                            {
-                                if (whoType is IStructureDefinitionSummary whoSummary)
-                                {
-                                    _output.WriteLine($"    - TypeName: {whoSummary.TypeName}");
-                                }
-                                else if (whoType is IStructureDefinitionReference whoReference)
-                                {
-                                    _output.WriteLine($"    - ReferredType: {whoReference.ReferredType}");
-                                }
-                                else
-                                {
-                                    _output.WriteLine($"    - Type: {whoType.GetType().Name}");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            _output.WriteLine($"  who element NOT FOUND");
-                        }
+                        _output.WriteLine($"    - Code: {whoType.Code}");
                     }
                 }
+            }
+            else
+            {
+                _output.WriteLine($"  who element NOT FOUND");
             }
         }
         else

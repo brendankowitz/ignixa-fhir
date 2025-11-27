@@ -2,18 +2,20 @@
  * Copyright (c) 2025, Ignixa Contributors
  *
  * Public API for evaluating SQL on FHIR v2 ViewDefinitions.
- * Uses ISourceNode for proper handling of FHIR data and visitor pattern for evaluation.
+ * Uses ISourceNavigator for proper handling of FHIR data and visitor pattern for evaluation.
  */
 
 using Ignixa.Abstractions;
 using Ignixa.SqlOnFhir.Expressions;
 using Ignixa.SqlOnFhir.Parsing;
 
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNavigator migration pending
+
 namespace Ignixa.SqlOnFhir.Evaluation;
 
 /// <summary>
 /// Evaluates SQL on FHIR v2 ViewDefinitions against FHIR resources.
-/// Uses ISourceNode-based parsing and visitor pattern for clean, extensible architecture.
+/// Uses ISourceNavigator-based parsing and visitor pattern for clean, extensible architecture.
 /// </summary>
 public class SqlOnFhirEvaluator
 {
@@ -26,12 +28,12 @@ public class SqlOnFhirEvaluator
     }
 
     /// <summary>
-    /// Evaluates a ViewDefinition (as ISourceNode) against a FHIR resource, returning rows of data.
+    /// Evaluates a ViewDefinition (as ISourceNavigator) against a FHIR resource, returning rows of data.
     /// </summary>
-    /// <param name="viewDefinitionNode">The ViewDefinition as ISourceNode</param>
+    /// <param name="viewDefinitionNode">The ViewDefinition as ISourceNavigator</param>
     /// <param name="resource">The FHIR resource to evaluate against</param>
     /// <returns>List of rows, where each row is a dictionary mapping column names to values</returns>
-    public IEnumerable<Dictionary<string, object?>> Evaluate(ISourceNode viewDefinitionNode, ITypedElement resource)
+    public IEnumerable<Dictionary<string, object?>> Evaluate(ISourceNavigator viewDefinitionNode, IElement resource)
     {
         ArgumentNullException.ThrowIfNull(viewDefinitionNode);
         ArgumentNullException.ThrowIfNull(resource);

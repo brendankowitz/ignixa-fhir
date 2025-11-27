@@ -10,6 +10,8 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
 using Ignixa.SqlOnFhir.Expressions;
 
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode migration pending
+
 namespace Ignixa.SqlOnFhir.Evaluation;
 
 /// <summary>
@@ -19,7 +21,7 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
 {
     private readonly FhirPathEvaluator _evaluator;
-    private ITypedElement? _currentResource;
+    private IElement? _currentResource;
     private EvaluationContext? _currentContext;
 
     public SqlOnFhirEvaluationVisitor()
@@ -30,7 +32,7 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     /// <summary>
     /// Evaluates a ViewDefinition expression against a FHIR resource.
     /// </summary>
-    public IEnumerable<Dictionary<string, object?>> Evaluate(ViewDefinitionExpression viewDef, ITypedElement resource)
+    public IEnumerable<Dictionary<string, object?>> Evaluate(ViewDefinitionExpression viewDef, IElement resource)
     {
         _currentResource = resource;
         _currentContext = CreateEvaluationContext(viewDef);
@@ -433,19 +435,18 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     }
 
     /// <summary>
-    /// Wraps a primitive constant value as an ITypedElement for FHIRPath context.
+    /// Wraps a primitive constant value as an IElement for FHIRPath context.
     /// </summary>
-    private static ITypedElement WrapConstantValue(object value)
+    private static IElement WrapConstantValue(object value)
     {
-        // For now, use a simple wrapper that stores the value
-        // In production, this could use Firely SDK's TypedElement infrastructure
+        // Simple wrapper that stores the value for use in FHIRPath evaluation
         return new PrimitiveValueElement(value);
     }
 
     /// <summary>
-    /// Simple wrapper for primitive constant values to be used as ITypedElement.
+    /// Simple wrapper for primitive constant values to be used as IElement.
     /// </summary>
-    private class PrimitiveValueElement : ITypedElement
+    private class PrimitiveValueElement : IElement
     {
         private readonly object _value;
         private readonly string _type;
@@ -458,14 +459,13 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
         }
 
         public string Name => "value";
-        public string Type => _type;
         public object? Value => _value;
+        public string InstanceType => _type;
         public string Location => "";
-        public IElementDefinitionSummary? Definition => null;
-        public string? InstanceType => _type;
+        public IType? Type => null;
 
-        public ITypedElement Parent => throw new NotSupportedException();
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+        public T? Meta<T>() where T : class => null;
     }
 
 
@@ -485,10 +485,10 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
             return fhirPathResult;
         }
 
-        // If it's an ITypedElement, extract the primitive value
-        if (fhirPathResult is ITypedElement typedElement)
+        // If it's an IElement, extract the primitive value
+        if (fhirPathResult is IElement element)
         {
-            return typedElement.Value;
+            return element.Value;
         }
 
         // Fallback: convert to string
@@ -498,14 +498,16 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     /// <summary>
     /// Checks if a FHIRPath result evaluates to true (for WHERE clauses).
     /// </summary>
-    private static bool IsTrue(IEnumerable<ITypedElement> results)
+    private static bool IsTrue(IEnumerable<IElement> results)
     {
-        var firstResult = results.FirstOrDefault();
-
-        if (firstResult == null)
+        // Use explicit enumerator to avoid LINQ casting issues
+        using var enumerator = results.GetEnumerator();
+        if (!enumerator.MoveNext())
         {
             return false;
         }
+
+        var firstResult = enumerator.Current;
 
         // Boolean true
         if (firstResult.Value is bool b)
@@ -513,13 +515,8 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
             return b;
         }
 
-        // Non-empty collection is truthy
-        if (results.Any())
-        {
-            return true;
-        }
-
-        return false;
+        // Non-empty collection is truthy (we already know we have at least one element)
+        return true;
     }
 
     /// <summary>
@@ -627,14 +624,14 @@ public class SqlOnFhirEvaluationVisitor : ISqlOnFhirExpressionVisitor<object?>
     /// <param name="root">The root element to start traversal from</param>
     /// <param name="repeatPaths">Array of FHIRPath expressions defining recursive paths</param>
     /// <returns>Flat list of all items found at any depth via the repeat paths</returns>
-    private List<ITypedElement> RecursivelyCollectItems(
-        ITypedElement root,
+    private List<IElement> RecursivelyCollectItems(
+        IElement root,
         ImmutableArray<FhirPath.Expressions.Expression> repeatPaths)
     {
-        var result = new List<ITypedElement>();
+        var result = new List<IElement>();
 
         // Helper function for depth-first recursive traversal
-        void DepthFirstTraversal(ITypedElement element, int depth)
+        void DepthFirstTraversal(IElement element, int depth)
         {
             // Add current element to results
             result.Add(element);

@@ -553,37 +553,37 @@ public class ConversionAndStringFunctionTests
 
     #region Helper Methods
 
-    private ITypedElement CreateIntegerElement(int value)
+    private IElement CreateIntegerElement(int value)
     {
-        return new PrimitiveTypedElement(value, "integer");
+        return new PrimitiveElement(value, "integer");
     }
 
-    private ITypedElement CreateStringElement(string value)
+    private IElement CreateStringElement(string value)
     {
-        return new PrimitiveTypedElement(value, "string");
+        return new PrimitiveElement(value, "string");
     }
 
-    private ITypedElement CreatePatientWithName()
+    private IElement CreatePatientWithName()
     {
-        var children = new List<ITypedElement>
+        var children = new List<IElement>
         {
-            new ComplexTypedElement("name", "HumanName", new List<ITypedElement>
+            new ComplexElement("name", "HumanName", new List<IElement>
             {
-                new PrimitiveTypedElement("John", "string", "given"),
-                new PrimitiveTypedElement("Doe", "string", "family")
+                new PrimitiveElement("John", "string", "given"),
+                new PrimitiveElement("Doe", "string", "family")
             }),
-            new PrimitiveTypedElement("male", "code", "gender")
+            new PrimitiveElement("male", "code", "gender")
         };
 
-        return new ComplexTypedElement("Patient", "Patient", children);
+        return new ComplexElement("Patient", "Patient", children);
     }
 
     /// <summary>
-    /// Simple test implementation of ITypedElement for primitive values.
+    /// Simple test implementation of IElement for primitive values.
     /// </summary>
-    private class PrimitiveTypedElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
-        public PrimitiveTypedElement(object value, string type, string? name = null)
+        public PrimitiveElement(object value, string type, string? name = null)
         {
             Value = value;
             InstanceType = type;
@@ -592,21 +592,23 @@ public class ConversionAndStringFunctionTests
 
         public string Name { get; }
         public string InstanceType { get; }
-        public object Value { get; }
+        public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
     /// <summary>
-    /// Test implementation of ITypedElement for complex types with children.
+    /// Test implementation of IElement for complex types with children.
     /// </summary>
-    private class ComplexTypedElement : ITypedElement
+    private class ComplexElement : IElement
     {
-        private readonly List<ITypedElement> _children;
+        private readonly List<IElement> _children;
 
-        public ComplexTypedElement(string name, string type, List<ITypedElement> children)
+        public ComplexElement(string name, string type, List<IElement> children)
         {
             Name = name;
             InstanceType = type;
@@ -617,17 +619,19 @@ public class ConversionAndStringFunctionTests
         public string InstanceType { get; }
         public object? Value => null;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             if (name == null)
             {
                 return _children;
             }
 
-            return _children.Where(c => c.Name == name);
+            return _children.Where(c => c.Name == name).ToList();
         }
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

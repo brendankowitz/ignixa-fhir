@@ -4,6 +4,8 @@
 // </copyright>
 
 using FluentAssertions;
+using Ignixa.Abstractions;
+using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;
@@ -16,12 +18,12 @@ namespace Ignixa.Validation.Tests.Schema;
 /// </summary>
 public class StructureDefinitionSchemaBuilderTests
 {
-    private readonly R4StructureDefinitionSummaryProvider _provider;
+    private readonly ISchema _schema;
     private readonly StructureDefinitionSchemaBuilder _builder;
 
     public StructureDefinitionSchemaBuilderTests()
     {
-        _provider = new R4StructureDefinitionSummaryProvider();
+        _schema = new R4CoreSchemaProvider();
         _builder = new StructureDefinitionSchemaBuilder();
     }
 
@@ -31,10 +33,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenPatientStructure_WhenBuildingSchema_ThenCreatesRequiredChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         schema.Should().NotBeNull();
@@ -46,8 +48,8 @@ public class StructureDefinitionSchemaBuilderTests
         var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
 
         // All elements should have cardinality checks
-        var elements = summary!.GetElements();
-        var elementCount = elements.Count(e => !e.ElementName.Contains('.'));  // Top-level only
+        var elements = typeDefinition!.Children;
+        var elementCount = elements.Count(e => !e.Info.Name.Contains('.'));  // Top-level only
         cardinalityChecks.Should().HaveCount(elementCount);
     }
 
@@ -55,10 +57,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenObservationStructure_WhenBuildingSchema_ThenCreatesCardinalityChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Observation");
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         schema.Should().NotBeNull();
@@ -76,17 +78,17 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenPatientStructure_WhenBuildingSchema_ThenCreatesCardinalityChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
         cardinalityChecks.Should().NotBeEmpty();
 
         // Every element should have a cardinality check
-        var elements = summary!.GetElements();
+        var elements = typeDefinition!.Children;
         cardinalityChecks.Should().HaveCount(elements.Count);
     }
 
@@ -94,10 +96,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenElementWithMinZero_WhenBuildingSchema_ThenCreatesCardinalityCheckWithMinZero()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
@@ -119,10 +121,10 @@ public class StructureDefinitionSchemaBuilderTests
     {
         // Arrange
         // Use Observation which has required elements (code, status)
-        var summary = _provider.Provide("Observation");
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
@@ -147,10 +149,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenPatientStructure_WhenBuildingSchema_ThenCreatesTypeChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var typeChecks = schema.Checks.OfType<TypeCheck>().ToList();
@@ -176,10 +178,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenPrimitiveTypes_WhenBuildingSchema_ThenOnlyIncludesPrimitiveTypeChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var typeChecks = schema.Checks.OfType<TypeCheck>().ToList();
@@ -212,10 +214,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenObservationStructure_WhenBuildingSchema_ThenCreatesReferenceChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Observation");
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var referenceChecks = schema.Checks.OfType<ReferenceFormatCheck>().ToList();
@@ -228,10 +230,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenPatientStructure_WhenBuildingSchema_ThenCreatesReferenceChecksForReferenceFields()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var referenceChecks = schema.Checks.OfType<ReferenceFormatCheck>().ToList();
@@ -248,10 +250,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenObservationStructure_WhenBuildingSchema_ThenCreatesCodingChecks()
     {
         // Arrange
-        var summary = _provider.Provide("Observation");
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var codingChecks = schema.Checks.OfType<CodingStructureCheck>().ToList();
@@ -264,10 +266,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenAllergyIntoleranceStructure_WhenBuildingSchema_ThenCreatesCodingChecksForCodeableConceptFields()
     {
         // Arrange
-        var summary = _provider.Provide("AllergyIntolerance");
+        var typeDefinition = _schema.GetTypeDefinition("AllergyIntolerance");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
         var codingChecks = schema.Checks.OfType<CodingStructureCheck>().ToList();
@@ -281,28 +283,28 @@ public class StructureDefinitionSchemaBuilderTests
     #region Error Handling
 
     [Fact]
-    public void GivenNullSummary_WhenBuildingSchema_ThenThrowsArgumentNullException()
+    public void GivenNullTypeDefinition_WhenBuildingSchema_ThenThrowsArgumentNullException()
     {
         // Arrange
         var builder = new StructureDefinitionSchemaBuilder();
 
         // Act & Assert
-        var act = () => builder.BuildSchema(null!, _provider);
+        var act = () => builder.BuildSchema(null!, _schema);
         act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("summary");
+            .WithParameterName("typeDefinition");
     }
 
     [Fact]
-    public void GivenNullProvider_WhenBuildingSchema_ThenThrowsArgumentNullException()
+    public void GivenNullSchema_WhenBuildingSchema_ThenThrowsArgumentNullException()
     {
         // Arrange
-        var summary = _provider.Provide("Patient");
+        var typeDefinition = _schema.GetTypeDefinition("Patient");
         var builder = new StructureDefinitionSchemaBuilder();
 
         // Act & Assert
-        var act = () => builder.BuildSchema(summary!, null!);
+        var act = () => builder.BuildSchema(typeDefinition!, null!);
         act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("provider");
+            .WithParameterName("schema");
     }
 
     #endregion
@@ -317,7 +319,7 @@ public class StructureDefinitionSchemaBuilderTests
 
         // Act
         var schemas = resourceTypes
-            .Select(rt => _builder.BuildSchema(_provider.Provide(rt)!, _provider))
+            .Select(rt => _builder.BuildSchema(_schema.GetTypeDefinition(rt)!, _schema))
             .ToList();
 
         // Assert
@@ -332,10 +334,10 @@ public class StructureDefinitionSchemaBuilderTests
     public void GivenComplexResourceType_WhenBuildingSchema_ThenCreatesAllCheckTypes()
     {
         // Arrange
-        var summary = _provider.Provide("Observation");
+        var typeDefinition = _schema.GetTypeDefinition("Observation");
 
         // Act
-        var schema = _builder.BuildSchema(summary!, _provider);
+        var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert - Observation should have all types of checks
         schema.Checks.Should().NotBeEmpty();

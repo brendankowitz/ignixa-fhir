@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Events.Package;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 using Medino;

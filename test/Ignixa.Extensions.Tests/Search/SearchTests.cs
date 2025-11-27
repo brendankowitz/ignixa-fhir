@@ -6,6 +6,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Ignixa.Abstractions;
 using Ignixa.Domain.ElementModel;
 using Hl7.Fhir.Introspection;
 using Hl7.Fhir.Model;
@@ -56,18 +57,18 @@ public class SearchTests
         var official = new OfficialFhirSchemaProvider();
         string json = reader.ReadToEnd();
 
-        ITypedElement bundle = FhirJsonNode.Parse(json)
-            .ToTypedElement(ModelInfo.ModelInspector);
+        IElement bundle = FhirJsonNode.Parse(json)
+            .ToElement(ModelInfo.ModelInspector);
 
-        ITypedElement[] items = bundle.Select("Bundle.entry[37].resource.component[0].definition.reference").ToArray();
+        IElement[] items = bundle.Select("Bundle.entry[37].resource.component[0].definition.reference").ToArray();
 
         FhirSpecification fhirSpecification = FhirSpecification.R4;
         var schema2 = new FhirJsonSchemaStructureDefinitionSummaryProvider(fhirSpecification);
 
-        ITypedElement bundle2 = JsonSourceNodeFactory.Parse(json).ToTypedElement(schema2);
-        ITypedElement bundle3 = FhirJsonNode.Parse(json).ToTypedElement(schema2);
+        IElement bundle2 = JsonSourceNodeFactory.Parse(json).ToElement(schema2);
+        IElement bundle3 = FhirJsonNode.Parse(json).ToElement(schema2);
 
-        ITypedElement[] items2 = bundle2.Select("Bundle.entry[37].resource.component[0].definition").ToArray();
+        IElement[] items2 = bundle2.Select("Bundle.entry[37].resource.component[0].definition").ToArray();
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public class SearchTests
     {
         (ISearchIndexer Indexer, IFhirSchemaProvider FhirSchemaProvider) context = SetupSearchIndexer(FhirSpecification.R4);
 
-        ITypedElement patient = JsonSourceNodeFactory.Parse(_patientJson).ToTypedElement(context.FhirSchemaProvider);
+        IElement patient = JsonSourceNodeFactory.Parse(_patientJson).ToElement(context.FhirSchemaProvider);
 
         IReadOnlyCollection<SearchIndexEntry> indexes = context.Indexer.Extract(patient);
     }
@@ -87,8 +88,8 @@ public class SearchTests
         (ISearchIndexer Indexer, IFhirSchemaProvider FhirSchemaProvider) contextR4B = SetupSearchIndexer(FhirSpecification.R4B);
 
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
-        ITypedElement patientR4 = sourceNode.ToTypedElement(contextR4.FhirSchemaProvider);
-        ITypedElement patientR4B = sourceNode.ToTypedElement(contextR4B.FhirSchemaProvider);
+        IElement patientR4 = sourceNode.ToElement(contextR4.FhirSchemaProvider);
+        IElement patientR4B = sourceNode.ToElement(contextR4B.FhirSchemaProvider);
 
         IReadOnlyCollection<SearchIndexEntry> indexesR4 = contextR4.Indexer.Extract(patientR4);
         IReadOnlyCollection<SearchIndexEntry> indexesR4B = contextR4B.Indexer.Extract(patientR4B);

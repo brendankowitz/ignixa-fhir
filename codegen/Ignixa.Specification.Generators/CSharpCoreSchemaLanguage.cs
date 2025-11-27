@@ -67,20 +67,31 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
         };
 
+        // Get full FHIR version string
+        string fullVersion = definitions.FhirSequence switch
+        {
+            FhirReleases.FhirSequenceCodes.R4 => "4.0.1",
+            FhirReleases.FhirSequenceCodes.R4B => "4.3.0",
+            FhirReleases.FhirSequenceCodes.R5 => "5.0.0",
+            FhirReleases.FhirSequenceCodes.R6 => "6.0.0-ballot2",
+            FhirReleases.FhirSequenceCodes.STU3 => "3.0.2",
+            _ => throw new ArgumentException($"Unsupported FHIR version: {definitions.FhirSequence}")
+        };
+
         // Create output directory
         string outputDir = Path.GetFullPath(coreConfig.OutputDirectory);
         Directory.CreateDirectory(outputDir);
 
         // Generate the Core schema provider class
         string outputPath = Path.Combine(outputDir, $"{fhirVersion}CoreSchemaProvider.g.cs");
-        string code = GenerateCoreProviderCode(fhirVersion, coreFhirVersion, definitions, coreConfig);
+        string code = GenerateCoreProviderCode(fhirVersion, coreFhirVersion, fullVersion, definitions, coreConfig);
 
         File.WriteAllText(outputPath, code, Encoding.UTF8);
 
         Console.WriteLine($"Generated {outputPath}");
     }
 
-    private string GenerateCoreProviderCode(string fhirVersion, string coreFhirVersion, DefinitionCollection definitions, CSharpCoreSchemaConfig config)
+    private string GenerateCoreProviderCode(string fhirVersion, string coreFhirVersion, string fullVersion, DefinitionCollection definitions, CSharpCoreSchemaConfig config)
     {
         // Initialize the constant tracker and perform first pass to collect strings
         _constantTracker = new StringConstantTracker();
@@ -102,18 +113,42 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Linq;");
         sb.AppendLine("using Ignixa.Abstractions;");
+        sb.AppendLine("using Ignixa.Serialization;");
         sb.AppendLine();
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();
         sb.AppendLine("/// <summary>");
-        sb.AppendLine($"/// Pre-generated ISchema for FHIR {fhirVersion}.");
+        sb.AppendLine($"/// Pre-generated IFhirSchemaProvider for FHIR {fhirVersion}.");
         sb.AppendLine("/// This provider uses IType and ITypeExtended interfaces for type metadata.");
         sb.AppendLine("/// </summary>");
-        sb.AppendLine($"public sealed partial class {fhirVersion}CoreSchemaProvider : Ignixa.Abstractions.ISchema");
+        sb.AppendLine($"public sealed partial class {fhirVersion}CoreSchemaProvider : Ignixa.Specification.IFhirSchemaProvider");
         sb.AppendLine("{");
 
-        // Version property
-        sb.AppendLine($"    public Ignixa.Abstractions.FhirVersion Version => Ignixa.Abstractions.FhirVersion.{coreFhirVersion};");
+        // ISchema.Version property (explicit interface implementation)
+        sb.AppendLine($"    Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.{coreFhirVersion};");
+        sb.AppendLine();
+
+        // IFhirSchemaProvider.Version property (using FhirSpecification)
+        // Note: FhirSpecification enum uses "Stu3" not "STU3"
+        string fhirSpecValue = coreFhirVersion == "STU3" ? "Stu3" : coreFhirVersion;
+        sb.AppendLine($"    public FhirSpecification Version => FhirSpecification.{fhirSpecValue};");
+        sb.AppendLine();
+
+        // FullVersion property
+        sb.AppendLine($"    public string FullVersion => \"{fullVersion}\";");
+        sb.AppendLine();
+
+        // ResourceTypeNames property - collect resource type names
+        var resourceTypeNames = definitions.ResourcesByName.Keys.OrderBy(x => x).ToList();
+        sb.AppendLine($"    public IReadOnlySet<string> ResourceTypeNames => _resourceTypeNames;");
+        sb.AppendLine();
+        sb.AppendLine($"    private static readonly HashSet<string> _resourceTypeNames = new(StringComparer.OrdinalIgnoreCase)");
+        sb.AppendLine("    {");
+        foreach (var name in resourceTypeNames)
+        {
+            sb.AppendLine($"        \"{name}\",");
+        }
+        sb.AppendLine("    };");
         sb.AppendLine();
 
         // GetTypeDefinition method
@@ -270,7 +305,6 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             sb.AppendLine($"            isRequired: false,");
             sb.AppendLine($"            inSummary: false,");
             sb.AppendLine($"            order: 0,");
-            sb.AppendLine($"            representation: Ignixa.Abstractions.XmlRepresentation.XmlElement,");
             sb.AppendLine($"            childrenFactory: () => {GetSafeMethodName(name)}_Children(),");
             sb.AppendLine($"            min: 0,");
             sb.AppendLine($"            max: \"1\",");
@@ -344,20 +378,6 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         string typeName = typeNames.FirstOrDefault() ?? "Element";
         string primitive = MapToPrimitive(typeName);
 
-        // Get XML representation
-        string representation = element.Representation != null && element.Representation.Any()
-            ? element.Representation.First().ToString() ?? "XmlElement"
-            : "XmlElement";
-        representation = representation switch
-        {
-            "xmlAttr" => "XmlAttr",
-            "xmlText" => "XmlText",
-            "typeAttr" => "TypeAttr",
-            "cdaText" => "CdaText",
-            "xhtml" => "Xhtml",
-            _ => "XmlElement"
-        };
-
         // Extract extended metadata
         var (min, max, constraints, binding, fixedValue, patternValue, typeArray, defaultTypeName, referenceTargets, contentReference, slicing) =
             ExtractExtendedMetadata(element, definitions, typeName);
@@ -373,7 +393,6 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine($"                isRequired: {(isRequired ? "true" : "false")},");
         sb.AppendLine($"                inSummary: {(inSummary ? "true" : "false")},");
         sb.AppendLine($"                order: {order},");
-        sb.AppendLine($"                representation: Ignixa.Abstractions.XmlRepresentation.{representation},");
         sb.AppendLine($"                childrenFactory: null,"); // Children are resolved via type lookup
         sb.AppendLine($"                min: {min},");
         sb.AppendLine($"                max: {max},");
@@ -591,7 +610,6 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine("            bool isRequired,");
         sb.AppendLine("            bool inSummary,");
         sb.AppendLine("            int order,");
-        sb.AppendLine("            Ignixa.Abstractions.XmlRepresentation representation,");
         sb.AppendLine("            Func<IReadOnlyList<Ignixa.Abstractions.IType>>? childrenFactory,");
         sb.AppendLine("            int? min = null,");
         sb.AppendLine("            string? max = null,");
@@ -610,7 +628,6 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine("            IsRequired = isRequired;");
         sb.AppendLine("            InSummary = inSummary;");
         sb.AppendLine("            Order = order;");
-        sb.AppendLine("            Representation = representation;");
         sb.AppendLine("            _childrenFactory = childrenFactory;");
         sb.AppendLine("            Min = min ?? 0;");
         sb.AppendLine("            Max = max ?? \"*\";");
@@ -656,7 +673,6 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine("        public IReadOnlyList<string> ReferenceTargets { get; }");
         sb.AppendLine("        public string? ContentReference { get; }");
         sb.AppendLine("        public Ignixa.Abstractions.SlicingMetadata? Slicing { get; }");
-        sb.AppendLine("        public XmlRepresentation Representation { get; }");
         sb.AppendLine("    }");
     }
 

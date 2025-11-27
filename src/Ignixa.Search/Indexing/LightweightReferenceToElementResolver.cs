@@ -4,15 +4,10 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization.SourceNodes;
-
-// For ToTypedElement extension method
-
-// For ResourceJsonNode
 
 namespace Ignixa.Search.Indexing;
 
@@ -39,7 +34,7 @@ public class LightweightReferenceToElementResolver : IReferenceToElementResolver
         _schemaProvider = schemaProvider;
     }
 
-    public ITypedElement Resolve(string reference)
+    public IElement Resolve(string reference)
     {
         if (string.IsNullOrWhiteSpace(reference))
         {
@@ -55,8 +50,11 @@ public class LightweightReferenceToElementResolver : IReferenceToElementResolver
 
         // Create a minimal FHIR resource with just resourceType and id
         string json = $"{{\"resourceType\":\"{parsed.ResourceType}\",\"id\":\"{parsed.ResourceId}\"}}";
-        ISourceNode node = ResourceJsonNode.Parse(json).ToSourceNode();
 
-        return node.ToTypedElement(_schemaProvider);
+        // ToElement returns SchemaAwareElement which implements both ITypedElement and IElement
+        var typedElement = ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+
+        // Cast to IElement (SchemaAwareElement implements both interfaces)
+        return (IElement)typedElement;
     }
 }

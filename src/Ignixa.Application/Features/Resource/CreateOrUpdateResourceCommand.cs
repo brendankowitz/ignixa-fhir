@@ -5,12 +5,14 @@
 
 using System.Net.Http;
 using Medino;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -20,7 +22,7 @@ namespace Ignixa.Application.Features.Resource;
 /// </summary>
 /// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
 /// <param name="Id">The resource ID.</param>
-/// <param name="Resource">The resource as ResourceJsonNode (provides cached ISourceNode and ITypedElement).</param>
+/// <param name="Resource">The resource as ResourceJsonNode (provides cached ISourceNode and IElement).</param>
 /// <param name="HttpMethod">The HTTP method used (POST or PUT). POST means CREATE (always new resource), PUT means UPSERT (create or update).</param>
 /// <param name="Coordinator">Optional deferred write coordinator for bundle operations. When provided, the handler queues the write for batch processing. When null, the handler writes immediately.</param>
 /// <param name="IfMatch">Optional ETag for optimistic concurrency control. If specified, update only succeeds if resource version matches. Format: version ID (e.g., "5"), not weak ETag format.</param>

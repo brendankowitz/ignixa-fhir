@@ -13,7 +13,7 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Code"/> to a list of <see cref="TokenSearchValue"/>.
 /// </summary>
-public class CodeToTokenSearchValueConverter : FhirTypedElementToSearchValueConverter<TokenSearchValue>
+public class CodeToTokenSearchValueConverter : FhirElementToSearchValueConverter<TokenSearchValue>
 {
     private readonly ICodeSystemResolver _codeSystemResolver;
 
@@ -25,7 +25,7 @@ public class CodeToTokenSearchValueConverter : FhirTypedElementToSearchValueConv
         _codeSystemResolver = codeSystemResolver;
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string code = value.Scalar("code") as string ?? value?.Value as string;
         string system = value.Scalar("system") as string;

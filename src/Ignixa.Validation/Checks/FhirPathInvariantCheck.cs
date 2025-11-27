@@ -6,7 +6,6 @@
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
-using Ignixa.Domain.Models;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -27,7 +26,7 @@ namespace Ignixa.Validation.Checks;
 public class FhirPathInvariantCheck : IValidationCheck
 {
     private readonly ConstraintDefinition _constraint;
-    private readonly IStructureDefinitionSummaryProvider _provider;
+    private readonly ISchema _schema;
     private readonly FhirPathParser _parser;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
     private readonly Lazy<FhirPath.Expressions.Expression> _compiledExpression;
@@ -41,15 +40,15 @@ public class FhirPathInvariantCheck : IValidationCheck
     /// Initializes a new instance of the <see cref="FhirPathInvariantCheck"/> class.
     /// </summary>
     /// <param name="constraint">The constraint definition to evaluate.</param>
-    /// <param name="provider">Structure definition provider for type information.</param>
+    /// <param name="schema">Schema provider for type information.</param>
     /// <param name="parser">FhirPath compiler for parsing expressions (shared across checks).</param>
     public FhirPathInvariantCheck(
         ConstraintDefinition constraint,
-        IStructureDefinitionSummaryProvider provider,
+        ISchema schema,
         FhirPathParser parser)
     {
         _constraint = constraint ?? throw new ArgumentNullException(nameof(constraint));
-        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
 
         // Lazy compilation - parse FHIRPath expression only when first needed
@@ -71,13 +70,13 @@ public class FhirPathInvariantCheck : IValidationCheck
     }
 
     /// <summary>
-    /// Validates a FHIR source node against this constraint's FHIRPath expression.
+    /// Validates a FHIR element against this constraint's FHIRPath expression.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         // Skip invariant validation if depth is Minimal (invariants are Spec depth and above)
         if (settings.Depth < ValidationDepth.Spec)
@@ -87,12 +86,8 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         try
         {
-            // Convert ISourceNode to ITypedElement for FHIRPath evaluation
-            // This requires structure definition provider for type information
-            var typedElement = node.ToTypedElement(_provider);
-
             // Evaluate the FHIRPath expression
-            var result = _evaluator.Value.Evaluate(typedElement, _compiledExpression.Value);
+            var result = _evaluator.Value.Evaluate(element, _compiledExpression.Value);
 
             // Convert result to boolean
             // Per FHIRPath spec: empty result = false, single boolean true = true, all else = false
@@ -109,7 +104,7 @@ public class FhirPathInvariantCheck : IValidationCheck
                 var issue = ValidationIssue.InvariantFailure(
                     _constraint.Key,
                     _constraint.Human,
-                    node.Location ?? string.Empty,
+                    element.Location ?? string.Empty,
                     severity);
 
                 // Warnings don't fail validation (isValid = true), but errors do
@@ -130,7 +125,7 @@ public class FhirPathInvariantCheck : IValidationCheck
             var issue = new ValidationIssue(
                 IssueSeverity.Error,
                 _constraint.Key,
-                node.Location ?? string.Empty,
+                element.Location ?? string.Empty,
                 $"{_constraint.Key}: Failed to evaluate FHIRPath expression: {ex.Message}");
 
             return ValidationResult.Failure(issue);
@@ -143,7 +138,7 @@ public class FhirPathInvariantCheck : IValidationCheck
     /// </summary>
     /// <param name="result">The FHIRPath evaluation result.</param>
     /// <returns>True if the result represents a successful constraint evaluation.</returns>
-    private static bool IsResultTrue(IEnumerable<ITypedElement> result)
+    private static bool IsResultTrue(IEnumerable<IElement> result)
     {
         var resultList = result.ToList();
 

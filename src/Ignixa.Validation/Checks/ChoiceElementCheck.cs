@@ -37,19 +37,19 @@ public class ChoiceElementCheck : IValidationCheck
     /// <summary>
     /// Validates that exactly one choice type variant is present.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var location = string.IsNullOrEmpty(node.Location)
+        var location = string.IsNullOrEmpty(element.Location)
             ? _baseElementName
-            : $"{node.Location}.{_baseElementName}";
+            : $"{element.Location}.{_baseElementName}";
 
         // Find all children that match the choice pattern (base name + type suffix)
         // e.g., "value*" matches "valueString", "valueCode", "valueQuantity"
-        var choiceChildren = node.Children($"{_baseElementName}*").ToList();
+        var choiceChildren = element.Children($"{_baseElementName}*").ToList();
 
         // No choice children found
         if (choiceChildren.Count == 0)

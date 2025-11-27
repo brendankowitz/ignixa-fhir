@@ -462,17 +462,17 @@ public class BinaryOperatorTests
 
     #region Helper Methods
 
-    private ITypedElement CreateIntegerElement(int value)
+    private IElement CreateIntegerElement(int value)
     {
-        return new PrimitiveTypedElement(value, "integer");
+        return new PrimitiveElement(value, "integer");
     }
 
     /// <summary>
-    /// Simple test implementation of ITypedElement for primitive values.
+    /// Simple test implementation of IElement for primitive values.
     /// </summary>
-    private class PrimitiveTypedElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
-        public PrimitiveTypedElement(object value, string type)
+        public PrimitiveElement(object value, string type)
         {
             Value = value;
             InstanceType = type;
@@ -480,11 +480,13 @@ public class BinaryOperatorTests
 
         public string Name => string.Empty;
         public string InstanceType { get; }
-        public object Value { get; }
+        public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

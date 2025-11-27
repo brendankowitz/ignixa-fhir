@@ -13,7 +13,7 @@ internal class BundleNavigator
 {
     private readonly Lazy<IReadOnlyList<BundleEntryNavigator>> _entries;
 
-    public BundleNavigator(ITypedElement bundle)
+    public BundleNavigator(IElement bundle)
     {
         EnsureArg.IsNotNull(bundle, nameof(bundle));
         EnsureArg.Is(KnownResourceTypes.Bundle, bundle.InstanceType, StringComparison.Ordinal, nameof(bundle));

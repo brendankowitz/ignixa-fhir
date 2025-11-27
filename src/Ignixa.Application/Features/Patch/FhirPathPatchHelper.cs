@@ -9,22 +9,24 @@ using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace Ignixa.Application.Features.Patch;
 
 /// <summary>
 /// Helper for FHIRPath evaluation in PATCH operations.
-/// Uses IAnnotated to extract JsonNode from ITypedElement for in-place mutation.
+/// Uses ISourceNode to extract JsonNode from IElement for in-place mutation.
 /// </summary>
 public class FhirPathPatchHelper
 {
     private readonly FhirPathEvaluator _evaluator;
     private readonly FhirPathParser _parser;
-    private readonly IStructureDefinitionSummaryProvider _structureProvider;
+    private readonly ISchema _structureProvider;
 
     public FhirPathPatchHelper(
         FhirPathEvaluator evaluator,
         FhirPathParser parser,
-        IStructureDefinitionSummaryProvider structureProvider)
+        ISchema structureProvider)
     {
         _evaluator = evaluator;
         _parser = parser;
@@ -45,18 +47,18 @@ public class FhirPathPatchHelper
         // 2. Convert ResourceJsonNode to ISourceNode (with annotations)
         var sourceNode = resource.ToSourceNode();
 
-        // 3. Convert ISourceNode to ITypedElement (preserves annotations)
-        var typedElement = sourceNode.ToTypedElement(_structureProvider);
+        // 3. Convert ISourceNode to IElement (preserves annotations)
+        var typedElement = sourceNode.ToElement(_structureProvider);
 
         // 4. Evaluate FHIRPath expression
-        var matches = _evaluator.Evaluate(typedElement, expression);
+        var matches = _evaluator.Evaluate((IElement)typedElement, expression);
 
-        // 5. Extract JsonNodes using IAnnotated
+        // 5. Extract JsonNodes using ISourceNode
         foreach (var match in matches)
         {
-            if (match is IAnnotated annotated)
+            if (match is ISourceNode matchSourceNode)
             {
-                var jsonNode = annotated.Annotation<JsonNode>();
+                var jsonNode = matchSourceNode.Annotations(typeof(JsonNode)).OfType<JsonNode>().FirstOrDefault();
                 if (jsonNode != null)
                 {
                     yield return jsonNode;

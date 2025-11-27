@@ -4,6 +4,8 @@
 // </copyright>
 
 using FluentAssertions;
+using Ignixa.Abstractions;
+using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;
@@ -16,13 +18,13 @@ namespace Ignixa.Validation.Tests.Schema;
 /// </summary>
 public class StructureDefinitionSchemaResolverTests
 {
-    private readonly R4StructureDefinitionSummaryProvider _provider;
+    private readonly ISchema _schema;
     private readonly StructureDefinitionSchemaResolver _resolver;
 
     public StructureDefinitionSchemaResolverTests()
     {
-        _provider = new R4StructureDefinitionSummaryProvider();
-        _resolver = new StructureDefinitionSchemaResolver(_provider);
+        _schema = new R4CoreSchemaProvider();
+        _resolver = new StructureDefinitionSchemaResolver(_schema);
     }
 
     #region Valid Canonical URL Tests
@@ -205,7 +207,7 @@ public class StructureDefinitionSchemaResolverTests
         // Act & Assert
         var act = () => new StructureDefinitionSchemaResolver(null!);
         act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("provider");
+            .WithParameterName("schema"); // Parameter was renamed from "provider" to "schema"
     }
 
     #endregion

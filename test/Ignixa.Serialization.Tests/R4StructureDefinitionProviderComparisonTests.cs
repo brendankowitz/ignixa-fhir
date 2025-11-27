@@ -19,15 +19,17 @@ using Xunit.Abstractions;
 // Namespace aliases to avoid conflicts
 
 // Static using for our extension methods
-using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
 using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using IElement = Ignixa.Abstractions.IElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
 using SdkIStructureDefinitionSummaryProvider = Hl7.Fhir.Specification.IStructureDefinitionSummaryProvider;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
+
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode used for legacy tests
 
 namespace Ignixa.Serialization.Tests;
 
@@ -38,7 +40,7 @@ namespace Ignixa.Serialization.Tests;
 public class R4StructureDefinitionProviderComparisonTests
 {
     private readonly ITestOutputHelper _output;
-    private readonly R4StructureDefinitionSummaryProvider _ourProvider = new();
+    private readonly R4CoreSchemaProvider _ourProvider = new();
     private readonly SdkModelInspector _firelyProvider = ModelInfo.ModelInspector;
 
     public R4StructureDefinitionProviderComparisonTests(ITestOutputHelper output)
@@ -53,18 +55,18 @@ public class R4StructureDefinitionProviderComparisonTests
         string typeName = "Patient";
 
         // Act
-        var ourSummary = _ourProvider.Provide(typeName);
+        var ourType = _ourProvider.GetTypeDefinition(typeName);
         var firelySummary = _firelyProvider.Provide(typeName);
 
         // Assert
-        Assert.NotNull(ourSummary);
+        Assert.NotNull(ourType);
         Assert.NotNull(firelySummary);
 
-        _output.WriteLine($"Our Provider - TypeName: {ourSummary.TypeName}, IsResource: {ourSummary.IsResource}");
+        _output.WriteLine($"Our Provider - TypeName: {ourType.Info.Name}, IsResource: {ourType.Info.IsResource}");
         _output.WriteLine($"Firely Provider - TypeName: {firelySummary.TypeName}, IsResource: {firelySummary.IsResource}");
 
-        Assert.Equal(firelySummary.TypeName, ourSummary.TypeName);
-        Assert.Equal(firelySummary.IsResource, ourSummary.IsResource);
+        Assert.Equal(firelySummary.TypeName, ourType.Info.Name);
+        Assert.Equal(firelySummary.IsResource, ourType.Info.IsResource);
     }
 
     [Fact]
@@ -75,18 +77,18 @@ public class R4StructureDefinitionProviderComparisonTests
         string fhirPathUrl = "http://hl7.org/fhirpath/System.String";
 
         // Act
-        var ourSimple = _ourProvider.Provide(simpleTypeName);
+        var ourSimple = _ourProvider.GetTypeDefinition(simpleTypeName);
         var firelySimple = _firelyProvider.Provide(simpleTypeName);
-        var ourFhirPath = _ourProvider.Provide(fhirPathUrl);
+        var ourFhirPath = _ourProvider.GetTypeDefinition(fhirPathUrl);
         var firelyFhirPath = _firelyProvider.Provide(fhirPathUrl);
 
         // Assert
         _output.WriteLine($"Simple 'string' type:");
-        _output.WriteLine($"  Our Provider: {(ourSimple != null ? ourSimple.TypeName : "NULL")}");
+        _output.WriteLine($"  Our Provider: {(ourSimple != null ? ourSimple.Info.Name : "NULL")}");
         _output.WriteLine($"  Firely Provider: {(firelySimple != null ? firelySimple.TypeName : "NULL")}");
 
         _output.WriteLine($"FHIRPath URL 'http://hl7.org/fhirpath/System.String':");
-        _output.WriteLine($"  Our Provider: {(ourFhirPath != null ? ourFhirPath.TypeName : "NULL")}");
+        _output.WriteLine($"  Our Provider: {(ourFhirPath != null ? ourFhirPath.Info.Name : "NULL")}");
         _output.WriteLine($"  Firely Provider: {(firelyFhirPath != null ? firelyFhirPath.TypeName : "NULL")}");
 
         Assert.NotNull(firelySimple);
@@ -106,9 +108,9 @@ public class R4StructureDefinitionProviderComparisonTests
         var patientJson = Samples.GetJson("Patient");
 
         // Our implementation
-        ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(patientJson).ToSourceNode();
-        ITypedElement ourTypedElement = ourSourceNode.ToTypedElement(_ourProvider);
-        ITypedElement ourId = ourTypedElement.Select("Patient.id").SingleOrDefault();
+        ISourceNavigator ourSourceNode = JsonSourceNodeFactory.Parse(patientJson).ToSourceNode();
+        IElement ourElement = ourSourceNode.ToElement(_ourProvider);
+        var ourId = ourElement.Select("Patient.id").SingleOrDefault();
 
         // SDK implementation
         SdkISourceNode firelySourceNode = Hl7.Fhir.Serialization.FhirJsonNode.Parse(patientJson);
@@ -133,14 +135,14 @@ public class R4StructureDefinitionProviderComparisonTests
     public void GivenPatientSummary_WhenGettingElements_ThenCompareElementCounts()
     {
         // Arrange
-        var ourSummary = _ourProvider.Provide("Patient");
+        var ourType = _ourProvider.GetTypeDefinition("Patient");
         var firelySummary = _firelyProvider.Provide("Patient");
 
-        Assert.NotNull(ourSummary);
+        Assert.NotNull(ourType);
         Assert.NotNull(firelySummary);
 
         // Act
-        var ourElements = ourSummary.GetElements();
+        var ourElements = ourType.Children;
         var firelyElements = firelySummary.GetElements();
 
         // Assert
@@ -151,16 +153,15 @@ public class R4StructureDefinitionProviderComparisonTests
         _output.WriteLine("\nOur Provider - First 5 elements:");
         foreach (var element in ourElements.Take(5))
         {
-            var typeInfo = element.Type.FirstOrDefault();
-            string typeName = typeInfo is IStructureDefinitionSummary summary ? summary.TypeName : "NO TYPE";
-            _output.WriteLine($"  {element.ElementName}: {typeName}");
+            _output.WriteLine($"  {element.Info.Name}: {element.Info.Name}");
         }
 
         _output.WriteLine("\nFirely Provider - First 5 elements:");
         foreach (var element in firelyElements.Take(5))
         {
             var typeInfo = element.Type.FirstOrDefault();
-            string typeName = typeInfo is IStructureDefinitionSummary summary ? summary.TypeName : "NO TYPE";
+            // Use Firely SDK's interface directly for type extraction
+            string typeName = typeInfo?.GetType().GetProperty("ReferredType")?.GetValue(typeInfo)?.ToString() ?? "NO TYPE";
             _output.WriteLine($"  {element.ElementName}: {typeName}");
         }
     }

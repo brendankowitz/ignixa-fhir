@@ -24,13 +24,13 @@ public class FhirPathDelegateCompilerTests
 
     private static Expression ParseExpression(string expression) => Parser.Parse(expression);
 
-    private static IEnumerable<ITypedElement> EvaluateInterpreted(ITypedElement input, string expression)
+    private static IEnumerable<IElement> EvaluateInterpreted(IElement input, string expression)
     {
         var ast = ParseExpression(expression);
         return _evaluator.Evaluate(input, ast);
     }
 
-    private static IEnumerable<ITypedElement> EvaluateCompiled(ITypedElement input, string expression)
+    private static IEnumerable<IElement> EvaluateCompiled(IElement input, string expression)
     {
         var ast = ParseExpression(expression);
         var compiled = _delegateCompiler.TryCompile(ast);
@@ -42,7 +42,7 @@ public class FhirPathDelegateCompilerTests
         return _evaluator.Evaluate(input, ast);
     }
 
-    private static void AssertEvaluationEquivalent(ITypedElement input, string expression)
+    private static void AssertEvaluationEquivalent(IElement input, string expression)
     {
         var interpreted = EvaluateInterpreted(input, expression).ToList();
         var compiled = EvaluateCompiled(input, expression).ToList();
@@ -647,7 +647,7 @@ public class FhirPathDelegateCompilerTests
         {
             ChildrenSetup = new()
             {
-                { "contact", Array.Empty<ITypedElement>() }  // Empty array
+                { "contact", Array.Empty<IElement>() }  // Empty array
             }
         };
 
@@ -659,11 +659,11 @@ public class FhirPathDelegateCompilerTests
 }
 
 /// <summary>
-/// Mock ITypedElement for testing - provides a simple in-memory tree structure.
+/// Mock IElement for testing - provides a simple in-memory tree structure.
 /// </summary>
-internal class MockTypedElement : ITypedElement
+internal class MockTypedElement : IElement
 {
-    private readonly Dictionary<string, ITypedElement[]> _childrenMap = new();
+    private readonly Dictionary<string, IElement[]> _childrenMap = new();
 
     public MockTypedElement(string instanceType)
     {
@@ -672,15 +672,15 @@ internal class MockTypedElement : ITypedElement
     }
 
     public string Name { get; set; }
-    public string? InstanceType { get; set; }
+    public string InstanceType { get; set; } = string.Empty;
     public object? Value { get; set; }
     public string Location => "[mock]";
-    public IElementDefinitionSummary? Definition => null;
+    public IType? Type => null;
 
     /// <summary>
     /// Allows setting up the mock's children dictionary for test setup.
     /// </summary>
-    public Dictionary<string, ITypedElement[]> ChildrenSetup
+    public Dictionary<string, IElement[]> ChildrenSetup
     {
         get => _childrenMap;
         set
@@ -694,15 +694,17 @@ internal class MockTypedElement : ITypedElement
     }
 
     /// <summary>
-    /// Implements ITypedElement.Children to return child elements by name.
+    /// Implements IElement.Children to return child elements by name.
     /// </summary>
-    public IEnumerable<ITypedElement> Children(string? name = null)
+    public IReadOnlyList<IElement> Children(string? name = null)
     {
         if (name == null)
         {
-            return _childrenMap.Values.SelectMany(c => c);
+            return _childrenMap.Values.SelectMany(c => c).ToList();
         }
 
-        return _childrenMap.TryGetValue(name, out var children) ? children : Enumerable.Empty<ITypedElement>();
+        return _childrenMap.TryGetValue(name, out var children) ? children.ToList() : Array.Empty<IElement>();
     }
+
+    public T? Meta<T>() where T : class => null;
 }

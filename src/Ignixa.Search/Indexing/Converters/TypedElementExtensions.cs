@@ -10,15 +10,22 @@ using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing.Converters;
 
-internal static class TypedElementExtensions
+internal static class ElementExtensions
 {
-    public static TokenSearchValue ToTokenSearchValue(this ITypedElement coding)
+    public static object Scalar(this IElement element, string name)
+    {
+        if (element == null) return null;
+        var children = element.Children(name);
+        return children.Count > 0 ? children[0].Value : null;
+    }
+
+    public static TokenSearchValue ToTokenSearchValue(this IElement coding)
     {
         EnsureArg.IsNotNull(coding, nameof(coding));
 
-        string system = coding.Scalar("system") as string;
-        string code = coding.Scalar("code") as string;
-        string display = coding.Scalar("display") as string;
+        string system = FhirPath.Evaluation.TypedElementExtensions.Scalar(coding, "system") as string;
+        string code = FhirPath.Evaluation.TypedElementExtensions.Scalar(coding, "code") as string;
+        string display = FhirPath.Evaluation.TypedElementExtensions.Scalar(coding, "display") as string;
 
         if (!string.IsNullOrWhiteSpace(system) ||
             !string.IsNullOrWhiteSpace(code) ||
@@ -28,7 +35,7 @@ internal static class TypedElementExtensions
         return null;
     }
 
-    public static IEnumerable<string> AsStringValues(this IEnumerable<ITypedElement> elements)
+    public static IEnumerable<string> AsStringValues(this IEnumerable<IElement> elements)
     {
         if (elements == null) return Enumerable.Empty<string>();
 

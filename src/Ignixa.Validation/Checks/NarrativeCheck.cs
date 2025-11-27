@@ -19,23 +19,24 @@ public class NarrativeCheck : IValidationCheck
     /// <summary>
     /// Validates Narrative structure.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var textNode = node.Children("text").FirstOrDefault();
-        if (textNode is null)
+        var textChildren = element.Children("text");
+        if (textChildren.Count == 0)
         {
             return ValidationResult.Success(); // No narrative present (optional)
         }
 
+        var textNode = textChildren[0];
         var issues = new List<ValidationIssue>();
 
         // Check for status field (required if text present)
-        var statusNode = textNode.Children("status").FirstOrDefault();
-        if (statusNode is null)
+        var statusChildren = textNode.Children("status");
+        if (statusChildren.Count == 0)
         {
             issues.Add(ValidationIssue.InvariantFailure(
                 "txt-1",
@@ -44,7 +45,9 @@ public class NarrativeCheck : IValidationCheck
             return ValidationResult.Failure(issues);
         }
 
-        string? status = statusNode.Text;
+        var statusNode = statusChildren[0];
+
+        string? status = statusNode.Value?.ToString();
         if (status is not ("generated" or "extensions" or "additional" or "empty"))
         {
             issues.Add(ValidationIssue.InvariantFailure(

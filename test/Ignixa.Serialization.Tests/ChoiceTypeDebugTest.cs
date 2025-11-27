@@ -16,21 +16,23 @@ using Xunit.Abstractions;
 // Namespace aliases to avoid conflicts
 
 // Static using for our extension methods
-using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
 using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using IElement = Ignixa.Abstractions.IElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
 
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode used for legacy tests
+
 namespace Ignixa.Serialization.Tests;
 
 public class ChoiceTypeDebugTest
 {
     private readonly ITestOutputHelper _output;
-    private readonly R4StructureDefinitionSummaryProvider _ourProvider = new();
+    private readonly R4CoreSchemaProvider _ourProvider = new();
     private readonly SdkModelInspector _firelyProvider = ModelInfo.ModelInspector;
 
     public ChoiceTypeDebugTest(ITestOutputHelper output)
@@ -42,29 +44,33 @@ public class ChoiceTypeDebugTest
     public void GivenObservation_WhenGettingEffectiveElement_ThenCompareProviders()
     {
         // Arrange
-        var ourSummary = _ourProvider.Provide("Observation");
+        var ourType = _ourProvider.GetTypeDefinition("Observation");
         var firelySummary = _firelyProvider.Provide("Observation");
 
-        Assert.NotNull(ourSummary);
+        Assert.NotNull(ourType);
         Assert.NotNull(firelySummary);
 
         // Act
-        var ourElements = ourSummary.GetElements();
+        var ourElements = ourType.Children;
         var firelyElements = firelySummary.GetElements();
 
         // Find effective[x] element in both providers
-        var ourEffective = ourElements.FirstOrDefault(e => e.ElementName.StartsWith("effective", StringComparison.Ordinal));
+        var ourEffective = ourElements.FirstOrDefault(e => e.Info.Name.StartsWith("effective", StringComparison.Ordinal));
         var firelyEffective = firelyElements.FirstOrDefault(e => e.ElementName.StartsWith("effective", StringComparison.Ordinal));
 
         // Assert
         _output.WriteLine($"Our Provider - Effective element:");
         if (ourEffective != null)
         {
-            _output.WriteLine($"  ElementName: {ourEffective.ElementName}");
-            _output.WriteLine($"  IsChoiceElement: {ourEffective.IsChoiceElement}");
-            _output.WriteLine($"  Types: {string.Join(", ", ourEffective.Type.Select(t => t is IStructureDefinitionSummary s ? s.TypeName : "?"))}");
-            _output.WriteLine($"  DefaultTypeName: {(ourEffective.Type.FirstOrDefault() is IStructureDefinitionSummary s ? s.TypeName : "N/A")}");
-            _output.WriteLine($"  Type count: {ourEffective.Type.Length}");
+            _output.WriteLine($"  ElementName: {ourEffective.Info.Name}");
+            _output.WriteLine($"  IsChoiceElement: {ourEffective.Info.IsChoiceElement}");
+
+            if (ourEffective is ITypeExtended ourExtended)
+            {
+                _output.WriteLine($"  Types: {string.Join(", ", ourExtended.Types.Select(t => t.Code))}");
+                _output.WriteLine($"  DefaultTypeName: {ourExtended.DefaultTypeName ?? "N/A"}");
+                _output.WriteLine($"  Type count: {ourExtended.Types.Count}");
+            }
         }
         else
         {
@@ -76,8 +82,8 @@ public class ChoiceTypeDebugTest
         {
             _output.WriteLine($"  ElementName: {firelyEffective.ElementName}");
             _output.WriteLine($"  IsChoiceElement: {firelyEffective.IsChoiceElement}");
-            _output.WriteLine($"  Types: {string.Join(", ", firelyEffective.Type.Select(t => t is IStructureDefinitionSummary s ? s.TypeName : "?"))}");
-            _output.WriteLine($"  DefaultTypeName: {(firelyEffective.Type.FirstOrDefault() is IStructureDefinitionSummary s ? s.TypeName : "N/A")}");
+            _output.WriteLine($"  Types: {string.Join(", ", firelyEffective.Type.Select(t => t?.GetType().GetProperty("ReferredType")?.GetValue(t)?.ToString() ?? "?"))}");
+            _output.WriteLine($"  DefaultTypeName: {firelyEffective.Type.FirstOrDefault()?.GetType().GetProperty("ReferredType")?.GetValue(firelyEffective.Type.FirstOrDefault())?.ToString() ?? "N/A"}");
             _output.WriteLine($"  Type count: {firelyEffective.Type.Length}");
         }
         else
@@ -87,25 +93,26 @@ public class ChoiceTypeDebugTest
 
         Assert.NotNull(ourEffective);
         Assert.NotNull(firelyEffective);
-        Assert.Equal(firelyEffective.ElementName, ourEffective.ElementName);
-        Assert.Equal(firelyEffective.IsChoiceElement, ourEffective.IsChoiceElement);
+        Assert.Equal(firelyEffective.ElementName, ourEffective.Info.Name);
+        Assert.Equal(firelyEffective.IsChoiceElement, ourEffective.Info.IsChoiceElement);
 
         // Check the actual type names
         _output.WriteLine($"\nOur type names:");
-        foreach (var type in ourEffective.Type)
+        if (ourEffective is ITypeExtended ourExt)
         {
-            if (type is IStructureDefinitionSummary summary)
+            foreach (var type in ourExt.Types)
             {
-                _output.WriteLine($"  - {summary.TypeName}");
+                _output.WriteLine($"  - {type.Code}");
             }
         }
 
         _output.WriteLine($"\nFirely type names:");
         foreach (var type in firelyEffective.Type)
         {
-            if (type is IStructureDefinitionSummary summary)
+            var referredType = type?.GetType().GetProperty("ReferredType")?.GetValue(type)?.ToString();
+            if (referredType != null)
             {
-                _output.WriteLine($"  - {summary.TypeName}");
+                _output.WriteLine($"  - {referredType}");
             }
         }
     }
@@ -114,27 +121,30 @@ public class ChoiceTypeDebugTest
     public void GivenExtension_WhenGettingValueElement_ThenCompareProviders()
     {
         // Arrange
-        var ourSummary = _ourProvider.Provide("Extension");
+        var ourType = _ourProvider.GetTypeDefinition("Extension");
         var firelySummary = _firelyProvider.Provide("Extension");
 
-        Assert.NotNull(ourSummary);
+        Assert.NotNull(ourType);
         Assert.NotNull(firelySummary);
 
         // Act
-        var ourElements = ourSummary.GetElements();
+        var ourElements = ourType.Children;
         var firelyElements = firelySummary.GetElements();
 
         // Find value[x] element in both providers
-        var ourValue = ourElements.FirstOrDefault(e => e.ElementName.StartsWith("value", StringComparison.Ordinal));
+        var ourValue = ourElements.FirstOrDefault(e => e.Info.Name.StartsWith("value", StringComparison.Ordinal));
         var firelyValue = firelyElements.FirstOrDefault(e => e.ElementName.StartsWith("value", StringComparison.Ordinal));
 
         // Assert
         _output.WriteLine($"Our Provider - Value element:");
         if (ourValue != null)
         {
-            _output.WriteLine($"  ElementName: {ourValue.ElementName}");
-            _output.WriteLine($"  IsChoiceElement: {ourValue.IsChoiceElement}");
-            _output.WriteLine($"  Type count: {ourValue.Type.Length}");
+            _output.WriteLine($"  ElementName: {ourValue.Info.Name}");
+            _output.WriteLine($"  IsChoiceElement: {ourValue.Info.IsChoiceElement}");
+            if (ourValue is ITypeExtended ourExt)
+            {
+                _output.WriteLine($"  Type count: {ourExt.Types.Count}");
+            }
         }
         else
         {
@@ -155,8 +165,8 @@ public class ChoiceTypeDebugTest
 
         Assert.NotNull(ourValue);
         Assert.NotNull(firelyValue);
-        Assert.Equal(firelyValue.ElementName, ourValue.ElementName);
-        Assert.Equal(firelyValue.IsChoiceElement, ourValue.IsChoiceElement);
+        Assert.Equal(firelyValue.ElementName, ourValue.Info.Name);
+        Assert.Equal(firelyValue.IsChoiceElement, ourValue.Info.IsChoiceElement);
     }
 
     [Fact]
@@ -208,10 +218,10 @@ public class ChoiceTypeDebugTest
         try
         {
             // Use our ISourceNode for our testing
-            ISourceNode ourSourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
-            ITypedElement ourTyped = ourSourceNode.ToTypedElement(_ourProvider);
+            ISourceNavigator ourSourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
+            IElement ourElement = ourSourceNode.ToElement(_ourProvider);
             var ourPath = "Resource.meta.extension.where(url = 'http://example.com/deleted-state')";
-            var ourResult = ourTyped.Select(ourPath).ToArray();
+            var ourResult = ourElement.Select(ourPath).ToArray();
             _output.WriteLine($"Ours: Found {ourResult.Length} extension(s)");
 
             if (ourResult.Length > 0)
@@ -241,54 +251,51 @@ public class ChoiceTypeDebugTest
     public void GivenExtension_WhenInspectingValueElement_ThenShowDetailedMetadata()
     {
         // Get Extension summary from both providers
-        var ourExtension = _ourProvider.Provide("Extension");
+        var ourExtension = _ourProvider.GetTypeDefinition("Extension");
         var firelyExtension = _firelyProvider.Provide("Extension");
 
         Assert.NotNull(ourExtension);
         Assert.NotNull(firelyExtension);
 
-        var ourElements = ourExtension.GetElements();
+        var ourElements = ourExtension.Children;
         var firelyElements = firelyExtension.GetElements();
 
-        var ourValue = ourElements.FirstOrDefault(e => e.ElementName == "value" || e.ElementName.StartsWith("value", StringComparison.Ordinal));
+        var ourValue = ourElements.FirstOrDefault(e => e.Info.Name == "value" || e.Info.Name.StartsWith("value", StringComparison.Ordinal));
         var firelyValue = firelyElements.FirstOrDefault(e => e.ElementName == "value" || e.ElementName.StartsWith("value", StringComparison.Ordinal));
 
         _output.WriteLine("=== OUR PROVIDER - Extension.value ===");
         if (ourValue != null)
         {
-            _output.WriteLine($"ElementName: {ourValue.ElementName}");
-            _output.WriteLine($"IsChoiceElement: {ourValue.IsChoiceElement}");
+            _output.WriteLine($"ElementName: {ourValue.Info.Name}");
+            _output.WriteLine($"IsChoiceElement: {ourValue.Info.IsChoiceElement}");
             _output.WriteLine($"IsCollection: {ourValue.IsCollection}");
             _output.WriteLine($"IsRequired: {ourValue.IsRequired}");
-            _output.WriteLine($"Type count: {ourValue.Type.Length}");
-            _output.WriteLine($"Types:");
-            foreach (var type in ourValue.Type)
+
+            if (ourValue is ITypeExtended ourExt)
             {
-                if (type is IStructureDefinitionSummary summary)
+                _output.WriteLine($"Type count: {ourExt.Types.Count}");
+                _output.WriteLine($"Types:");
+                foreach (var type in ourExt.Types)
                 {
-                    _output.WriteLine($"  - {summary.TypeName}");
+                    _output.WriteLine($"  - {type.Code}");
                 }
             }
 
             // Check if we can lookup 'code' type
-            _output.WriteLine($"\nCan our provider lookup 'code'? {_ourProvider.Provide("code") != null}");
-            _output.WriteLine($"Can our provider lookup 'Code'? {_ourProvider.Provide("Code") != null}");
+            _output.WriteLine($"\nCan our provider lookup 'code'? {_ourProvider.GetTypeDefinition("code") != null}");
+            _output.WriteLine($"Can our provider lookup 'Code'? {_ourProvider.GetTypeDefinition("Code") != null}");
 
             // Check TypeName of code type in both providers
-            var ourCodeType = _ourProvider.Provide("code");
+            var ourCodeType = _ourProvider.GetTypeDefinition("code");
             var firelyCodeType = _firelyProvider.Provide("code");
-            _output.WriteLine($"\nOur 'code' TypeName: {ourCodeType?.TypeName}");
+            _output.WriteLine($"\nOur 'code' TypeName: {ourCodeType?.Info.Name}");
             _output.WriteLine($"Firely 'code' TypeName: {firelyCodeType?.TypeName}");
 
-            // Check if the Type array elements match the Provide() lookups
-            if (ourValue != null)
+            // Check if the Types list contains 'code'
+            if (ourValue is ITypeExtended ourExtended)
             {
-                var codeTypeFromArray = ourValue.Type.FirstOrDefault(t => t is IStructureDefinitionSummary s && s.TypeName == "code");
-                _output.WriteLine($"\nOur value.Type contains 'code'? {codeTypeFromArray != null}");
-                if (codeTypeFromArray is IStructureDefinitionSummary codeSum)
-                {
-                    _output.WriteLine($"  Same instance as Provide('code')? {ReferenceEquals(codeSum, ourCodeType)}");
-                }
+                var codeTypeFromArray = ourExtended.Types.FirstOrDefault(t => t.Code == "code");
+                _output.WriteLine($"\nOur value.Types contains 'code'? {codeTypeFromArray != null}");
             }
         }
         else
@@ -307,9 +314,10 @@ public class ChoiceTypeDebugTest
             _output.WriteLine($"Types:");
             foreach (var type in firelyValue.Type)
             {
-                if (type is IStructureDefinitionSummary summary)
+                var referredType = type?.GetType().GetProperty("ReferredType")?.GetValue(type)?.ToString();
+                if (referredType != null)
                 {
-                    _output.WriteLine($"  - {summary.TypeName}");
+                    _output.WriteLine($"  - {referredType}");
                 }
             }
 
@@ -318,9 +326,9 @@ public class ChoiceTypeDebugTest
             _output.WriteLine($"Can Firely lookup 'Code'? {_firelyProvider.Provide("Code") != null}");
 
             // Check TypeName of Code type in both providers
-            var ourCodeTypeCap = _ourProvider.Provide("Code");
+            var ourCodeTypeCap = _ourProvider.GetTypeDefinition("Code");
             var firelyCodeTypeCap = _firelyProvider.Provide("Code");
-            _output.WriteLine($"\nOur 'Code' TypeName: {ourCodeTypeCap?.TypeName}");
+            _output.WriteLine($"\nOur 'Code' TypeName: {ourCodeTypeCap?.Info.Name}");
             _output.WriteLine($"Firely 'Code' TypeName: {firelyCodeTypeCap?.TypeName}");
         }
         else

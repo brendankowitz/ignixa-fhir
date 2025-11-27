@@ -8,6 +8,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Domain.ElementModel;
 using Ignixa.Domain.Specification;
 using Hl7.FhirPath;
@@ -44,7 +45,7 @@ public class FhirJsonTextNodeTests
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
         IStructureDefinitionSummaryProvider meta = InstanceInferredStructureDefinitionSummaryProvider.CreateFrom(sourceNode);
 
-        ITypedElement node = sourceNode.ToTypedElement(meta);
+        IElement node = sourceNode.ToElement(meta);
 
         object familyName = node.Scalar("Patient.name.family");
         object familyId = node.Scalar("Patient.name.family.id");
@@ -68,8 +69,8 @@ public class FhirJsonTextNodeTests
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
         var meta = new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
 
-        ITypedElement node = sourceNode.ToTypedElement(meta);
-        ITypedElement familyType = node.Select("Patient.name.family").Single();
+        IElement node = sourceNode.ToElement(meta);
+        IElement familyType = node.Select("Patient.name.family").Single();
 
         IReadOnlyCollection<IElementDefinitionSummary> definitions = familyType.ChildDefinitions(meta);
     }
@@ -96,7 +97,7 @@ public class FhirJsonTextNodeTests
         ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
         var meta = new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
 
-        ITypedElement node = sourceNode.ToTypedElement(meta);
+        IElement node = sourceNode.ToElement(meta);
 
         object familyName = node.Scalar("Patient.name.family");
         object familyId = node.Scalar("Patient.name.family.id");
@@ -118,17 +119,17 @@ public class FhirJsonTextNodeTests
     [Fact]
     public void WithJsonNode()
     {
-        
+
         var sourceNode = JsonSourceNodeFactory.Parse(_patientJson);
         var meta = new FhirJsonSchemaStructureDefinitionSummaryProvider(FhirSpecification.R4);
 
-        ITypedElement node = sourceNode.ToTypedElement(meta);
+        IElement node = sourceNode.ToElement(meta);
 
         object familyName = node.Scalar("Patient.name.family");
         object familyId = node.Scalar("Patient.name.family.id");
         Assert.Equal("Van", familyName);
         Assert.Equal("a2", familyId);
 
-        ITypedElement familyNodes = node.Select("Patient.name.family").Single();
+        IElement familyNodes = node.Select("Patient.name.family").Single();
     }
 }

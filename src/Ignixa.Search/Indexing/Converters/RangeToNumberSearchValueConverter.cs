@@ -12,14 +12,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Range"/> to a list of <see cref="NumberSearchValue"/>.
 /// </summary>
-public class RangeToNumberSearchValueConverter : FhirTypedElementToSearchValueConverter<NumberSearchValue>
+public class RangeToNumberSearchValueConverter : FhirElementToSearchValueConverter<NumberSearchValue>
 {
     public RangeToNumberSearchValueConverter()
         : base("Range")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         decimal? lowValue = (decimal?)value.Scalar("low");
         decimal? highValue = (decimal?)value.Scalar("high");

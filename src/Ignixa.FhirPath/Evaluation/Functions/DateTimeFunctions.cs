@@ -25,7 +25,7 @@ public static class DateTimeFunctions
     /// @2024.year() = 2024
     /// @T14:30:45.year() = empty (time has no year)
     /// </example>
-    public static IEnumerable<ITypedElement> Year(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Year(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -46,7 +46,7 @@ public static class DateTimeFunctions
     /// @2024-01-15T10:00:00Z.month() = 1
     /// @2024.month() = empty (year-only has no month)
     /// </example>
-    public static IEnumerable<ITypedElement> Month(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Month(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -67,7 +67,7 @@ public static class DateTimeFunctions
     /// @2024-02-29.day() = 29 (leap year)
     /// @2024-11.day() = empty (year-month has no day)
     /// </example>
-    public static IEnumerable<ITypedElement> Day(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Day(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -88,7 +88,7 @@ public static class DateTimeFunctions
     /// @T14:30:45.hour() = 14
     /// @2024-11-18.hour() = empty (date has no time)
     /// </example>
-    public static IEnumerable<ITypedElement> Hour(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Hour(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -109,7 +109,7 @@ public static class DateTimeFunctions
     /// @T14:30:45.minute() = 30
     /// @2024-11-18T14:00:00Z.minute() = 0
     /// </example>
-    public static IEnumerable<ITypedElement> Minute(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Minute(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -130,7 +130,7 @@ public static class DateTimeFunctions
     /// @T14:30:45.second() = 45
     /// @2024-11-18T14:30:00Z.second() = 0
     /// </example>
-    public static IEnumerable<ITypedElement> Second(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Second(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -153,7 +153,7 @@ public static class DateTimeFunctions
     /// @2024-11-18T14:30:45Z.millisecond() = 0
     /// @2024-11-18.millisecond() = empty (date has no time)
     /// </example>
-    public static IEnumerable<ITypedElement> Millisecond(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Millisecond(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -177,7 +177,7 @@ public static class DateTimeFunctions
     /// @2024-11-18T14:30:45.timezone() = empty (local time)
     /// @2024-11-18.timezone() = empty (date has no timezone)
     /// </example>
-    public static IEnumerable<ITypedElement> Timezone(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Timezone(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -207,13 +207,13 @@ public static class DateTimeFunctions
     }
 
     /// <summary>
-    /// Parses a date/time literal value from an ITypedElement.
+    /// Parses a date/time literal value from an IElement.
     /// Supports ISO 8601 formats with partial precision:
     /// - Date: @YYYY, @YYYY-MM, @YYYY-MM-DD
     /// - DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
     /// - Time: @THH:MM:SS.FFF
     /// </summary>
-    private static ParsedDateTime? ParseDateTimeValue(ITypedElement element)
+    private static ParsedDateTime? ParseDateTimeValue(IElement element)
     {
         var value = element.Value?.ToString();
         if (string.IsNullOrEmpty(value))
@@ -403,22 +403,22 @@ public static class DateTimeFunctions
 
     #region Helper Methods
 
-    private static ITypedElement CreateInteger(int value)
+    private static IElement CreateInteger(int value)
     {
-        return new PrimitiveTypedElement(value, "integer");
+        return new PrimitiveElement(value, "integer");
     }
 
-    private static ITypedElement CreateString(string value)
+    private static IElement CreateString(string value)
     {
-        return new PrimitiveTypedElement(value, "string");
+        return new PrimitiveElement(value, "string");
     }
 
     /// <summary>
-    /// Simple ITypedElement implementation for primitive values.
+    /// Simple IElement implementation for primitive values.
     /// </summary>
-    private class PrimitiveTypedElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
-        public PrimitiveTypedElement(object value, string instanceType)
+        public PrimitiveElement(object value, string instanceType)
         {
             Value = value;
             InstanceType = instanceType;
@@ -428,11 +428,13 @@ public static class DateTimeFunctions
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public T? Meta<T>() where T : class => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
-            return Enumerable.Empty<ITypedElement>();
+            return [];
         }
     }
 

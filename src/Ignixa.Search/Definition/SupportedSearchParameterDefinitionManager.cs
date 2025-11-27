@@ -86,7 +86,7 @@ public class SupportedSearchParameterDefinitionManager : ISupportedSearchParamet
         return _inner.GetSearchParameterHashForResourceType(resourceType);
     }
 
-    public void AddNewSearchParameters(IReadOnlyCollection<ITypedElement> searchParameters, bool calculateHash = true)
+    public void AddNewSearchParameters(IReadOnlyCollection<IElement> searchParameters, bool calculateHash = true)
     {
         _inner.AddNewSearchParameters(searchParameters, calculateHash);
     }

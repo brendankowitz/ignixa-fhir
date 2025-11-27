@@ -10,16 +10,16 @@ namespace Ignixa.Validation.Abstractions;
 /// <summary>
 /// Base interface for all validation checks.
 /// Checks implement specific validation logic (cardinality, type checking, invariants, etc.).
-/// Uses ISourceNode for FHIR-aware navigation (choice types, shadow properties).
+/// Uses IElement for FHIR-aware navigation (choice types, shadow properties).
 /// </summary>
 public interface IValidationCheck
 {
     /// <summary>
-    /// Validates a FHIR source node against this check's rules.
+    /// Validates a FHIR element against this check's rules.
     /// </summary>
-    /// <param name="node">The source node to validate (FHIR-aware navigation).</param>
+    /// <param name="element">The element to validate (FHIR-aware navigation).</param>
     /// <param name="settings">Validation settings and configuration.</param>
     /// <param name="state">Current validation state (Global/Instance/Location context).</param>
     /// <returns>Validation result with any issues found.</returns>
-    ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state);
+    ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state);
 }

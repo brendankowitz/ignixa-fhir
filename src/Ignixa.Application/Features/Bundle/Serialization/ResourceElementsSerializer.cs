@@ -34,7 +34,7 @@ public static class ResourceElementsSerializer
         FhirJsonWriter writer,
         string propertyName,
         ReadOnlyMemory<byte> resourceBytes,
-        IStructureDefinitionSummaryProvider schemaProvider,
+        ISchema schemaProvider,
         IReadOnlySet<string> requestedElements,
         string resourceType)
     {
@@ -62,7 +62,7 @@ public static class ResourceElementsSerializer
     /// Includes: requested elements + mandatory elements (id, meta, resourceType, required fields from schema).
     /// </summary>
     private static HashSet<string> BuildAllowedElementsSet(
-        IStructureDefinitionSummaryProvider schemaProvider,
+        ISchema schemaProvider,
         IReadOnlySet<string> requestedElements,
         string resourceType)
     {
@@ -82,14 +82,14 @@ public static class ResourceElementsSerializer
         // Add elements marked as required in the schema
         if (schemaProvider != null)
         {
-            var schema = schemaProvider.Provide(resourceType);
+            var schema = schemaProvider.GetTypeDefinition(resourceType);
             if (schema != null)
             {
-                foreach (var element in schema.GetElements())
+                foreach (var element in schema.Children)
                 {
-                    if (element.IsRequired && !allowed.Contains(element.ElementName))
+                    if (element.IsRequired && !allowed.Contains(element.Info.Name))
                     {
-                        allowed.Add(element.ElementName);
+                        allowed.Add(element.Info.Name);
                     }
                 }
             }

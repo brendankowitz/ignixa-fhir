@@ -177,7 +177,7 @@ public class MappingEvaluator
         try
         {
             // Visit sources
-            var sourceValues = new Dictionary<string, IEnumerable<ITypedElement>>();
+            var sourceValues = new Dictionary<string, IEnumerable<IElement>>();
             var anonymousSourceIndex = 0;
             foreach (var source in rule.Sources)
             {
@@ -194,7 +194,7 @@ public class MappingEvaluator
                     context.AddError($"Error evaluating source: {ex.Message}", location, "SOURCE_ERROR", ex);
                     // Continue with other sources
                     var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
-                    sourceValues[key] = Enumerable.Empty<ITypedElement>();
+                    sourceValues[key] = Enumerable.Empty<IElement>();
                 }
             }
 
@@ -293,8 +293,8 @@ public class MappingEvaluator
 
             // Create a new context scope for the group invocation
             // We need to map arguments to parameter names
-            var originalSources = new Dictionary<string, ITypedElement?>();
-            var originalTargets = new Dictionary<string, ITypedElement?>();
+            var originalSources = new Dictionary<string, IElement?>();
+            var originalTargets = new Dictionary<string, IElement?>();
 
             try
             {
@@ -355,7 +355,7 @@ public class MappingEvaluator
         }
     }
 
-    private IEnumerable<ITypedElement> VisitSource(SourceExpression source, MappingContext context, string? location = null)
+    private IEnumerable<IElement> VisitSource(SourceExpression source, MappingContext context, string? location = null)
     {
         try
         {
@@ -389,14 +389,14 @@ public class MappingEvaluator
                         if (!conditionMet)
                         {
                             // Filter out all elements
-                            contextValues = Enumerable.Empty<ITypedElement>();
+                            contextValues = Enumerable.Empty<IElement>();
                         }
                         // Otherwise keep all elements
                     }
                     catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
                     {
                         context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
-                        contextValues = Enumerable.Empty<ITypedElement>(); // Exclude all on error
+                        contextValues = Enumerable.Empty<IElement>(); // Exclude all on error
                     }
                 }
                 else
@@ -457,7 +457,7 @@ public class MappingEvaluator
                     // If we have context values (including from defaults), create a wrapper that provides access to them
                     // This allows check expressions like "src.active = true" to work even when active came from a default
                     MappingContext checkContext = context;
-                    ITypedElement? tempWrapper = null;
+                    IElement? tempWrapper = null;
 
                     if (contextValuesList.Any() && source.Context is QualifiedIdentifierExpression qual)
                     {
@@ -551,7 +551,7 @@ public class MappingEvaluator
                         // Log expression is different - evaluate it for each element
                         foreach (var element in contextValuesList)
                         {
-                            IEnumerable<ITypedElement> logResult;
+                            IEnumerable<IElement> logResult;
 
                             if (source.Log is FhirPathExpression logExpr)
                             {
@@ -594,11 +594,11 @@ public class MappingEvaluator
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
         {
             context.AddError($"Error visiting source: {ex.Message}", location, "SOURCE_VISIT_ERROR", ex);
-            return Enumerable.Empty<ITypedElement>();
+            return Enumerable.Empty<IElement>();
         }
     }
 
-    private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<ITypedElement>> sourceValues, string? location = null)
+    private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<IElement>> sourceValues, string? location = null)
     {
         try
         {
@@ -620,7 +620,7 @@ public class MappingEvaluator
                         var transformResult = VisitTransform(transform, context, location);
 
                         // Set the result to the target context if specified
-                        if (target.Context != null && transformResult is ITypedElement element)
+                        if (target.Context != null && transformResult is IElement element)
                         {
                             if (target.Variable != null)
                             {
@@ -663,7 +663,7 @@ public class MappingEvaluator
         }
     }
 
-    private IEnumerable<ITypedElement> ApplyListModeFiltering(IReadOnlyList<ITypedElement> elements, ListMode? listMode)
+    private IEnumerable<IElement> ApplyListModeFiltering(IReadOnlyList<IElement> elements, ListMode? listMode)
     {
         if (!listMode.HasValue || elements.Count == 0)
         {
@@ -683,7 +683,7 @@ public class MappingEvaluator
         };
     }
 
-    private IEnumerable<ITypedElement> ValidateOnlyOne(IReadOnlyList<ITypedElement> elements)
+    private IEnumerable<IElement> ValidateOnlyOne(IReadOnlyList<IElement> elements)
     {
         if (elements.Count != 1)
         {
@@ -732,7 +732,7 @@ public class MappingEvaluator
         }
     }
 
-    private IEnumerable<ITypedElement> VisitExpression(Expression expr, MappingContext context, string? location = null)
+    private IEnumerable<IElement> VisitExpression(Expression expr, MappingContext context, string? location = null)
     {
         try
         {
@@ -749,11 +749,11 @@ public class MappingEvaluator
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
         {
             context.AddError($"Error evaluating expression: {ex.Message}", location, "EXPRESSION_ERROR", ex);
-            return Enumerable.Empty<ITypedElement>();
+            return Enumerable.Empty<IElement>();
         }
     }
 
-    private IEnumerable<ITypedElement> VisitIdentifier(IdentifierExpression id, MappingContext context)
+    private IEnumerable<IElement> VisitIdentifier(IdentifierExpression id, MappingContext context)
     {
         // Check if it's a source
         var source = context.GetSource(id.Name);
@@ -771,15 +771,15 @@ public class MappingEvaluator
 
         // Check if it's a variable
         var variable = context.GetVariable(id.Name);
-        if (variable is ITypedElement element)
+        if (variable is IElement element)
         {
             return new[] { element };
         }
 
-        return Enumerable.Empty<ITypedElement>();
+        return Enumerable.Empty<IElement>();
     }
 
-    private IEnumerable<ITypedElement> VisitQualifiedIdentifier(QualifiedIdentifierExpression qual, MappingContext context)
+    private IEnumerable<IElement> VisitQualifiedIdentifier(QualifiedIdentifierExpression qual, MappingContext context)
     {
         // Visit the context first
         var contextElements = VisitExpression(qual.Context, context);
@@ -794,7 +794,7 @@ public class MappingEvaluator
         }
     }
 
-    private IEnumerable<ITypedElement> VisitIndex(IndexExpression idx, MappingContext context)
+    private IEnumerable<IElement> VisitIndex(IndexExpression idx, MappingContext context)
     {
         // Visit the context first
         var contextElements = VisitExpression(idx.Context, context).ToList();
@@ -810,7 +810,7 @@ public class MappingEvaluator
         yield return contextElements[idx.Index];
     }
 
-    private IEnumerable<ITypedElement> VisitFhirPath(FhirPathExpression fhirPath, MappingContext context)
+    private IEnumerable<IElement> VisitFhirPath(FhirPathExpression fhirPath, MappingContext context)
     {
         if (context.FhirPathEvaluator == null)
         {
@@ -834,9 +834,9 @@ public class MappingEvaluator
         return context.FhirPathEvaluator(fhirPath.PathExpression, contextRoot);
     }
 
-    private bool TryParseAsMappingExpression(string expression, MappingContext context, out IEnumerable<ITypedElement> result)
+    private bool TryParseAsMappingExpression(string expression, MappingContext context, out IEnumerable<IElement> result)
     {
-        result = Enumerable.Empty<ITypedElement>();
+        result = Enumerable.Empty<IElement>();
 
         // Check for simple identifier or qualified identifier patterns
         // Simple identifier: "src", "tgt"
@@ -896,7 +896,7 @@ public class MappingEvaluator
         if (rootElement == null)
         {
             var variable = context.GetVariable(rootName);
-            if (variable is ITypedElement element)
+            if (variable is IElement element)
             {
                 rootElement = element;
             }
@@ -926,7 +926,7 @@ public class MappingEvaluator
                     if (int.TryParse(indexStr, out var index))
                     {
                         var list = current.ToList();
-                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<ITypedElement>();
+                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<IElement>();
                     }
                 }
                 else
@@ -937,7 +937,7 @@ public class MappingEvaluator
                     if (int.TryParse(indexStr, out var index))
                     {
                         var list = current.ToList();
-                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<ITypedElement>();
+                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<IElement>();
                     }
                 }
             }
@@ -952,7 +952,7 @@ public class MappingEvaluator
         return true;
     }
 
-    private ITypedElement CreatePrimitive(object value)
+    private IElement CreatePrimitive(object value)
     {
         var typeName = value switch
         {
@@ -966,7 +966,7 @@ public class MappingEvaluator
         return new PrimitiveElement(value, typeName);
     }
 
-    private string FormatLogResult(IEnumerable<ITypedElement> result)
+    private string FormatLogResult(IEnumerable<IElement> result)
     {
         var elements = result.ToList();
         if (!elements.Any())
@@ -990,9 +990,9 @@ public class MappingEvaluator
     }
 
     /// <summary>
-    /// Simple implementation of ITypedElement for primitive values.
+    /// Simple implementation of IElement for primitive values.
     /// </summary>
-    private class PrimitiveElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
         public PrimitiveElement(object value, string type)
         {
@@ -1004,16 +1004,17 @@ public class MappingEvaluator
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name) => Array.Empty<IElement>();
+        public T? Meta<T>() where T : class => null;
     }
 
     /// <summary>
     /// Wrapper element that provides access to mapping context variables.
     /// Allows FhirPath expressions to resolve mapping variables like "src" and "tgt".
     /// </summary>
-    private class MappingContextElement : ITypedElement
+    private class MappingContextElement : IElement
     {
         private readonly MappingContext _context;
 
@@ -1026,21 +1027,17 @@ public class MappingEvaluator
         public string InstanceType => "MappingContext";
         public object? Value => null;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name)
         {
+            var result = new List<IElement>();
+
             if (name == null)
             {
                 // Return all sources and targets as children
-                foreach (var source in GetAllSources())
-                {
-                    yield return source;
-                }
-                foreach (var target in GetAllTargets())
-                {
-                    yield return target;
-                }
+                result.AddRange(GetAllSources());
+                result.AddRange(GetAllTargets());
             }
             else
             {
@@ -1048,49 +1045,53 @@ public class MappingEvaluator
                 var source = _context.GetSource(name);
                 if (source != null)
                 {
-                    yield return source;
-                    yield break;
+                    result.Add(source);
+                    return result;
                 }
 
                 // Try to resolve as a target variable
                 var target = _context.GetTarget(name);
                 if (target != null)
                 {
-                    yield return target;
-                    yield break;
+                    result.Add(target);
+                    return result;
                 }
 
                 // Try to resolve as a general variable
                 var variable = _context.GetVariable(name);
-                if (variable is ITypedElement element)
+                if (variable is IElement element)
                 {
-                    yield return element;
+                    result.Add(element);
                 }
             }
+
+            return result;
         }
 
-        private IEnumerable<ITypedElement> GetAllSources()
+        public T? Meta<T>() where T : class => null;
+
+        private IEnumerable<IElement> GetAllSources()
         {
             // Use reflection to access the private _sources dictionary
             var contextType = _context.GetType();
             var sourcesField = contextType.GetField("_sources", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (sourcesField?.GetValue(_context) is Dictionary<string, ITypedElement> sources)
+            if (sourcesField?.GetValue(_context) is Dictionary<string, IElement> sources)
             {
                 return sources.Values;
             }
-            return Enumerable.Empty<ITypedElement>();
+            return Enumerable.Empty<IElement>();
         }
 
-        private IEnumerable<ITypedElement> GetAllTargets()
+        private IEnumerable<IElement> GetAllTargets()
         {
             // Use reflection to access the private _targets dictionary
             var contextType = _context.GetType();
             var targetsField = contextType.GetField("_targets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (targetsField?.GetValue(_context) is Dictionary<string, ITypedElement> targets)
+            if (targetsField?.GetValue(_context) is Dictionary<string, IElement> targets)
             {
                 return targets.Values;
             }
-            return Enumerable.Empty<ITypedElement>();
+            return Enumerable.Empty<IElement>();
         }
     }
 
@@ -1111,14 +1112,14 @@ public class MappingEvaluator
     /// <summary>
     /// Gets all context elements (sources and targets) from the mapping context.
     /// </summary>
-    private IEnumerable<(string name, ITypedElement element)> GetAllContextElements(MappingContext context)
+    private IEnumerable<(string name, IElement element)> GetAllContextElements(MappingContext context)
     {
         // Use reflection to access private fields
         var contextType = context.GetType();
         var sourcesField = contextType.GetField("_sources", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         var targetsField = contextType.GetField("_targets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-        if (sourcesField?.GetValue(context) is Dictionary<string, ITypedElement> sources)
+        if (sourcesField?.GetValue(context) is Dictionary<string, IElement> sources)
         {
             foreach (var kvp in sources)
             {
@@ -1126,7 +1127,7 @@ public class MappingEvaluator
             }
         }
 
-        if (targetsField?.GetValue(context) is Dictionary<string, ITypedElement> targets)
+        if (targetsField?.GetValue(context) is Dictionary<string, IElement> targets)
         {
             foreach (var kvp in targets)
             {
@@ -1139,13 +1140,13 @@ public class MappingEvaluator
     /// Temporary wrapper that adds a property with specific values to an element.
     /// Used for check conditions with default values.
     /// </summary>
-    private class TempPropertyWrapper : ITypedElement
+    private class TempPropertyWrapper : IElement
     {
-        private readonly ITypedElement _wrapped;
+        private readonly IElement _wrapped;
         private readonly string _propertyName;
-        private readonly IReadOnlyList<ITypedElement> _propertyValues;
+        private readonly IReadOnlyList<IElement> _propertyValues;
 
-        public TempPropertyWrapper(ITypedElement wrapped, string propertyName, IReadOnlyList<ITypedElement> propertyValues)
+        public TempPropertyWrapper(IElement wrapped, string propertyName, IReadOnlyList<IElement> propertyValues)
         {
             _wrapped = wrapped;
             _propertyName = propertyName;
@@ -1153,12 +1154,12 @@ public class MappingEvaluator
         }
 
         public string Name => _wrapped.Name ?? string.Empty;
-        public string? InstanceType => _wrapped.InstanceType;
+        public string InstanceType => _wrapped.InstanceType;
         public object? Value => _wrapped.Value;
         public string Location => _wrapped.Location ?? string.Empty;
-        public IElementDefinitionSummary? Definition => _wrapped.Definition;
+        public IType? Type => _wrapped.Type;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name)
         {
             if (name == _propertyName)
             {
@@ -1169,5 +1170,7 @@ public class MappingEvaluator
             // Delegate to wrapped element for other properties
             return _wrapped.Children(name);
         }
+
+        public T? Meta<T>() where T : class => _wrapped.Meta<T>();
     }
 }

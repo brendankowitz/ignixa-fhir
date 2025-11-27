@@ -17,6 +17,7 @@ mode = mode switch
     "codesystem" => "codesystem",
     "valueset" => "valueset",
     "invariant" => "invariant",
+    "coreschema" => "coreschema",
     _ => "structure"
 };
 
@@ -26,7 +27,7 @@ string defaultOutputDir = mode switch
 {
     "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "ValueSets", "Normative"),
-    "invariant" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated"),
+    "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated"),
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
 };
 
@@ -41,6 +42,7 @@ string title = mode switch
     "codesystem" => "Ignixa FHIR Code System Mappings Generator",
     "valueset" => "Ignixa FHIR ValueSet Enum Generator",
     "invariant" => "Ignixa FHIR Invariant Provider Generator",
+    "coreschema" => "Ignixa FHIR Core Schema Provider Generator",
     _ => "Ignixa FHIR Structure Definition Provider Generator"
 };
 
@@ -142,6 +144,17 @@ switch (mode)
             Namespace = "Ignixa.Specification.Generated"
         };
         invariantLanguage.Export(invariantConfig, definitions);
+        break;
+
+    case "coreschema":
+        Console.WriteLine("Generating Core schema provider code...");
+        var coreSchemaLanguage = new CSharpCoreSchemaLanguage();
+        var coreSchemaConfig = new CSharpCoreSchemaConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Ignixa.Specification.Generated"
+        };
+        coreSchemaLanguage.Export(coreSchemaConfig, definitions);
         break;
 
     default: // structure

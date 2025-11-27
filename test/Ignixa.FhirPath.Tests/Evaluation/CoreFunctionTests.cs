@@ -539,40 +539,40 @@ public class CoreFunctionTests
 
     #region Helper Methods
 
-    private ITypedElement CreateIntegerElement(int value)
+    private IElement CreateIntegerElement(int value)
     {
-        return new PrimitiveTypedElement(value, "integer");
+        return new PrimitiveElement(value, "integer");
     }
 
-    private ITypedElement CreateBooleanElement(bool value)
+    private IElement CreateBooleanElement(bool value)
     {
-        return new PrimitiveTypedElement(value, "boolean");
+        return new PrimitiveElement(value, "boolean");
     }
 
-    private ITypedElement CreateResourceWithExtensions()
+    private IElement CreateResourceWithExtensions()
     {
         // Create a simple resource with one extension
-        var extensionUrl = new PrimitiveTypedElement("http://example.org/fhir/StructureDefinition/participation-agreement", "uri");
-        var extensionValue = new PrimitiveTypedElement(true, "boolean");
+        var extensionUrl = new PrimitiveElement("http://example.org/fhir/StructureDefinition/participation-agreement", "uri");
+        var extensionValue = new PrimitiveElement(true, "boolean");
 
-        var extension = new ComplexTypedElement("Extension", "extension",
-            new (string, ITypedElement)[] {
+        var extension = new ComplexElement("Extension", "extension",
+            new (string, IElement)[] {
                 ("url", extensionUrl),
                 ("valueBoolean", extensionValue)
             });
 
-        return new ComplexTypedElement("Patient", "Patient",
-            new (string, ITypedElement)[] {
+        return new ComplexElement("Patient", "Patient",
+            new (string, IElement)[] {
                 ("extension", extension)
             });
     }
 
     /// <summary>
-    /// Simple test implementation of ITypedElement for primitive values.
+    /// Simple test implementation of IElement for primitive values.
     /// </summary>
-    private class PrimitiveTypedElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
-        public PrimitiveTypedElement(object value, string type)
+        public PrimitiveElement(object value, string type)
         {
             Value = value;
             InstanceType = type;
@@ -580,21 +580,23 @@ public class CoreFunctionTests
 
         public string Name => string.Empty;
         public string InstanceType { get; }
-        public object Value { get; }
+        public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
     /// <summary>
-    /// Test implementation of ITypedElement for complex elements with children.
+    /// Test implementation of IElement for complex elements with children.
     /// </summary>
-    private class ComplexTypedElement : ITypedElement
+    private class ComplexElement : IElement
     {
-        private readonly List<(string name, ITypedElement element)> _children;
+        private readonly List<(string name, IElement element)> _children;
 
-        public ComplexTypedElement(string instanceType, string name, IEnumerable<(string name, ITypedElement element)> children)
+        public ComplexElement(string instanceType, string name, IEnumerable<(string name, IElement element)> children)
         {
             InstanceType = instanceType;
             Name = name;
@@ -605,15 +607,17 @@ public class CoreFunctionTests
         public string InstanceType { get; }
         public object? Value => null;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             if (name == null)
-                return _children.Select(c => c.element);
+                return _children.Select(c => c.element).ToList();
 
-            return _children.Where(c => c.name == name).Select(c => c.element);
+            return _children.Where(c => c.name == name).Select(c => c.element).ToList();
         }
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

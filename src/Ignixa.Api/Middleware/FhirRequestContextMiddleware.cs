@@ -3,9 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;

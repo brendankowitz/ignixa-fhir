@@ -54,20 +54,20 @@ public class FixedValueCheck : IValidationCheck
     /// <summary>
     /// Validates that the element's value matches the fixed value.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var location = string.IsNullOrEmpty(node.Location)
+        var location = string.IsNullOrEmpty(element.Location)
             ? _elementPath
-            : $"{node.Location}.{_elementPath}";
+            : $"{element.Location}.{_elementPath}";
 
         // Navigate to the element using the path
         var pathParts = _elementPath.Split('.');
-        ISourceNode? currentNode = node;
-        List<ISourceNode>? targetNodes = null;
+        IElement? currentNode = element;
+        List<IElement>? targetNodes = null;
 
         foreach (var part in pathParts)
         {
@@ -150,7 +150,7 @@ public class FixedValueCheck : IValidationCheck
         return ValidateNode(targetNodes[0], location);
     }
 
-    private ValidationResult ValidateNode(ISourceNode targetNode, string location)
+    private ValidationResult ValidateNode(IElement targetNode, string location)
     {
         // Get the actual value from the node
         var actualValue = GetNodeValue(targetNode);
@@ -172,10 +172,10 @@ public class FixedValueCheck : IValidationCheck
         return ValidationResult.Success();
     }
 
-    private static JsonNode? GetNodeValue(ISourceNode node)
+    private static JsonNode? GetNodeValue(IElement element)
     {
         // For primitive types, get the value directly
-        var primitiveValue = node.Text;
+        var primitiveValue = element.Value?.ToString();
         if (!string.IsNullOrEmpty(primitiveValue))
         {
             // Try to parse as appropriate type
@@ -197,7 +197,7 @@ public class FixedValueCheck : IValidationCheck
         }
 
         // For complex types, build a JsonObject or JsonArray from children
-        var children = node.Children().ToList();
+        var children = element.Children().ToList();
         if (children.Count == 0)
         {
             return null;

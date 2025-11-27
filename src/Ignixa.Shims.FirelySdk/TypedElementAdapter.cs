@@ -63,11 +63,11 @@ public class TypedElementAdapter : Hl7.Fhir.ElementModel.ITypedElement
     /// <inheritdoc/>
     public T? Annotation<T>() where T : class
     {
-        // Store the original Ignixa element as an annotation for unwrapping
+        // Store the original Ignixa element as metadata for unwrapping
         if (typeof(T) == typeof(IElement))
             return _coreElement as T;
 
-        return _coreElement.Annotation<T>();
+        return _coreElement.Meta<T>();
     }
 
     /// <summary>
@@ -101,7 +101,7 @@ public class TypedElementAdapter : Hl7.Fhir.ElementModel.ITypedElement
 
         public string? DefaultTypeName => _type.Info.Name;
         public string? NonDefaultNamespace => null;  // Not supported
-        public FirelyXmlRep Representation => (FirelyXmlRep)_type.Representation;
+        public FirelyXmlRep Representation => FirelyXmlRep.XmlElement;  // Default representation for Firely SDK compatibility
         public int Order => _type.Order;
     }
 

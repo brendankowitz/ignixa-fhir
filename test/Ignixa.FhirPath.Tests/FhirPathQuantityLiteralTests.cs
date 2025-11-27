@@ -595,39 +595,39 @@ public class FhirPathQuantityLiteralTests
         return parseResult.Value;
     }
 
-    private ITypedElement CreateIntegerElement(int value)
+    private IElement CreateIntegerElement(int value)
     {
-        return new PrimitiveTypedElement(value, "integer");
+        return new PrimitiveElement(value, "integer");
     }
 
-    private ITypedElement CreateObservationWithQuantity(decimal value, string unit)
+    private IElement CreateObservationWithQuantity(decimal value, string unit)
     {
-        var quantityValue = new PrimitiveTypedElement(value, "decimal");
-        var quantityUnit = new PrimitiveTypedElement(unit, "code");
+        var quantityValue = new PrimitiveElement(value, "decimal");
+        var quantityUnit = new PrimitiveElement(unit, "code");
 
-        var quantity = new ComplexTypedElement("Quantity", "value",
-            new (string, ITypedElement)[] {
+        var quantity = new ComplexElement("Quantity", "value",
+            new (string, IElement)[] {
                 ("value", quantityValue),
                 ("unit", quantityUnit),
-                ("system", new PrimitiveTypedElement("http://unitsofmeasure.org", "uri")),
+                ("system", new PrimitiveElement("http://unitsofmeasure.org", "uri")),
                 ("code", quantityUnit)
             });
 
-        return new ComplexTypedElement("Observation", "Observation",
-            new (string, ITypedElement)[] {
+        return new ComplexElement("Observation", "Observation",
+            new (string, IElement)[] {
                 ("value", quantity)
             });
     }
 
-    private ITypedElement CreateObservationWithoutValue()
+    private IElement CreateObservationWithoutValue()
     {
-        return new ComplexTypedElement("Observation", "Observation",
-            Array.Empty<(string, ITypedElement)>());
+        return new ComplexElement("Observation", "Observation",
+            Array.Empty<(string, IElement)>());
     }
 
-    private class PrimitiveTypedElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
-        public PrimitiveTypedElement(object value, string type)
+        public PrimitiveElement(object value, string type)
         {
             Value = value;
             InstanceType = type;
@@ -635,18 +635,20 @@ public class FhirPathQuantityLiteralTests
 
         public string Name => string.Empty;
         public string InstanceType { get; }
-        public object Value { get; }
+        public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
-    private class ComplexTypedElement : ITypedElement
+    private class ComplexElement : IElement
     {
-        private readonly List<(string name, ITypedElement element)> _children;
+        private readonly List<(string name, IElement element)> _children;
 
-        public ComplexTypedElement(string instanceType, string name, IEnumerable<(string name, ITypedElement element)> children)
+        public ComplexElement(string instanceType, string name, IEnumerable<(string name, IElement element)> children)
         {
             InstanceType = instanceType;
             Name = name;
@@ -657,15 +659,17 @@ public class FhirPathQuantityLiteralTests
         public string InstanceType { get; }
         public object? Value => null;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             if (name == null)
-                return _children.Select(c => c.element);
+                return _children.Select(c => c.element).ToList();
 
-            return _children.Where(c => c.name == name).Select(c => c.element);
+            return _children.Where(c => c.name == name).Select(c => c.element).ToList();
         }
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

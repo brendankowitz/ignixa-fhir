@@ -34,19 +34,19 @@ public class CardinalityCheck : IValidationCheck
     /// <summary>
     /// Validates element cardinality.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        // Get all children with this name (ISourceNode handles choice types automatically)
-        var children = node.Children(_elementName).ToList();
+        // Get all children with this name (IElement.Children already returns IReadOnlyList)
+        var children = element.Children(_elementName);
         var actualCount = children.Count;
 
-        var location = string.IsNullOrEmpty(node.Location)
+        var location = string.IsNullOrEmpty(element.Location)
             ? _elementName
-            : $"{node.Location}.{_elementName}";
+            : $"{element.Location}.{_elementName}";
 
         // Check minimum cardinality
         if (actualCount < _min)

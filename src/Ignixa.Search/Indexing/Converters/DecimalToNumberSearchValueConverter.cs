@@ -11,14 +11,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="FhirDecimal"/> to a list of <see cref="NumberSearchValue"/>.
 /// </summary>
-public class DecimalToNumberSearchValueConverter : FhirTypedElementToSearchValueConverter<NumberSearchValue>
+public class DecimalToNumberSearchValueConverter : FhirElementToSearchValueConverter<NumberSearchValue>
 {
     public DecimalToNumberSearchValueConverter()
         : base("decimal", "System.Decimal")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         if (value?.Value == null) yield break;
 

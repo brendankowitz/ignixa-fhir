@@ -4,9 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using FluentAssertions;
+using Ignixa.Abstractions;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Xunit;
 

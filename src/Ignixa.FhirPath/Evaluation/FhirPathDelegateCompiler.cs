@@ -33,7 +33,7 @@ public class FhirPathDelegateCompiler
     /// Attempts to compile an expression to a delegate.
     /// Returns null if compilation is not supported (will use fallback interpreter).
     /// </summary>
-    public Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? TryCompile(Expression expr)
+    public Func<IElement, EvaluationContext, IEnumerable<IElement>>? TryCompile(Expression expr)
     {
         ArgumentNullException.ThrowIfNull(expr);
 
@@ -74,7 +74,7 @@ public class FhirPathDelegateCompiler
     /// Compiles a simple identifier like "name" to a delegate.
     /// Direct call to Children(name).
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileIdentifier(IdentifierExpression id)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileIdentifier(IdentifierExpression id)
     {
         string name = id.Name;
         return (input, ctx) => input.Children(name);
@@ -83,12 +83,12 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles an axis reference like $this.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileAxis(AxisExpression axis)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileAxis(AxisExpression axis)
     {
         if (axis.AxisName.Equals("this", StringComparison.OrdinalIgnoreCase))
         {
-            // $this returns the current input as a single-element enumerable
-            return (input, ctx) => new[] { input };
+            // $this returns the current input as a single-element list
+            return (input, ctx) => [input];
         }
 
         // Other axes ($index, $total) require context, not compiled
@@ -99,7 +99,7 @@ public class FhirPathDelegateCompiler
     /// Compiles a child expression like "name.family" or "name" (single level).
     /// Handles arbitrarily deep paths through recursion.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileChild(ChildExpression child)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileChild(ChildExpression child)
     {
         // Optimize simple case: single-level child on $this axis
         // Pattern: "name" where Focus is AxisExpression($this)
@@ -139,7 +139,7 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles a function call like where(), first(), exists(), count().
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileFunctionCall(FunctionCallExpression func)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileFunctionCall(FunctionCallExpression func)
     {
 #pragma warning disable CA1308 // Normalize strings to uppercase
         string funcName = func.FunctionName.ToLowerInvariant();
@@ -160,7 +160,7 @@ public class FhirPathDelegateCompiler
     /// Compiles where() function: "telecom.where(system='phone')".
     /// Predicate must be a simple equality check for compilation.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileWhereFunction(FunctionCallExpression func)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileWhereFunction(FunctionCallExpression func)
     {
         if (func.Arguments.Count != 1)
             return null;
@@ -203,7 +203,7 @@ public class FhirPathDelegateCompiler
     /// Compiles first() function: "name.first()".
     /// Returns first element if it exists.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileFirstFunction(FunctionCallExpression func)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileFirstFunction(FunctionCallExpression func)
     {
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
@@ -213,7 +213,7 @@ public class FhirPathDelegateCompiler
         {
             var results = focusFunc(input, ctx);
             var first = results.FirstOrDefault();
-            return first != null ? new[] { first } : Enumerable.Empty<ITypedElement>();
+            return first != null ? new[] { first } : Enumerable.Empty<IElement>();
         };
     }
 
@@ -221,7 +221,7 @@ public class FhirPathDelegateCompiler
     /// Compiles exists() function: "identifier.exists()".
     /// Returns boolean true if collection is non-empty.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileExistsFunction(FunctionCallExpression func)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileExistsFunction(FunctionCallExpression func)
     {
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
@@ -231,7 +231,7 @@ public class FhirPathDelegateCompiler
         {
             var results = focusFunc(input, ctx);
             var exists = results.Any();
-            // Return boolean as a typed element wrapping true/false
+            // Return boolean as an element wrapping true/false
             return new[] { CreateBooleanElement(exists) };
         };
     }
@@ -240,7 +240,7 @@ public class FhirPathDelegateCompiler
     /// Compiles count() function: "name.count()".
     /// Returns the number of elements in the collection.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileCountFunction(FunctionCallExpression func)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileCountFunction(FunctionCallExpression func)
     {
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
@@ -258,7 +258,7 @@ public class FhirPathDelegateCompiler
     /// Compiles empty() function: "name.empty()".
     /// Returns boolean true if collection is empty.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileEmptyFunction(FunctionCallExpression func)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileEmptyFunction(FunctionCallExpression func)
     {
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
@@ -276,7 +276,7 @@ public class FhirPathDelegateCompiler
     /// Compiles a binary expression like "system = 'phone'".
     /// Supports: =, !=, <, >, <=, >=
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileBinary(BinaryExpression binary)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileBinary(BinaryExpression binary)
     {
         var leftFunc = TryCompile(binary.Left);
         var rightFunc = TryCompile(binary.Right);
@@ -298,7 +298,7 @@ public class FhirPathDelegateCompiler
                 {
                     return new[] { CreateBooleanElement(true) };
                 }
-                return Enumerable.Empty<ITypedElement>();
+                return Enumerable.Empty<IElement>();
             },
 
             "!=" => (input, ctx) =>
@@ -313,7 +313,7 @@ public class FhirPathDelegateCompiler
                 {
                     return new[] { CreateBooleanElement(true) };
                 }
-                return Enumerable.Empty<ITypedElement>();
+                return Enumerable.Empty<IElement>();
             },
 
             _ => null
@@ -323,7 +323,7 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles a constant value expression.
     /// </summary>
-    private Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileConstant(ConstantExpression constant)
+    private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileConstant(ConstantExpression constant)
     {
         object value = constant.Value;
         return (input, ctx) => new[] { CreateValueElement(value) };
@@ -338,39 +338,41 @@ public class FhirPathDelegateCompiler
     }
 
     /// <summary>
-    /// Creates a typed element that wraps a boolean value.
+    /// Creates an element that wraps a boolean value.
     /// </summary>
-    private ITypedElement CreateBooleanElement(bool value)
+    private IElement CreateBooleanElement(bool value)
     {
-        return new LiteralTypedElement(value, "boolean");
+        return new LiteralElement(value, "boolean");
     }
 
     /// <summary>
-    /// Creates a typed element that wraps an integer value.
+    /// Creates an element that wraps an integer value.
     /// </summary>
-    private ITypedElement CreateIntegerElement(int value)
+    private IElement CreateIntegerElement(int value)
     {
-        return new LiteralTypedElement(value, "integer");
+        return new LiteralElement(value, "integer");
     }
 
     /// <summary>
-    /// Creates a typed element that wraps any value.
+    /// Creates an element that wraps any value.
     /// </summary>
-    private ITypedElement CreateValueElement(object value)
+    private IElement CreateValueElement(object value)
     {
-        return new LiteralTypedElement(value, value?.GetType().Name ?? "unknown");
+        return new LiteralElement(value, value?.GetType().Name ?? "unknown");
     }
 
     /// <summary>
-    /// Simple ITypedElement implementation for literal values returned by compiled expressions.
+    /// Simple IElement implementation for literal values returned by compiled expressions.
     /// </summary>
-    private class LiteralTypedElement : ITypedElement
+    private sealed class LiteralElement : IElement
     {
+        private static readonly IReadOnlyList<IElement> EmptyChildren = Array.Empty<IElement>();
+
         private readonly object _value;
         private readonly string _name;
         private readonly string _instanceType;
 
-        public LiteralTypedElement(object value, string name)
+        public LiteralElement(object value, string name)
         {
             _value = value;
             _name = name;
@@ -378,10 +380,11 @@ public class FhirPathDelegateCompiler
         }
 
         public string Name => _name;
-        public string? InstanceType => _instanceType;
+        public string InstanceType => _instanceType;
         public object? Value => _value;
         public string Location => "[compiled]";
-        public IElementDefinitionSummary? Definition => null;
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IType? Type => null;
+        public IReadOnlyList<IElement> Children(string? name = null) => EmptyChildren;
+        public T? Meta<T>() where T : class => null;
     }
 }

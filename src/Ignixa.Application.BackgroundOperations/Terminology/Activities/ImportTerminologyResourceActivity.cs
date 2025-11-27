@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using DurableTask.Core;
+using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Terminology.Models;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;

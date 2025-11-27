@@ -9,10 +9,10 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
-using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
 
-// For ToTypedElement extension method
+// For ToElement extension method
+
+#pragma warning disable CS0618 // Type or member is obsolete
 
 namespace Ignixa.Serialization.SourceNodes;
 
@@ -22,8 +22,8 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     // Cached wrapper for Meta property (reuse same instance)
     private MetaJsonNode? _cachedMeta;
     private JsonNodeSourceNode? _cachedSourceNode;
-    private ITypedElement? _cachedTypedElement;
-    private IStructureDefinitionSummaryProvider? _cachedProvider;
+    private IElement? _cachedElement;
+    private ISchema? _cachedProvider;
 
     /// <summary>
     /// Default constructor for deserialization.
@@ -125,30 +125,30 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     }
 
     /// <summary>
-    /// Wraps the JSON representation of the resource in an ISourceNode.
+    /// Wraps the JSON representation of the resource in an ISourceNavigator.
     /// </summary>
-    public ISourceNode ToSourceNode()
+    public ISourceNavigator ToSourceNode()
     {
         _cachedSourceNode ??= JsonNodeSourceNode.FromRoot(MutableNode, ResourceType);
         return _cachedSourceNode;
     }
 
     /// <summary>
-    /// Converts to ITypedElement using the provided schema provider.
+    /// Converts to IElement using the provided schema provider.
     /// Caches the result for repeated calls with the same provider (reference equality).
     /// </summary>
-    public ITypedElement ToTypedElement(IStructureDefinitionSummaryProvider provider)
+    public IElement ToElement(ISchema schema)
     {
-        // Cache hit: Same provider (reference equality check is fast and safe for singletons)
-        if (_cachedTypedElement != null && ReferenceEquals(_cachedProvider, provider))
+        // Cache hit: Same schema provider (reference equality check is fast and safe for singletons)
+        if (_cachedElement != null && ReferenceEquals(_cachedProvider, schema))
         {
-            return _cachedTypedElement;
+            return _cachedElement;
         }
 
-        // Cache miss: Create and cache new typed element
-        _cachedTypedElement = ToSourceNode().ToTypedElement(provider);
-        _cachedProvider = provider;
-        return _cachedTypedElement;
+        // Cache miss: Create and cache new element
+        _cachedElement = ToSourceNode().ToElement(schema);
+        _cachedProvider = schema;
+        return _cachedElement;
     }
 
     /// <summary>
@@ -157,9 +157,9 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     /// Safe to call multiple times (idempotent).
     ///
     /// CACHE LIFECYCLE:
-    /// - SourceNode and TypedElement caches are created lazily on first access
+    /// - SourceNode and IElement caches are created lazily on first access
     /// - Mutations via MutableNode operations (e.g., PATCH) invalidate cached views
-    /// - This method ensures next access to ToSourceNode() or ToTypedElement() creates fresh wrappers
+    /// - This method ensures next access to ToSourceNode() or ToElement() creates fresh wrappers
     /// - Request-scoped: Each HTTP request gets fresh ResourceJsonNode with empty cache
     ///
     /// SAFE FOR PATCH OPERATIONS:
@@ -171,7 +171,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     public void InvalidateCaches()
     {
         _cachedSourceNode = null;
-        _cachedTypedElement = null;
+        _cachedElement = null;
         _cachedProvider = null;
         // Note: _cachedMeta is NOT invalidated here - it has its own invalidation via Meta setter
     }

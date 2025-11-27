@@ -19,7 +19,7 @@ public class StandardTransformsTests
 {
     #region Helper Classes
 
-    private class TestTypedElement : ITypedElement
+    private class TestTypedElement : IElement
     {
         public TestTypedElement(string name, object? value = null, string instanceType = "string")
         {
@@ -32,28 +32,31 @@ public class StandardTransformsTests
         public string InstanceType { get; }
         public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
+        public IType? Definition => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name) => new List<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
     private class TestContext : ITransformContext
     {
-        private readonly Dictionary<string, ITypedElement> _sources = new();
-        private readonly Dictionary<string, ITypedElement> _targets = new();
+        private readonly Dictionary<string, IElement> _sources = new();
+        private readonly Dictionary<string, IElement> _targets = new();
         private readonly Dictionary<string, object> _variables = new();
 
-        public ITypedElement? GetSource(string name) => _sources.TryGetValue(name, out var value) ? value : null;
-        public ITypedElement? GetTarget(string name) => _targets.TryGetValue(name, out var value) ? value : null;
+        public IElement? GetSource(string name) => _sources.TryGetValue(name, out var value) ? value : null;
+        public IElement? GetTarget(string name) => _targets.TryGetValue(name, out var value) ? value : null;
         public object? GetVariable(string name) => _variables.TryGetValue(name, out var value) ? value : null;
         public void SetVariable(string name, object value) => _variables[name] = value;
 
-        public Func<string, ITypedElement>? ResourceCreator { get; set; }
-        public Func<string, ITypedElement, IEnumerable<ITypedElement>>? FhirPathEvaluator { get; set; }
+        public Func<string, IElement>? ResourceCreator { get; set; }
+        public Func<string, IElement, IEnumerable<IElement>>? FhirPathEvaluator { get; set; }
         public Func<string, string, string, string?>? ConceptMapResolver { get; set; }
 
-        public void SetSource(string name, ITypedElement element) => _sources[name] = element;
-        public void SetTarget(string name, ITypedElement element) => _targets[name] = element;
+        public void SetSource(string name, IElement element) => _sources[name] = element;
+        public void SetTarget(string name, IElement element) => _targets[name] = element;
     }
 
     #endregion

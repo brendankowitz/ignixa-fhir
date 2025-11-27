@@ -8,6 +8,8 @@ using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace Ignixa.Serialization.Extensions;
 
 public static class SourceNodeExtensions
@@ -18,7 +20,7 @@ public static class SourceNodeExtensions
     /// </summary>
     /// <param name="node">The source node to check.</param>
     /// <returns>The resource type if the node is a resource, otherwise null.</returns>
-    public static string? GetResourceTypeIndicator(this ISourceNode node)
+    public static string? GetResourceTypeIndicator(this ISourceNavigator node)
     {
         if (node == null) return null;
 

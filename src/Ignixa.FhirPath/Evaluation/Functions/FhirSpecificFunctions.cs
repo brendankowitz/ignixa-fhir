@@ -19,11 +19,11 @@ internal static class FhirSpecificFunctions
     /// extension() - Filters the input collection for items named "extension" with the given url.
     /// Equivalent to: .extension.where(url = urlValue)
     /// </summary>
-    public static IEnumerable<ITypedElement> Extension(
-        IEnumerable<ITypedElement> focus,
+    public static IEnumerable<IElement> Extension(
+        IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
         EvaluationContext context,
-        Func<IEnumerable<ITypedElement>, Expression, EvaluationContext, IEnumerable<ITypedElement>> evaluateExpression)
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         // extension(url : string) : collection
         // Filters the input collection for items named "extension" with the given url
@@ -49,8 +49,8 @@ internal static class FhirSpecificFunctions
             foreach (var extension in element.Children("extension"))
             {
                 // Check if this extension has a url child with matching value
-                var urlChild = extension.Children("url").FirstOrDefault();
-                if (urlChild != null && urlChild.Value?.ToString() == urlValue)
+                var urlChildren = extension.Children("url");
+                if (urlChildren.Count > 0 && urlChildren[0].Value?.ToString() == urlValue)
                 {
                     yield return extension;
                 }
@@ -63,8 +63,8 @@ internal static class FhirSpecificFunctions
     /// Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
     /// Per FHIR spec: resolve() returns empty on failure (does not throw).
     /// </summary>
-    public static IEnumerable<ITypedElement> Resolve(
-        IEnumerable<ITypedElement> focus,
+    public static IEnumerable<IElement> Resolve(
+        IEnumerable<IElement> focus,
         EvaluationContext context)
     {
         // resolve() : collection
@@ -72,7 +72,7 @@ internal static class FhirSpecificFunctions
         // Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
         // Per FHIR spec: resolve() returns empty on failure (does not throw).
 
-        var results = new List<ITypedElement>();
+        var results = new List<IElement>();
 
         if (context is not FhirEvaluationContext fhirContext || fhirContext.ElementResolver == null)
         {
@@ -121,7 +121,7 @@ internal static class FhirSpecificFunctions
     /// getResourceKey() - SQL on FHIR v2 function that returns resourceType/id for the ROOT resource.
     /// Enables JOINs across resources and should always reference the root, not the current focus.
     /// </summary>
-    public static IEnumerable<ITypedElement> GetResourceKey(EvaluationContext context)
+    public static IEnumerable<IElement> GetResourceKey(EvaluationContext context)
     {
         // Per SQL on FHIR v2 spec: getResourceKey() returns "{resourceType}/{id}" for the ROOT resource
         // This enables JOINs across resources and should always reference the root, not the current focus
@@ -139,11 +139,13 @@ internal static class FhirSpecificFunctions
         }
 
         // Get id from the "id" child element
-        var idElement = rootResource.Children("id").FirstOrDefault();
-        if (idElement == null)
+        var idChildren = rootResource.Children("id");
+        if (idChildren.Count == 0)
         {
             yield break; // No id
         }
+
+        var idElement = idChildren[0];
 
         var id = idElement.Value?.ToString();
         if (string.IsNullOrEmpty(id))
@@ -161,11 +163,11 @@ internal static class FhirSpecificFunctions
     /// Returns the full reference string (e.g., "Patient/123").
     /// Optional type parameter filters by resource type.
     /// </summary>
-    public static IEnumerable<ITypedElement> GetReferenceKey(
-        IEnumerable<ITypedElement> focus,
+    public static IEnumerable<IElement> GetReferenceKey(
+        IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
         EvaluationContext context,
-        Func<IEnumerable<ITypedElement>, Expression, EvaluationContext, IEnumerable<ITypedElement>> evaluateExpression)
+        Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         // Per SQL on FHIR v2 spec: getReferenceKey([type]) extracts reference from a Reference element
         // Returns the full reference string (e.g., "Patient/123")
@@ -205,11 +207,13 @@ internal static class FhirSpecificFunctions
         foreach (var element in focus)
         {
             // Get the "reference" child element from the Reference datatype
-            var referenceElement = element.Children("reference").FirstOrDefault();
-            if (referenceElement == null)
+            var referenceChildren = element.Children("reference");
+            if (referenceChildren.Count == 0)
             {
                 continue; // Skip if no reference property
             }
+
+            var referenceElement = referenceChildren[0];
 
             var reference = referenceElement.Value?.ToString();
             if (string.IsNullOrEmpty(reference))

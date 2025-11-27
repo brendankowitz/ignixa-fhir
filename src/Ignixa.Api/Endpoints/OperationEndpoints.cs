@@ -17,6 +17,7 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 
 namespace Ignixa.Api.Endpoints;
 

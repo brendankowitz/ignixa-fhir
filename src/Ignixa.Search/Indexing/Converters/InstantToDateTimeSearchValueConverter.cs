@@ -12,14 +12,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Instant"/> to a list of <see cref="DateTimeSearchValue"/>.
 /// </summary>
-public class InstantToDateTimeSearchValueConverter : FhirTypedElementToSearchValueConverter<DateTimeSearchValue>
+public class InstantToDateTimeSearchValueConverter : FhirElementToSearchValueConverter<DateTimeSearchValue>
 {
     public InstantToDateTimeSearchValueConverter()
         : base("instant")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string stringValue = value?.Value?.ToString();
 

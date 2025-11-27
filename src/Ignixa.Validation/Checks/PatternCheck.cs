@@ -56,24 +56,24 @@ public class PatternCheck : IValidationCheck
     /// <summary>
     /// Validates that the element's value contains all properties from the pattern.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var location = string.IsNullOrEmpty(node.Location)
+        var location = string.IsNullOrEmpty(element.Location)
             ? _elementPath
-            : $"{node.Location}.{_elementPath}";
+            : $"{element.Location}.{_elementPath}";
 
         // Navigate to the element using the path
         var pathParts = _elementPath.Split('.');
-        ISourceNode? currentNode = node;
-        List<ISourceNode>? targetNodes = null;
+        IElement? currentElement = element;
+        List<IElement>? targetElements = null;
 
         foreach (var part in pathParts)
         {
-            var children = currentNode.Children(part).ToList();
+            var children = currentElement.Children(part).ToList();
 
             // No children found - element is optional or validated by cardinality check
             if (children.Count == 0)
@@ -87,7 +87,7 @@ public class PatternCheck : IValidationCheck
             if (isLastPart)
             {
                 // Save all children for validation (handles arrays)
-                targetNodes = children;
+                targetElements = children;
                 break;
             }
 
@@ -96,16 +96,16 @@ public class PatternCheck : IValidationCheck
             {
                 // Intermediate path has multiple elements - this is unexpected
                 // Just take the first one
-                currentNode = children[0];
+                currentElement = children[0];
             }
             else
             {
-                currentNode = children[0];
+                currentElement = children[0];
             }
         }
 
         // Validate the target element(s)
-        if (targetNodes == null || targetNodes.Count == 0)
+        if (targetElements == null || targetElements.Count == 0)
         {
             return ValidationResult.Success();
         }
@@ -113,16 +113,16 @@ public class PatternCheck : IValidationCheck
         // Check if pattern is an array (FHIR elements can be arrays)
         var isPatternArray = _patternValue is JsonArray;
 
-        // If pattern is an array OR we have multiple target nodes, build array for comparison
-        if (isPatternArray || targetNodes.Count > 1)
+        // If pattern is an array OR we have multiple target elements, build array for comparison
+        if (isPatternArray || targetElements.Count > 1)
         {
             var arrayValue = new JsonArray();
-            foreach (var targetNode in targetNodes)
+            foreach (var targetElement in targetElements)
             {
-                var nodeValue = GetNodeValue(targetNode);
-                if (nodeValue != null)
+                var elementValue = GetElementValue(targetElement);
+                if (elementValue != null)
                 {
-                    arrayValue.Add(nodeValue);
+                    arrayValue.Add(elementValue);
                 }
             }
 
@@ -141,13 +141,13 @@ public class PatternCheck : IValidationCheck
         }
 
         // Single element with non-array pattern - validate it directly
-        return ValidateNode(targetNodes[0], location);
+        return ValidateElement(targetElements[0], location);
     }
 
-    private ValidationResult ValidateNode(ISourceNode targetNode, string location)
+    private ValidationResult ValidateElement(IElement targetElement, string location)
     {
-        // Get the actual value from the node
-        var actualValue = GetNodeValue(targetNode);
+        // Get the actual value from the element
+        var actualValue = GetElementValue(targetElement);
 
         // Check if actual value contains all properties from pattern
         if (!MatchesPattern(actualValue, _patternValue, location, out var errorMessage))
@@ -163,10 +163,10 @@ public class PatternCheck : IValidationCheck
         return ValidationResult.Success();
     }
 
-    private static JsonNode? GetNodeValue(ISourceNode node)
+    private static JsonNode? GetElementValue(IElement element)
     {
         // For primitive types, get the value directly
-        var primitiveValue = node.Text;
+        var primitiveValue = element.Value?.ToString();
         if (!string.IsNullOrEmpty(primitiveValue))
         {
             // Try to parse as appropriate type
@@ -188,7 +188,7 @@ public class PatternCheck : IValidationCheck
         }
 
         // For complex types, build a JsonObject or JsonArray from children
-        var children = node.Children().ToList();
+        var children = element.Children().ToList();
         if (children.Count == 0)
         {
             return null;
@@ -202,7 +202,7 @@ public class PatternCheck : IValidationCheck
             var array = new JsonArray();
             foreach (var child in children)
             {
-                var childValue = GetNodeValue(child);
+                var childValue = GetElementValue(child);
                 if (childValue != null)
                 {
                     // Clone the value to avoid "node already has a parent" error
@@ -217,7 +217,7 @@ public class PatternCheck : IValidationCheck
         var obj = new JsonObject();
         foreach (var child in children)
         {
-            var childValue = GetNodeValue(child);
+            var childValue = GetElementValue(child);
             if (childValue != null)
             {
                 // If property already exists, convert to array

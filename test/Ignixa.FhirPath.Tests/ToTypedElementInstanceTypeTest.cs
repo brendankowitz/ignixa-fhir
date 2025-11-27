@@ -4,20 +4,21 @@ using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Xunit;
 
 namespace Ignixa.FhirPath.Tests;
 
 /// <summary>
-/// Test to verify that ToTypedElement() properly sets InstanceType for child elements.
+/// Test to verify that ToElement() properly sets InstanceType for child elements.
 /// This reproduces the issue found in SQL on FHIR where answer elements have InstanceType=null.
 /// </summary>
 public class ToTypedElementInstanceTypeTest
 {
     private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
-    private readonly IStructureDefinitionSummaryProvider _r4Provider;
+    private readonly IFhirSchemaProvider _r4Provider;
 
     public ToTypedElementInstanceTypeTest()
     {
@@ -25,13 +26,14 @@ public class ToTypedElementInstanceTypeTest
     }
 
     /// <summary>
-    /// Helper method to evaluate a FHIRPath expression string against a typed element.
+    /// Helper method to evaluate a FHIRPath expression string against an IElement.
     /// </summary>
-    private IEnumerable<ITypedElement> EvaluatePath(ITypedElement element, string pathExpression)
+    private IEnumerable<IElement> EvaluatePath(IElement element, string pathExpression)
     {
         var expression = _parser.Parse(pathExpression);
         return _evaluator.Evaluate(element, expression, new EvaluationContext());
     }
+
 
     [Fact]
     public void GivenQuestionnaireResponseWithAnswer_WhenNavigatingToAnswer_ThenAnswerHasInstanceType()
@@ -56,10 +58,10 @@ public class ToTypedElementInstanceTypeTest
         """;
 
         var resource = ResourceJsonNode.Parse(questionnaireResponseJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to item using FhirPath
-        var items = EvaluatePath(typedElement, "item");
+        var items = EvaluatePath(element, "item");
         var firstItem = items.First();
 
         // Assert: item should have InstanceType
@@ -124,10 +126,10 @@ public class ToTypedElementInstanceTypeTest
         """;
 
         var resource = ResourceJsonNode.Parse(questionnaireResponseJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to first level item
-        var level1Items = EvaluatePath(typedElement, "item");
+        var level1Items = EvaluatePath(element, "item");
         var level1Item = level1Items.First();
 
         // Assert: Level 1 item should have InstanceType
@@ -142,7 +144,7 @@ public class ToTypedElementInstanceTypeTest
         Assert.NotEmpty(level2Items);
 
         var level2Item = level2Items.First();
-        Console.WriteLine($"Level2 item: Name='{level2Item.Name}', InstanceType='{level2Item.InstanceType ?? "null"}', Definition={(level2Item.Definition != null ? $"ElementName={level2Item.Definition.ElementName}, Types={level2Item.Definition.Type?.Length ?? 0}" : "null")}");
+        Console.WriteLine($"Level2 item: Name='{level2Item.Name}', InstanceType='{level2Item.InstanceType ?? "null"}', Type={(level2Item.Type != null ? $"Info={level2Item.Type.Info}" : "null")}");
 
         // Assert: Level 2 item should have InstanceType (THIS MIGHT FAIL!)
         Assert.NotNull(level2Item);

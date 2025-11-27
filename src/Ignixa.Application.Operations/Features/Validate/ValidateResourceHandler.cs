@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
@@ -196,7 +197,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                         TerminologyService = _terminologyService
                     };
                     var state = new ValidationState();
-                    var validationResult = schema.Validate(sourceNode, settings, state);
+                    var validationResult = schema.Validate((IElement)sourceNode, settings, state);
 
                 if (!validationResult.IsValid)
                 {

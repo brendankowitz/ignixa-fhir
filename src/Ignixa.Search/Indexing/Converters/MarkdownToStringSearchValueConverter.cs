@@ -11,14 +11,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Markdown"/> to a list of <see cref="StringSearchValue"/>.
 /// </summary>
-public class MarkdownToStringSearchValueConverter : FhirTypedElementToSearchValueConverter<StringSearchValue>
+public class MarkdownToStringSearchValueConverter : FhirElementToSearchValueConverter<StringSearchValue>
 {
     public MarkdownToStringSearchValueConverter()
         : base("markdown")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         if (value?.Value == null) yield break;
 

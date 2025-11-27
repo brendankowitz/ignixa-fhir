@@ -16,8 +16,8 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 public class MappingContext : ITransformContext
 {
     private readonly Dictionary<string, object> _variables = new();
-    private readonly Dictionary<string, ITypedElement> _sources = new();
-    private readonly Dictionary<string, ITypedElement> _targets = new();
+    private readonly Dictionary<string, IElement> _sources = new();
+    private readonly Dictionary<string, IElement> _targets = new();
 
     /// <summary>
     /// Gets or sets a variable in the context.
@@ -34,25 +34,25 @@ public class MappingContext : ITransformContext
     /// <summary>
     /// Gets or sets a source element in the context.
     /// </summary>
-    public ITypedElement? GetSource(string name) =>
+    public IElement? GetSource(string name) =>
         _sources.TryGetValue(name, out var value) ? value : null;
 
-    public void SetSource(string name, ITypedElement element) =>
+    public void SetSource(string name, IElement element) =>
         _sources[name] = element;
 
     /// <summary>
     /// Gets or sets a target element in the context.
     /// </summary>
-    public ITypedElement? GetTarget(string name) =>
+    public IElement? GetTarget(string name) =>
         _targets.TryGetValue(name, out var value) ? value : null;
 
-    public void SetTarget(string name, ITypedElement element) =>
+    public void SetTarget(string name, IElement element) =>
         _targets[name] = element;
 
     /// <summary>
     /// FHIRPath evaluator for evaluating embedded FHIRPath expressions.
     /// </summary>
-    public Func<string, ITypedElement, IEnumerable<ITypedElement>>? FhirPathEvaluator { get; set; }
+    public Func<string, IElement, IEnumerable<IElement>>? FhirPathEvaluator { get; set; }
 
     /// <summary>
     /// Transform function resolver.
@@ -62,7 +62,7 @@ public class MappingContext : ITransformContext
     /// <summary>
     /// Resource creator for creating new FHIR resources.
     /// </summary>
-    public Func<string, ITypedElement>? ResourceCreator { get; set; }
+    public Func<string, IElement>? ResourceCreator { get; set; }
 
     /// <summary>
     /// ConceptMap resolver for terminology translation.

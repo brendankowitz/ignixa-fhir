@@ -43,7 +43,7 @@ public interface ITypeValidator
     /// <param name="element">The element to validate</param>
     /// <param name="expectedType">The expected type</param>
     /// <returns>Validation error if type mismatch, null if valid</returns>
-    TypeValidationError? ValidateElement(ITypedElement element, string expectedType);
+    TypeValidationError? ValidateElement(IElement element, string expectedType);
 }
 
 /// <summary>

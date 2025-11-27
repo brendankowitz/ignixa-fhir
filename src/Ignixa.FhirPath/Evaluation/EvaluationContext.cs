@@ -16,19 +16,19 @@ public class EvaluationContext
 {
     /// <summary>
     /// Environment variables available to FhirPath expressions.
-    /// Variable names map to collections of ITypedElement values.
+    /// Variable names map to collections of IElement values.
     /// </summary>
-    public IDictionary<string, IEnumerable<ITypedElement>> Environment { get; } = new Dictionary<string, IEnumerable<ITypedElement>>();
+    public IDictionary<string, IEnumerable<IElement>> Environment { get; } = new Dictionary<string, IEnumerable<IElement>>();
 
     /// <summary>
     /// The data represented by %resource variable.
     /// </summary>
-    public ITypedElement? Resource { get; set; }
+    public IElement? Resource { get; set; }
 
     /// <summary>
     /// The data represented by %rootResource variable.
     /// </summary>
-    public ITypedElement? RootResource { get; set; }
+    public IElement? RootResource { get; set; }
 
     /// <summary>
     /// Gets an environment variable value.
@@ -48,17 +48,17 @@ public class EvaluationContext
     /// </summary>
     public void SetEnvironmentVariable(string name, object value)
     {
-        if (value is ITypedElement element)
+        if (value is IElement element)
         {
-            Environment[name] = new[] { element };
+            Environment[name] = [element];
         }
-        else if (value is IEnumerable<ITypedElement> elements)
+        else if (value is IEnumerable<IElement> elements)
         {
             Environment[name] = elements;
         }
         else
         {
-            throw new ArgumentException($"Environment variable value must be ITypedElement or IEnumerable<ITypedElement>, got {value?.GetType().Name}");
+            throw new ArgumentException($"Environment variable value must be IElement or IEnumerable<IElement>, got {value?.GetType().Name}");
         }
     }
 

@@ -13,7 +13,7 @@ namespace Ignixa.Validation.Checks;
 /// <summary>
 /// Validates FHIR primitive data types (string, boolean, integer, decimal, date, etc.).
 /// Tier 2 (Spec) validator.
-/// Uses ISourceNode.Text for primitive values.
+/// Uses IElement.Value for primitive values.
 /// </summary>
 public class TypeCheck : IValidationCheck
 {
@@ -52,20 +52,21 @@ public class TypeCheck : IValidationCheck
     /// <summary>
     /// Validates element type.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var fieldNode = node.Children(_elementName).FirstOrDefault();
-
-        if (fieldNode == null)
+        var fieldChildren = element.Children(_elementName);
+        if (fieldChildren.Count == 0)
         {
             return ValidationResult.Success(); // CardinalityCheck handles missing/required fields
         }
 
-        var text = fieldNode.Text;
+        var fieldNode = fieldChildren[0];
+
+        var text = fieldNode.Value?.ToString();
         var location = fieldNode.Location;
 
         if (string.IsNullOrEmpty(text))
@@ -143,7 +144,10 @@ public class TypeCheck : IValidationCheck
         return _expectedType switch
         {
             "string" => true, // All text is valid string
-            "boolean" => text == "true" || text == "false",
+            // Boolean comparison is case-insensitive to handle both JSON "true"/"false"
+            // and .NET boolean ToString() which returns "True"/"False"
+            "boolean" => text.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        text.Equals("false", StringComparison.OrdinalIgnoreCase),
             "integer" => int.TryParse(text, out _),
             "decimal" => decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out _),
             "date" => DatePattern.IsMatch(text),

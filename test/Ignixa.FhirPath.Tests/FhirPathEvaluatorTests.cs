@@ -11,6 +11,7 @@ using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 
 namespace Ignixa.FhirPath.Tests;
@@ -23,7 +24,7 @@ public class FhirPathEvaluatorTests
 {
     private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
-    private readonly IStructureDefinitionSummaryProvider _r4Provider;
+    private readonly IFhirSchemaProvider _r4Provider;
 
     public FhirPathEvaluatorTests()
     {
@@ -31,13 +32,14 @@ public class FhirPathEvaluatorTests
     }
 
     /// <summary>
-    /// Helper method to evaluate a FHIRPath expression string against a typed element.
+    /// Helper method to evaluate a FHIRPath expression string against an IElement.
     /// </summary>
-    private IEnumerable<ITypedElement> EvaluatePath(ITypedElement element, string pathExpression)
+    private IEnumerable<IElement> EvaluatePath(IElement element, string pathExpression)
     {
         var expression = _parser.Parse(pathExpression);
         return _evaluator.Evaluate(element, expression, new EvaluationContext());
     }
+
 
     #region Choice Type Navigation Tests
 
@@ -60,10 +62,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'value' (not 'valueString')
-        var result = EvaluatePath(typedElement, "value");
+        var result = EvaluatePath(element, "value");
 
         // Assert: Should find the valueString element
         var resultList = result.ToList();
@@ -89,10 +91,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'value'
-        var result = EvaluatePath(typedElement, "value");
+        var result = EvaluatePath(element, "value");
 
         // Assert: Should find the valueInteger element
         var resultList = result.ToList();
@@ -117,10 +119,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'value'
-        var result = EvaluatePath(typedElement, "value");
+        var result = EvaluatePath(element, "value");
 
         // Assert: Should return empty collection
         Assert.Empty(result);
@@ -149,10 +151,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(string)'
-        var result = EvaluatePath(typedElement, "value.ofType(string)");
+        var result = EvaluatePath(element, "value.ofType(string)");
 
         // Assert: Should return the string value
         var resultList = result.ToList();
@@ -178,10 +180,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(integer)'
-        var result = EvaluatePath(typedElement, "value.ofType(integer)");
+        var result = EvaluatePath(element, "value.ofType(integer)");
 
         // Assert: Should return the integer value
         var resultList = result.ToList();
@@ -207,10 +209,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(string)' (type mismatch)
-        var result = EvaluatePath(typedElement, "value.ofType(string)");
+        var result = EvaluatePath(element, "value.ofType(string)");
 
         // Assert: Should return empty collection
         Assert.Empty(result);
@@ -234,10 +236,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(integer)' (type mismatch)
-        var result = EvaluatePath(typedElement, "value.ofType(integer)");
+        var result = EvaluatePath(element, "value.ofType(integer)");
 
         // Assert: Should return empty collection
         Assert.Empty(result);
@@ -262,10 +264,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(String)' with capital S
-        var result = EvaluatePath(typedElement, "value.ofType(String)");
+        var result = EvaluatePath(element, "value.ofType(String)");
 
         // Assert: Should return the string value (case-insensitive matching)
         var resultList = result.ToList();
@@ -290,10 +292,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(string)' on missing value
-        var result = EvaluatePath(typedElement, "value.ofType(string)");
+        var result = EvaluatePath(element, "value.ofType(string)");
 
         // Assert: Should return empty collection
         Assert.Empty(result);
@@ -329,10 +331,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(questionnaireResponseJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to answer and evaluate 'value.ofType(string)'
-        var items = EvaluatePath(typedElement, "item");
+        var items = EvaluatePath(element, "item");
         var firstItem = items.First();
         var answers = EvaluatePath(firstItem, "answer");
         var firstAnswer = answers.First();
@@ -371,10 +373,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(Quantity)'
-        var result = EvaluatePath(typedElement, "value.ofType(Quantity)");
+        var result = EvaluatePath(element, "value.ofType(Quantity)");
 
         // Assert: Should return the Quantity element
         var resultList = result.ToList();
@@ -406,10 +408,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'value.ofType(CodeableConcept)'
-        var result = EvaluatePath(typedElement, "value.ofType(CodeableConcept)");
+        var result = EvaluatePath(element, "value.ofType(CodeableConcept)");
 
         // Assert: Should return the CodeableConcept element
         var resultList = result.ToList();
@@ -453,10 +455,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Evaluate 'component.value.ofType(string)'
-        var result = EvaluatePath(typedElement, "component.value.ofType(string)");
+        var result = EvaluatePath(element, "component.value.ofType(string)");
 
         // Assert: Should return only the two string values
         var resultList = result.ToList();
@@ -474,7 +476,7 @@ public class FhirPathEvaluatorTests
 
     /// <summary>
     /// Test that InstanceType property is correctly set for primitive choice elements.
-    /// This validates the type name normalization fix in TypedElementOnSourceNode.
+    /// This validates the type name normalization fix in SchemaAwareElement.
     /// </summary>
     [Fact]
     public void GivenValueStringElement_WhenCheckingInstanceType_ThenReturnsLowercaseString()
@@ -491,10 +493,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'value' and check InstanceType
-        var valueElements = typedElement.Children("value").ToList();
+        var valueElements = element.Children("value").ToList();
 
         // Assert: InstanceType should be lowercase "string" not "String"
         Assert.Single(valueElements);
@@ -519,10 +521,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'value' and check InstanceType
-        var valueElements = typedElement.Children("value").ToList();
+        var valueElements = element.Children("value").ToList();
 
         // Assert: InstanceType should be lowercase "integer" not "Integer"
         Assert.Single(valueElements);
@@ -550,10 +552,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(observationJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'value' and check InstanceType
-        var valueElements = typedElement.Children("value").ToList();
+        var valueElements = element.Children("value").ToList();
 
         // Assert: InstanceType should remain capitalized "Quantity"
         Assert.Single(valueElements);
@@ -590,10 +592,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(qrJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to 'item'
-        var result = EvaluatePath(typedElement, "item");
+        var result = EvaluatePath(element, "item");
 
         // Assert: Should return 2 items
         var resultList = result.ToList();
@@ -643,10 +645,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(qrJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Navigate to nested items using item.item
-        var result = EvaluatePath(typedElement, "item.item");
+        var result = EvaluatePath(element, "item.item");
 
         // Assert: Should return 2 nested items (1.1 and 1.2)
         var resultList = result.ToList();
@@ -698,10 +700,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(qrJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Get first top-level item, then navigate to its nested items
-        var firstItem = EvaluatePath(typedElement, "item").First();
+        var firstItem = EvaluatePath(element, "item").First();
         var nestedItems = EvaluatePath(firstItem, "item");
 
         // Assert: Should return 2 nested items (1.1 and 1.2)
@@ -741,10 +743,10 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(qrJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Get first item and try to navigate to its (non-existent) nested items
-        var firstItem = EvaluatePath(typedElement, "item").First();
+        var firstItem = EvaluatePath(element, "item").First();
         var nestedItems = EvaluatePath(firstItem, "item");
 
         // Assert: Should return empty collection
@@ -793,14 +795,14 @@ public class FhirPathEvaluatorTests
         """;
 
         var resource = ResourceJsonNode.Parse(qrJson);
-        var typedElement = resource.ToTypedElement(_r4Provider);
+        var element = resource.ToElement(_r4Provider);
 
         // Act: Manually implement breadth-first traversal using 'item' path
-        var allItems = new List<ITypedElement>();
-        var queue = new Queue<ITypedElement>();
+        var allItems = new List<IElement>();
+        var queue = new Queue<IElement>();
 
         // Start with root.item
-        foreach (var item in EvaluatePath(typedElement, "item"))
+        foreach (var item in EvaluatePath(element, "item"))
         {
             queue.Enqueue(item);
         }

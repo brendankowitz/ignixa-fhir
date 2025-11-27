@@ -93,7 +93,7 @@ public interface ISearchParameterDefinitionManager
     /// </summary>
     /// <param name="searchParameters">An collection containing SearchParameter resources.</param>
     /// <param name="calculateHash">Indicates whether the search parameter hash should be recalculated</param>
-    void AddNewSearchParameters(IReadOnlyCollection<ITypedElement> searchParameters, bool calculateHash = true);
+    void AddNewSearchParameters(IReadOnlyCollection<IElement> searchParameters, bool calculateHash = true);
 
     /// <summary>
     /// Allows removal of a custom search parameter.

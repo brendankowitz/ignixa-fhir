@@ -112,7 +112,7 @@ public static class StreamingBundleSerializer
         SearchOptions searchOptions,
         string baseUrl,
         string queryString,
-        IFhirSchemaProvider? schemaProvider = null,
+        ISchema? schemaProvider = null,
         bool pretty = false,
         CancellationToken cancellationToken = default)
     {
@@ -127,7 +127,7 @@ public static class StreamingBundleSerializer
         int entryCount = 0;
         bool hasMore = false;
         int currentOffset = 0;
-        var fhirVersion = schemaProvider?.Version ?? FhirSpecification.R4;
+        var fhirVersion = schemaProvider != null ? (FhirSpecification)schemaProvider.Version : FhirSpecification.R4;
 
         // Parse current offset from existing continuation token
         if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
@@ -499,7 +499,7 @@ public static class StreamingBundleSerializer
         FhirJsonWriter writer,
         SearchEntryResult resource,
         SearchOptions? searchOptions = null,
-        IStructureDefinitionSummaryProvider? schemaProvider = null)
+        ISchema? schemaProvider = null)
     {
         if (resource.ResourceBytes.Length == 0)
         {

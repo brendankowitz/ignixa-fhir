@@ -4,6 +4,8 @@
 // </copyright>
 
 using FluentAssertions;
+using Ignixa.Abstractions;
+using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Schema;
 
@@ -15,13 +17,13 @@ namespace Ignixa.Validation.Tests.Schema;
 /// </summary>
 public class CachedValidationSchemaResolverTests
 {
-    private readonly R4StructureDefinitionSummaryProvider _provider;
+    private readonly ISchema _schema;
     private readonly StructureDefinitionSchemaResolver _innerResolver;
 
     public CachedValidationSchemaResolverTests()
     {
-        _provider = new R4StructureDefinitionSummaryProvider();
-        _innerResolver = new StructureDefinitionSchemaResolver(_provider);
+        _schema = new R4CoreSchemaProvider();
+        _innerResolver = new StructureDefinitionSchemaResolver(_schema);
     }
 
     #region Basic Caching Tests

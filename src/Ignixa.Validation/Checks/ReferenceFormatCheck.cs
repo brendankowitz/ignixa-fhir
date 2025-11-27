@@ -34,16 +34,16 @@ public class ReferenceFormatCheck : IValidationCheck
     /// <summary>
     /// Validates Reference.reference format.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var issues = new List<ValidationIssue>();
 
         // Get all instances of this Reference field (may be array)
-        var fieldNodes = node.Children(_fieldName);
+        var fieldNodes = element.Children(_fieldName);
         foreach (var fieldNode in fieldNodes)
         {
             ValidateReferenceNode(fieldNode, issues);
@@ -57,15 +57,17 @@ public class ReferenceFormatCheck : IValidationCheck
         return ValidationResult.Success();
     }
 
-    private void ValidateReferenceNode(ISourceNode referenceNode, List<ValidationIssue> issues)
+    private void ValidateReferenceNode(IElement referenceNode, List<ValidationIssue> issues)
     {
-        var referenceChild = referenceNode.Children("reference").FirstOrDefault();
-        if (referenceChild is null)
+        var referenceChildren = referenceNode.Children("reference");
+        if (referenceChildren.Count == 0)
         {
             return; // Reference without .reference property is valid (may have identifier or display only)
         }
 
-        string? reference = referenceChild.Text;
+        var referenceChild = referenceChildren[0];
+
+        string? reference = referenceChild.Value?.ToString();
         if (string.IsNullOrEmpty(reference))
         {
             return; // Empty reference handled elsewhere

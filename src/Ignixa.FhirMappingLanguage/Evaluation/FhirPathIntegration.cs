@@ -38,11 +38,11 @@ public class FhirPathIntegration
     /// <param name="expression">The FHIRPath expression to evaluate</param>
     /// <param name="element">The element to evaluate against</param>
     /// <returns>The result elements</returns>
-    public IEnumerable<ITypedElement> Evaluate(string expression, ITypedElement element)
+    public IEnumerable<IElement> Evaluate(string expression, IElement element)
     {
         if (string.IsNullOrWhiteSpace(expression))
         {
-            return Enumerable.Empty<ITypedElement>();
+            return Enumerable.Empty<IElement>();
         }
 
         try
@@ -66,7 +66,7 @@ public class FhirPathIntegration
     /// <param name="expression">The FHIRPath expression</param>
     /// <param name="element">The element to evaluate against</param>
     /// <returns>True if the condition is satisfied, false otherwise</returns>
-    public bool EvaluateBoolean(string expression, ITypedElement element)
+    public bool EvaluateBoolean(string expression, IElement element)
     {
         var results = Evaluate(expression, element).ToList();
 
@@ -86,7 +86,7 @@ public class FhirPathIntegration
     /// <param name="expression">The FHIRPath expression</param>
     /// <param name="element">The element to evaluate against</param>
     /// <returns>The scalar value or null</returns>
-    public object? EvaluateScalar(string expression, ITypedElement element)
+    public object? EvaluateScalar(string expression, IElement element)
     {
         var results = Evaluate(expression, element).ToList();
         return results.Count > 0 ? results[0].Value : null;

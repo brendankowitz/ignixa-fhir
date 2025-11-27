@@ -17,7 +17,7 @@ internal static class TreeNavigationFunctions
     /// <summary>
     /// children() - Returns all immediate children of the focus elements.
     /// </summary>
-    public static IEnumerable<ITypedElement> Children(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Children(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -31,10 +31,10 @@ internal static class TreeNavigationFunctions
     /// <summary>
     /// descendants() - Returns all descendants of the focus elements (recursive).
     /// </summary>
-    public static IEnumerable<ITypedElement> Descendants(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Descendants(IEnumerable<IElement> focus)
     {
-        var result = new List<ITypedElement>();
-        var queue = new Queue<ITypedElement>(focus);
+        List<IElement> result = [];
+        var queue = new Queue<IElement>(focus);
 
         while (queue.Count > 0)
         {

@@ -7,7 +7,6 @@ using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;

@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
@@ -79,7 +78,7 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
                 "Conditional create rejected: search criteria not selective enough for {ResourceType}",
                 request.ResourceType);
             throw new Domain.Exceptions.BadRequestException(
-                string.Format(Search.Resources.ConditionalOperationNotSelectiveEnough, request.ResourceType));
+                string.Format(Ignixa.Search.Resources.ConditionalOperationNotSelectiveEnough, request.ResourceType));
         }
 
         // 2. Get FHIR version from context

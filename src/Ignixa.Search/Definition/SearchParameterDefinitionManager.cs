@@ -264,7 +264,7 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
                 (resourceType, existingValue) => kvp.Value);
     }
 
-    public void AddNewSearchParameters(IReadOnlyCollection<ITypedElement> searchParameters, bool calculateHash = true)
+    public void AddNewSearchParameters(IReadOnlyCollection<IElement> searchParameters, bool calculateHash = true)
     {
         SearchParameterDefinitionBuilder.Build(
             searchParameters,

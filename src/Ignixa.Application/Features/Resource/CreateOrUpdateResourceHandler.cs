@@ -3,11 +3,11 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Infrastructure;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
@@ -18,6 +18,7 @@ using Ignixa.Serialization.Models;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using System.Text.Json.Nodes;
+using Ignixa.Application.Features.Search;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -225,8 +226,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            var typedElement = command.JsonNode.ToTypedElement(schemaProvider);
-            searchIndices = searchIndexer.Extract(typedElement);
+            var typedElement = command.JsonNode.ToElement(schemaProvider);
+            searchIndices = searchIndexer.Extract((IElement)typedElement);
 
             _logger.LogDebug(
                 "Extracted {Count} search indices for {ResourceType}/{Id} (FHIR {Version})",
@@ -327,8 +328,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            var typedElement = provenanceTemplate.ToTypedElement(schemaProvider);
-            searchIndices = searchIndexer.Extract(typedElement);
+            var typedElement = provenanceTemplate.ToElement(schemaProvider);
+            searchIndices = searchIndexer.Extract((IElement)typedElement);
 
             _logger.LogDebug(
                 "Extracted {Count} search indices for Provenance/{Id}",
@@ -393,7 +394,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             Depth = ValidationDepth.Spec // Use Spec-level validation for X-Provenance
         };
         var state = new ValidationState();
-        var validationResult = schema.Validate(sourceNode, settings, state);
+        var validationResult = schema.Validate((IElement)sourceNode, settings, state);
 
         if (!validationResult.IsValid)
         {

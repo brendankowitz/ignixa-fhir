@@ -4,8 +4,8 @@ using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
-using Hl7.FhirPath; // SDK 6.0 FHIRPath extension methods
-using Ignixa.Search.Infrastructure;
+using Hl7.FhirPath;
+using Ignixa.Application.Features.Search; // SDK 6.0 FHIRPath extension methods
 using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.FhirPath;
@@ -16,11 +16,13 @@ using Ignixa.Serialization.SourceNodes;
 // Ignixa FHIRPath extension methods
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using IElement = Ignixa.Abstractions.IElement;
 
 // Static using for extension methods
-using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
-using TypedElementExtensions = Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
+using SchemaAwareElementExtensions = Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
+
+#pragma warning disable CS0618
 
 namespace Ignixa.Benchmarks;
 
@@ -33,8 +35,8 @@ public class FhirPathBenchmarks
 {
     private ResourceJsonNode _ignixaPatient = null!;
     private ResourceJsonNode _ignixaObservation = null!;
-    private ITypedElement _ignixaPatientTyped = null!;
-    private ITypedElement _ignixaObservationTyped = null!;
+    private IElement _ignixaPatientTyped = null!;
+    private IElement _ignixaObservationTyped = null!;
     private SdkITypedElement _firelyPatientTyped = null!;
     private SdkITypedElement _firelyObservationTyped = null!;
     private IFhirSchemaProvider _ignixaSchemaProvider = null!;
@@ -58,8 +60,8 @@ public class FhirPathBenchmarks
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
         _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
-        _ignixaPatientTyped = TypedElementExtensions.ToTypedElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
-        _ignixaObservationTyped = TypedElementExtensions.ToTypedElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);
+        _ignixaPatientTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
+        _ignixaObservationTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);
 
         _ignixaParser = new FhirPathParser();
 
@@ -83,7 +85,7 @@ public class FhirPathBenchmarks
 
     [Benchmark(Description = "Ignixa: Simple FHIRPath (Patient.name.family)")]
     [BenchmarkCategory("Simple")]
-    public ITypedElement[] IgnixaSimple()
+    public IElement[] IgnixaSimple()
     {
         return _ignixaPatientTyped.Select("Patient.name.family").ToArray();
     }
@@ -99,7 +101,7 @@ public class FhirPathBenchmarks
 
     [Benchmark(Description = "Ignixa: Array indexing (Patient.name[0].given)")]
     [BenchmarkCategory("Array")]
-    public ITypedElement[] IgnixaArray()
+    public IElement[] IgnixaArray()
     {
         return _ignixaPatientTyped.Select("Patient.name[0].given").ToArray();
     }
@@ -115,7 +117,7 @@ public class FhirPathBenchmarks
 
     [Benchmark(Description = "Ignixa: Complex navigation (where + first)")]
     [BenchmarkCategory("Complex")]
-    public ITypedElement[] IgnixaComplex()
+    public IElement[] IgnixaComplex()
     {
         return _ignixaPatientTyped.Select("Patient.name.where(use='official').given.first()").ToArray();
     }
@@ -131,7 +133,7 @@ public class FhirPathBenchmarks
 
     [Benchmark(Description = "Ignixa: Search parameter extraction (component value)")]
     [BenchmarkCategory("SearchParam")]
-    public ITypedElement[] IgnixaSearchParam()
+    public IElement[] IgnixaSearchParam()
     {
         return _ignixaObservationTyped.Select("Observation.component.where(code.coding.code='8480-6').valueQuantity.value").ToArray();
     }

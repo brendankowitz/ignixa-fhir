@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Extension methods for ITypedElement to evaluate FhirPath expressions.
+ * Extension methods for IElement to evaluate FhirPath expressions.
  * Provides API compatibility with Firely SDK FhirPath implementation.
  */
 
@@ -13,7 +13,7 @@ using Ignixa.FhirPath.Parser;
 namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
-/// Extension methods for evaluating FhirPath expressions on ITypedElement.
+/// Extension methods for evaluating FhirPath expressions on IElement.
 /// Integrates both AST caching and compiled delegate caching for optimal performance.
 /// Compiled delegates provide 7x speedup for common patterns; complex expressions fall back to interpreter.
 /// </summary>
@@ -25,7 +25,7 @@ public static class TypedElementExtensions
     // Thread-safe cache for compiled delegates (Expression -> compiled delegate)
     // Key: Expression object hash code and expression string combined
     // Value: Compiled delegate or null if compilation not supported
-    private static readonly ConcurrentDictionary<string, Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>?> _delegateCache = new();
+    private static readonly ConcurrentDictionary<string, Func<IElement, EvaluationContext, IEnumerable<IElement>>?> _delegateCache = new();
 
     // Shared compiler instances
     private static readonly FhirPathParser AstParser = new FhirPathParser(preserveTrivia: false);
@@ -46,7 +46,7 @@ public static class TypedElementExtensions
     /// Attempts to compile an AST expression to a delegate and caches the result.
     /// Returns the compiled delegate if successful, null if the expression pattern is not supported.
     /// </summary>
-    private static Func<ITypedElement, EvaluationContext, IEnumerable<ITypedElement>>? CompileExpressionToDelegate(Expression ast, string expressionString)
+    private static Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileExpressionToDelegate(Expression ast, string expressionString)
     {
         // Use expression string as cache key (stable across invocations)
         return _delegateCache.GetOrAdd(expressionString, _ => _delegateCompiler.TryCompile(ast));
@@ -60,7 +60,7 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Collection of elements that match the expression</returns>
-    public static IEnumerable<ITypedElement> Select(this ITypedElement input, string expression, EvaluationContext? context = null)
+    public static IEnumerable<IElement> Select(this IElement input, string expression, EvaluationContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentException.ThrowIfNullOrWhiteSpace(expression);
@@ -91,7 +91,7 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Single scalar value, or null if expression returns empty/multiple values</returns>
-    public static object? Scalar(this ITypedElement input, string expression, EvaluationContext? context = null)
+    public static object? Scalar(this IElement input, string expression, EvaluationContext? context = null)
     {
         var results = input.Select(expression, context).ToList();
 
@@ -111,7 +111,7 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>True if expression evaluates to true, false otherwise</returns>
-    public static bool Predicate(this ITypedElement input, string expression, EvaluationContext? context = null)
+    public static bool Predicate(this IElement input, string expression, EvaluationContext? context = null)
     {
         return input.IsTrue(expression, context);
     }
@@ -123,7 +123,7 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>True if expression evaluates to a single true boolean value</returns>
-    public static bool IsTrue(this ITypedElement input, string expression, EvaluationContext? context = null)
+    public static bool IsTrue(this IElement input, string expression, EvaluationContext? context = null)
     {
         var results = input.Select(expression, context).ToList();
         return results.Count == 1 && results[0].Value is bool b && b;
@@ -137,7 +137,7 @@ public static class TypedElementExtensions
     /// <param name="value">Expected boolean value</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>True if expression evaluates to the specified boolean value</returns>
-    public static bool IsBoolean(this ITypedElement input, string expression, bool value, EvaluationContext? context = null)
+    public static bool IsBoolean(this IElement input, string expression, bool value, EvaluationContext? context = null)
     {
         var results = input.Select(expression, context).ToList();
         return results.Count == 1 && results[0].Value is bool b && b == value;

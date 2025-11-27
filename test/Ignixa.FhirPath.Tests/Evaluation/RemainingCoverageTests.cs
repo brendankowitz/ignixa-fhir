@@ -210,16 +210,16 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public void GivenPrimitiveElement_WhenAccessDefinition_ThenReturnsNull()
+    public void GivenPrimitiveElement_WhenAccessType_ThenReturnsNull()
     {
-        // This tests the PrimitiveElement.Definition property
+        // This tests the PrimitiveElement.Type property
         var expr = _parser.Parse("true");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).Single();
 
         Assert.NotNull(result);
-        Assert.Null(result.Definition);
+        Assert.Null(result.Type);
     }
 
     [Fact]
@@ -281,38 +281,38 @@ public class RemainingCoverageTests
 
     #region Helper Methods
 
-    private ITypedElement CreateIntegerElement(int value)
+    private IElement CreateIntegerElement(int value)
     {
-        return new PrimitiveTypedElement(value, "integer");
+        return new PrimitiveElement(value, "integer");
     }
 
-    private ITypedElement CreatePatientWithMultipleNames()
+    private IElement CreatePatientWithMultipleNames()
     {
-        var name1Children = new List<ITypedElement>
+        var name1Children = new List<IElement>
         {
-            new PrimitiveTypedElement("John", "string", "given"),
-            new PrimitiveTypedElement("Smith", "string", "family")
+            new PrimitiveElement("John", "string", "given"),
+            new PrimitiveElement("Smith", "string", "family")
         };
 
-        var name2Children = new List<ITypedElement>
+        var name2Children = new List<IElement>
         {
-            new PrimitiveTypedElement("Johnny", "string", "given"),
-            new PrimitiveTypedElement("Smith", "string", "family")
+            new PrimitiveElement("Johnny", "string", "given"),
+            new PrimitiveElement("Smith", "string", "family")
         };
 
-        var children = new List<ITypedElement>
+        var children = new List<IElement>
         {
-            new ComplexTypedElement("name", "HumanName", name1Children),
-            new ComplexTypedElement("name", "HumanName", name2Children),
-            new PrimitiveTypedElement("male", "code", "gender")
+            new ComplexElement("name", "HumanName", name1Children),
+            new ComplexElement("name", "HumanName", name2Children),
+            new PrimitiveElement("male", "code", "gender")
         };
 
-        return new ComplexTypedElement("Patient", "Patient", children);
+        return new ComplexElement("Patient", "Patient", children);
     }
 
-    private class PrimitiveTypedElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
-        public PrimitiveTypedElement(object value, string type, string? name = null)
+        public PrimitiveElement(object value, string type, string? name = null)
         {
             Value = value;
             InstanceType = type;
@@ -321,18 +321,20 @@ public class RemainingCoverageTests
 
         public string Name { get; }
         public string InstanceType { get; }
-        public object Value { get; }
+        public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
-    private class ComplexTypedElement : ITypedElement
+    private class ComplexElement : IElement
     {
-        private readonly List<ITypedElement> _children;
+        private readonly List<IElement> _children;
 
-        public ComplexTypedElement(string name, string type, List<ITypedElement> children)
+        public ComplexElement(string name, string type, List<IElement> children)
         {
             Name = name;
             InstanceType = type;
@@ -343,17 +345,19 @@ public class RemainingCoverageTests
         public string InstanceType { get; }
         public object? Value => null;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             if (name == null)
             {
                 return _children;
             }
 
-            return _children.Where(c => c.Name == name);
+            return _children.Where(c => c.Name == name).ToList();
         }
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

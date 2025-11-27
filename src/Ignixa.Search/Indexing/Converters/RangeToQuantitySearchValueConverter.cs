@@ -12,19 +12,19 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Range"/> to a list of <see cref="QuantitySearchValue"/>.
 /// </summary>
-public class RangeToQuantitySearchValueConverter : FhirTypedElementToSearchValueConverter<QuantitySearchValue>
+public class RangeToQuantitySearchValueConverter : FhirElementToSearchValueConverter<QuantitySearchValue>
 {
     public RangeToQuantitySearchValueConverter()
         : base("Range")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        var highValue = (ITypedElement)value.Scalar("high");
-        var lowValue = (ITypedElement)value.Scalar("low");
+        var highValue = value.Scalar("high") as IElement;
+        var lowValue = value.Scalar("low") as IElement;
 
-        ITypedElement quantityRepresentativeValue = lowValue ?? highValue;
+        IElement quantityRepresentativeValue = lowValue ?? highValue;
 
         if (quantityRepresentativeValue != null)
         {

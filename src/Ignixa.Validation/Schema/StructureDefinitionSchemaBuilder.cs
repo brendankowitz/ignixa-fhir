@@ -13,7 +13,7 @@ using Ignixa.Validation.Checks;
 namespace Ignixa.Validation.Schema;
 
 /// <summary>
-/// Builds ValidationSchema objects from IStructureDefinitionSummaryProvider metadata.
+/// Builds ValidationSchema objects from ISchema metadata.
 /// Automates the creation of validation checks (RequiredField, Cardinality, Type, Reference)
 /// from FHIR StructureDefinition metadata.
 /// </summary>
@@ -31,51 +31,55 @@ public class StructureDefinitionSchemaBuilder
     }
 
     /// <summary>
-    /// Builds a ValidationSchema from a StructureDefinition summary.
+    /// Builds a ValidationSchema from a type definition.
     /// </summary>
-    /// <param name="summary">The StructureDefinition summary containing element metadata.</param>
-    /// <param name="provider">The provider used to resolve type references and build nested schemas.</param>
+    /// <param name="typeDefinition">The type definition containing element metadata.</param>
+    /// <param name="schema">The schema used to resolve type references and build nested schemas.</param>
     /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
-    /// <returns>A ValidationSchema with checks derived from the StructureDefinition metadata.</returns>
-    /// <exception cref="ArgumentNullException">Thrown if summary or provider is null.</exception>
+    /// <returns>A ValidationSchema with checks derived from the type definition metadata.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if typeDefinition or schema is null.</exception>
     public ValidationSchema BuildSchema(
-        IStructureDefinitionSummary summary,
-        IStructureDefinitionSummaryProvider provider,
+        IType typeDefinition,
+        ISchema schema,
         ITerminologyService? terminologyService = null)
     {
-        ArgumentNullException.ThrowIfNull(summary);
-        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(typeDefinition);
+        ArgumentNullException.ThrowIfNull(schema);
 
-        var elements = summary.GetElements();
+        var elements = typeDefinition.Children;
 
         // Tier 1 (Fast): Universal checks - always run regardless of tier
         // Includes basic cardinality and type checks to align with Microsoft FHIR Server default
-        var universalChecks = new List<IValidationCheck>
+        var universalChecks = new List<IValidationCheck>();
+
+        // Only add resource-level checks for actual FHIR resources, not BackboneElements or complex datatypes
+        // BackboneElements (e.g., AuditEvent.Agent) and complex types (e.g., Address) don't have resourceType
+        if (typeDefinition.Info.IsResource)
         {
-            new JsonStructureCheck(),
-            new NarrativeCheck()
-        };
+            universalChecks.Add(new JsonStructureCheck());
+            universalChecks.Add(new NarrativeCheck());
+        }
 
         // Extract cardinality checks (moved to Fast tier for Microsoft FHIR Server alignment)
         // Cardinality checks enforce both minimum (required fields have min=1) and maximum cardinality
         // This eliminates the need for a separate RequiredFieldCheck
-        // Use explicit Min/Max from IExtendedElementMetadata if available, otherwise infer from IsRequired/IsCollection
-        // IMPORTANT: Skip xhtml primitive elements (e.g., div.value) - xhtml stores content directly, not in a .value child
+        // Use explicit Min/Max from ITypeExtended if available, otherwise infer from IsRequired/IsCollection
+        // IMPORTANT: Skip xhtml elements (e.g., div) - xhtml stores content directly, not in a .value child
         var cardinalityChecks = elements
-            .Where(e => e.DefaultTypeName != "xhtml") // Skip xhtml elements - they don't have .value children
+            .Where(e => GetTypeName(e) != "xhtml") // Skip xhtml elements - they don't have .value children
             .Select(e =>
             {
                 // Try to get explicit cardinality from extended metadata
-                if (e is IExtendedElementMetadata extended)
+                if (e is ITypeExtended extended)
                 {
-                    int min = extended.Min ?? (e.IsRequired ? 1 : 0);
-                    int? max = extended.Max == "*" ? null : (extended.Max != null ? int.Parse(extended.Max) : (e.IsCollection ? (int?)null : 1));
-                    return new CardinalityCheck(e.ElementName, min, max);
+                    int min = extended.Min;
+                    int? max = extended.Max == "*" ? null : int.Parse(extended.Max);
+                    return new CardinalityCheck(e.Info.Name, min, max);
                 }
 
                 // Fallback to inferred cardinality
                 return new CardinalityCheck(
-                    e.ElementName,
+                    e.Info.Name,
                     min: e.IsRequired ? 1 : 0,
                     max: e.IsCollection ? (int?)null : 1);
             });
@@ -83,42 +87,50 @@ public class StructureDefinitionSchemaBuilder
 
         // Extract type checks (only for primitive types, moved to Fast tier)
         // This covers ID format validation and other primitive type checks
+        // Use element name as the first parameter, and the actual FHIR type from ITypeExtended
         var typeChecks = elements
-            .Where(e => !string.IsNullOrEmpty(e.DefaultTypeName))
-            .Where(e => IsPrimitiveType(e.DefaultTypeName!))
-            .Select(e => new TypeCheck(e.ElementName, e.DefaultTypeName!));
+            .Where(e => e.Info.IsPrimitive)
+            .Select(e => new TypeCheck(e.Info.Name, GetTypeName(e)));
         universalChecks.AddRange(typeChecks);
 
         // Tier 2 (Spec): Schema-driven checks from StructureDefinition
         var specChecks = new List<IValidationCheck>();
 
-        // Extract reference format checks
+        // Extract reference format checks - check the type name, not element name
         var referenceChecks = elements
-            .Where(e => e.DefaultTypeName == "Reference")
-            .Select(e => new ReferenceFormatCheck(e.ElementName));
+            .Where(e => GetTypeName(e) == "Reference")
+            .Select(e => new ReferenceFormatCheck(e.Info.Name));
         specChecks.AddRange(referenceChecks);
 
-        // Extract coding structure checks
+        // Extract coding structure checks - check the type name, not element name
         var codingChecks = elements
-            .Where(e => e.DefaultTypeName is "CodeableConcept" or "Coding")
-            .Select(e => new CodingStructureCheck(e.ElementName));
+            .Where(e => GetTypeName(e) is "CodeableConcept" or "Coding")
+            .Select(e => new CodingStructureCheck(e.Info.Name));
         specChecks.AddRange(codingChecks);
 
         // Extract choice element checks (value[x] pattern)
         var choiceChecks = elements
-            .Where(e => e.IsChoiceElement)
+            .Where(e => e.Info.IsChoiceElement)
             .Select(e =>
             {
                 // Extract base name (remove [x] suffix if present)
-                var baseName = e.ElementName.EndsWith("[x]", StringComparison.Ordinal)
-                    ? e.ElementName.Substring(0, e.ElementName.Length - 3)
-                    : e.ElementName;
+                var baseName = e.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+                    ? e.Info.Name.Substring(0, e.Info.Name.Length - 3)
+                    : e.Info.Name;
 
-                // Get allowed types from Type array
-                var allowedTypes = e.Type?
-                    .Select(t => t.GetTypeName())
-                    .Where(name => !string.IsNullOrEmpty(name))
-                    .ToArray() ?? Array.Empty<string>();
+                // Get allowed types from Types property (ITypeExtended)
+                string[] allowedTypes;
+                if (e is ITypeExtended extended)
+                {
+                    allowedTypes = extended.Types
+                        .Select(t => t.Code)
+                        .Where(name => !string.IsNullOrEmpty(name))
+                        .ToArray();
+                }
+                else
+                {
+                    allowedTypes = Array.Empty<string>();
+                }
 
                 return new ChoiceElementCheck(baseName, allowedTypes);
             });
@@ -126,42 +138,42 @@ public class StructureDefinitionSchemaBuilder
 
         // Extract extension structure checks
         var extensionChecks = elements
-            .Where(e => e.DefaultTypeName == "Extension")
-            .Select(e => new ExtensionStructureCheck(e.ElementName));
+            .Where(e => e.Info.Name == "Extension")
+            .Select(e => new ExtensionStructureCheck(e.Info.Name));
         specChecks.AddRange(extensionChecks);
 
-        // Extract fixed value checks from IExtendedElementMetadata
+        // Extract fixed value checks from ITypeExtended
         var fixedValueChecks = elements
-            .Where(e => e is IExtendedElementMetadata extended && !string.IsNullOrEmpty(extended.FixedValue))
+            .Where(e => e is ITypeExtended extended && extended.FixedValue != null)
             .Select(e =>
             {
-                var extended = (IExtendedElementMetadata)e;
-                return new FixedValueCheck(e.ElementName, extended.FixedValue!);
+                var extended = (ITypeExtended)e;
+                return new FixedValueCheck(e.Info.Name, extended.FixedValue!.ToString()!);
             });
         specChecks.AddRange(fixedValueChecks);
 
-        // Extract pattern checks from IExtendedElementMetadata
+        // Extract pattern checks from ITypeExtended
         var patternChecks = elements
-            .Where(e => e is IExtendedElementMetadata extended && !string.IsNullOrEmpty(extended.PatternValue))
+            .Where(e => e is ITypeExtended extended && extended.PatternValue != null)
             .Select(e =>
             {
-                var extended = (IExtendedElementMetadata)e;
-                return new PatternCheck(e.ElementName, extended.PatternValue!);
+                var extended = (ITypeExtended)e;
+                return new PatternCheck(e.Info.Name, extended.PatternValue!.ToString()!);
             });
         specChecks.AddRange(patternChecks);
 
-        // Extract binding checks from IExtendedElementMetadata (only if terminology service is provided)
+        // Extract binding checks from ITypeExtended (only if terminology service is provided)
         if (terminologyService != null)
         {
             var bindingChecks = elements
-                .Where(e => e is IExtendedElementMetadata extended && extended.Binding != null)
+                .Where(e => e is ITypeExtended extended && extended.Binding != null)
                 .Select(e =>
                 {
-                    var extended = (IExtendedElementMetadata)e;
+                    var extended = (ITypeExtended)e;
                     var binding = extended.Binding!;
                     return new BindingCheck(
-                        e.ElementName,
-                        binding.ValueSetUrl,
+                        e.Info.Name,
+                        binding.ValueSet ?? string.Empty,
                         binding.Strength,
                         terminologyService);
                 });
@@ -169,22 +181,22 @@ public class StructureDefinitionSchemaBuilder
         }
 
         // Extract nested complex type checks (BackboneElement, complex datatypes)
-        var nestedTypeChecks = ExtractNestedTypeChecks(elements.ToArray(), summary, provider);
+        var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema);
         specChecks.AddRange(nestedTypeChecks);
 
         // Extract unknown property check (only first-level elements)
         var allPropertyNames = elements
-            .Select(e => e.ElementName)
+            .Select(e => e.Info.Name)
             .Where(name => !string.IsNullOrEmpty(name) && !name.Contains('.', StringComparison.Ordinal))
             .ToArray();
 
         // Extract choice element base names for proper validation
         // Some StructureDefinitions store choice elements with just the base name (e.g., "value" not "value[x]")
         var choiceElementBases = elements
-            .Where(e => e.IsChoiceElement)
-            .Select(e => e.ElementName.EndsWith("[x]", StringComparison.Ordinal)
-                ? e.ElementName.Substring(0, e.ElementName.Length - 3)
-                : e.ElementName)
+            .Where(e => e.Info.IsChoiceElement)
+            .Select(e => e.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+                ? e.Info.Name.Substring(0, e.Info.Name.Length - 3)
+                : e.Info.Name)
             .Distinct()
             .ToArray();
 
@@ -193,19 +205,19 @@ public class StructureDefinitionSchemaBuilder
         // Tier 3 (Profile): Advanced checks - FHIRPath invariants, slicing, advanced terminology
         var profileChecks = new List<IValidationCheck>();
 
-        // Extract FHIRPath invariant checks from IExtendedElementMetadata
+        // Extract FHIRPath invariant checks from ITypeExtended
         // This includes constraints like ele-1, dom-1, resource-specific invariants
         // Moved to Profile tier to avoid false positives on minimal resources
         // Constraints are scoped to the current resource type (see ExtractInvariantChecks for filtering)
-        var invariantChecks = ExtractInvariantChecks(elements.ToArray(), summary, provider, _parser);
+        var invariantChecks = ExtractInvariantChecks(elements, typeDefinition, schema, _parser);
         profileChecks.AddRange(invariantChecks);
 
         // Build the canonical URL from the type name
-        var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{summary.TypeName}";
+        var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
 
         return new ValidationSchema(
             canonicalUrl: canonicalUrl,
-            resourceType: summary.TypeName,
+            resourceType: typeDefinition.Info.Name,
             universalChecks: universalChecks,
             specChecks: specChecks,
             profileChecks: profileChecks);
@@ -213,18 +225,18 @@ public class StructureDefinitionSchemaBuilder
 
     /// <summary>
     /// Extracts FHIRPath invariant checks from element metadata.
-    /// Constraints are provided by IExtendedElementMetadata interface.
+    /// Constraints are provided by ITypeExtended interface.
     /// Only includes constraints that apply to the resource type being validated.
     /// </summary>
     /// <param name="elements">The element definitions to extract constraints from.</param>
-    /// <param name="summary">The structure definition being built (for scoping constraints to correct resource type).</param>
-    /// <param name="provider">The structure definition provider for FHIRPath evaluation.</param>
+    /// <param name="typeDefinition">The type definition being built (for scoping constraints to correct resource type).</param>
+    /// <param name="schema">The schema for FHIRPath evaluation.</param>
     /// <param name="parser">The FhirPath compiler for parsing constraint expressions.</param>
     /// <returns>A collection of FhirPathInvariantCheck instances.</returns>
     private static IEnumerable<IValidationCheck> ExtractInvariantChecks(
-        IElementDefinitionSummary[] elements,
-        IStructureDefinitionSummary summary,
-        IStructureDefinitionSummaryProvider provider,
+        IReadOnlyList<IType> elements,
+        IType typeDefinition,
+        ISchema schema,
         FhirPathParser parser)
     {
         var checks = new List<IValidationCheck>();
@@ -236,13 +248,13 @@ public class StructureDefinitionSchemaBuilder
         foreach (var element in elements)
         {
             // Check if this element has extended metadata with constraints
-            if (element is not IExtendedElementMetadata extendedMetadata)
+            if (element is not ITypeExtended extendedMetadata)
             {
                 continue;
             }
 
             var constraints = extendedMetadata.Constraints;
-            if (constraints == null || constraints.Length == 0)
+            if (constraints == null || constraints.Count == 0)
             {
                 continue;
             }
@@ -256,22 +268,30 @@ public class StructureDefinitionSchemaBuilder
                     continue;
                 }
 
-                // ✅ Filter constraints by AppliesTo scope
-                // Only include constraints that either:
-                // - Apply to all resources/types (AppliesTo is empty), OR
-                // - Explicitly apply to this resource type
-                // This prevents constraints like ext-1 (Extension-only) from being applied to MedicationRequest
-                if (constraint.AppliesTo.Count > 0 && !constraint.AppliesTo.Contains(summary.TypeName))
+                // Cast to concrete ConstraintDefinition to access AppliesTo property
+                // The IConstraint interface doesn't have AppliesTo yet, but the concrete implementation does
+                // Note: We cast through object because IConstraint (Abstractions) and ConstraintDefinition (Specification)
+                // are not directly related in the type hierarchy, but the runtime type from codegen is ConstraintDefinition
+                var constraintObj = (object)constraint;
+                if (constraintObj is Specification.ConstraintDefinition constraintDef)
                 {
-                    continue; // Constraint doesn't apply to this resource type
+                    // ✅ Filter constraints by AppliesTo scope
+                    // Only include constraints that either:
+                    // - Apply to all resources/types (AppliesTo is empty), OR
+                    // - Explicitly apply to this resource type
+                    // This prevents constraints like ext-1 (Extension-only) from being applied to MedicationRequest
+                    if (constraintDef.AppliesTo.Count > 0 && !constraintDef.AppliesTo.Contains(typeDefinition.Info.Name))
+                    {
+                        continue; // Constraint doesn't apply to this resource type
+                    }
+
+                    seenConstraints.Add(constraint.Key);
+
+                    // Create FhirPathInvariantCheck for this constraint
+                    // Compiler is passed in from builder instance (shared across all checks)
+                    var check = new FhirPathInvariantCheck(constraintDef, schema, parser);
+                    checks.Add(check);
                 }
-
-                seenConstraints.Add(constraint.Key);
-
-                // Create FhirPathInvariantCheck for this constraint
-                // Compiler is passed in from builder instance (shared across all checks)
-                var check = new FhirPathInvariantCheck(constraint, provider, parser);
-                checks.Add(check);
             }
         }
 
@@ -283,22 +303,31 @@ public class StructureDefinitionSchemaBuilder
     /// Recursively builds schemas for nested types and creates validation checks.
     /// </summary>
     /// <param name="elements">The element definitions to extract nested types from.</param>
-    /// <param name="summary">The parent StructureDefinition summary (for building nested type names).</param>
-    /// <param name="provider">The structure definition provider for resolving nested types.</param>
+    /// <param name="typeDefinition">The parent type definition (for building nested type names).</param>
+    /// <param name="schema">The schema for resolving nested types.</param>
     /// <returns>A collection of NestedComplexTypeCheck instances.</returns>
     private static IEnumerable<IValidationCheck> ExtractNestedTypeChecks(
-        IElementDefinitionSummary[] elements,
-        IStructureDefinitionSummary summary,
-        IStructureDefinitionSummaryProvider provider)
+        IReadOnlyList<IType> elements,
+        IType typeDefinition,
+        ISchema schema)
     {
         var checks = new List<IValidationCheck>();
 
         foreach (var element in elements)
         {
-            // Skip if not a complex type
-            var typeName = element.DefaultTypeName;
-            if (string.IsNullOrEmpty(typeName) || IsPrimitiveType(typeName))
+            // Skip if primitive type
+            if (element.Info.IsPrimitive)
             {
+                continue;
+            }
+
+            // Get the type name from extended metadata using GetTypeName helper
+            var typeName = GetTypeName(element);
+
+            if (string.IsNullOrEmpty(typeName) || typeName == element.Info.Name)
+            {
+                // If no type found or type is same as element name (no extended metadata), skip
+                // This happens for elements without ITypeExtended metadata
                 continue;
             }
 
@@ -314,7 +343,7 @@ public class StructureDefinitionSchemaBuilder
             if (typeName == "BackboneElement")
             {
                 // BackboneElement: ResourceType.ElementName (e.g., "AuditEvent.Agent")
-                nestedTypeName = $"{summary.TypeName}.{CapitalizeFirst(element.ElementName)}";
+                nestedTypeName = $"{typeDefinition.Info.Name}.{CapitalizeFirst(element.Info.Name)}";
             }
             else
             {
@@ -323,8 +352,8 @@ public class StructureDefinitionSchemaBuilder
             }
 
             // Try to get the nested type schema
-            var nestedSummary = provider.Provide(nestedTypeName);
-            if (nestedSummary == null)
+            var nestedTypeDefinition = schema.GetTypeDefinition(nestedTypeName);
+            if (nestedTypeDefinition == null)
             {
                 // Nested type not found - may be older FHIR version or unsupported type
                 // Skip silently to avoid breaking existing validations
@@ -333,10 +362,10 @@ public class StructureDefinitionSchemaBuilder
 
             // Build the nested schema
             var nestedBuilder = new StructureDefinitionSchemaBuilder();
-            var nestedSchema = nestedBuilder.BuildSchema(nestedSummary, provider);
+            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition, schema);
 
             // Create the nested type check
-            var check = new NestedComplexTypeCheck(element.ElementName, element.IsCollection, nestedSchema);
+            var check = new NestedComplexTypeCheck(element.Info.Name, element.IsCollection, nestedSchema);
             checks.Add(check);
         }
 
@@ -356,6 +385,34 @@ public class StructureDefinitionSchemaBuilder
         }
 
         return char.ToUpperInvariant(str[0]) + str.Substring(1);
+    }
+
+    /// <summary>
+    /// Gets the FHIR type name from an element definition.
+    /// For elements with ITypeExtended, returns DefaultTypeName or Types[0].Code.
+    /// Falls back to Info.Name for elements without extended metadata.
+    /// </summary>
+    /// <param name="element">The element to get the type name from.</param>
+    /// <returns>The FHIR type name.</returns>
+    private static string GetTypeName(IType element)
+    {
+        if (element is ITypeExtended extended)
+        {
+            // Use DefaultTypeName if available
+            if (!string.IsNullOrEmpty(extended.DefaultTypeName))
+            {
+                return extended.DefaultTypeName;
+            }
+
+            // Use first type from Types array if available
+            if (extended.Types.Count > 0)
+            {
+                return extended.Types[0].Code;
+            }
+        }
+
+        // Fall back to Info.Name (works for top-level types, not child elements)
+        return element.Info.Name;
     }
 
     /// <summary>

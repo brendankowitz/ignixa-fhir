@@ -24,6 +24,8 @@ using Ignixa.DataLayer.InMemoryIndex;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Specification;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Definition;
 using Ignixa.Specification;
@@ -31,11 +33,11 @@ using Ignixa.Domain;
 using Ignixa.Domain.Constants;
 // using Ignixa.Validation.SourceNodeValidation; // Removed - migrating to new FastValidator in Phase 3
 using Ignixa.Application.Infrastructure;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Models;
 using Ignixa.FhirPath.Parser;
+using Ignixa.PackageManagement.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.SqlOnFhir;
 using Microsoft.EntityFrameworkCore;
@@ -473,7 +475,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
             options,
             c.Resolve<IPackageResourceRepository>(),
             c.Resolve<Ignixa.Abstractions.IPackageResourceProvider>(),
-            c.Resolve<Ignixa.Specification.ICompositeSchemaProviderRegistry>());
+            c.Resolve<ICompositeSchemaProviderRegistry>());
     })
     .SingleInstance();
 
@@ -608,8 +610,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .AsSelf()
         .SingleInstance();
 
-    // Register PackageResourceProvider (converts package JSON to IStructureDefinitionSummary)
-    containerBuilder.RegisterType<Ignixa.Specification.PackageResourceProvider>()
+    // Register PackageResourceProvider (converts package JSON to IType)
+    containerBuilder.RegisterType<PackageResourceProvider>()
         .As<Ignixa.Abstractions.IPackageResourceProvider>()
         .SingleInstance();
 
@@ -619,7 +621,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // Uses FhirVersionContext.GetSchemaProvider(version, tenantId) for composite provider
     containerBuilder.Register<Func<FhirSpecification, int, Ignixa.Validation.Abstractions.IValidationSchemaResolver>>(c =>
         {
-            var versionContext = c.Resolve<Ignixa.Search.Infrastructure.IFhirVersionContext>();
+            var versionContext = c.Resolve<IFhirVersionContext>();
             var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();
 
             return (version, tenantId) =>
@@ -627,6 +629,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
                 // Get tenant-aware schema provider (includes custom resource types from loaded packages)
                 var schemaProvider = versionContext.GetSchemaProvider(version, tenantId);
 
+                // Pass ISchema directly to StructureDefinitionSchemaResolver (no longer needs adapter)
                 var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(schemaProvider, builder);
                 return new Ignixa.Validation.Schema.CachedValidationSchemaResolver(resolver);
             };
@@ -714,7 +717,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
         // Configure NPM package loader options (allows overriding registry URL for testing)
         // Can be configured via appsettings.json: PackageManagement:NpmRegistry:RegistryUrl
-        var npmOptions = new Ignixa.Abstractions.NpmPackageLoaderOptions
+        var npmOptions = new NpmPackageLoaderOptions
         {
             RegistryUrl = configuration.GetValue<string>(
                 "PackageManagement:NpmRegistry:RegistryUrl",
@@ -798,7 +801,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         var loggerFactory = c.Resolve<ILoggerFactory>();
 
         // Configure NPM package search options (same registry URL as package loader)
-        var npmOptions = new Ignixa.Abstractions.NpmPackageLoaderOptions
+        var npmOptions = new NpmPackageLoaderOptions
         {
             RegistryUrl = configuration.GetValue<string>(
                 "PackageManagement:NpmRegistry:RegistryUrl",
@@ -842,9 +845,9 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // Register composite schema provider registry for cache invalidation
     // Uses 1 second debounce delay to batch invalidations during bulk package loads
-    containerBuilder.Register<Ignixa.Specification.ICompositeSchemaProviderRegistry>(c =>
-        new Ignixa.Specification.CompositeSchemaProviderRegistry(
-            c.Resolve<ILogger<Ignixa.Specification.CompositeSchemaProviderRegistry>>(),
+    containerBuilder.Register<ICompositeSchemaProviderRegistry>(c =>
+        new CompositeSchemaProviderRegistry(
+            c.Resolve<ILogger<CompositeSchemaProviderRegistry>>(),
             debounceDelay: TimeSpan.FromSeconds(1)))
         .SingleInstance();
 

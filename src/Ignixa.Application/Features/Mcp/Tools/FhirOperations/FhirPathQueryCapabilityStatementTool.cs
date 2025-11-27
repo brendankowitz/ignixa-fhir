@@ -11,15 +11,17 @@ using ModelContextProtocol.Server;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Features.Metadata;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
+
+#pragma warning disable CS0618 // Type or member is obsolete
 
 namespace Ignixa.Application.Features.Mcp.Tools.FhirOperations;
 
@@ -96,16 +98,16 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
             // Get structure provider from version context
             var structureProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
 
-            // Convert CapabilityStatement to ITypedElement for evaluation
-            var typedElement = capabilityStatement.ToTypedElement(structureProvider);
+            // Convert CapabilityStatement to IElement for evaluation
+            var typedElement = capabilityStatement.ToElement(structureProvider);
 
             // Evaluate FHIRPath expression against the CapabilityStatement
-            var evalResults = _evaluator.Evaluate(typedElement, expression);
+            var evalResults = _evaluator.Evaluate((IElement)typedElement, expression);
 
             // Convert results to serializable objects
             foreach (var resultElement in evalResults)
             {
-                results.Add(ConvertTypedElementToSerializable(resultElement));
+                results.Add(ConvertElementToSerializable((IElement)resultElement));
             }
         }
         catch (Exception ex)
@@ -147,14 +149,14 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
     }
 
     /// <summary>
-    /// Convert an ITypedElement to a serializable object (for JSON response).
+    /// Convert an IElement to a serializable object (for JSON response).
     /// </summary>
-    private static object ConvertTypedElementToSerializable(ITypedElement element)
+    private static object ConvertElementToSerializable(IElement element)
     {
         // Try to extract the annotation (JsonNode) if available
-        if (element is IAnnotated annotated)
+        if (element is ISourceNode sourceNode)
         {
-            var jsonNode = annotated.Annotation<JsonNode>();
+            var jsonNode = sourceNode.Annotations(typeof(JsonNode)).OfType<JsonNode>().FirstOrDefault();
             if (jsonNode != null)
             {
                 return JsonSerializer.Deserialize<object>(jsonNode.ToJsonString()) ?? "null";

@@ -11,9 +11,12 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Models;
+
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNavigator used for legacy tests
 
 namespace Ignixa.SqlOnFhir.Tests;
 
@@ -28,7 +31,7 @@ public class SqlOnFhirEvaluatorTests
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
-    private static readonly IStructureDefinitionSummaryProvider _schemaProvider =
+    private static readonly IFhirSchemaProvider _schemaProvider =
         FhirSpecificationExtensions.FromVersionString("4.0.1").GetSchemaProvider();
 
     #region Basic Column Evaluation Tests
@@ -428,17 +431,17 @@ public class SqlOnFhirEvaluatorTests
 
     #region Helper Methods
 
-    private static ITypedElement CreateTypedElement(Dictionary<string, object?> data)
+    private static IElement CreateTypedElement(Dictionary<string, object?> data)
     {
         // Use real ResourceJsonNode instead of mocks for proper FHIR semantics
         var json = JsonSerializer.Serialize(data, _jsonOptions);
         var resourceNode = ResourceJsonNode.Parse(json);
-        return resourceNode.ToTypedElement(_schemaProvider);
+        return (IElement)resourceNode.ToElement(_schemaProvider);
     }
 
-    private static ISourceNode ConvertToSourceNode(ViewDefinition viewDef)
+    private static ISourceNavigator ConvertToSourceNode(ViewDefinition viewDef)
     {
-        // Convert ViewDefinition model to JSON and then to ISourceNode
+        // Convert ViewDefinition model to JSON and then to ISourceNavigator
         // Use camelCase naming policy to match FHIR JSON conventions
         var json = JsonSerializer.Serialize(viewDef, _jsonOptions);
         var jsonNode = JsonNode.Parse(json)!;

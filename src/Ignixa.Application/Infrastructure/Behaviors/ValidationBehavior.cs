@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
@@ -94,7 +95,7 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
                     TerminologyService = _terminologyService
                 };
                 var state = new ValidationState();
-                var validationResult = schema.Validate(sourceNode, settings, state);
+                var validationResult = schema.Validate((IElement)sourceNode, settings, state);
 
                 if (!validationResult.IsValid)
                 {

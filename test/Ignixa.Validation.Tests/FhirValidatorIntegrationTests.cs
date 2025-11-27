@@ -6,8 +6,8 @@
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Ignixa.Abstractions;
-using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
@@ -21,13 +21,13 @@ namespace Ignixa.Validation.Tests;
 /// </summary>
 public class FhirValidatorIntegrationTests
 {
-    private readonly R4StructureDefinitionSummaryProvider _provider;
+    private readonly ISchema _schema;
     private readonly IValidationSchemaResolver _schemaResolver;
 
     public FhirValidatorIntegrationTests()
     {
-        _provider = new R4StructureDefinitionSummaryProvider();
-        var innerResolver = new StructureDefinitionSchemaResolver(_provider);
+        _schema = new R4CoreSchemaProvider();
+        var innerResolver = new StructureDefinitionSchemaResolver(_schema);
         _schemaResolver = new CachedValidationSchemaResolver(innerResolver);
     }
 
@@ -35,7 +35,7 @@ public class FhirValidatorIntegrationTests
     {
         var json = JsonNode.Parse(resourceJson);
         var sourceNode = JsonNodeSourceNode.Create(json!);
-        var resourceType = (sourceNode as IResourceTypeSupplier)?.ResourceType ?? sourceNode.Name;
+        var resourceType = sourceNode.ResourceType ?? sourceNode.Name;
         var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
         var schema = _schemaResolver.GetSchema(canonicalUrl);
 
@@ -46,7 +46,7 @@ public class FhirValidatorIntegrationTests
 
         var settings = new ValidationSettings { Depth = depth };
         var state = new ValidationState();
-        return schema.Validate(sourceNode, settings, state);
+        return schema.Validate((IElement)sourceNode, settings, state);
     }
 
     #region Tier-Aware Validation

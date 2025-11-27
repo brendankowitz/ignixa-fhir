@@ -11,14 +11,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Oid"/> to a list of <see cref="UriSearchValue"/>.
 /// </summary>
-public class OidToUriSearchValueConverter : FhirTypedElementToSearchValueConverter<UriSearchValue>
+public class OidToUriSearchValueConverter : FhirElementToSearchValueConverter<UriSearchValue>
 {
     public OidToUriSearchValueConverter()
         : base("oid")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         if (value?.Value == null) yield break;
 

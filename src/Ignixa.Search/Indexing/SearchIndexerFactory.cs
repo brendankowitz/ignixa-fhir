@@ -28,18 +28,18 @@ public static class SearchIndexerFactory
         var elementResolver = new LightweightReferenceToElementResolver(referenceParser, fhirSchemaProvider);
         var codesystems = new CodeSystemResolver(fhirSchemaProvider.Version);
 
-        ITypedElementToSearchValueConverter[] converters = typeof(TypedElementSearchIndexer)
+        IElementToSearchValueConverter[] converters = typeof(TypedElementSearchIndexer)
             .Assembly
             .ExportedTypes
-            .Where(x => typeof(ITypedElementToSearchValueConverter).IsAssignableFrom(x) && !x.IsAbstract && !x.IsGenericType)
-            .Select(x => (ITypedElementToSearchValueConverter)CreateTypeWithArguments(x, fhirSchemaProvider, referenceParser, elementResolver, codesystems, fhirSchemaProvider.Version))
+            .Where(x => typeof(IElementToSearchValueConverter).IsAssignableFrom(x) && !x.IsAbstract && !x.IsGenericType)
+            .Select(x => (IElementToSearchValueConverter)CreateTypeWithArguments(x, fhirSchemaProvider, referenceParser, elementResolver, codesystems, fhirSchemaProvider.Version))
             .ToArray();
 
         // Manager is now initialized synchronously in constructor with pre-generated search parameters
 
         return new TypedElementSearchIndexer(
             new SupportedSearchParameterDefinitionManager(definitionManager),
-            new FhirTypedElementToSearchValueConverterManager(converters),
+            new FhirElementToSearchValueConverterManager(converters),
             elementResolver,
             loggerProvider.CreateLogger<TypedElementSearchIndexer>());
     }

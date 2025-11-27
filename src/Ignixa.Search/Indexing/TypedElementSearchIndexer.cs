@@ -23,7 +23,7 @@ namespace Ignixa.Search.Indexing;
 /// </summary>
 public partial class TypedElementSearchIndexer : ISearchIndexer
 {
-    private readonly ITypedElementToSearchValueConverterManager _fhirElementTypeConverterManager;
+    private readonly IElementToSearchValueConverterManager _fhirElementTypeConverterManager;
     private readonly ILogger<TypedElementSearchIndexer> _logger;
     private readonly IReferenceToElementResolver _referenceToElementResolver;
     private readonly ISupportedSearchParameterDefinitionManager _searchParameterDefinitionManager;
@@ -38,7 +38,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
     /// <param name="logger">The logger.</param>
     public TypedElementSearchIndexer(
         ISupportedSearchParameterDefinitionManager searchParameterDefinitionManager,
-        ITypedElementToSearchValueConverterManager fhirElementTypeConverterManager,
+        IElementToSearchValueConverterManager fhirElementTypeConverterManager,
         IReferenceToElementResolver referenceToElementResolver,
         ILogger<TypedElementSearchIndexer> logger)
     {
@@ -54,7 +54,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
     }
 
     /// <inheritdoc />
-    public IReadOnlyCollection<SearchIndexEntry> Extract(ITypedElement resource)
+    public IReadOnlyCollection<SearchIndexEntry> Extract(IElement resource)
     {
         EnsureArg.IsNotNull(resource, nameof(resource));
 
@@ -62,7 +62,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
 
         var context = new FhirEvaluationContext();
 
-        // Our FhirEvaluationContext uses ITypedElement directly - no need for ToPocoNode()
+        // Our FhirEvaluationContext uses IElement directly - no need for ToPocoNode()
         context.ElementResolver = str => _referenceToElementResolver.Resolve(str);
 
         // This allows resolving %resource FhirPath to provided value
@@ -86,15 +86,15 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         return entries;
     }
 
-    private IEnumerable<SearchIndexEntry> ProcessCompositeSearchParameter(SearchParameterInfo searchParameter, ITypedElement resource, EvaluationContext context)
+    private IEnumerable<SearchIndexEntry> ProcessCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context)
     {
         Debug.Assert(searchParameter?.Type == SearchParamType.Composite, "The search parameter must be composite.");
 
         SearchParameterInfo compositeSearchParameterInfo = searchParameter;
 
-        IEnumerable<ITypedElement> rootObjects = resource.Select(searchParameter.Expression, context);
+        IEnumerable<IElement> rootObjects = resource.Select(searchParameter.Expression, context);
 
-        foreach (ITypedElement rootObject in rootObjects)
+        foreach (IElement rootObject in rootObjects)
         {
             int numberOfComponents = searchParameter.Component.Count;
             bool skip = false;
@@ -154,7 +154,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         }
     }
 
-    private IEnumerable<SearchIndexEntry> ProcessNonCompositeSearchParameter(SearchParameterInfo searchParameter, ITypedElement resource, EvaluationContext context)
+    private IEnumerable<SearchIndexEntry> ProcessNonCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context)
     {
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         Debug.Assert(searchParameter.Type != SearchParamType.Composite, "The search parameter must be non-composite.");
@@ -181,7 +181,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         string searchParameterDefinitionUrl,
         SearchParamType? searchParameterType,
         IReadOnlyList<string> allowedReferenceResourceTypes,
-        ITypedElement element,
+        IElement element,
         string fhirPathExpression,
         EvaluationContext context)
     {
@@ -190,7 +190,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
         var results = new List<ISearchValue>();
 
         // For simple value type, we can parse the expression directly.
-        IEnumerable<ITypedElement> extractedValues = Enumerable.Empty<ITypedElement>();
+        IEnumerable<IElement> extractedValues = Enumerable.Empty<IElement>();
 
         try
         {
@@ -233,7 +233,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
             });
         }
 
-        foreach (ITypedElement extractedValue in extractedValues)
+        foreach (IElement extractedValue in extractedValues)
         {
             if (string.IsNullOrEmpty(extractedValue.InstanceType))
             {
@@ -241,7 +241,7 @@ public partial class TypedElementSearchIndexer : ISearchIndexer
                 continue;
             }
 
-            if (!_fhirElementTypeConverterManager.TryGetConverter(extractedValue.InstanceType, GetSearchValueTypeForSearchParamType(searchParameterType), out ITypedElementToSearchValueConverter converter))
+            if (!_fhirElementTypeConverterManager.TryGetConverter(extractedValue.InstanceType, GetSearchValueTypeForSearchParamType(searchParameterType), out IElementToSearchValueConverter converter))
             {
                 Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType);
 

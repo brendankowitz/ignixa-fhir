@@ -36,18 +36,18 @@ public class ExtensionStructureCheck : IValidationCheck
     /// <summary>
     /// Validates extension structure.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var location = string.IsNullOrEmpty(node.Location)
+        var location = string.IsNullOrEmpty(element.Location)
             ? _elementName
-            : $"{node.Location}.{_elementName}";
+            : $"{element.Location}.{_elementName}";
 
         // Get extension elements
-        var extensions = node.Children(_elementName).ToList();
+        var extensions = element.Children(_elementName).ToList();
 
         // No extensions found - this is valid (extensions are optional)
         if (extensions.Count == 0)
@@ -63,8 +63,8 @@ public class ExtensionStructureCheck : IValidationCheck
             var extensionLocation = extension.Location ?? location;
 
             // Rule 1: Extension MUST have 'url' property
-            var urlChild = extension.Children("url").FirstOrDefault();
-            if (urlChild == null)
+            var urlChildren = extension.Children("url");
+            if (urlChildren.Count == 0)
             {
                 issues.Add(new ValidationIssue(
                     IssueSeverity.Error,

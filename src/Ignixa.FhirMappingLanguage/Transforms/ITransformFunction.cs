@@ -37,12 +37,12 @@ public interface ITransformContext
     /// <summary>
     /// Gets a source element by name.
     /// </summary>
-    ITypedElement? GetSource(string name);
+    IElement? GetSource(string name);
 
     /// <summary>
     /// Gets a target element by name.
     /// </summary>
-    ITypedElement? GetTarget(string name);
+    IElement? GetTarget(string name);
 
     /// <summary>
     /// Gets a variable value by name.
@@ -57,12 +57,12 @@ public interface ITransformContext
     /// <summary>
     /// Resource factory for creating new FHIR resources.
     /// </summary>
-    Func<string, ITypedElement>? ResourceCreator { get; }
+    Func<string, IElement>? ResourceCreator { get; }
 
     /// <summary>
     /// FHIRPath evaluator for evaluating expressions.
     /// </summary>
-    Func<string, ITypedElement, IEnumerable<ITypedElement>>? FhirPathEvaluator { get; }
+    Func<string, IElement, IEnumerable<IElement>>? FhirPathEvaluator { get; }
 
     /// <summary>
     /// ConceptMap resolver for terminology translation.

@@ -21,7 +21,7 @@ internal static class BoundaryFunctions
     /// For decimals: multiplies by 0.95 (5% lower)
     /// For dates/times: returns the start of the period with UTC+14:00 offset
     /// </summary>
-    public static IEnumerable<ITypedElement> LowBoundary(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> LowBoundary(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {
@@ -68,7 +68,7 @@ internal static class BoundaryFunctions
     /// For decimals: multiplies by 1.05 (5% higher)
     /// For dates/times: returns the end of the period with UTC-12:00 offset
     /// </summary>
-    public static IEnumerable<ITypedElement> HighBoundary(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> HighBoundary(IEnumerable<IElement> focus)
     {
         foreach (var element in focus)
         {

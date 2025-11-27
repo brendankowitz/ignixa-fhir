@@ -11,14 +11,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="FhirUri"/> to a list of <see cref="UriSearchValue"/>.
 /// </summary>
-public class UriToUriSearchValueConverter : FhirTypedElementToSearchValueConverter<UriSearchValue>
+public class UriToUriSearchValueConverter : FhirElementToSearchValueConverter<UriSearchValue>
 {
     public UriToUriSearchValueConverter()
         : base("uri", "url")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         if (value?.Value == null) yield break;
 

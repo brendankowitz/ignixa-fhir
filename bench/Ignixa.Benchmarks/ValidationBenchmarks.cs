@@ -8,6 +8,8 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 
+#pragma warning disable CS0618
+
 namespace Ignixa.Benchmarks;
 
 /// <summary>
@@ -20,8 +22,8 @@ namespace Ignixa.Benchmarks;
 [MarkdownExporter]
 public class ValidationBenchmarks
 {
-    private ISourceNode _patientSourceNode = null!;
-    private ISourceNode _observationSourceNode = null!;
+    private ISourceNavigator _patientSourceNode = null!;
+    private ISourceNavigator _observationSourceNode = null!;
     private ValidationSchema _patientSchema = null!;
     private ValidationSchema _observationSchema = null!;
     private ValidationSettings _fastSettings = null!;
@@ -102,8 +104,8 @@ public class ValidationBenchmarks
         _observationSourceNode = JsonNodeSourceNode.Create(observationJson);
 
         // Setup schema resolver with caching
-        var provider = new R4StructureDefinitionSummaryProvider();
-        var innerResolver = new StructureDefinitionSchemaResolver(provider);
+        var schemaProvider = new R4CoreSchemaProvider();
+        var innerResolver = new StructureDefinitionSchemaResolver(schemaProvider);
         var schemaResolver = new CachedValidationSchemaResolver(innerResolver);
 
         _patientSchema = schemaResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")!;
@@ -117,24 +119,24 @@ public class ValidationBenchmarks
     [Benchmark(Baseline = true, Description = "Validate Patient (Fast tier)")]
     public ValidationResult ValidatePatientFast()
     {
-        return _patientSchema.Validate(_patientSourceNode, _fastSettings, _state);
+        return _patientSchema.Validate((IElement)_patientSourceNode, _fastSettings, _state);
     }
 
     [Benchmark(Description = "Validate Patient (Spec tier)")]
     public ValidationResult ValidatePatientSpec()
     {
-        return _patientSchema.Validate(_patientSourceNode, _specSettings, _state);
+        return _patientSchema.Validate((IElement)_patientSourceNode, _specSettings, _state);
     }
 
     [Benchmark(Description = "Validate Observation (Fast tier)")]
     public ValidationResult ValidateObservationFast()
     {
-        return _observationSchema.Validate(_observationSourceNode, _fastSettings, _state);
+        return _observationSchema.Validate((IElement)_observationSourceNode, _fastSettings, _state);
     }
 
     [Benchmark(Description = "Validate Observation (Spec tier)")]
     public ValidationResult ValidateObservationSpec()
     {
-        return _observationSchema.Validate(_observationSourceNode, _specSettings, _state);
+        return _observationSchema.Validate((IElement)_observationSourceNode, _specSettings, _state);
     }
 }

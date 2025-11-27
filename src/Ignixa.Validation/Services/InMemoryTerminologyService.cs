@@ -3,7 +3,6 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Services;
@@ -253,16 +252,5 @@ public class InMemoryTerminologyService : ITerminologyService
 
             _ => (true, IssueSeverity.Warning, "Unknown binding strength")
         };
-    }
-
-    /// <summary>
-    /// Import status checking is not supported by the in-memory implementation.
-    /// Always returns null (resource not found in terminology import system).
-    /// </summary>
-    public Task<TerminologyImportStatus?> GetImportStatusAsync(
-        string canonical,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult<TerminologyImportStatus?>(null);
     }
 }

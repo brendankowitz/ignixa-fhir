@@ -45,16 +45,16 @@ public class NestedComplexTypeCheck : IValidationCheck
     /// <summary>
     /// Validates nested complex type elements by applying the nested schema to each element.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure of nested element validation.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var issues = new List<ValidationIssue>();
 
         // Get all instances of this element (may be array)
-        var elementNodes = node.Children(_elementName).ToList();
+        var elementNodes = element.Children(_elementName).ToList();
 
         if (!elementNodes.Any())
         {

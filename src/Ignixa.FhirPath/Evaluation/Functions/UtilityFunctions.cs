@@ -24,8 +24,8 @@ internal static class UtilityFunctions
     /// <param name="arguments">Optional trace name/message arguments</param>
     /// <param name="context">Evaluation context</param>
     /// <returns>Focus collection unchanged</returns>
-    public static IEnumerable<ITypedElement> Trace(
-        IEnumerable<ITypedElement> focus,
+    public static IEnumerable<IElement> Trace(
+        IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
         EvaluationContext context)
     {
@@ -40,10 +40,10 @@ internal static class UtilityFunctions
     /// </summary>
     /// <param name="focus">Input collection (unused)</param>
     /// <returns>Current UTC dateTime</returns>
-    public static IEnumerable<ITypedElement> Now(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Now(IEnumerable<IElement> focus)
     {
         var now = DateTime.UtcNow.ToString("o");
-        return new[] { FunctionHelpers.CreateDateTime(now) };
+        return [FunctionHelpers.CreateDateTime(now)];
     }
 
     /// <summary>
@@ -52,10 +52,10 @@ internal static class UtilityFunctions
     /// </summary>
     /// <param name="focus">Input collection (unused)</param>
     /// <returns>Current date</returns>
-    public static IEnumerable<ITypedElement> Today(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> Today(IEnumerable<IElement> focus)
     {
         var today = DateTime.Today.ToString("yyyy-MM-dd");
-        return new[] { FunctionHelpers.CreateDate(today) };
+        return [FunctionHelpers.CreateDate(today)];
     }
 
     /// <summary>
@@ -64,9 +64,9 @@ internal static class UtilityFunctions
     /// </summary>
     /// <param name="focus">Input collection (unused)</param>
     /// <returns>Current time of day</returns>
-    public static IEnumerable<ITypedElement> TimeOfDay(IEnumerable<ITypedElement> focus)
+    public static IEnumerable<IElement> TimeOfDay(IEnumerable<IElement> focus)
     {
         var time = DateTime.Now.TimeOfDay.ToString(@"hh\:mm\:ss");
-        return new[] { FunctionHelpers.CreateTime(time) };
+        return [FunctionHelpers.CreateTime(time)];
     }
 }

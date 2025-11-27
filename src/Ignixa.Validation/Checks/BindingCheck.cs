@@ -5,7 +5,6 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
-using Ignixa.Domain.Models;
 
 namespace Ignixa.Validation.Checks;
 
@@ -51,11 +50,11 @@ public class BindingCheck : IValidationCheck
     /// <summary>
     /// Validates that coded elements match their ValueSet bindings.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         // Skip terminology validation if configured
         if (settings.SkipTerminologyValidation || settings.Depth == ValidationDepth.Minimal)
@@ -63,17 +62,17 @@ public class BindingCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
-        var location = string.IsNullOrEmpty(node.Location)
+        var location = string.IsNullOrEmpty(element.Location)
             ? _elementPath
-            : $"{node.Location}.{_elementPath}";
+            : $"{element.Location}.{_elementPath}";
 
         // Navigate to the element
         var pathParts = _elementPath.Split('.');
-        ISourceNode? currentNode = node;
+        IElement? currentElement = element;
 
         foreach (var part in pathParts)
         {
-            var children = currentNode.Children(part).ToList();
+            var children = currentElement.Children(part).ToList();
 
             // No children found - element is optional
             if (children.Count == 0)
@@ -94,37 +93,37 @@ public class BindingCheck : IValidationCheck
             }
 
             // Single child - continue navigation
-            currentNode = children[0];
+            currentElement = children[0];
         }
 
         // Reached the target element, validate it
-        return ValidateCodedElement(currentNode, location, settings).GetAwaiter().GetResult();
+        return ValidateCodedElement(currentElement, location, settings).GetAwaiter().GetResult();
     }
 
     private async Task<ValidationResult> ValidateCodedElement(
-        ISourceNode node,
+        IElement element,
         string location,
         ValidationSettings settings)
     {
         // Determine element type by checking for known child properties
-        var hasCoding = node.Children("coding").Any();
-        var hasSystem = node.Children("system").Any();
-        var hasCode = node.Children("code").Any();
+        var hasCoding = element.Children("coding").Any();
+        var hasSystem = element.Children("system").Any();
+        var hasCode = element.Children("code").Any();
 
         if (hasCoding)
         {
             // This is a CodeableConcept - validate each coding
-            return await ValidateCodeableConcept(node, location, settings).ConfigureAwait(false);
+            return await ValidateCodeableConcept(element, location, settings).ConfigureAwait(false);
         }
         else if (hasSystem || hasCode)
         {
             // This is a Coding - validate it
-            return await ValidateCoding(node, location, settings).ConfigureAwait(false);
+            return await ValidateCoding(element, location, settings).ConfigureAwait(false);
         }
         else
         {
             // This might be a primitive code element
-            var codeValue = node.Text;
+            var codeValue = element.Value?.ToString();
             if (!string.IsNullOrEmpty(codeValue))
             {
                 return await ValidateCode(null, codeValue, null, location, settings).ConfigureAwait(false);
@@ -136,11 +135,11 @@ public class BindingCheck : IValidationCheck
     }
 
     private async Task<ValidationResult> ValidateCodeableConcept(
-        ISourceNode node,
+        IElement element,
         string location,
         ValidationSettings settings)
     {
-        var codings = node.Children("coding").ToList();
+        var codings = element.Children("coding").ToList();
         if (codings.Count == 0)
         {
             // CodeableConcept without codings - check if there's a text-only representation
@@ -186,13 +185,17 @@ public class BindingCheck : IValidationCheck
     }
 
     private async Task<ValidationResult> ValidateCoding(
-        ISourceNode node,
+        IElement element,
         string location,
         ValidationSettings settings)
     {
-        var system = node.Children("system").FirstOrDefault()?.Text;
-        var code = node.Children("code").FirstOrDefault()?.Text;
-        var display = node.Children("display").FirstOrDefault()?.Text;
+        var systemChildren = element.Children("system");
+        var codeChildren = element.Children("code");
+        var displayChildren = element.Children("display");
+
+        var system = systemChildren.Count > 0 ? systemChildren[0].Value?.ToString() : null;
+        var code = codeChildren.Count > 0 ? codeChildren[0].Value?.ToString() : null;
+        var display = displayChildren.Count > 0 ? displayChildren[0].Value?.ToString() : null;
 
         return await ValidateCode(system, code, display, location, settings).ConfigureAwait(false);
     }

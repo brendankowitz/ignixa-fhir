@@ -16,7 +16,7 @@ internal class SearchParameterNavigator
 {
     private readonly Lazy<IReadOnlyList<string>> _base;
     private readonly Lazy<string> _code;
-    private readonly Lazy<IReadOnlyList<ITypedElement>> _component;
+    private readonly Lazy<IReadOnlyList<IElement>> _component;
     private readonly Lazy<string> _description;
     private readonly Lazy<string> _expression;
     private readonly Lazy<string> _name;
@@ -24,7 +24,7 @@ internal class SearchParameterNavigator
     private readonly Lazy<string> _url;
     private readonly Lazy<string> _type;
 
-    public SearchParameterNavigator(ITypedElement searchParameter)
+    public SearchParameterNavigator(IElement searchParameter)
     {
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         EnsureArg.Is(KnownResourceTypes.SearchParameter, searchParameter.InstanceType, StringComparison.Ordinal, nameof(searchParameter));
@@ -37,7 +37,7 @@ internal class SearchParameterNavigator
         _type = new Lazy<string>(() => searchParameter.Scalar("type")?.ToString());
 
         _base = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("base")?.AsStringValues().ToArray() ?? Array.Empty<string>());
-        _component = new Lazy<IReadOnlyList<ITypedElement>>(() => searchParameter.Select("component")?.ToArray() ?? Array.Empty<ITypedElement>());
+        _component = new Lazy<IReadOnlyList<IElement>>(() => searchParameter.Select("component")?.ToArray() ?? Array.Empty<IElement>());
         _target = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("target")?.AsStringValues().ToArray() ?? Array.Empty<string>());
     }
 
@@ -57,5 +57,5 @@ internal class SearchParameterNavigator
 
     public IReadOnlyList<string> Target => _target.Value;
 
-    public IReadOnlyList<ITypedElement> Component => _component.Value;
+    public IReadOnlyList<IElement> Component => _component.Value;
 }

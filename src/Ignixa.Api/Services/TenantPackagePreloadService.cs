@@ -6,9 +6,9 @@
 using System.Diagnostics;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.Extensions.DependencyInjection;

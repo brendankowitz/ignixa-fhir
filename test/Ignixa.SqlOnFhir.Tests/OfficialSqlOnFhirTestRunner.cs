@@ -10,9 +10,12 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Parsing;
+
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNavigator used for legacy tests
 
 namespace Ignixa.SqlOnFhir.Tests;
 
@@ -144,12 +147,12 @@ public class OfficialSqlOnFhirTestRunner
     }
 
     /// <summary>
-    /// Loads test resources from JSON elements and converts them to ITypedElement.
+    /// Loads test resources from JSON elements and converts them to IElement.
     /// Uses proper ResourceJsonNode with version-specific StructureDefinitionSummaryProvider.
     /// </summary>
-    private static List<ITypedElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
+    private static List<IElement> LoadResources(List<JsonElement> jsonResources, string resourceType, string fhirVersion = "4.0.1")
     {
-        var resources = new List<ITypedElement>();
+        var resources = new List<IElement>();
         var provider = GetStructureDefinitionProvider(fhirVersion);
 
         foreach (var jsonElement in jsonResources)
@@ -164,10 +167,10 @@ public class OfficialSqlOnFhirTestRunner
 
             try
             {
-                // Parse JsonElement text directly to ResourceJsonNode, then convert to ITypedElement
+                // Parse JsonElement text directly to ResourceJsonNode, then convert to IElement
                 var resourceNode = ResourceJsonNode.Parse(jsonElement.GetRawText());
-                var typedElement = resourceNode.ToTypedElement(provider);
-                resources.Add(typedElement);
+                var element = (IElement)resourceNode.ToElement(provider);
+                resources.Add(element);
             }
             catch (Exception ex)
             {
@@ -180,10 +183,10 @@ public class OfficialSqlOnFhirTestRunner
     }
 
     /// <summary>
-    /// Gets the appropriate IStructureDefinitionSummaryProvider for a FHIR version string.
+    /// Gets the appropriate IFhirSchemaProvider for a FHIR version string.
     /// Uses existing FhirSpecification extensions to resolve the provider.
     /// </summary>
-    private static IStructureDefinitionSummaryProvider GetStructureDefinitionProvider(string fhirVersion)
+    private static IFhirSchemaProvider GetStructureDefinitionProvider(string fhirVersion)
     {
         var spec = FhirSpecificationExtensions.FromVersionString(fhirVersion);
         return spec.GetSchemaProvider();

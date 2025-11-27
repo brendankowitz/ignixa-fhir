@@ -13,14 +13,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Period"/> to a list of <see cref="DateTimeSearchValue"/>.
 /// </summary>
-public class PeriodToDateTimeSearchValueConverter : FhirTypedElementToSearchValueConverter<DateTimeSearchValue>
+public class PeriodToDateTimeSearchValueConverter : FhirElementToSearchValueConverter<DateTimeSearchValue>
 {
     public PeriodToDateTimeSearchValueConverter()
         : base("Period")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string startString = value.Scalar("start")?.ToString();
         string endString = value.Scalar("end")?.ToString();

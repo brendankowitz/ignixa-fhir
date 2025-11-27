@@ -17,25 +17,23 @@ public class JsonStructureCheck : IValidationCheck
     /// <summary>
     /// Validates the structure of a FHIR resource.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var issues = new List<ValidationIssue>();
 
-        // ISourceNode uses resourceType as metadata (Name property) rather than as a child
-        // Check if the node has a ResourceType via IResourceTypeSupplier
-        var resourceTypeSupplier = node as IResourceTypeSupplier;
-        var resourceType = resourceTypeSupplier?.ResourceType ?? node.Name;
+        // IElement uses InstanceType to get the resource type
+        var resourceType = element.InstanceType;
 
         if (string.IsNullOrEmpty(resourceType) || resourceType == "root")
         {
             issues.Add(ValidationIssue.InvariantFailure(
                 "structure-1",
                 "Resource must have a 'resourceType' property",
-                node.Location ?? node.Name ?? "root"));
+                element.Location ?? element.InstanceType ?? "root"));
         }
 
         return issues.Any()

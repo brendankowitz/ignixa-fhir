@@ -60,19 +60,19 @@ public class UnknownPropertyCheck : IValidationCheck
     }
 
     /// <summary>
-    /// Validates that all properties in the node are defined in the schema.
+    /// Validates that all properties in the element are defined in the schema.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var issues = new List<ValidationIssue>();
-        var location = node.Location ?? "Resource";
+        var location = element.Location ?? "Resource";
 
         // Get all actual properties in the resource
-        var actualProperties = GetAllPropertyNames(node);
+        var actualProperties = GetAllPropertyNames(element);
 
         foreach (var property in actualProperties)
         {
@@ -141,16 +141,16 @@ public class UnknownPropertyCheck : IValidationCheck
     }
 
     /// <summary>
-    /// Gets all property names from the source node.
+    /// Gets all property names from the element.
     /// </summary>
-    /// <param name="node">The source node to extract property names from.</param>
+    /// <param name="element">The element to extract property names from.</param>
     /// <returns>A collection of unique property names.</returns>
-    private static IEnumerable<string> GetAllPropertyNames(ISourceNode node)
+    private static IEnumerable<string> GetAllPropertyNames(IElement element)
     {
-        // Get all child property names from ISourceNode
+        // Get all child property names from IElement
         var properties = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var child in node.Children())
+        foreach (var child in element.Children())
         {
             if (!string.IsNullOrEmpty(child.Name))
             {

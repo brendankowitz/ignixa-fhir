@@ -3,8 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Domain.Models;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Validation.Abstractions;
 using Medino;
 
 namespace Ignixa.Application.Operations.Features.Validate;

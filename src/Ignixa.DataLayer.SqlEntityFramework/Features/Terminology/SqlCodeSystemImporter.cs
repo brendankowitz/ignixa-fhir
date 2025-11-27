@@ -5,6 +5,7 @@
 
 using System.Data;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;

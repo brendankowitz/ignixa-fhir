@@ -24,11 +24,11 @@ public static class FhirSpecificationSchemaProviderExtensions
     {
         return spec switch
         {
-            FhirSpecification.R4 => new R4StructureDefinitionSummaryProvider(),
-            FhirSpecification.R4B => new R4BStructureDefinitionSummaryProvider(),
-            FhirSpecification.R5 => new R5StructureDefinitionSummaryProvider(),
-            FhirSpecification.R6 => new R6StructureDefinitionSummaryProvider(),
-            FhirSpecification.Stu3 => new Stu3StructureDefinitionSummaryProvider(),
+            FhirSpecification.R4 => new R4CoreSchemaProvider(),
+            FhirSpecification.R4B => new R4BCoreSchemaProvider(),
+            FhirSpecification.R5 => new R5CoreSchemaProvider(),
+            FhirSpecification.R6 => new R6CoreSchemaProvider(),
+            FhirSpecification.Stu3 => new STU3CoreSchemaProvider(),
             _ => throw new NotSupportedException($"FHIR specification {spec} is not supported")
         };
     }

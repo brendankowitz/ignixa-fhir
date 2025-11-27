@@ -5,6 +5,8 @@
 
 using Ignixa.Abstractions;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace Ignixa.Application.Features.Bundle;
 
 /// <summary>
@@ -46,11 +48,11 @@ public record BundleEntryContext
     public required string RequestUrl { get; init; }
 
     /// <summary>
-    /// Gets the resource content as ISourceNode.
+    /// Gets the resource content as ISourceNavigator.
     /// Present for POST/PUT/PATCH operations.
     /// Null for DELETE/GET/HEAD operations.
     /// </summary>
-    public required ISourceNode? Resource { get; init; }
+    public required ISourceNavigator? Resource { get; init; }
 
     /// <summary>
     /// Gets the fullUrl from bundle.entry.fullUrl.

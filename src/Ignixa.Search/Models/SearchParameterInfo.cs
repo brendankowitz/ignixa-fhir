@@ -11,6 +11,7 @@ using Ignixa.Search.Definition.BundleNavigators;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.FhirPath.Evaluation;
 
 namespace Ignixa.Search.Models;
 
@@ -72,7 +73,7 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         TargetResourceTypes = wrapper.Target;
         BaseResourceTypes = wrapper.Base;
 
-        string GetComponentDefinition(ITypedElement component)
+        string GetComponentDefinition(IElement component)
         {
             // In Stu3 the Url is under 'definition.reference'
             return component.Scalar("definition.reference")?.ToString() ??

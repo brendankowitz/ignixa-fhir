@@ -11,11 +11,14 @@ using Ignixa.Serialization.Utilities;
 namespace Ignixa.Serialization.SourceNodes;
 
 /// <summary>
-/// Wraps a JsonNode (JsonObject, JsonArray, or JsonValue) as an ISourceNode.
+/// Wraps a JsonNode (JsonObject, JsonArray, or JsonValue) as an ISourceNavigator.
 /// Implements FHIR-specific logic for shadow properties, extensions, and choice types.
-/// Ported from JsonElementSourceNode to support JsonNode-based architecture.
 /// </summary>
-public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
+/// <remarks>
+/// This class handles raw JSON structure navigation without type awareness.
+/// For type-enriched navigation (IElement), use <see cref="SchemaAwareElementExtensions.ToElement"/>.
+/// </remarks>
+public class JsonNodeSourceNode : ISourceNavigator
 {
     private const string _resourceType = "resourceType";
     private const char _shadowNodePrefix = '_';
@@ -24,7 +27,7 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
     private readonly JsonNode? _contentNode;
     private readonly int? _arrayIndex;
     private readonly JsonNode? _valueNode;
-    private Dictionary<string, Lazy<IEnumerable<ISourceNode>>>? _cachedNodes;
+    private Dictionary<string, Lazy<IEnumerable<ISourceNavigator>>>? _cachedNodes;
 
     protected JsonNodeSourceNode(JsonNode? valueNode, JsonNode? contentNode, string name, int? arrayIndex, string location)
     {
@@ -81,7 +84,7 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
 
     public IEnumerable<object> Annotations(Type type)
     {
-        if (type == GetType() || type == typeof(ISourceNode) || type == typeof(IResourceTypeSupplier))
+        if (type == GetType() || type == typeof(ISourceNavigator))
         {
             return [this];
         }
@@ -100,17 +103,19 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
         return [];
     }
 
-    public IEnumerable<ISourceNode> Children(string name = null)
+    // ========== ISourceNavigator Implementation ==========
+
+    public IEnumerable<ISourceNavigator> Children(string? name = null)
     {
         if (_cachedNodes == null)
         {
-            var list = new Dictionary<string, Lazy<IEnumerable<ISourceNode>>>();
+            var list = new Dictionary<string, Lazy<IEnumerable<ISourceNavigator>>>();
 
             if (_contentNode is JsonObject obj && obj.Count > 0)
             {
                 // ProcessObjectProperties handles shadow property pairing, extensions, and choice types
                 // JsonObject.Select returns (Key, Value) where Value is nullable
-                foreach ((string, Lazy<IEnumerable<ISourceNode>>) item in ProcessObjectProperties(
+                foreach ((string, Lazy<IEnumerable<ISourceNavigator>>) item in ProcessObjectProperties(
                     obj.Select(x => (x.Key, x.Value)),
                     Location))
                 {
@@ -136,7 +141,7 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
                 .ToArray();
         }
 
-        if (_cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNode>> exactMatch))
+        if (_cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNavigator>> exactMatch))
         {
             return exactMatch.Value;
         }
@@ -149,8 +154,8 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
     /// </summary>
     /// <param name="node">The JsonNode to wrap.</param>
     /// <param name="name">The name of the root node (default: "root").</param>
-    /// <returns>An ISourceNode wrapping the JsonNode.</returns>
-    public static ISourceNode Create(JsonNode node, string name = "root")
+    /// <returns>An ISourceNavigator wrapping the JsonNode.</returns>
+    public static ISourceNavigator Create(JsonNode node, string name = "root")
     {
         if (node is JsonObject obj)
         {
@@ -171,11 +176,11 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
     /// Groups properties by base name (trimming '_' prefix) and pairs them.
     /// </summary>
     [SuppressMessage("StyleCop.CSharp.ReadabilityRules", "SA1414:Tuple types in signatures should have element names", Justification = "Internal method for processing object properties.")]
-    internal static List<(string, Lazy<IEnumerable<ISourceNode>>)> ProcessObjectProperties(
+    internal static List<(string, Lazy<IEnumerable<ISourceNavigator>>)> ProcessObjectProperties(
         IEnumerable<(string Name, JsonNode? Value)> objectEnumerator,
         string location)
     {
-        var list = new List<(string, Lazy<IEnumerable<ISourceNode>>)>();
+        var list = new List<(string, Lazy<IEnumerable<ISourceNavigator>>)>();
 
         // Group by base name (trim '_' prefix) to pair regular properties with shadow properties
         foreach (IGrouping<string, (string Name, JsonNode? Value)> item in objectEnumerator
@@ -187,9 +192,9 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
             {
                 // Single property (no shadow)
                 (string Name, JsonNode? Value) innerItem = item.First();
-                (string Name, Lazy<IEnumerable<ISourceNode>>) values = (
+                (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (
                     innerItem.Name,
-                    new Lazy<IEnumerable<ISourceNode>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!).ToList())
+                    new Lazy<IEnumerable<ISourceNavigator>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!).ToList())
                 );
                 list.Add(values);
             }
@@ -198,9 +203,9 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
                 // Property with shadow (e.g., birthDate + _birthDate)
                 (string Name, JsonNode? Value) innerItem = item.SingleOrDefault(x => !x.Name.StartsWith(_shadowNodePrefix));
                 (string Name, JsonNode? Value) shadowItem = item.SingleOrDefault(x => x.Name.StartsWith(_shadowNodePrefix));
-                (string Name, Lazy<IEnumerable<ISourceNode>>) values = (
+                (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (
                     innerItem.Name,
-                    new Lazy<IEnumerable<ISourceNode>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!, shadowItem.Value).ToList())
+                    new Lazy<IEnumerable<ISourceNavigator>>(() => JsonNodeToSourceNodes(innerItem.Name, location, innerItem.Value!, shadowItem.Value).ToList())
                 );
                 list.Add(values);
             }
@@ -214,9 +219,9 @@ public class JsonNodeSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
     }
 
     /// <summary>
-    /// Converts JsonNode to ISourceNode instances, handling arrays and shadow property pairing.
+    /// Converts JsonNode to ISourceNavigator instances, handling arrays and shadow property pairing.
     /// </summary>
-    private static IEnumerable<ISourceNode> JsonNodeToSourceNodes(
+    private static IEnumerable<ISourceNavigator> JsonNodeToSourceNodes(
         string name,
         string location,
         JsonNode item,

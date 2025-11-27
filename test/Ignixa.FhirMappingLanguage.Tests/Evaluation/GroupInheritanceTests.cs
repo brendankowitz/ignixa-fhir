@@ -16,9 +16,9 @@ public class GroupInheritanceTests
 {
     #region Helper Classes
 
-    private class TestTypedElement : ITypedElement
+    private class TestTypedElement : IElement
     {
-        private readonly Dictionary<string, List<ITypedElement>> _children = new();
+        private readonly Dictionary<string, List<IElement>> _children = new();
         private readonly Dictionary<string, object> _values = new();
 
         public TestTypedElement(string name, object? value = null, string instanceType = "string")
@@ -32,13 +32,13 @@ public class GroupInheritanceTests
         public string InstanceType { get; }
         public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public void AddChild(ITypedElement child)
+        public void AddChild(IElement child)
         {
             if (!_children.ContainsKey(child.Name))
             {
-                _children[child.Name] = new List<ITypedElement>();
+                _children[child.Name] = new List<IElement>();
             }
             _children[child.Name].Add(child);
         }
@@ -53,17 +53,19 @@ public class GroupInheritanceTests
             return _values.TryGetValue(path, out var value) ? value : null;
         }
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             if (name == null)
             {
-                return _children.Values.SelectMany(list => list);
+                return _children.Values.SelectMany(list => list).ToList();
             }
 
             return _children.TryGetValue(name, out var children)
                 ? children
-                : Enumerable.Empty<ITypedElement>();
+                : new List<IElement>();
         }
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

@@ -17,7 +17,7 @@ public class ConceptMapTests
 {
     #region Helper Classes
 
-    private class TestTypedElement : ITypedElement
+    private class TestTypedElement : IElement
     {
         public TestTypedElement(string name, object? value = null, string instanceType = "string")
         {
@@ -30,14 +30,16 @@ public class ConceptMapTests
         public string InstanceType { get; }
         public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => new List<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
-    private class TestTypedElementWithChildren : ITypedElement
+    private class TestTypedElementWithChildren : IElement
     {
-        private readonly List<ITypedElement> _children = new();
+        private readonly List<IElement> _children = new();
 
         public TestTypedElementWithChildren(string name, object? value = null, string instanceType = "string")
         {
@@ -50,18 +52,20 @@ public class ConceptMapTests
         public string InstanceType { get; }
         public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public void AddChild(ITypedElement child) => _children.Add(child);
+        public void AddChild(IElement child) => _children.Add(child);
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             if (name == null)
             {
                 return _children;
             }
-            return _children.Where(c => c.Name == name);
+            return _children.Where(c => c.Name == name).ToList();
         }
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

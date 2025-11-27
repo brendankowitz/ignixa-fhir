@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Domain.Terminology;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
@@ -16,12 +17,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 /// </summary>
 public class HybridTerminologyService : ITerminologyService
 {
-    private readonly ITerminologyService _sqlService;
+    private readonly SqlTerminologyService _sqlService;
     private readonly ITerminologyService _fallbackService;
     private readonly ILogger<HybridTerminologyService> _logger;
 
     public HybridTerminologyService(
-        ITerminologyService sqlService,
+        SqlTerminologyService sqlService,
         ITerminologyService fallbackService,
         ILogger<HybridTerminologyService> logger)
     {

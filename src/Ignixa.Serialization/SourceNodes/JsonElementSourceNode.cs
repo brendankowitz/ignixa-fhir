@@ -10,15 +10,15 @@ using Ignixa.Serialization.Utilities;
 
 namespace Ignixa.Serialization.SourceNodes;
 
-[Obsolete]
-internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnnotated
+[Obsolete("Use JsonNodeSourceNode instead")]
+internal class JsonElementSourceNode : ISourceNavigator
 {
     private const string _resourceType = "resourceType";
     private const char _shadowNodePrefix = '_';
     private readonly JsonElement? _contentElement;
     private readonly int? _arrayIndex;
     private readonly JsonElement? _valueElement;
-    private Dictionary<string, Lazy<IEnumerable<ISourceNode>>> _cachedNodes;
+    private Dictionary<string, Lazy<IEnumerable<ISourceNavigator>>>? _cachedNodes;
     internal const char ChoiceTypeSuffix = '*';
 
     private JsonElementSourceNode(JsonElement? valueElement, JsonElement? contentElement, string name, int? arrayIndex, string location)
@@ -69,7 +69,7 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
 
     public IEnumerable<object> Annotations(Type type)
     {
-        if (type == GetType() || type == typeof(ISourceNode) || type == typeof(IResourceTypeSupplier))
+        if (type == GetType() || type == typeof(ISourceNavigator))
         {
             return [this];
         }
@@ -77,18 +77,18 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
         return [];
     }
 
-    public IEnumerable<ISourceNode> Children(string name = null)
+    public IEnumerable<ISourceNavigator> Children(string? name = null)
     {
         if (_cachedNodes == null)
         {
-            var list = new Dictionary<string, Lazy<IEnumerable<ISourceNode>>>();
+            var list = new Dictionary<string, Lazy<IEnumerable<ISourceNavigator>>>();
 
             if (!(_contentElement == null ||
                   _contentElement.Value.ValueKind != JsonValueKind.Object
                   || _contentElement.Value.EnumerateObject().Any() == false))
             {
                 IEnumerable<(string Name, JsonElement Value)> objectEnumerator = _contentElement.GetValueOrDefault().EnumerateObject().Select(x => (x.Name, x.Value));
-                foreach ((string, Lazy<IEnumerable<ISourceNode>>) item in ProcessObjectProperties(objectEnumerator, Location))
+                foreach ((string, Lazy<IEnumerable<ISourceNavigator>>) item in ProcessObjectProperties(objectEnumerator, Location))
                 {
                     list.Add(item.Item1, item.Item2);
                 }
@@ -111,7 +111,7 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
                 .ToArray();
         }
 
-        if (_cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNode>> exactMatch))
+        if (_cachedNodes.TryGetValue(name, out Lazy<IEnumerable<ISourceNavigator>> exactMatch))
         {
             return exactMatch.Value;
         }
@@ -126,9 +126,9 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
     }
 
     [SuppressMessage("StyleCop.CSharp.ReadabilityRules", "SA1414:Tuple types in signatures should have element names", Justification = "Internal method for processing object properties.")]
-    internal static List<(string, Lazy<IEnumerable<ISourceNode>>)> ProcessObjectProperties(IEnumerable<(string Name, JsonElement Value)> objectEnumerator, string location)
+    internal static List<(string, Lazy<IEnumerable<ISourceNavigator>>)> ProcessObjectProperties(IEnumerable<(string Name, JsonElement Value)> objectEnumerator, string location)
     {
-        var list = new List<(string, Lazy<IEnumerable<ISourceNode>>)>();
+        var list = new List<(string, Lazy<IEnumerable<ISourceNavigator>>)>();
 
         foreach (IGrouping<string, (string Name, JsonElement Value)> item in objectEnumerator
                      .GroupBy(x => x.Name.TrimStart(_shadowNodePrefix))
@@ -137,7 +137,7 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
             if (item.Count() == 1)
             {
                 (string Name, JsonElement Value) innerItem = item.First();
-                (string Name, Lazy<IEnumerable<ISourceNode>>) values = (innerItem.Name, new Lazy<IEnumerable<ISourceNode>>(() => JsonElementToSourceNodes(innerItem.Name, location, innerItem.Value).ToList()));
+                (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (innerItem.Name, new Lazy<IEnumerable<ISourceNavigator>>(() => JsonElementToSourceNodes(innerItem.Name, location, innerItem.Value).ToList()));
                 list.Add(values);
             }
             else if (item.Count() == 2)
@@ -147,7 +147,7 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
                 // _birthDate: { extension: ... }
                 (string Name, JsonElement Value) innerItem = item.SingleOrDefault(x => !x.Name.StartsWith(_shadowNodePrefix));
                 (string Name, JsonElement Value) shadowItem = item.SingleOrDefault(x => x.Name.StartsWith(_shadowNodePrefix));
-                (string Name, Lazy<IEnumerable<ISourceNode>>) values = (innerItem.Name, new Lazy<IEnumerable<ISourceNode>>(() => JsonElementToSourceNodes(innerItem.Name, location, innerItem.Value, shadowItem.Value).ToList()));
+                (string Name, Lazy<IEnumerable<ISourceNavigator>>) values = (innerItem.Name, new Lazy<IEnumerable<ISourceNavigator>>(() => JsonElementToSourceNodes(innerItem.Name, location, innerItem.Value, shadowItem.Value).ToList()));
                 list.Add(values);
             }
             else
@@ -159,7 +159,7 @@ internal class JsonElementSourceNode : ISourceNode, IResourceTypeSupplier, IAnno
         return list;
     }
 
-    private static IEnumerable<ISourceNode> JsonElementToSourceNodes(string name, string location, JsonElement item, JsonElement? shadowItem = null)
+    private static IEnumerable<ISourceNavigator> JsonElementToSourceNodes(string name, string location, JsonElement item, JsonElement? shadowItem = null)
     {
         (IReadOnlyList<JsonElement> List, bool ArrayProperty) itemList = ExpandArray(item);
         (IReadOnlyList<JsonElement> List, bool ArrayProperty)? shadowItemList = shadowItem != null ? ExpandArray(shadowItem.Value) : (Array.Empty<JsonElement>(), false);

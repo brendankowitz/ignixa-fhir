@@ -7,8 +7,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
-using Ignixa.Search.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 using IgnixaSearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
@@ -105,7 +106,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         return ValueTask.FromResult(Convert.ToBase64String(hashBytes));
     }
 
-    private IReadOnlyList<SearchParamJsonNode> BuildSearchParameters(List<Search.Models.SearchParameterInfo> searchParams)
+    private IReadOnlyList<SearchParamJsonNode> BuildSearchParameters(List<SearchParameterInfo> searchParams)
     {
         var result = new List<SearchParamJsonNode>();
 

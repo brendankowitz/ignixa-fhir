@@ -1,3 +1,4 @@
+using Ignixa.Application.Features.Specification;
 using Ignixa.Specification;
 using Medino;
 using Microsoft.Extensions.Logging;

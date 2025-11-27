@@ -12,14 +12,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="FhirBoolean"/> to a list of <see cref="TokenSearchValue"/>.
 /// </summary>
-public class BooleanToTokenSearchValueConverter : FhirTypedElementToSearchValueConverter<TokenSearchValue>
+public class BooleanToTokenSearchValueConverter : FhirElementToSearchValueConverter<TokenSearchValue>
 {
     public BooleanToTokenSearchValueConverter()
         : base("boolean", "System.Boolean")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         object fhirValue = value?.Value;
 

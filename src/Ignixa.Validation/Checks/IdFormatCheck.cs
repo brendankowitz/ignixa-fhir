@@ -21,19 +21,21 @@ public class IdFormatCheck : IValidationCheck
     /// <summary>
     /// Validates that resource ID matches FHIR format requirements.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        var idNode = node.Children("id").FirstOrDefault();
-        if (idNode is null)
+        var idChildren = element.Children("id");
+        if (idChildren.Count == 0)
         {
             return ValidationResult.Success(); // ID is optional at this level
         }
 
-        string? id = idNode.Text;
+        var idNode = idChildren[0];
+
+        string? id = idNode.Value?.ToString();
         if (string.IsNullOrEmpty(id))
         {
             return ValidationResult.Success(); // Empty is handled by CardinalityCheck if required

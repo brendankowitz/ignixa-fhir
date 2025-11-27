@@ -16,10 +16,10 @@ public class FhirEvaluationContext : EvaluationContext
 {
     /// <summary>
     /// A function that is invoked when resolve() is called in FhirPath expressions.
-    /// Should return the ITypedElement for the given reference (e.g., "Patient/1234").
+    /// Should return the IElement for the given reference (e.g., "Patient/1234").
     /// Should return null if the resource cannot be found.
     /// </summary>
-    public Func<string, ITypedElement?>? ElementResolver { get; set; }
+    public Func<string, IElement?>? ElementResolver { get; set; }
 
     /// <summary>
     /// Terminology service for terminology operations (e.g., memberOf()).

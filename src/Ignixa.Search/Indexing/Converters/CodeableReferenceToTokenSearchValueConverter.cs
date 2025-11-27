@@ -12,7 +12,7 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="CodeableReference "/> to a list of <see cref="TokenSearchValue"/>.
 /// </summary>
-public class CodeableReferenceToTokenSearchValueConverter : FhirTypedElementToSearchValueConverter<TokenSearchValue>
+public class CodeableReferenceToTokenSearchValueConverter : FhirElementToSearchValueConverter<TokenSearchValue>
 {
     private readonly CodeableConceptToTokenSearchValueConverter _converter;
 
@@ -22,9 +22,9 @@ public class CodeableReferenceToTokenSearchValueConverter : FhirTypedElementToSe
         _converter = new CodeableConceptToTokenSearchValueConverter();
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        var concept = value.Scalar("concept") as ITypedElement;
+        var concept = value.Scalar("concept") as IElement;
 
         if (concept == null) return Enumerable.Empty<ISearchValue>();
 

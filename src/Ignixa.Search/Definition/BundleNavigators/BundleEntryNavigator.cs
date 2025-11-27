@@ -10,15 +10,19 @@ namespace Ignixa.Search.Definition.BundleNavigators;
 
 internal class BundleEntryNavigator
 {
-    private readonly Lazy<ITypedElement> _entry;
+    private readonly Lazy<IElement> _entry;
 
-    internal BundleEntryNavigator(ITypedElement entry)
+    internal BundleEntryNavigator(IElement entry)
     {
         EnsureArg.IsNotNull(entry, nameof(entry));
 
         // SDK 6.0 fix: Use Children() instead of Select() to avoid POCO conversion issues
-        _entry = new Lazy<ITypedElement>(() => entry.Children("resource").FirstOrDefault());
+        _entry = new Lazy<IElement>(() =>
+        {
+            var children = entry.Children("resource");
+            return children.Count > 0 ? children[0] : null;
+        });
     }
 
-    public ITypedElement Resource => _entry.Value;
+    public IElement Resource => _entry.Value;
 }

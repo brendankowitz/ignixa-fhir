@@ -13,14 +13,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="CodeableConcept"/> to a list of <see cref="TokenSearchValue"/>.
 /// </summary>
-public class CodeableConceptToTokenSearchValueConverter : FhirTypedElementToSearchValueConverter<TokenSearchValue>
+public class CodeableConceptToTokenSearchValueConverter : FhirElementToSearchValueConverter<TokenSearchValue>
 {
     public CodeableConceptToTokenSearchValueConverter()
         : base("CodeableConcept")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         // Based on spec: http://hl7.org/fhir/search.html#token,
         // CodeableConcept.text is searchable, but we will only create a dedicated entry for it
@@ -29,9 +29,9 @@ public class CodeableConceptToTokenSearchValueConverter : FhirTypedElementToSear
         string text = value.Scalar("text") as string;
         bool conceptTextNeedsToBeAdded = !string.IsNullOrWhiteSpace(text);
 
-        foreach (ITypedElement coding in value.Select("coding"))
+        foreach (IElement coding in value.Select("coding"))
         {
-            var searchValue = coding?.ToTokenSearchValue();
+            var searchValue = coding.ToTokenSearchValue();
 
             if (searchValue != null)
             {

@@ -12,14 +12,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Date"/> to a list of <see cref="DateTimeSearchValue"/>.
 /// </summary>
-public class DateToDateTimeSearchValueConverter : FhirTypedElementToSearchValueConverter<DateTimeSearchValue>
+public class DateToDateTimeSearchValueConverter : FhirElementToSearchValueConverter<DateTimeSearchValue>
 {
     public DateToDateTimeSearchValueConverter()
         : base("date", "dateTime", "System.DateTime", "System.Date")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string stringValue = value?.Value?.ToString();
 

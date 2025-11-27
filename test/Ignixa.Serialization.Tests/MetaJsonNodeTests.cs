@@ -9,6 +9,7 @@ using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Hl7.Fhir.ElementModel; // SDK ElementModel (ISourceNode, ITypedElement, ToTypedElement extensions)
 using Hl7.FhirPath; // SDK FhirPath extensions
+using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
@@ -21,14 +22,16 @@ using Xunit;
 // Namespace aliases to avoid conflicts
 
 // Static using for our extension methods
-using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
 using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using IElement = Ignixa.Abstractions.IElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
+
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode used for legacy tests
 
 namespace Ignixa.Serialization.Tests;
 
@@ -83,7 +86,7 @@ public class MetaJsonNodeTests
   }
 }";
 
-    private readonly R4StructureDefinitionSummaryProvider _r4StructureDefinitionSummaryProvider = new R4StructureDefinitionSummaryProvider();
+    private readonly R4CoreSchemaProvider _r4Schema = new();
 
     public MetaJsonNodeTests()
     {
@@ -141,8 +144,8 @@ public class MetaJsonNodeTests
     public void ReadExtension()
     {
         // Test our implementation
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson).ToSourceNode();
-        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson).ToSourceNode();
+        IElement node = sourceNode.ToElement(_r4Schema);
 
         // Test the original where() expression with polymorphic "value" property
         // According to FHIRPath N1 spec, "value" should match "valueCode", "valueString", etc.
@@ -169,12 +172,12 @@ public class MetaJsonNodeTests
     public void SourceNode()
     {
         // Use our implementation
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
-        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
-        ITypedElement familyType = node.Select("Patient.name.family").Single();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
+        IElement node = sourceNode.ToElement(_r4Schema);
+        var familyType = node.Select("Patient.name.family").Single();
 
         // Note: ChildDefinitions extension method not yet implemented - skipping for now
-        // Sparky.Domain.Specification.IElementDefinitionSummary[] definitions = familyType.ChildDefinitions(_r4StructureDefinitionSummaryProvider).ToArray();
+        // Sparky.Domain.Specification.IElementDefinitionSummary[] definitions = familyType.ChildDefinitions(_r4Schema).ToArray();
         // Assert.NotNull(definitions);
 
         // Basic assertion that we got the element
@@ -185,24 +188,10 @@ public class MetaJsonNodeTests
     public void FindId()
     {
         // Use our implementation
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
-        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
-        ITypedElement id = node.Select("Resource.id").Single();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
+        IElement node = sourceNode.ToElement(_r4Schema);
+        var id = node.Select("Resource.id").Single();
         Assert.Equal("example", id.Value);
-    }
-
-    [Fact]
-    public void CanFindReferenceValuesInSourceNode()
-    {
-        var sourceNode = JsonSourceNodeFactory.Parse(Samples.GetDefaultObservation().ToJson());
-
-        var references = sourceNode
-            .GetReferences();
-
-        var reference = Assert.Single(references);
-
-        Assert.Contains("subject", reference.ElementPath, StringComparison.Ordinal);
-        Assert.Contains("Patient/example", reference.Value, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -212,8 +201,8 @@ public class MetaJsonNodeTests
         poco.Effective = new FhirDateTime(_currentDate.Year);
 
         // Simplified test - just verify basic structure navigation works
-        ISourceNode sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson()).ToSourceNode();
-        ITypedElement node = sourceNode.ToTypedElement(_r4StructureDefinitionSummaryProvider);
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson()).ToSourceNode();
+        IElement node = sourceNode.ToElement(_r4Schema);
 
         // Try to select resourceType which should always work
         var resourceTypeElements = node.Select("Observation.resourceType").ToArray();

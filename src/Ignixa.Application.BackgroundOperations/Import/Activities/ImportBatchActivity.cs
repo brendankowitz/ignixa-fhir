@@ -4,12 +4,13 @@
 // -------------------------------------------------------------------------------------------------
 
 using DurableTask.Core;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain;
 using Ignixa.Application.BackgroundOperations.Import.Models;
-using Ignixa.Search.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Specification;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
@@ -150,8 +151,8 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
                 IReadOnlyList<object> searchIndices = Array.Empty<object>();
                 try
                 {
-                    var typedElement = jsonNode.ToTypedElement(schemaProvider);
-                    var indices = searchIndexer.Extract(typedElement);
+                    var typedElement = jsonNode.ToElement(schemaProvider);
+                    var indices = searchIndexer.Extract((IElement)typedElement);
                     searchIndices = indices.ToArray();
                 }
                 catch (Exception ex)

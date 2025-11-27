@@ -17,39 +17,39 @@ internal static class FunctionHelpers
     #region Primitive Element Creation
 
     /// <summary>
-    /// Creates an ITypedElement representing a boolean value.
+    /// Creates an IElement representing a boolean value.
     /// </summary>
-    public static ITypedElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
+    public static IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
 
     /// <summary>
-    /// Creates an ITypedElement representing an integer value.
+    /// Creates an IElement representing an integer value.
     /// </summary>
-    public static ITypedElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
+    public static IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
 
     /// <summary>
-    /// Creates an ITypedElement representing a decimal value.
+    /// Creates an IElement representing a decimal value.
     /// </summary>
-    public static ITypedElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
+    public static IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
 
     /// <summary>
-    /// Creates an ITypedElement representing a string value.
+    /// Creates an IElement representing a string value.
     /// </summary>
-    public static ITypedElement CreateString(string value) => new PrimitiveElement(value, "string");
+    public static IElement CreateString(string value) => new PrimitiveElement(value, "string");
 
     /// <summary>
-    /// Creates an ITypedElement representing a date value.
+    /// Creates an IElement representing a date value.
     /// </summary>
-    public static ITypedElement CreateDate(string value) => new PrimitiveElement(value, "date");
+    public static IElement CreateDate(string value) => new PrimitiveElement(value, "date");
 
     /// <summary>
-    /// Creates an ITypedElement representing a dateTime value.
+    /// Creates an IElement representing a dateTime value.
     /// </summary>
-    public static ITypedElement CreateDateTime(string value) => new PrimitiveElement(value, "dateTime");
+    public static IElement CreateDateTime(string value) => new PrimitiveElement(value, "dateTime");
 
     /// <summary>
-    /// Creates an ITypedElement representing a time value.
+    /// Creates an IElement representing a time value.
     /// </summary>
-    public static ITypedElement CreateTime(string value) => new PrimitiveElement(value, "time");
+    public static IElement CreateTime(string value) => new PrimitiveElement(value, "time");
 
     #endregion
 
@@ -58,7 +58,7 @@ internal static class FunctionHelpers
     /// <summary>
     /// Checks if a collection contains a single true boolean value.
     /// </summary>
-    public static bool IsTrue(IEnumerable<ITypedElement> elements)
+    public static bool IsTrue(IEnumerable<IElement> elements)
     {
         var list = elements.ToList();
         return list.Count == 1 && list[0].Value is bool b && b;
@@ -71,11 +71,11 @@ internal static class FunctionHelpers
     /// - false → collection with boolean false
     /// - null → empty collection
     /// </summary>
-    public static IEnumerable<ITypedElement> ReturnBoolean(bool? result)
+    public static IEnumerable<IElement> ReturnBoolean(bool? result)
     {
         return result.HasValue
-            ? new[] { CreateBoolean(result.Value) }
-            : Enumerable.Empty<ITypedElement>();
+            ? [CreateBoolean(result.Value)]
+            : [];
     }
 
     #endregion
@@ -154,11 +154,11 @@ internal static class FunctionHelpers
     }
 
     /// <summary>
-    /// Equality comparer for ITypedElement instances based on their values.
+    /// Equality comparer for IElement instances based on their values.
     /// </summary>
-    public class TypedElementEqualityComparer : IEqualityComparer<ITypedElement>
+    public class ElementEqualityComparer : IEqualityComparer<IElement>
     {
-        public bool Equals(ITypedElement? x, ITypedElement? y)
+        public bool Equals(IElement? x, IElement? y)
         {
             if (x == null && y == null) return true;
             if (x == null || y == null) return false;
@@ -167,7 +167,7 @@ internal static class FunctionHelpers
             return x.Value.Equals(y.Value);
         }
 
-        public int GetHashCode(ITypedElement obj)
+        public int GetHashCode(IElement obj)
         {
             return obj.Value?.GetHashCode() ?? 0;
         }
@@ -180,9 +180,9 @@ internal static class FunctionHelpers
     /// <summary>
     /// Union operator: Merge collections, eliminate duplicates.
     /// </summary>
-    public static IEnumerable<ITypedElement> EvaluateUnion(List<ITypedElement> left, List<ITypedElement> right)
+    public static IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
     {
-        var result = new List<ITypedElement>();
+        var result = new List<IElement>();
 
         // Add all left elements
         foreach (var leftItem in left)
@@ -210,9 +210,9 @@ internal static class FunctionHelpers
     #region PrimitiveElement Implementation
 
     /// <summary>
-    /// Simple implementation of ITypedElement for primitive values.
+    /// Simple implementation of IElement for primitive values.
     /// </summary>
-    public class PrimitiveElement : ITypedElement
+    public class PrimitiveElement : IElement
     {
         public PrimitiveElement(object value, string type)
         {
@@ -224,9 +224,11 @@ internal static class FunctionHelpers
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        // IElement members
+        public IType? Type => null;
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

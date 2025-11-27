@@ -40,7 +40,7 @@ public static class FirelySdkExtensions
         // If already a Firely element wrapped in CoreElementAdapter, unwrap it
         if (element is CoreElementAdapter adapter)
         {
-            var unwrapped = adapter.Annotation<Hl7.Fhir.ElementModel.ITypedElement>();
+            var unwrapped = adapter.Meta<Hl7.Fhir.ElementModel.ITypedElement>();
             if (unwrapped != null)
                 return unwrapped;
         }

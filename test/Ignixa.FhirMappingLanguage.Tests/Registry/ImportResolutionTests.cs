@@ -19,7 +19,7 @@ public class ImportResolutionTests
 {
     #region Helper Classes
 
-    private class TestTypedElement : ITypedElement
+    private class TestTypedElement : IElement
     {
         public TestTypedElement(string name, object? value = null, string instanceType = "string")
         {
@@ -32,9 +32,11 @@ public class ImportResolutionTests
         public string InstanceType { get; }
         public object? Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public IReadOnlyList<IElement> Children(string? name = null) => new List<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 
     #endregion

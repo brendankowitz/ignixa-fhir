@@ -12,14 +12,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="ContactPoint"/> to a list of <see cref="TokenSearchValue"/>.
 /// </summary>
-public class ContactPointToTokenSearchValueConverter : FhirTypedElementToSearchValueConverter<TokenSearchValue>
+public class ContactPointToTokenSearchValueConverter : FhirElementToSearchValueConverter<TokenSearchValue>
 {
     public ContactPointToTokenSearchValueConverter()
         : base("ContactPoint")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string stringValue = value.Scalar("value") as string;
         string use = value.Scalar("use") as string;

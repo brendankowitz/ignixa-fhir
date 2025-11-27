@@ -5,10 +5,10 @@
 
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -94,14 +94,14 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
         // Get schema provider for FHIRPath evaluation
         var provider = _versionContext.GetBaseSchemaProvider(fhirVersion);
 
-        // Convert CapabilityStatement to ITypedElement for FHIRPath queries
-        var typedElement = capabilityStatement.ToTypedElement(provider);
+        // Convert CapabilityStatement to IElement for FHIRPath queries
+        var typedElement = capabilityStatement.ToElement(provider);
 
         // Get FHIRPath expression from request
         var expression = capabilityRequest.GetCapabilityRequirementExpression();
 
         // Evaluate FHIRPath expression against CapabilityStatement
-        var result = typedElement.Select(expression).FirstOrDefault();
+        var result = ((Ignixa.Abstractions.IElement)typedElement).Select(expression).FirstOrDefault();
 
         // Check if capability is supported (expression should return boolean true)
         var isSupported = result?.Value is bool supported && supported;

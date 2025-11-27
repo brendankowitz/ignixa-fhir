@@ -5,7 +5,7 @@ using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
-using Ignixa.Search.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -13,12 +13,14 @@ using Ignixa.Specification;
 using Microsoft.Extensions.Logging.Abstractions;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-using ISourceNode = Ignixa.Abstractions.ISourceNode;
-using ITypedElement = Ignixa.Abstractions.ITypedElement;
+using ISourceNavigator = Ignixa.Abstractions.ISourceNavigator;
+using IElement = Ignixa.Abstractions.IElement;
 
 // Static using for extension methods
-using static Ignixa.Serialization.SourceNodes.TypedElementExtensions;
-using TypedElementExtensions = Ignixa.Serialization.SourceNodes.TypedElementExtensions;
+using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
+using SchemaAwareElementExtensions = Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
+
+#pragma warning disable CS0618
 
 namespace Ignixa.Benchmarks;
 
@@ -32,7 +34,7 @@ public class NavigationBenchmarks
     private ResourceJsonNode _ignixaObservation = null!;
     private SdkISourceNode _firelySourceNode = null!;
     private Hl7.Fhir.Model.Observation _firelyPOCO = null!;
-    private ITypedElement _ignixaTypedElement = null!;
+    private IElement _ignixaTypedElement = null!;
     private SdkITypedElement _firelyTypedElement = null!;
     private IFhirSchemaProvider _ignixaSchemaProvider = null!;
     private FhirVersionContext _versionContext = null!;
@@ -50,7 +52,7 @@ public class NavigationBenchmarks
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
         _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
         var sourceNode = _ignixaObservation.ToSourceNode();
-        _ignixaTypedElement = TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
+        _ignixaTypedElement = (IElement)SchemaAwareElementExtensions.ToElement(sourceNode, _ignixaSchemaProvider);
 
         // Firely setup
         _firelySourceNode = Hl7.Fhir.Serialization.FhirJsonNode.Parse(json);
@@ -80,7 +82,8 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Simple")]
     public string? IgnixaSimpleTypedElement()
     {
-        return _ignixaTypedElement.Children("status").FirstOrDefault()?.Value?.ToString();
+        var children = _ignixaTypedElement.Children("status");
+        return children.Count > 0 ? children[0].Value?.ToString() : null;
     }
 
     [Benchmark(Description = "Firely: Access simple property (POCO)")]
@@ -110,11 +113,16 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Nested")]
     public string? IgnixaNestedTypedElement()
     {
-        return _ignixaTypedElement
-            .Children("code").FirstOrDefault()?
-            .Children("coding").FirstOrDefault()?
-            .Children("code").FirstOrDefault()?
-            .Value?.ToString();
+        var codeChildren = _ignixaTypedElement.Children("code");
+        if (codeChildren.Count == 0) return null;
+
+        var codingChildren = codeChildren[0].Children("coding");
+        if (codingChildren.Count == 0) return null;
+
+        var codeValueChildren = codingChildren[0].Children("code");
+        if (codeValueChildren.Count == 0) return null;
+
+        return codeValueChildren[0].Value?.ToString();
     }
 
     [Benchmark(Description = "Firely: Access nested object (POCO)")]
@@ -149,11 +157,16 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Array")]
     public string? IgnixaArrayTypedElement()
     {
-        return _ignixaTypedElement
-            .Children("component").FirstOrDefault()?
-            .Children("valueQuantity").FirstOrDefault()?
-            .Children("value").FirstOrDefault()?
-            .Value?.ToString();
+        var componentChildren = _ignixaTypedElement.Children("component");
+        if (componentChildren.Count == 0) return null;
+
+        var valueQuantityChildren = componentChildren[0].Children("valueQuantity");
+        if (valueQuantityChildren.Count == 0) return null;
+
+        var valueChildren = valueQuantityChildren[0].Children("value");
+        if (valueChildren.Count == 0) return null;
+
+        return valueChildren[0].Value?.ToString();
     }
 
     [Benchmark(Description = "Firely: Access array element (POCO)")]
@@ -175,11 +188,11 @@ public class NavigationBenchmarks
             .Value?.ToString();
     }
 
-    // ========== CONVERSION TO ISourceNode ==========
+    // ========== CONVERSION TO ISourceNavigator ==========
 
-    [Benchmark(Description = "Ignixa: Convert to ISourceNode")]
+    [Benchmark(Description = "Ignixa: Convert to ISourceNavigator")]
     [BenchmarkCategory("Conversion")]
-    public ISourceNode IgnixaToSourceNode()
+    public ISourceNavigator IgnixaToSourceNode()
     {
         return _ignixaObservation.ToSourceNode();
     }
@@ -195,10 +208,10 @@ public class NavigationBenchmarks
 
     [Benchmark(Description = "Ignixa: Convert to ITypedElement")]
     [BenchmarkCategory("Conversion")]
-    public ITypedElement IgnixaToTypedElement()
+    public IElement IgnixaToTypedElement()
     {
         var sourceNode = _ignixaObservation.ToSourceNode();
-        return TypedElementExtensions.ToTypedElement(sourceNode, _ignixaSchemaProvider);
+        return (IElement)SchemaAwareElementExtensions.ToElement(sourceNode, _ignixaSchemaProvider);
     }
 
     [Benchmark(Description = "Firely: Convert to ITypedElement")]

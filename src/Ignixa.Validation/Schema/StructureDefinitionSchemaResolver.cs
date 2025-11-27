@@ -9,25 +9,25 @@ using Ignixa.Validation.Abstractions;
 namespace Ignixa.Validation.Schema;
 
 /// <summary>
-/// Resolves validation schemas by using IStructureDefinitionSummaryProvider and StructureDefinitionSchemaBuilder
+/// Resolves validation schemas by using ISchema and StructureDefinitionSchemaBuilder
 /// to build ValidationSchema objects on-demand from FHIR StructureDefinition metadata.
 /// </summary>
 public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
 {
-    private readonly IStructureDefinitionSummaryProvider _provider;
+    private readonly ISchema _schema;
     private readonly StructureDefinitionSchemaBuilder _builder;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaResolver"/> class.
     /// </summary>
-    /// <param name="provider">The structure definition summary provider.</param>
+    /// <param name="schema">The schema provider.</param>
     /// <param name="builder">The schema builder (optional, creates default if null).</param>
-    /// <exception cref="ArgumentNullException">Thrown if provider is null.</exception>
+    /// <exception cref="ArgumentNullException">Thrown if schema is null.</exception>
     public StructureDefinitionSchemaResolver(
-        IStructureDefinitionSummaryProvider provider,
+        ISchema schema,
         StructureDefinitionSchemaBuilder? builder = null)
     {
-        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _builder = builder ?? new StructureDefinitionSchemaBuilder();
     }
 
@@ -51,15 +51,15 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
             return null;
         }
 
-        // Get summary from provider
-        var summary = _provider.Provide(resourceType);
-        if (summary == null)
+        // Get type definition from schema
+        var typeDefinition = _schema.GetTypeDefinition(resourceType);
+        if (typeDefinition == null)
         {
             return null;
         }
 
         // Build schema using builder
-        return _builder.BuildSchema(summary, _provider);
+        return _builder.BuildSchema(typeDefinition, _schema);
     }
 
     /// <summary>

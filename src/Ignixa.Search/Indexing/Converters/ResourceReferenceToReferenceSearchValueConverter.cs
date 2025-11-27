@@ -13,7 +13,7 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="ResourceReference"/> to a list of <see cref="ReferenceSearchValue"/>.
 /// </summary>
-public class ResourceReferenceToReferenceSearchValueConverter : FhirTypedElementToSearchValueConverter<ReferenceSearchValue>
+public class ResourceReferenceToReferenceSearchValueConverter : FhirElementToSearchValueConverter<ReferenceSearchValue>
 {
     private readonly IReferenceSearchValueParser _referenceSearchValueParser;
 
@@ -25,7 +25,7 @@ public class ResourceReferenceToReferenceSearchValueConverter : FhirTypedElement
         _referenceSearchValueParser = referenceSearchValueParser;
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string reference = value.Scalar("reference") as string;
 

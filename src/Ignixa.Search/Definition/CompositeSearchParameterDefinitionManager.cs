@@ -59,7 +59,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     /// </summary>
     /// <param name="baseManager">Base search parameter definition manager (from base FHIR spec).</param>
     /// <param name="packageRepository">Repository for querying loaded package resources.</param>
-    /// <param name="schemaProvider">Schema provider for converting JSON to ITypedElement (optional, for JSON parsing).</param>
+    /// <param name="schemaProvider">Schema provider for converting JSON to IElement (optional, for JSON parsing).</param>
     /// <param name="fhirVersion">Optional: FHIR version to filter package resources (e.g., "4.0.1").</param>
     /// <param name="logger">Logger instance.</param>
     /// <param name="conflictResolver">Conflict resolver for multi-IG scenarios (REQUIRED - ensures deterministic conflict resolution).</param>
@@ -368,7 +368,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     }
 
     /// <inheritdoc/>
-    public void AddNewSearchParameters(IReadOnlyCollection<ITypedElement> searchParameters, bool calculateHash = true)
+    public void AddNewSearchParameters(IReadOnlyCollection<IElement> searchParameters, bool calculateHash = true)
     {
         // Phase 1: Not implemented - delegate to base manager
         // Phase 2: Could support adding custom search parameters at runtime
@@ -558,7 +558,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
     /// <summary>
     /// Parses a SearchParameter from JSON using SearchParameterNavigator.
-    /// Requires a schema provider to convert JSON to ITypedElement.
+    /// Requires a schema provider to convert JSON to IElement.
     /// </summary>
     private SearchParameterInfo? ParseSearchParameter(string resourceJson, object contextForLogging)
     {
@@ -572,7 +572,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 return null;
             }
 
-            // Convert to ISourceNode, then to ITypedElement using schema provider
+            // Convert to ISourceNode, then to IElement using schema provider
             // Phase 1: If no schema provider available, skip (shouldn't happen in normal usage)
             if (_schemaProvider == null)
             {
@@ -581,10 +581,13 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             }
 
             var sourceNode = resourceNode.ToSourceNode();
-            var typedElement = sourceNode.ToTypedElement(_schemaProvider);
+            var typedElement = sourceNode.ToElement(_schemaProvider);
+
+            // Cast ITypedElement to IElement (SchemaAwareElement implements both interfaces)
+            var element = (IElement)typedElement;
 
             // Use SearchParameterNavigator to extract properties
-            var navigator = new SearchParameterNavigator(typedElement);
+            var navigator = new SearchParameterNavigator(element);
 
             // Create SearchParameterInfo
             return new SearchParameterInfo(navigator);

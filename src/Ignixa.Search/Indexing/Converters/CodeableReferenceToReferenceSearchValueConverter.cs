@@ -13,7 +13,7 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="CodeableReference "/> to a list of <see cref="ReferenceSearchValue"/>.
 /// </summary>
-public class CodeableReferenceToReferenceSearchValueConverter : FhirTypedElementToSearchValueConverter<ReferenceSearchValue>
+public class CodeableReferenceToReferenceSearchValueConverter : FhirElementToSearchValueConverter<ReferenceSearchValue>
 {
     private readonly ResourceReferenceToReferenceSearchValueConverter _referenceSearchValueParser;
 
@@ -25,9 +25,9 @@ public class CodeableReferenceToReferenceSearchValueConverter : FhirTypedElement
         _referenceSearchValueParser = new ResourceReferenceToReferenceSearchValueConverter(referenceSearchValueParser);
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        var reference = value.Scalar("reference") as ITypedElement;
+        var reference = value.Scalar("reference") as IElement;
 
         if (reference == null) return Enumerable.Empty<ISearchValue>();
 

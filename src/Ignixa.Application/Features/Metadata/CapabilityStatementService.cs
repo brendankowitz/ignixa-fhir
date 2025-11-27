@@ -6,7 +6,7 @@
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
-using Ignixa.Search.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain;

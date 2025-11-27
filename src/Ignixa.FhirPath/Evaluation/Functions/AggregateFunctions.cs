@@ -25,18 +25,18 @@ internal static class AggregateFunctions
     /// Returns empty for empty collection or incompatible types.
     /// </summary>
     /// <param name="elements">Collection to sum</param>
-    /// <returns>Sum as ITypedElement, or empty if operation not possible</returns>
-    public static IEnumerable<ITypedElement> Sum(IEnumerable<ITypedElement> elements)
+    /// <returns>Sum as IElement, or empty if operation not possible</returns>
+    public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
 
         // Empty collection returns empty (not 0)
         if (list.Count == 0)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         // Single item returns that item
         if (list.Count == 1)
-            return new[] { list[0] };
+            return [list[0]];
 
         // Determine the type to work with
         var firstValue = list[0].Value;
@@ -57,17 +57,17 @@ internal static class AggregateFunctions
     /// </summary>
     /// <param name="elements">Collection to evaluate</param>
     /// <returns>Minimum element, or empty if collection is empty</returns>
-    public static IEnumerable<ITypedElement> Min(IEnumerable<ITypedElement> elements)
+    public static IEnumerable<IElement> Min(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
 
         // Empty collection returns empty
         if (list.Count == 0)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         // Single item returns that item
         if (list.Count == 1)
-            return new[] { list[0] };
+            return [list[0]];
 
         var firstValue = list[0].Value;
 
@@ -101,7 +101,7 @@ internal static class AggregateFunctions
             return MinMaxDate(list, isMax: false);
         }
 
-        return Enumerable.Empty<ITypedElement>();
+        return [];
     }
 
     /// <summary>
@@ -110,17 +110,17 @@ internal static class AggregateFunctions
     /// </summary>
     /// <param name="elements">Collection to evaluate</param>
     /// <returns>Maximum element, or empty if collection is empty</returns>
-    public static IEnumerable<ITypedElement> Max(IEnumerable<ITypedElement> elements)
+    public static IEnumerable<IElement> Max(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
 
         // Empty collection returns empty
         if (list.Count == 0)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         // Single item returns that item
         if (list.Count == 1)
-            return new[] { list[0] };
+            return [list[0]];
 
         var firstValue = list[0].Value;
 
@@ -154,7 +154,7 @@ internal static class AggregateFunctions
             return MinMaxDate(list, isMax: true);
         }
 
-        return Enumerable.Empty<ITypedElement>();
+        return [];
     }
 
     /// <summary>
@@ -163,24 +163,24 @@ internal static class AggregateFunctions
     /// Returns empty for empty collection or incompatible types.
     /// </summary>
     /// <param name="elements">Collection to average</param>
-    /// <returns>Average as ITypedElement, or empty if operation not possible</returns>
-    public static IEnumerable<ITypedElement> Avg(IEnumerable<ITypedElement> elements)
+    /// <returns>Average as IElement, or empty if operation not possible</returns>
+    public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements)
     {
         var list = elements.Where(e => e != null).ToList();
 
         // Empty collection returns empty
         if (list.Count == 0)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         // Single item: return as decimal for integers, otherwise return as-is
         if (list.Count == 1)
         {
             var singleValue = list[0].Value;
             if (singleValue is int i)
-                return new[] { CreateDecimal(i) };
+                return [CreateDecimal(i)];
             if (singleValue is Quantity)
-                return new[] { list[0] };
-            return new[] { list[0] };
+                return [list[0]];
+            return [list[0]];
         }
 
         var firstValue = list[0].Value;
@@ -197,24 +197,24 @@ internal static class AggregateFunctions
 
     #region Sum Implementations
 
-    private static IEnumerable<ITypedElement> SumQuantities(List<ITypedElement> list)
+    private static IEnumerable<IElement> SumQuantities(List<IElement> list)
     {
         // All quantities must have the same unit
         var quantities = list.Select(e => e.Value as Quantity).ToList();
         if (quantities.Any(q => q == null))
-            return Enumerable.Empty<ITypedElement>(); // Mixed types
+            return []; // Mixed types
 
         var firstUnit = quantities[0]!.Unit;
         if (!quantities.All(q => q!.Unit == firstUnit))
-            return Enumerable.Empty<ITypedElement>(); // Different units
+            return []; // Different units
 
         // Sum all values
         decimal sum = quantities.Sum(q => q!.Value);
         var resultQuantity = new Quantity(sum, firstUnit);
-        return new[] { new QuantityElement(resultQuantity) };
+        return [new QuantityElement(resultQuantity)];
     }
 
-    private static IEnumerable<ITypedElement> SumNumeric(List<ITypedElement> list)
+    private static IEnumerable<IElement> SumNumeric(List<IElement> list)
     {
         // Check if we have any decimals (determines return type)
         bool hasDecimal = list.Any(e => e.Value is decimal);
@@ -238,52 +238,52 @@ internal static class AggregateFunctions
             else
             {
                 // Incompatible type in collection
-                return Enumerable.Empty<ITypedElement>();
+                return [];
             }
         }
 
         // If any decimal, return decimal; otherwise return integer if possible
         if (hasDecimal)
         {
-            return new[] { CreateDecimal(sum) };
+            return [CreateDecimal(sum)];
         }
 
         // For integer-only collections, return as integer if within range
         if (sum == Math.Floor(sum) && sum >= int.MinValue && sum <= int.MaxValue)
         {
-            return new[] { CreateInteger((int)sum) };
+            return [CreateInteger((int)sum)];
         }
 
         // Overflow or fractional result - return as decimal
-        return new[] { CreateDecimal(sum) };
+        return [CreateDecimal(sum)];
     }
 
     #endregion
 
     #region Min/Max Implementations
 
-    private static IEnumerable<ITypedElement> MinMaxQuantities(List<ITypedElement> list, bool isMax)
+    private static IEnumerable<IElement> MinMaxQuantities(List<IElement> list, bool isMax)
     {
         // All quantities must have the same unit
         var quantities = list.Select(e => e.Value as Quantity).ToList();
         if (quantities.Any(q => q == null))
-            return Enumerable.Empty<ITypedElement>(); // Mixed types
+            return []; // Mixed types
 
         var firstUnit = quantities[0]!.Unit;
         if (!quantities.All(q => q!.Unit == firstUnit))
-            return Enumerable.Empty<ITypedElement>(); // Different units
+            return []; // Different units
 
         // Find min/max
         var result = isMax
             ? quantities.MaxBy(q => q!.Value)
             : quantities.MinBy(q => q!.Value);
 
-        return result != null ? new[] { new QuantityElement(result) } : Enumerable.Empty<ITypedElement>();
+        return result != null ? [new QuantityElement(result)] : [];
     }
 
-    private static IEnumerable<ITypedElement> MinMaxNumeric(List<ITypedElement> list, bool isMax)
+    private static IEnumerable<IElement> MinMaxNumeric(List<IElement> list, bool isMax)
     {
-        ITypedElement? result = null;
+        IElement? result = null;
         decimal? extremeValue = null;
 
         foreach (var element in list)
@@ -318,12 +318,12 @@ internal static class AggregateFunctions
             }
         }
 
-        return result != null ? new[] { result } : Enumerable.Empty<ITypedElement>();
+        return result != null ? [result] : [];
     }
 
-    private static IEnumerable<ITypedElement> MinMaxString(List<ITypedElement> list, bool isMax)
+    private static IEnumerable<IElement> MinMaxString(List<IElement> list, bool isMax)
     {
-        ITypedElement? result = null;
+        IElement? result = null;
         string? extremeValue = null;
 
         foreach (var element in list)
@@ -340,10 +340,10 @@ internal static class AggregateFunctions
             }
         }
 
-        return result != null ? new[] { result } : Enumerable.Empty<ITypedElement>();
+        return result != null ? [result] : [];
     }
 
-    private static IEnumerable<ITypedElement> MinMaxDate(List<ITypedElement> list, bool isMax)
+    private static IEnumerable<IElement> MinMaxDate(List<IElement> list, bool isMax)
     {
         string? extremeValue = null;
         string? extremeType = null;
@@ -396,34 +396,34 @@ internal static class AggregateFunctions
 
         if (extremeValue != null && extremeType != null)
         {
-            return new[] { new PrimitiveElement(extremeValue, extremeType) };
+            return [new PrimitiveElement(extremeValue, extremeType)];
         }
 
-        return Enumerable.Empty<ITypedElement>();
+        return [];
     }
 
     #endregion
 
     #region Avg Implementations
 
-    private static IEnumerable<ITypedElement> AvgQuantities(List<ITypedElement> list)
+    private static IEnumerable<IElement> AvgQuantities(List<IElement> list)
     {
         // All quantities must have the same unit
         var quantities = list.Select(e => e.Value as Quantity).ToList();
         if (quantities.Any(q => q == null))
-            return Enumerable.Empty<ITypedElement>(); // Mixed types
+            return []; // Mixed types
 
         var firstUnit = quantities[0]!.Unit;
         if (!quantities.All(q => q!.Unit == firstUnit))
-            return Enumerable.Empty<ITypedElement>(); // Different units
+            return []; // Different units
 
         // Average all values
         decimal avg = quantities.Average(q => q!.Value);
         var resultQuantity = new Quantity(avg, firstUnit);
-        return new[] { new QuantityElement(resultQuantity) };
+        return [new QuantityElement(resultQuantity)];
     }
 
-    private static IEnumerable<ITypedElement> AvgNumeric(List<ITypedElement> list)
+    private static IEnumerable<IElement> AvgNumeric(List<IElement> list)
     {
         decimal sum = 0;
         int count = 0;
@@ -449,16 +449,16 @@ internal static class AggregateFunctions
             else
             {
                 // Incompatible type in collection
-                return Enumerable.Empty<ITypedElement>();
+                return [];
             }
         }
 
         if (count == 0)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         // avg() always returns decimal, even for integer collections
         decimal avg = sum / count;
-        return new[] { CreateDecimal(avg) };
+        return [CreateDecimal(avg)];
     }
 
     #endregion
@@ -470,7 +470,7 @@ internal static class AggregateFunctions
         return value is int or long or decimal or double or float;
     }
 
-    private static bool IsDateOrDateTime(ITypedElement element)
+    private static bool IsDateOrDateTime(IElement element)
     {
         // CA1308 suppressed: FhirPath type names are lowercase by specification
 #pragma warning disable CA1308 // Normalize strings to uppercase
@@ -501,17 +501,17 @@ internal static class AggregateFunctions
             out result);
     }
 
-    private static ITypedElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
-    private static ITypedElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
+    private static IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
+    private static IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
 
     #endregion
 
-    #region ITypedElement Implementations
+    #region IElement Implementations
 
     /// <summary>
-    /// ITypedElement wrapper for Quantity values.
+    /// IElement wrapper for Quantity values.
     /// </summary>
-    private class QuantityElement : ITypedElement
+    private class QuantityElement : IElement
     {
         private readonly Quantity _quantity;
 
@@ -525,26 +525,33 @@ internal static class AggregateFunctions
         public string InstanceType => "Quantity";
         public object Value => _quantity;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public T? Meta<T>() where T : class => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             // Quantity can have child elements: value, unit, system, code
+            var children = new List<IElement>();
+
             if (name == null || name == "value")
-                yield return new PrimitiveElement(_quantity.Value, "decimal");
+                children.Add(new PrimitiveElement(_quantity.Value, "decimal"));
 
             if (name == null || name == "unit" || name == "code")
-                yield return new PrimitiveElement(_quantity.Unit, "string");
+                children.Add(new PrimitiveElement(_quantity.Unit, "string"));
 
             if (name == null || name == "system")
-                yield return new PrimitiveElement("http://unitsofmeasure.org", "uri");
+                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri"));
+
+            return children;
         }
     }
 
     /// <summary>
-    /// ITypedElement wrapper for primitive values.
+    /// IElement wrapper for primitive values.
     /// </summary>
-    private class PrimitiveElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
         public PrimitiveElement(object value, string type)
         {
@@ -556,9 +563,12 @@ internal static class AggregateFunctions
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public T? Meta<T>() where T : class => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
     }
 
     #endregion

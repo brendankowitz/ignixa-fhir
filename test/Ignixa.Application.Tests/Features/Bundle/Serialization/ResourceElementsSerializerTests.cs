@@ -491,7 +491,7 @@ public class ResourceElementsSerializerTests
 
     private MemoryStream CallWriteFilteredResourceProperty(
         string resourceJson,
-        IStructureDefinitionSummaryProvider? schemaProvider,
+        ISchema? schemaProvider,
         IReadOnlySet<string> requestedElements,
         string resourceType)
     {
@@ -530,47 +530,48 @@ public class ResourceElementsSerializerTests
         return dict;
     }
 
-    private IStructureDefinitionSummaryProvider CreateMockSchemaProvider(
+    private ISchema CreateMockSchemaProvider(
         string resourceType,
         string[] elementNames)
     {
-        var provider = Substitute.For<IStructureDefinitionSummaryProvider>();
-        var schema = Substitute.For<IStructureDefinitionSummary>();
+        var provider = Substitute.For<ISchema>();
+        var typeDefinition = Substitute.For<IType>();
 
-        var elements = elementNames.Select(name => CreateMockElement(name, isRequired: false)).ToList();
-        schema.GetElements().Returns(elements);
+        var elements = elementNames.Select(name => CreateMockTypeForElement(name, isRequired: false)).ToList();
+        typeDefinition.Children.Returns(elements);
 
-        provider.Provide(resourceType).Returns(schema);
-        provider.Provide(Arg.Is<string>(rt => rt != resourceType)).Returns((IStructureDefinitionSummary?)null);
+        provider.GetTypeDefinition(resourceType).Returns(typeDefinition);
+        provider.GetTypeDefinition(Arg.Is<string>(rt => rt != resourceType)).Returns((IType?)null);
 
         return provider;
     }
 
-    private IStructureDefinitionSummaryProvider CreateMockSchemaProviderWithRequired(
+    private ISchema CreateMockSchemaProviderWithRequired(
         string resourceType,
         string[] elementNames,
         string[] requiredElementNames)
     {
-        var provider = Substitute.For<IStructureDefinitionSummaryProvider>();
-        var schema = Substitute.For<IStructureDefinitionSummary>();
+        var provider = Substitute.For<ISchema>();
+        var typeDefinition = Substitute.For<IType>();
 
         var requiredSet = new HashSet<string>(requiredElementNames);
         var elements = elementNames.Select(name =>
-            CreateMockElement(name, isRequired: requiredSet.Contains(name))).ToList();
+            CreateMockTypeForElement(name, isRequired: requiredSet.Contains(name))).ToList();
 
-        schema.GetElements().Returns(elements);
+        typeDefinition.Children.Returns(elements);
 
-        provider.Provide(resourceType).Returns(schema);
-        provider.Provide(Arg.Is<string>(rt => rt != resourceType)).Returns((IStructureDefinitionSummary?)null);
+        provider.GetTypeDefinition(resourceType).Returns(typeDefinition);
+        provider.GetTypeDefinition(Arg.Is<string>(rt => rt != resourceType)).Returns((IType?)null);
 
         return provider;
     }
 
-    private IElementDefinitionSummary CreateMockElement(string name, bool isRequired)
+    private IType CreateMockTypeForElement(string name, bool isRequired)
     {
-        var element = Substitute.For<IElementDefinitionSummary>();
-        element.ElementName.Returns(name);
-        element.IsRequired.Returns(isRequired);
-        return element;
+        var type = Substitute.For<IType>();
+        var info = new TypeInfo(name);
+        type.Info.Returns(info);
+        type.IsRequired.Returns(isRequired);
+        return type;
     }
 }

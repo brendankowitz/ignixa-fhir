@@ -9,5 +9,5 @@ namespace Ignixa.Search.Indexing;
 
 public interface IReferenceToElementResolver
 {
-    ITypedElement Resolve(string reference);
+    IElement Resolve(string reference);
 }

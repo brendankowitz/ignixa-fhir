@@ -22,5 +22,5 @@ public interface ISearchOptionsBuilder
     /// <param name="parameters">The parsed query parameters.</param>
     /// <param name="schemaProvider">Optional schema provider for validating _elements parameter.</param>
     /// <returns>A SearchOptions instance configured according to the parameters.</returns>
-    SearchOptions Build(string resourceType, IReadOnlyList<QueryParameter> parameters, IStructureDefinitionSummaryProvider? schemaProvider = null);
+    SearchOptions Build(string resourceType, IReadOnlyList<QueryParameter> parameters, ISchema? schemaProvider = null);
 }

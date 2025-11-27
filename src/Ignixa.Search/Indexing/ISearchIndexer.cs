@@ -17,5 +17,5 @@ public interface ISearchIndexer
     /// </summary>
     /// <param name="resource">The resource to extract the search indices from.</param>
     /// <returns>An <see cref="IEnumerable{SearchIndex}"/> that contains the search index entries.</returns>
-    IReadOnlyCollection<SearchIndexEntry> Extract(ITypedElement resource);
+    IReadOnlyCollection<SearchIndexEntry> Extract(IElement resource);
 }

@@ -11,14 +11,14 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Coding"/> to a list of <see cref="TokenSearchValue"/>.
 /// </summary>
-public class CodingToTokenSearchValueConverter : FhirTypedElementToSearchValueConverter<TokenSearchValue>
+public class CodingToTokenSearchValueConverter : FhirElementToSearchValueConverter<TokenSearchValue>
 {
     public CodingToTokenSearchValueConverter()
         : base("Coding")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         var searchValue = value.ToTokenSearchValue();
 

@@ -3,6 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
+using Ignixa.Domain.Terminology;
+
 namespace Ignixa.Domain.Models;
 
 /// <summary>
@@ -78,7 +81,7 @@ public class PackageResource
     /// Status of terminology import for this resource (only applies to CodeSystem, ValueSet, ConceptMap).
     /// Null for non-terminology resources (StructureDefinition, SearchParameter, etc.).
     /// </summary>
-    public Terminology.TerminologyImportStatus? TerminologyImportStatus { get; set; }
+    public TerminologyImportStatus? TerminologyImportStatus { get; set; }
 
     /// <summary>
     /// SHA256 hash of ResourceJson content to detect changes and avoid re-importing unchanged resources.

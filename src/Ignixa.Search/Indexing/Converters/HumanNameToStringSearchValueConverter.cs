@@ -13,18 +13,18 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="HumanName"/> to a list of <see cref="StringSearchValue"/>.
 /// </summary>
-public class HumanNameToStringSearchValueConverter : FhirTypedElementToSearchValueConverter<StringSearchValue>
+public class HumanNameToStringSearchValueConverter : FhirElementToSearchValueConverter<StringSearchValue>
 {
     public HumanNameToStringSearchValueConverter()
         : base("HumanName")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
-        IEnumerable<ITypedElement> givenNames = value.Select("given");
-        IEnumerable<ITypedElement> prefixes = value.Select("prefix");
-        IEnumerable<ITypedElement> suffixes = value.Select("suffix");
+        IEnumerable<IElement> givenNames = value.Select("given");
+        IEnumerable<IElement> prefixes = value.Select("prefix");
+        IEnumerable<IElement> suffixes = value.Select("suffix");
         string family = value.Scalar("family") as string;
         string text = value.Scalar("text") as string;
 

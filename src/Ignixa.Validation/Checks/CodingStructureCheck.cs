@@ -29,15 +29,15 @@ public class CodingStructureCheck : IValidationCheck
     /// <summary>
     /// Validates Coding/CodeableConcept structure.
     /// </summary>
-    /// <param name="node">The source node to validate.</param>
+    /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings.</param>
     /// <param name="state">Current validation state.</param>
     /// <returns>A validation result indicating success or failure.</returns>
-    public ValidationResult Validate(ISourceNode node, ValidationSettings settings, ValidationState state)
+    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         var issues = new List<ValidationIssue>();
 
-        var fieldNodes = node.Children(_fieldName);
+        var fieldNodes = element.Children(_fieldName);
         foreach (var fieldNode in fieldNodes)
         {
             // Check if this is a CodeableConcept (has 'coding' child) or a Coding directly
@@ -67,7 +67,7 @@ public class CodingStructureCheck : IValidationCheck
 
     private static void ValidateSingleCoding(
         string path,
-        ISourceNode codingNode,
+        IElement codingNode,
         List<ValidationIssue> issues)
     {
         bool hasSystem = codingNode.Children("system").Any();
@@ -83,10 +83,11 @@ public class CodingStructureCheck : IValidationCheck
         }
 
         // Validate that Coding.system is an absolute URI if present
-        var systemNode = codingNode.Children("system").FirstOrDefault();
-        if (systemNode != null)
+        var systemChildren = codingNode.Children("system");
+        if (systemChildren.Count > 0)
         {
-            string? systemValue = systemNode.Text;
+            var systemNode = systemChildren[0];
+            string? systemValue = systemNode.Value?.ToString();
             if (!string.IsNullOrEmpty(systemValue) && !IsAbsoluteUri(systemValue))
             {
                 issues.Add(ValidationIssue.InvariantFailure(

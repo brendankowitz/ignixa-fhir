@@ -25,18 +25,18 @@ internal static class QuantityEvaluator
     private static readonly IQuantityUnitConverter UnitConverter = QuantityUnitConverter.Instance;
 
     /// <summary>
-    /// Evaluates a QuantityExpression to an ITypedElement.
+    /// Evaluates a QuantityExpression to an IElement.
     /// </summary>
     /// <param name="quantityExpr">The quantity expression</param>
-    /// <returns>A single ITypedElement representing the quantity</returns>
-    public static IEnumerable<ITypedElement> EvaluateQuantity(QuantityExpression quantityExpr)
+    /// <returns>A single IElement representing the quantity</returns>
+    public static IEnumerable<IElement> EvaluateQuantity(QuantityExpression quantityExpr)
     {
         ArgumentNullException.ThrowIfNull(quantityExpr);
 
         // Create a Quantity value object
         var quantity = new Quantity(quantityExpr.Value, quantityExpr.Unit);
 
-        // Wrap in a QuantityElement (ITypedElement implementation)
+        // Wrap in a QuantityElement (IElement implementation)
         yield return new QuantityElement(quantity);
     }
 
@@ -47,14 +47,14 @@ internal static class QuantityEvaluator
     /// <param name="op">Binary operator</param>
     /// <param name="right">Right operand collection</param>
     /// <returns>Result of the arithmetic operation, or empty if operands are incompatible</returns>
-    public static IEnumerable<ITypedElement> EvaluateArithmetic(
-        IReadOnlyList<ITypedElement> left,
+    public static IEnumerable<IElement> EvaluateArithmetic(
+        IReadOnlyList<IElement> left,
         string op,
-        IReadOnlyList<ITypedElement> right)
+        IReadOnlyList<IElement> right)
     {
         // FhirPath arithmetic requires single values on both sides
         if (left.Count != 1 || right.Count != 1)
-            return Enumerable.Empty<ITypedElement>();
+            return [];
 
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
@@ -67,7 +67,7 @@ internal static class QuantityEvaluator
                 "+" => EvaluateQuantityAddition(leftQty, rightQty),
                 "-" => EvaluateQuantitySubtraction(leftQty, rightQty),
                 "/" => EvaluateQuantityDivision(leftQty, rightQty),
-                _ => Enumerable.Empty<ITypedElement>()
+                _ => []
             };
         }
 
@@ -86,7 +86,7 @@ internal static class QuantityEvaluator
                 return EvaluateQuantityScalarMultiply(qty2, ToDecimal(leftValue));
         }
 
-        return Enumerable.Empty<ITypedElement>();
+        return [];
     }
 
     /// <summary>
@@ -97,9 +97,9 @@ internal static class QuantityEvaluator
     /// <param name="right">Right operand collection</param>
     /// <returns>Boolean result, or null if comparison is not possible</returns>
     public static bool? EvaluateComparison(
-        IReadOnlyList<ITypedElement> left,
+        IReadOnlyList<IElement> left,
         string op,
-        IReadOnlyList<ITypedElement> right)
+        IReadOnlyList<IElement> right)
     {
         // FhirPath comparisons require single values on both sides
         if (left.Count != 1 || right.Count != 1)
@@ -136,42 +136,42 @@ internal static class QuantityEvaluator
 
     #region Private Helpers
 
-    private static IEnumerable<ITypedElement> EvaluateQuantityAddition(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantityAddition(Quantity left, Quantity right)
     {
         var result = left.Add(right, UnitConverter);
         return result != null
-            ? new[] { new QuantityElement(result) }
-            : Enumerable.Empty<ITypedElement>();
+            ? [new QuantityElement(result)]
+            : [];
     }
 
-    private static IEnumerable<ITypedElement> EvaluateQuantitySubtraction(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantitySubtraction(Quantity left, Quantity right)
     {
         var result = left.Subtract(right, UnitConverter);
         return result != null
-            ? new[] { new QuantityElement(result) }
-            : Enumerable.Empty<ITypedElement>();
+            ? [new QuantityElement(result)]
+            : [];
     }
 
-    private static IEnumerable<ITypedElement> EvaluateQuantityScalarMultiply(Quantity quantity, decimal scalar)
+    private static IEnumerable<IElement> EvaluateQuantityScalarMultiply(Quantity quantity, decimal scalar)
     {
         var result = quantity.Multiply(scalar);
-        return new[] { new QuantityElement(result) };
+        return [new QuantityElement(result)];
     }
 
-    private static IEnumerable<ITypedElement> EvaluateQuantityScalarDivide(Quantity quantity, decimal scalar)
+    private static IEnumerable<IElement> EvaluateQuantityScalarDivide(Quantity quantity, decimal scalar)
     {
         var result = quantity.DivideByScalar(scalar);
         return result != null
-            ? new[] { new QuantityElement(result) }
-            : Enumerable.Empty<ITypedElement>();
+            ? [new QuantityElement(result)]
+            : [];
     }
 
-    private static IEnumerable<ITypedElement> EvaluateQuantityDivision(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantityDivision(Quantity left, Quantity right)
     {
         var result = left.DivideBy(right, UnitConverter);
         return result != null
-            ? new[] { CreateDecimal(result.Value) }
-            : Enumerable.Empty<ITypedElement>();
+            ? [CreateDecimal(result.Value)]
+            : [];
     }
 
     private static bool IsScalar(object? value)
@@ -192,16 +192,16 @@ internal static class QuantityEvaluator
         };
     }
 
-    private static ITypedElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
+    private static IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");
 
     #endregion
 
-    #region ITypedElement Implementations
+    #region IElement Implementations
 
     /// <summary>
-    /// ITypedElement wrapper for Quantity values.
+    /// IElement wrapper for Quantity values.
     /// </summary>
-    private class QuantityElement : ITypedElement
+    private class QuantityElement : IElement
     {
         private readonly Quantity _quantity;
 
@@ -215,26 +215,32 @@ internal static class QuantityEvaluator
         public string InstanceType => "Quantity";
         public object Value => _quantity;
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null)
+        public T? Meta<T>() where T : class => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null)
         {
             // Quantity can have child elements: value, unit, system, code
+            var children = new List<IElement>();
+
             if (name == null || name == "value")
-                yield return new PrimitiveElement(_quantity.Value, "decimal");
+                children.Add(new PrimitiveElement(_quantity.Value, "decimal"));
 
             if (name == null || name == "unit" || name == "code")
-                yield return new PrimitiveElement(_quantity.Unit, "string");
+                children.Add(new PrimitiveElement(_quantity.Unit, "string"));
 
             if (name == null || name == "system")
-                yield return new PrimitiveElement("http://unitsofmeasure.org", "uri");
+                children.Add(new PrimitiveElement("http://unitsofmeasure.org", "uri"));
+
+            return children;
         }
     }
 
     /// <summary>
-    /// ITypedElement wrapper for primitive values.
+    /// IElement wrapper for primitive values.
     /// </summary>
-    private class PrimitiveElement : ITypedElement
+    private class PrimitiveElement : IElement
     {
         public PrimitiveElement(object value, string type)
         {
@@ -246,9 +252,11 @@ internal static class QuantityEvaluator
         public string InstanceType { get; }
         public object Value { get; }
         public string Location => string.Empty;
-        public IElementDefinitionSummary? Definition => null;
+        public IType? Type => null;
 
-        public IEnumerable<ITypedElement> Children(string? name = null) => Enumerable.Empty<ITypedElement>();
+        public T? Meta<T>() where T : class => null;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
     }
 
     #endregion

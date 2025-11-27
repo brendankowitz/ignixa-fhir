@@ -36,7 +36,7 @@ public class InMemoryIndex
     /// Indexes one or more resources, extracting search parameters and storing them in the index.
     /// </summary>
     /// <param name="resources">The resources to index</param>
-    public void IndexResources(params ITypedElement[] resources)
+    public void IndexResources(params IElement[] resources)
     {
         EnsureArg.IsNotNull(resources, nameof(resources));
 
@@ -71,27 +71,30 @@ public class InMemoryIndex
             : Enumerable.Empty<(ResourceKey, IReadOnlyCollection<SearchIndexEntry>)>();
     }
 
-    private static ResourceKey ToResourceKey(ITypedElement resource)
+    private static ResourceKey ToResourceKey(IElement resource)
     {
         EnsureArg.IsNotNull(resource, nameof(resource));
 
         // Extract id from resource
-        var idElement = resource.Children("id").FirstOrDefault();
+        var idChildren = resource.Children("id");
+        var idElement = idChildren.Count > 0 ? idChildren[0] : null;
         var id = idElement?.Value?.ToString() ?? throw new InvalidOperationException("Resource must have an id");
 
         // Extract versionId from meta.versionId if present
-        var metaElement = resource.Children("meta").FirstOrDefault();
-        var versionIdElement = metaElement?.Children("versionId").FirstOrDefault();
+        var metaChildren = resource.Children("meta");
+        var metaElement = metaChildren.Count > 0 ? metaChildren[0] : null;
+        var versionIdChildren = metaElement?.Children("versionId");
+        var versionIdElement = versionIdChildren?.Count > 0 ? versionIdChildren[0] : null;
         var versionId = versionIdElement?.Value?.ToString();
 
         return new ResourceKey(GetResourceType(resource), id, versionId);
     }
 
-    private static string GetResourceType(ITypedElement resource)
+    private static string GetResourceType(IElement resource)
     {
         EnsureArg.IsNotNull(resource, nameof(resource));
 
-        // For ITypedElement, the resource type is in the InstanceType property
+        // For IElement, the resource type is in the InstanceType property
         return resource.InstanceType;
     }
 }

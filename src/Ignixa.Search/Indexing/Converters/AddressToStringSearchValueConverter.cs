@@ -10,14 +10,14 @@ using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing.Converters;
 
-public class AddressToStringSearchValueConverter : FhirTypedElementToSearchValueConverter<StringSearchValue>
+public class AddressToStringSearchValueConverter : FhirElementToSearchValueConverter<StringSearchValue>
 {
     public AddressToStringSearchValueConverter()
         : base("Address")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         // http://hl7.org/fhir/patient.html recommends the following:
         // A server defined search that may match any of the string fields in the Address, including line, city, state, country, postalCode, and/or text.
@@ -26,7 +26,7 @@ public class AddressToStringSearchValueConverter : FhirTypedElementToSearchValue
         string city = value.Scalar("city") as string;
         string country = value.Scalar("country") as string;
         string district = value.Scalar("district") as string;
-        IEnumerable<ITypedElement> lines = value.Select("line");
+        IEnumerable<IElement> lines = value.Select("line");
         string postCode = value.Scalar("postalCode") as string;
         string state = value.Scalar("state") as string;
         string text = value.Scalar("text") as string;

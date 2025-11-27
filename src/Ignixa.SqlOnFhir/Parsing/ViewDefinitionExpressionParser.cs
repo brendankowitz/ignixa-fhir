@@ -1,9 +1,9 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * ISourceNode-based parser for SQL on FHIR v2 ViewDefinitions.
+ * ISourceNavigator-based parser for SQL on FHIR v2 ViewDefinitions.
  * Builds an immutable expression tree with compiled FHIRPath for evaluation.
- * This is the ONLY parser needed - it goes directly from ISourceNode to ViewDefinitionExpression.
+ * This is the ONLY parser needed - it goes directly from ISourceNavigator to ViewDefinitionExpression.
  */
 
 using System.Collections.Immutable;
@@ -12,11 +12,13 @@ using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.SqlOnFhir.Expressions;
 
+#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode/ITypedElement migration pending
+
 namespace Ignixa.SqlOnFhir.Parsing;
 
 /// <summary>
-/// Parses SQL on FHIR v2 ViewDefinition from ISourceNode into an immutable expression tree.
-/// Uses ISourceNode for proper handling of choice types (value[x]) and polymorphism.
+/// Parses SQL on FHIR v2 ViewDefinition from ISourceNavigator into an immutable expression tree.
+/// Uses ISourceNavigator for proper handling of choice types (value[x]) and polymorphism.
 /// Compiles FHIRPath expressions during parsing for better performance.
 /// This replaces both ViewDefinitionParser and ViewDefinitionModelParser with a single clean path.
 /// </summary>
@@ -25,11 +27,11 @@ public static class ViewDefinitionExpressionParser
     private static readonly FhirPathParser Parser = new();
 
     /// <summary>
-    /// Parses a ViewDefinition from an ISourceNode into an expression tree.
+    /// Parses a ViewDefinition from an ISourceNavigator into an expression tree.
     /// </summary>
-    /// <param name="viewNode">The ISourceNode containing the ViewDefinition JSON</param>
+    /// <param name="viewNode">The ISourceNavigator containing the ViewDefinition JSON</param>
     /// <returns>An immutable ViewDefinitionExpression with compiled FHIRPath</returns>
-    public static ViewDefinitionExpression Parse(ISourceNode viewNode)
+    public static ViewDefinitionExpression Parse(ISourceNavigator viewNode)
     {
         ArgumentNullException.ThrowIfNull(viewNode);
 
@@ -60,7 +62,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Parses constant definitions from the ViewDefinition.
     /// </summary>
-    private static ImmutableArray<ConstantExpression> ParseConstants(ISourceNode viewNode)
+    private static ImmutableArray<ConstantExpression> ParseConstants(ISourceNavigator viewNode)
     {
         var constantNodes = viewNode.Children("constant").ToList();
         if (constantNodes.Count == 0)
@@ -93,7 +95,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Parses WHERE clauses from the ViewDefinition and compiles FHIRPath expressions.
     /// </summary>
-    private static ImmutableArray<WhereExpression> ParseWhereClauses(ISourceNode viewNode)
+    private static ImmutableArray<WhereExpression> ParseWhereClauses(ISourceNavigator viewNode)
     {
         var whereNodes = viewNode.Children("where").ToList();
         if (whereNodes.Count == 0)
@@ -119,7 +121,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Parses SELECT groups from the ViewDefinition and compiles all FHIRPath expressions.
     /// </summary>
-    private static ImmutableArray<SelectExpression> ParseSelectGroups(ISourceNode viewNode)
+    private static ImmutableArray<SelectExpression> ParseSelectGroups(ISourceNavigator viewNode)
     {
         var selectNodes = viewNode.Children("select").ToList();
         if (selectNodes.Count == 0)
@@ -200,7 +202,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Parses column definitions from a SELECT group and compiles FHIRPath path expressions.
     /// </summary>
-    private static ImmutableArray<ColumnExpression> ParseColumns(ISourceNode selectNode)
+    private static ImmutableArray<ColumnExpression> ParseColumns(ISourceNavigator selectNode)
     {
         var columnNodes = selectNode.Children("column").ToList();
         if (columnNodes.Count == 0)
@@ -242,7 +244,7 @@ public static class ViewDefinitionExpressionParser
     /// "select" creates Cartesian products, "unionAll" concatenates results.
     /// </summary>
     private static ImmutableArray<SelectExpression> ParseNestedSelectGroups(
-        ISourceNode selectNode,
+        ISourceNavigator selectNode,
         string propertyName)
     {
         var nestedNodes = selectNode.Children(propertyName).ToList();
@@ -326,7 +328,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Extracts the value from a constant node's value[x] property using choice type wildcard.
     /// </summary>
-    private static object? ExtractValue(ISourceNode constantNode)
+    private static object? ExtractValue(ISourceNavigator constantNode)
     {
         // Use choice type wildcard to match any value[x] property
         var valueNode = constantNode.Children("value*").FirstOrDefault();

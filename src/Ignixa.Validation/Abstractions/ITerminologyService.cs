@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using Ignixa.Domain.Terminology;
+using Ignixa.Validation;
 
 namespace Ignixa.Validation.Abstractions;
 
@@ -96,17 +96,6 @@ public interface ITerminologyService
     /// <returns>Subsumption result indicating relationship (equivalent, subsumes, subsumed-by, not-subsumed).</returns>
     Task<SubsumesResult> SubsumesAsync(
         SubsumesParameters parameters,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Check import status of a canonical resource (ValueSet, CodeSystem, ConceptMap).
-    /// Used by HybridTerminologyService to route to SQL vs JSON fallback.
-    /// </summary>
-    /// <param name="canonical">Canonical URL of the resource.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Import status or null if resource not found.</returns>
-    Task<TerminologyImportStatus?> GetImportStatusAsync(
-        string canonical,
         CancellationToken cancellationToken);
 }
 

@@ -6,6 +6,7 @@
 #pragma warning disable CA1861 // Avoid constant arrays as arguments
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Checks;
@@ -31,7 +32,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -49,7 +50,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -80,7 +81,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -105,7 +106,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -132,7 +133,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -163,7 +164,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -189,7 +190,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -213,7 +214,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -245,7 +246,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -263,7 +264,7 @@ public class PatternCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate(sourceNode, settings, state);
+        var result = check.Validate((IElement)sourceNode, settings, state);
 
         // Assert
         Assert.True(result.IsValid);

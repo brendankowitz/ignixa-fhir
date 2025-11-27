@@ -1,3 +1,3 @@
 # Best Practices Reminder
 
-Delegate to @agent-fast-coding-agent when possible, respect claude.md, use MCP servers to assist.
+Respect claude.md, use MCP servers to assist, delegate to @agent-fast-coding-agent when possible, spawn as many as needed. Use modern .net9+ syntax when possible.

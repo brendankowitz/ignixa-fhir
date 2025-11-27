@@ -8,14 +8,14 @@ using Ignixa.Abstractions;
 
 namespace Ignixa.Search.Indexing.Converters;
 
-public class StringToStringSearchValueConverter : FhirTypedElementToSearchValueConverter<StringSearchValue>
+public class StringToStringSearchValueConverter : FhirElementToSearchValueConverter<StringSearchValue>
 {
     public StringToStringSearchValueConverter()
         : base("string", "System.String")
     {
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         if (value?.Value is string stringValue) yield return new StringSearchValue(stringValue);
     }

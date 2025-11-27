@@ -12,7 +12,7 @@ namespace Ignixa.Search.Indexing.Converters;
 /// <summary>
 /// A converter used to convert from <see cref="Uri"/> to a list of <see cref="ReferenceSearchValue"/>.
 /// </summary>
-public class UriToReferenceSearchValueConverter : FhirTypedElementToSearchValueConverter<ReferenceSearchValue>
+public class UriToReferenceSearchValueConverter : FhirElementToSearchValueConverter<ReferenceSearchValue>
 {
     private readonly IReferenceSearchValueParser _referenceSearchValueParser;
 
@@ -24,7 +24,7 @@ public class UriToReferenceSearchValueConverter : FhirTypedElementToSearchValueC
         _referenceSearchValueParser = referenceSearchValueParser;
     }
 
-    protected override IEnumerable<ISearchValue> Convert(ITypedElement value)
+    protected override IEnumerable<ISearchValue> Convert(IElement value)
     {
         string uri = value?.Value?.ToString();
 

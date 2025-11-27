@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Infrastructure;
 using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;

@@ -2,12 +2,14 @@ using System.Text;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
-using Ignixa.Search.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
+
+#pragma warning disable CS0618
 
 namespace Ignixa.Benchmarks;
 
@@ -109,10 +111,10 @@ public class PostPutBenchmarks
 
     [Benchmark(Description = "2. Convert to ITypedElement (schema navigation)")]
     [BenchmarkCategory("Navigation")]
-    public Ignixa.Abstractions.ITypedElement ConvertToTypedElement()
+    public Ignixa.Abstractions.IElement ConvertToTypedElement()
     {
         var sourceNode = _patientNode.ToSourceNode();
-        return sourceNode.ToTypedElement(_schemaProvider);
+        return (Ignixa.Abstractions.IElement)sourceNode.ToElement(_schemaProvider);
     }
 
     // ========== STEP 3: SEARCH INDEX EXTRACTION ==========
@@ -130,8 +132,8 @@ public class PostPutBenchmarks
         }
 
         var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
-        var typedElement = node.ToTypedElement(_schemaProvider);
-        return searchIndexer.Extract(typedElement);
+        var typedElement = node.ToElement(_schemaProvider);
+        return searchIndexer.Extract((Ignixa.Abstractions.IElement)typedElement);
     }
 
     // ========== COMBINED: FULL POST/PUT PIPELINE (WITHOUT REPOSITORY) ==========
@@ -148,11 +150,11 @@ public class PostPutBenchmarks
         }
 
         // Step 2: Convert to ITypedElement
-        var typedElement = node.ToTypedElement(_schemaProvider);
+        var typedElement = node.ToElement(_schemaProvider);
 
         // Step 3: Extract search indices
         var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
-        var searchIndices = searchIndexer.Extract(typedElement);
+        var searchIndices = searchIndexer.Extract((Ignixa.Abstractions.IElement)typedElement);
 
         // Step 4: Set meta (simulating handler logic)
         node.Meta.LastUpdated = DateTimeOffset.UtcNow;
@@ -178,9 +180,9 @@ public class PostPutBenchmarks
             node = await JsonSourceNodeFactory.Parse(stream);
         }
 
-        var typedElement = node.ToTypedElement(_schemaProvider);
+        var typedElement = node.ToElement(_schemaProvider);
         var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
-        var searchIndices = searchIndexer.Extract(typedElement);
+        var searchIndices = searchIndexer.Extract((Ignixa.Abstractions.IElement)typedElement);
 
         // Simulate wrapper creation
         var wrapper = new

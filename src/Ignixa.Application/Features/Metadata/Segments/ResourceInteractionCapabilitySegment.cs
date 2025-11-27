@@ -8,7 +8,7 @@ using System.Text;
 using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
-using Ignixa.Search.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -69,15 +69,15 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         // Add resource components with interactions
         foreach (var resourceType in resourceTypes)
         {
-            IStructureDefinitionSummary? schema = schemaProvider.Provide(resourceType);
+            IType? schema = schemaProvider.GetTypeDefinition(resourceType);
             if (schema == null)
             {
                 _logger.LogWarning("Could not load schema for resource type {ResourceType}", resourceType);
                 continue;
             }
 
-            // Use schema.Url for canonical reference, with fallback to constructed URL
-            string canonicalUrl = schema.Url ?? $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
+            // Build canonical URL from resource type name
+            string canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
 
             var resourceComponent = new ResourceComponentJsonNode
             {

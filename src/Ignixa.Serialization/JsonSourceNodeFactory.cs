@@ -8,6 +8,8 @@ using System.Text.Json;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace Ignixa.Serialization;
 
 public static class JsonSourceNodeFactory
