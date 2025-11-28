@@ -74,7 +74,9 @@
       "mcp__roslyn__roslyn_health_check",
       "mcp__roslyn__roslyn_find_references",
       "mcp__roslyn__roslyn_get_project_structure",
-      "Bash(Select-String -Pattern \"(error|warning)\" -Context 1,0)"
+      "Bash(Select-String -Pattern \"(error|warning)\" -Context 1,0)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

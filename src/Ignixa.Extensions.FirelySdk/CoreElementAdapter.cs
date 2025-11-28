@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 // Firely SDK types
 using FirelyElementDef = Hl7.Fhir.Specification.IElementDefinitionSummary;
 
-namespace Ignixa.Shims.FirelySdk;
+namespace Ignixa.Extensions.FirelySdk;
 
 /// <summary>
 /// Adapts Firely SDK's ITypedElement to Ignixa's IElement.

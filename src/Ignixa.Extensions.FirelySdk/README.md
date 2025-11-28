@@ -1,6 +1,6 @@
-# Ignixa.Shims.FirelySdk
+# Ignixa.Extensions.FirelySdk
 
-Firely SDK interoperability shims for Ignixa. Provides bidirectional conversion between Ignixa's modern interfaces (`IElement`, `IType`) and Firely SDK's interfaces (`ITypedElement`, `IElementDefinitionSummary`).
+Firely SDK interoperability extensions for Ignixa. Provides bidirectional conversion between Ignixa's modern interfaces (`IElement`, `IType`) and Firely SDK's interfaces (`ITypedElement`, `IElementDefinitionSummary`).
 
 ## Purpose
 
@@ -17,7 +17,7 @@ This library enables:
 Convert Firely SDK types to Ignixa types to use with Ignixa libraries:
 
 ```csharp
-using Ignixa.Shims.FirelySdk;
+using Ignixa.Extensions.FirelySdk;
 using Hl7.Fhir.ElementModel;
 
 // Get a Firely SDK element
@@ -36,7 +36,7 @@ var result = validator.Validate(ignixaElement);
 Convert Ignixa types to Firely SDK types to use with Firely tools:
 
 ```csharp
-using Ignixa.Shims.FirelySdk;
+using Ignixa.Extensions.FirelySdk;
 using Ignixa.Abstractions;
 
 // Get an Ignixa element

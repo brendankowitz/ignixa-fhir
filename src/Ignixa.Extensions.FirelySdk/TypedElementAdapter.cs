@@ -12,7 +12,7 @@ using FirelyTypeInfo = Hl7.Fhir.Specification.ITypeSerializationInfo;
 using FirelyXmlRep = Hl7.Fhir.Specification.XmlRepresentation;
 using FirelyStructureRef = Hl7.Fhir.Specification.IStructureDefinitionReference;
 
-namespace Ignixa.Shims.FirelySdk;
+namespace Ignixa.Extensions.FirelySdk;
 
 /// <summary>
 /// Adapts Ignixa's IElement to Firely SDK's ITypedElement.

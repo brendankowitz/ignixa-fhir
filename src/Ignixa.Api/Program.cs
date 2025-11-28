@@ -41,6 +41,7 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.PackageManagement.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.SqlOnFhir;
+using Ignixa.SqlOnFhir.packages;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);

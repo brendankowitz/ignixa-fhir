@@ -6,7 +6,7 @@
 using Hl7.Fhir.ElementModel;
 using Ignixa.Abstractions;
 
-namespace Ignixa.Shims.FirelySdk;
+namespace Ignixa.Extensions.FirelySdk;
 
 /// <summary>
 /// Extension methods for converting Firely SDK types to Ignixa types.

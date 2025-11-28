@@ -120,7 +120,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement.Tests", "test\Ignixa.PackageManagement.Tests\Ignixa.PackageManagement.Tests.csproj", "{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Shims.FirelySdk", "src\Ignixa.Shims.FirelySdk\Ignixa.Shims.FirelySdk.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk", "src\Ignixa.Extensions.FirelySdk\Ignixa.Extensions.FirelySdk.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Extensions", "Extensions", "{5413DD8F-4CB6-48E7-8289-E76063861D4B}"
 EndProject
