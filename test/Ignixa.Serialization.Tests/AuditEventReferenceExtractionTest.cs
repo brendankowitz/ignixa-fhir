@@ -9,10 +9,7 @@ using Ignixa.Specification.Generated;
 using Xunit;
 using Xunit.Abstractions;
 using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
-using ISourceNode = Ignixa.Abstractions.ISourceNode;
 using IElement = Ignixa.Abstractions.IElement;
-
-#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode used for legacy tests
 
 namespace Ignixa.Serialization.Tests;
 

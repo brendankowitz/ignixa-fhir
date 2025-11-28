@@ -12,6 +12,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Tests.TestHelpers;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -57,7 +58,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(auditEventType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -92,7 +93,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(auditEventType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         // Should have at least one error about missing requestor
@@ -138,7 +139,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(auditEventType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         // Should have error for agent[1].requestor missing
@@ -175,7 +176,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(patientType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -211,7 +212,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(patientType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -258,7 +259,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(observationType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -287,7 +288,7 @@ public class NestedComplexTypeCheckTests
         var schema = Builder.BuildSchema(auditEventType!, Provider);
 
         // Act
-        var result = schema.Validate((IElement)sourceNode, settings, state);
+        var result = schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         // NestedComplexTypeCheck itself passes (no elements to validate)

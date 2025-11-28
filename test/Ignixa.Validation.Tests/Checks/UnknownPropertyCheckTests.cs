@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Checks;
+using Ignixa.Validation.Tests.TestHelpers;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -36,7 +37,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -64,7 +65,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -89,7 +90,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid); // extension is always allowed
@@ -114,7 +115,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid); // modifierExtension is always allowed
@@ -146,7 +147,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid); // all universal properties allowed
@@ -174,7 +175,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -201,7 +202,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -229,7 +230,7 @@ public class UnknownPropertyCheckTests
 
         // Act
         // Note: This validates the root level, not nested properties
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid); // "name" is valid at root level
@@ -253,7 +254,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -280,7 +281,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -309,7 +310,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid); // _birthDate is allowed because birthDate is allowed
@@ -333,7 +334,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -360,7 +361,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -383,7 +384,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -406,7 +407,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -438,7 +439,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -462,7 +463,7 @@ public class UnknownPropertyCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);

@@ -10,6 +10,7 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Checks;
+using Ignixa.Validation.Tests.TestHelpers;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -38,7 +39,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -59,7 +60,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -80,7 +81,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -106,7 +107,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -132,7 +133,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -163,7 +164,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -188,7 +189,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -214,7 +215,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -234,7 +235,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -271,7 +272,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -303,7 +304,7 @@ public class ChoiceElementCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);

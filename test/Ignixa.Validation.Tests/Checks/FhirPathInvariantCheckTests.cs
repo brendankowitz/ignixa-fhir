@@ -13,6 +13,7 @@ using Ignixa.Specification.Generated;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
+using Ignixa.Validation.Tests.TestHelpers;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -58,7 +59,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -92,7 +93,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -140,7 +141,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -182,7 +183,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -217,7 +218,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -261,7 +262,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -296,7 +297,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid); // Warnings don't fail validation
@@ -333,7 +334,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -368,7 +369,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         // Invalid expressions should not crash - they return Success (empty result = false)
@@ -400,7 +401,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -432,7 +433,7 @@ public class FhirPathInvariantCheckTests
         var state = new ValidationState();
 
         // Act
-        var result = check.Validate((IElement)sourceNode, settings, state);
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -469,7 +470,7 @@ public class FhirPathInvariantCheckTests
         // Act - Run validation multiple times
         for (int i = 0; i < 10; i++)
         {
-            var result = check.Validate((IElement)sourceNode, settings, state);
+            var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
             Assert.True(result.IsValid);
         }
 

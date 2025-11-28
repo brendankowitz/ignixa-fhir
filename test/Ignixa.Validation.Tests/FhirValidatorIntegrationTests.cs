@@ -11,6 +11,7 @@ using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
+using Ignixa.Validation.Tests.TestHelpers;
 
 namespace Ignixa.Validation.Tests;
 
@@ -46,7 +47,7 @@ public class FhirValidatorIntegrationTests
 
         var settings = new ValidationSettings { Depth = depth };
         var state = new ValidationState();
-        return schema.Validate((IElement)sourceNode, settings, state);
+        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
     }
 
     #region Tier-Aware Validation

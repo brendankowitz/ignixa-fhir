@@ -10,6 +10,7 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
+using Ignixa.Validation.Tests.TestHelpers;
 using NSubstitute;
 using System.IO;
 using System.Text;
@@ -60,7 +61,7 @@ public class BindingCheckTests
         };
 
         // Act
-        var result = bindingCheck.Validate((IElement)node, settings, new ValidationState());
+        var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
 
         // Assert
         result.IsValid.Should().BeTrue("extensible bindings are skipped in Spec depth");
@@ -108,7 +109,7 @@ public class BindingCheckTests
         };
 
         // Act
-        var result = bindingCheck.Validate((IElement)node, settings, new ValidationState());
+        var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
 
         // Assert
         result.IsValid.Should().BeTrue("extensible bindings in Full depth should warn, not fail");

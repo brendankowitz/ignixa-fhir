@@ -12,8 +12,6 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.SqlOnFhir.Models;
 using Ignixa.SqlOnFhir.Parsing;
 
-#pragma warning disable CS0618 // Type or member is obsolete - ISourceNavigator/ITypedElement used for legacy tests
-
 namespace Ignixa.SqlOnFhir.Tests;
 
 /// <summary>

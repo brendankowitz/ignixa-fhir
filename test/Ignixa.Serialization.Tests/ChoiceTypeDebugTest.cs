@@ -17,15 +17,12 @@ using Xunit.Abstractions;
 
 // Static using for our extension methods
 using static Ignixa.Serialization.SourceNodes.SchemaAwareElementExtensions;
-using ISourceNode = Ignixa.Abstractions.ISourceNode;
 using IElement = Ignixa.Abstractions.IElement;
 
 // SDK type aliases
 using SdkModelInspector = Hl7.Fhir.Introspection.ModelInspector;
 using SdkISourceNode = Hl7.Fhir.ElementModel.ISourceNode;
 using SdkITypedElement = Hl7.Fhir.ElementModel.ITypedElement;
-
-#pragma warning disable CS0618 // Type or member is obsolete - ISourceNode used for legacy tests
 
 namespace Ignixa.Serialization.Tests;
 
