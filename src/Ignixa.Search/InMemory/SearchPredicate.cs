@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Domain.Models;
+using Ignixa.Abstractions;
 using Ignixa.Search.Indexing;
 
 namespace Ignixa.Search.InMemory;

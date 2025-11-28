@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
 

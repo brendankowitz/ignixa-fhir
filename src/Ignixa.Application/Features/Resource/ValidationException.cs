@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Exceptions;
+using Ignixa.Serialization.Abstractions;
 using Ignixa.Serialization.Models;
 using Ignixa.Validation;
 

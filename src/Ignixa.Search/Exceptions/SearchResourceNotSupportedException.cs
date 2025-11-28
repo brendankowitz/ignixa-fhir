@@ -5,26 +5,26 @@
 
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Serialization.Models;
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.Models;
 
-namespace Ignixa.Domain.Exceptions;
+namespace Ignixa.Search.Exceptions;
 
 /// <summary>
 /// The exception that is thrown when the resource is not supported.
 /// </summary>
-public class ResourceNotSupportedException : FhirException
+public class SearchResourceNotSupportedException : FhirException
 {
-    public ResourceNotSupportedException()
+    public SearchResourceNotSupportedException()
         : base()
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ResourceNotSupportedException"/> class.
+    /// Initializes a new instance of the <see cref="SearchResourceNotSupportedException"/> class.
     /// </summary>
     /// <param name="resourceType">The resource type.</param>
-    public ResourceNotSupportedException(string resourceType)
+    public SearchResourceNotSupportedException(string resourceType)
         : base(string.Format(CultureInfo.CurrentCulture, $"{resourceType} not supported", resourceType))
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
@@ -37,7 +37,7 @@ public class ResourceNotSupportedException : FhirException
         });
     }
 
-    public ResourceNotSupportedException(string resourceType, Exception innerException)
+    public SearchResourceNotSupportedException(string resourceType, Exception innerException)
         : base(string.Format(CultureInfo.CurrentCulture, $"{resourceType} not supported", resourceType), innerException)
     {
         EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
@@ -51,10 +51,10 @@ public class ResourceNotSupportedException : FhirException
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ResourceNotSupportedException"/> class.
+    /// Initializes a new instance of the <see cref="SearchResourceNotSupportedException"/> class.
     /// </summary>
     /// <param name="resourceType">The resource type.</param>
-    public ResourceNotSupportedException(Type resourceType)
+    public SearchResourceNotSupportedException(Type resourceType)
         : this(resourceType?.Name ?? "Unknown")
     {
     }

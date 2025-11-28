@@ -5,6 +5,7 @@
 
 using System.Diagnostics;
 using System.Text.Json;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.FileSystem.FileSystem;
 using Ignixa.DataLayer.InMemoryIndex;
 using Ignixa.Domain.Abstractions;

@@ -4,8 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Domain;
-using Ignixa.Domain.Constants;
+using Ignixa.Abstractions;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Generated;
 using Ignixa.Serialization;
@@ -40,15 +39,6 @@ public class CompartmentDefinitionManager : ICompartmentDefinitionManager
 
         (_compartmentSearchParamsLookup, _compartmentResourceTypesLookup) = BuildFromGenerated(compartments);
     }
-
-    public static Dictionary<string, CompartmentType> ResourceTypeToCompartmentType { get; } = new()
-    {
-        { KnownResourceTypes.Device, CompartmentType.Device },
-        { KnownResourceTypes.Encounter, CompartmentType.Encounter },
-        { KnownResourceTypes.Patient, CompartmentType.Patient },
-        { KnownResourceTypes.Practitioner, CompartmentType.Practitioner },
-        { KnownResourceTypes.RelatedPerson, CompartmentType.RelatedPerson }
-    };
 
     public bool TryGetSearchParams(string resourceType, CompartmentType compartmentType, out HashSet<string> searchParams)
     {

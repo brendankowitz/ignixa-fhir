@@ -5,7 +5,7 @@
 
 using System.Text;
 using EnsureThat;
-using Ignixa.Domain.Extensions;
+using Ignixa.Search.Extensions;
 using Ignixa.Search.Models;
 
 namespace Ignixa.Search.Indexing;

@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using EnsureThat;
-using Ignixa.Domain.Constants;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.Abstractions;
@@ -12,7 +11,7 @@ using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Definition.BundleNavigators;
 
-internal class SearchParameterNavigator
+public class SearchParameterNavigator
 {
     private readonly Lazy<IReadOnlyList<string>> _base;
     private readonly Lazy<string> _code;

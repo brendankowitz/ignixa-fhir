@@ -5,7 +5,7 @@
 
 using Ignixa.Serialization.Models;
 
-namespace Ignixa.Domain.Exceptions;
+namespace Ignixa.Serialization.Abstractions;
 
 public abstract class FhirException : Exception
 {

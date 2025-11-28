@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using EnsureThat;
-using Ignixa.Domain.Exceptions;
+using Ignixa.Search.Exceptions;
 
 namespace Ignixa.Search.Indexing.SearchValues;
 
@@ -103,7 +103,11 @@ public class QuantitySearchValue : ISearchValue
         if (parts.Count > 3) throw new FormatException(Resources.MoreThanTwoTokenSeparatorSpecified);
 
         decimal quantity;
-        if (!decimal.TryParse(parts[0], NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out quantity)) throw new BadRequestException(string.Format(Resources.MalformedSearchValue, parts[0]));
+        if (!decimal.TryParse(parts[0], NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture,
+                out quantity))
+        {
+            throw new BadSearchRequestException(string.Format(Resources.MalformedSearchValue, parts[0]));
+        }
 
         string system = parts.Count > 1 ? parts[1] : string.Empty;
         string code = parts.Count > 2 ? parts[2] : string.Empty;

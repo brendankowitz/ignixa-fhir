@@ -70,7 +70,11 @@
       "mcp__roslyn__roslyn_search_symbols",
       "mcp__sqlserver__execute_sql",
       "mcp__sqlserver__describe_table",
-      "mcp__roslyn__roslyn_load_solution"
+      "mcp__roslyn__roslyn_load_solution",
+      "mcp__roslyn__roslyn_health_check",
+      "mcp__roslyn__roslyn_find_references",
+      "mcp__roslyn__roslyn_get_project_structure",
+      "Bash(Select-String -Pattern \"(error|warning)\" -Context 1,0)"
     ],
     "deny": [],
     "ask": []

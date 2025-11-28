@@ -6,6 +6,7 @@
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using DurableTask.Core;
+using Ignixa.Abstractions;
 using Medino;
 using Microsoft.IO;
 using Polly;

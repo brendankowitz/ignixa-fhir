@@ -7,15 +7,14 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
-using Ignixa.Domain;
 using Ignixa.Specification;
 using Ignixa.Search.Generated;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
+using Ignixa.Search.Exceptions;
 
 namespace Ignixa.Search.Definition;
 
@@ -199,7 +198,7 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
         if (TypeLookup.TryGetValue(resourceType, out ConcurrentDictionary<string, SearchParameterInfo> value))
             return value.Values;
 
-        throw new ResourceNotSupportedException(resourceType);
+        throw new SearchResourceNotSupportedException(resourceType);
     }
 
     public bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters)
@@ -279,7 +278,10 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
     {
         SearchParameterInfo searchParameterInfo = null;
 
-        if (!UrlLookup.TryRemove(new Uri(url), out searchParameterInfo)) throw new ResourceNotFoundException(string.Format(CultureInfo.CurrentCulture, Resources.CustomSearchParameterNotfound, url));
+        if (!UrlLookup.TryRemove(new Uri(url), out searchParameterInfo))
+        {
+            throw new BadSearchRequestException(string.Format(CultureInfo.CurrentCulture, Resources.CustomSearchParameterNotfound, url));
+        }
 
         // for search parameters with a base resource type we need to delete the search parameter
         // from all derived types as well, so we iterate across all resources

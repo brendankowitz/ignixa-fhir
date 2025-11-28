@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;

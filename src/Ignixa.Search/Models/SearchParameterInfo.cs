@@ -52,7 +52,7 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         Component = Array.Empty<SearchParameterComponentInfo>();
     }
 
-    internal SearchParameterInfo(SearchParameterNavigator wrapper)
+    public SearchParameterInfo(SearchParameterNavigator wrapper)
     {
         SearchParameterComponentInfo[] components = wrapper.Component
             .Select(x => new SearchParameterComponentInfo(

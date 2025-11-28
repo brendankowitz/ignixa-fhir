@@ -18,6 +18,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Application.Features.Bundle;
 

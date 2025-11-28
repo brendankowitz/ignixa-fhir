@@ -5,7 +5,7 @@
 
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Domain.Exceptions;
+using Ignixa.Search.Exceptions;
 using Ignixa.Specification;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing;
@@ -270,15 +270,15 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
             }
             catch (FormatException e)
             {
-                throw new BadRequestException(e.Message);
+                throw new BadSearchRequestException(e.Message);
             }
             catch (OverflowException e)
             {
-                throw new BadRequestException(e.Message);
+                throw new BadSearchRequestException(e.Message);
             }
             catch (ArgumentException e)
             {
-                throw new BadRequestException(e.Message);
+                throw new BadSearchRequestException(e.Message);
             }
         };
     }

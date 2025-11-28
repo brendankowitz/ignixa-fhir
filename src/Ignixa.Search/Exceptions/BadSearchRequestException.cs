@@ -1,44 +1,38 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using EnsureThat;
-using Ignixa.Serialization.Models;
-using System.Text.Json.Nodes;
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.Models;
 
-namespace Ignixa.Domain.Exceptions;
+namespace Ignixa.Search.Exceptions;
 
-public class RequestTooCostlyException : FhirException
+public class BadSearchRequestException : FhirException
 {
-    public RequestTooCostlyException()
+    public BadSearchRequestException()
         : base()
     {
     }
 
-    public RequestTooCostlyException(string message)
+    public BadSearchRequestException(string message)
         : base(message)
     {
-        EnsureArg.IsNotNull(message, nameof(message));
-
         Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.TooCostly,
+            Code = OperationOutcomeJsonNode.IssueType.Invalid,
             Diagnostics = message
         });
     }
 
-    public RequestTooCostlyException(string message, Exception innerException)
+    public BadSearchRequestException(string message, Exception innerException)
         : base(message, innerException)
     {
-        EnsureArg.IsNotNull(message, nameof(message));
-
         Issues.Add(new OperationOutcomeJsonNode.IssueComponent()
         {
             Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-            Code = OperationOutcomeJsonNode.IssueType.TooCostly,
+            Code = OperationOutcomeJsonNode.IssueType.Invalid,
             Diagnostics = message
         });
     }

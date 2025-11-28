@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Runtime.CompilerServices;
+using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;

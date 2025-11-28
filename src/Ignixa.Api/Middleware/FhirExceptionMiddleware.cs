@@ -7,6 +7,7 @@ using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Api.Middleware;
 
@@ -31,7 +32,7 @@ public class FhirExceptionMiddleware
         {
             await _next(context);
         }
-        catch (Domain.Exceptions.FhirException fhirEx)
+        catch (FhirException fhirEx)
         {
             _logger.LogWarning(fhirEx, "FHIR exception occurred: {ExceptionType}", fhirEx.GetType().Name);
             await HandleExceptionAsync(context, fhirEx);
@@ -55,7 +56,7 @@ public class FhirExceptionMiddleware
         }
 
         // Handle all FhirException types generically
-        if (exception is Domain.Exceptions.FhirException fhirException)
+        if (exception is FhirException fhirException)
         {
             context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
             context.Response.StatusCode = fhirException.StatusCode;

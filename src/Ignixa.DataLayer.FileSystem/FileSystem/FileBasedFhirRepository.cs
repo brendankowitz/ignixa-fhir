@@ -6,6 +6,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Ignixa.Domain.Abstractions;

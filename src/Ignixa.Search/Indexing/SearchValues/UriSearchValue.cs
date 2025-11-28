@@ -8,7 +8,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using EnsureThat;
-using Ignixa.Domain;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 

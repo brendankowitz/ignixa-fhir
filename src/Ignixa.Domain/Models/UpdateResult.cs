@@ -1,3 +1,5 @@
+using Ignixa.Abstractions;
+
 namespace Ignixa.Domain.Models;
 
 /// <summary>

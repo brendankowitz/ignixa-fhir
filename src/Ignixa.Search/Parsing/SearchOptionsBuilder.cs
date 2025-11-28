@@ -6,7 +6,6 @@
 #nullable enable
 
 using EnsureThat;
-using Ignixa.Domain.Constants;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;

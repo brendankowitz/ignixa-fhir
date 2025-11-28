@@ -7,9 +7,9 @@ using System.Security.Cryptography;
 using System.Text;
 using EnsureThat;
 
-namespace Ignixa.Domain.Extensions;
+namespace Ignixa.Search.Extensions;
 
-public static class StringExtensions
+internal static class StringExtensions
 {
     /// <summary>
     /// Computes SHA256 hash based of <paramref name="data"/>.

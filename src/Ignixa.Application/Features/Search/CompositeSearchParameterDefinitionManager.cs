@@ -6,18 +6,16 @@
 #nullable enable
 
 using System.Collections.Concurrent;
-using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Constants;
-using Ignixa.Search.Models;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Definition.BundleNavigators;
-using Ignixa.Serialization;
+using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
-using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.Search.Definition;
+namespace Ignixa.Application.Features.Search;
 
 /// <summary>
 /// Composite search parameter definition manager that merges base FHIR spec parameters with IG-provided parameters.

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Models;
 
 namespace Ignixa.DataLayer.InMemoryIndex;

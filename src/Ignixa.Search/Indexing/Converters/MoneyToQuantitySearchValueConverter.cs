@@ -3,12 +3,9 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Domain;
-using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing.Converters;
 

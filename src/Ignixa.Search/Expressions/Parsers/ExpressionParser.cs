@@ -5,11 +5,10 @@
 
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Domain.Exceptions;
-using Ignixa.Domain.Constants;
 using Ignixa.Specification;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Exceptions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
@@ -75,9 +74,15 @@ public class ExpressionParser : IExpressionParser
     public IncludeExpression ParseInclude(string[] resourceTypes, string includeValue, bool isReversed, bool iterate)
     {
         ReadOnlySpan<char> valueSpan = includeValue.AsSpan();
-        if (!TrySplit(SearchSplitChar, ref valueSpan, out ReadOnlySpan<char> originalType)) throw new InvalidSearchOperationException(isReversed ? Resources.RevIncludeMissingType : Resources.IncludeMissingType);
+        if (!TrySplit(SearchSplitChar, ref valueSpan, out ReadOnlySpan<char> originalType))
+        {
+            throw new InvalidSearchOperationException(isReversed ? Resources.RevIncludeMissingType : Resources.IncludeMissingType);
+        }
 
-        if (resourceTypes.Length == 1 && resourceTypes[0].Equals(KnownResourceTypes.DomainResource, StringComparison.OrdinalIgnoreCase)) throw new InvalidSearchOperationException(Resources.IncludeCannotBeAgainstBase);
+        if (resourceTypes.Length == 1 && resourceTypes[0].Equals("DomainResource", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidSearchOperationException(Resources.IncludeCannotBeAgainstBase);
+        }
 
         SearchParameterInfo refSearchParameter;
         List<string> referencedTypes = null;
@@ -148,7 +153,7 @@ public class ExpressionParser : IExpressionParser
             SearchParameterInfo refSearchParameter = _searchParameterDefinitionManager.GetSearchParameter(resourceTypes[0], refParamName.ToString());
             foreach (string resourceType in resourceTypes)
                 if (refSearchParameter != _searchParameterDefinitionManager.GetSearchParameter(resourceType, refParamName.ToString()))
-                    throw new BadRequestException(string.Format(Resources.SearchParameterMustBeCommon, refParamName.ToString(), resourceTypes[0], resourceType));
+                    throw new BadSearchRequestException(string.Format(Resources.SearchParameterMustBeCommon, refParamName.ToString(), resourceTypes[0], resourceType));
 
             return ParseChainedExpression(resourceTypes, refSearchParameter, targetType, key, value, false);
         }
@@ -169,7 +174,7 @@ public class ExpressionParser : IExpressionParser
         SearchParameterInfo searchParameter = _searchParameterDefinitionManager.GetSearchParameter(resourceTypes[0], paramName.ToString());
         foreach (string resourceType in resourceTypes)
             if (searchParameter != _searchParameterDefinitionManager.GetSearchParameter(resourceType, paramName.ToString()))
-                throw new BadRequestException(string.Format(Resources.SearchParameterMustBeCommon, paramName.ToString(), resourceTypes[0], resourceType));
+                throw new BadSearchRequestException(string.Format(Resources.SearchParameterMustBeCommon, paramName.ToString(), resourceTypes[0], resourceType));
 
         return ParseSearchValueExpression(searchParameter, modifier.ToString(), value);
     }
@@ -213,7 +218,7 @@ public class ExpressionParser : IExpressionParser
                         remainingKey,
                         value));
             }
-            catch (Exception ex) when (ex is ResourceNotSupportedException || ex is SearchParameterNotSupportedException)
+            catch (Exception ex) when (ex is SearchParameterNotSupportedException)
             {
                 // The resource or search parameter is not supported for the resource.
                 // We will ignore these unsupported types.

@@ -4,10 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics;
-using Ignixa.Domain.Exceptions;
-using Ignixa.Domain.Constants;
 using Ignixa.Serialization.Models;
 using System.Text.Json.Nodes;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.Search.Indexing;
 

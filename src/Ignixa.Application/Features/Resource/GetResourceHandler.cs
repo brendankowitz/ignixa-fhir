@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;

@@ -6,8 +6,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using EnsureThat;
-using Ignixa.Domain.Exceptions;
-using Ignixa.Domain.Constants;
 using Ignixa.Specification;
 using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Search.Definition.BundleNavigators;
@@ -16,6 +14,7 @@ using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
 using Ignixa.Abstractions;
+using Ignixa.Search.Exceptions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 

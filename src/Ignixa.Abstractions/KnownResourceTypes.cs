@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.Domain.Constants;
+namespace Ignixa.Abstractions;
 
 public static class KnownResourceTypes
 {
@@ -31,31 +31,17 @@ public static class KnownResourceTypes
 
     public const string Location = "Location";
 
-    public const string Immunization = "Immunization";
-
-    public const string Observation = "Observation";
-
     public const string OperationOutcome = "OperationOutcome";
 
-    public const string Organization = "Organization";
-
     public const string Parameters = "Parameters";
-
-    public const string Practitioner = "Practitioner";
 
     public const string Resource = "Resource";
 
     public const string RelatedPerson = "RelatedPerson";
-
-    public const string RiskAssessment = "RiskAssessment";
 
     public const string SearchParameter = "SearchParameter";
 
     public const string Patient = "Patient";
 
     public const string ValueSet = "ValueSet";
-
-    public const string Coverage = "Coverage";
-
-    public const string QuestionnaireResponse = "QuestionnaireResponse";
 }

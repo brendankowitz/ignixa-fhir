@@ -1,4 +1,4 @@
-namespace Ignixa.Domain.Models;
+namespace Ignixa.Abstractions;
 
 /// <summary>
 /// Identifies a FHIR resource by type, ID, optional version, and optional tenant.

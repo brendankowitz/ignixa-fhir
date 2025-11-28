@@ -5,6 +5,7 @@
 
 using System.Threading.Channels;
 using EnsureThat;
+using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;

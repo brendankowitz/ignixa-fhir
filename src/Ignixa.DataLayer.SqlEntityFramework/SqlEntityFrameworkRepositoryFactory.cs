@@ -12,7 +12,6 @@ using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
-using Ignixa.Domain.Extensions;
 using Ignixa.Search.Definition;
 using Ignixa.Serialization;
 using Ignixa.Specification;
