@@ -11,7 +11,7 @@ namespace Ignixa.Extensions.FirelySdk;
 /// <summary>
 /// Extension methods for converting Firely SDK types to Ignixa types.
 /// </summary>
-public static class CoreExtensions
+public static class IgnixaExtensions
 {
     /// <summary>
     /// Converts a Firely SDK ITypedElement to Ignixa IElement.
@@ -26,14 +26,14 @@ public static class CoreExtensions
     /// <code>
     /// // Convert Firely element to Ignixa
     /// ITypedElement firelyElement = ...;
-    /// IElement ignixaElement = firelyElement.ToCoreElement();
+    /// IElement ignixaElement = firelyElement.ToIgnixaElement();
     ///
     /// // Now use with Ignixa libraries
     /// var validator = new IgnixaValidator();
     /// var result = validator.Validate(ignixaElement);
     /// </code>
     /// </example>
-    public static IElement ToCoreElement(this Hl7.Fhir.ElementModel.ITypedElement element)
+    public static IElement ToIgnixaElement(this Hl7.Fhir.ElementModel.ITypedElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
 
@@ -45,7 +45,7 @@ public static class CoreExtensions
                 return unwrapped;
         }
 
-        return new CoreElementAdapter(element);
+        return new IgnixaElementAdapter(element);
     }
 
     /// <summary>
@@ -57,6 +57,6 @@ public static class CoreExtensions
     {
         ArgumentNullException.ThrowIfNull(elements);
 
-        return elements.Select(e => e.ToCoreElement());
+        return elements.Select(e => e.ToIgnixaElement());
     }
 }

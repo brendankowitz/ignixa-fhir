@@ -1,11 +1,23 @@
 # Multi-stage Dockerfile for Ignixa FHIR Server
+# Build arguments for versioning (passed from CI/CD)
+ARG VERSION=0.0.0-dev
+ARG ASSEMBLY_VERSION=0.0.0
+ARG INFORMATIONAL_VERSION=0.0.0-dev+local
+ARG BUILD_DATE
+ARG VCS_REF
+
 # Stage 1: Build
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-azurelinux3.0 AS build
+ARG VERSION
+ARG ASSEMBLY_VERSION
+ARG INFORMATIONAL_VERSION
+
 WORKDIR /src
 
 # Copy root-level configuration files for centralized package management and code style
 COPY Directory.Build.props ./
 COPY Directory.Packages.props ./
+COPY GitVersion.yml ./
 COPY .editorconfig ./
 
 # Copy all source project files for layer caching
@@ -36,16 +48,33 @@ RUN dotnet restore Ignixa.Api.csproj
 WORKDIR /src
 COPY src/ src/
 
-# Build and publish
+# Build and publish with version information
 WORKDIR /src/src/Ignixa.Api
 RUN dotnet publish Ignixa.Api.csproj \
     --configuration Release \
     --no-restore \
     --output /app/publish \
-    /p:UseAppHost=false
+    /p:UseAppHost=false \
+    /p:Version=${VERSION} \
+    /p:AssemblyVersion=${ASSEMBLY_VERSION} \
+    /p:FileVersion=${ASSEMBLY_VERSION} \
+    /p:InformationalVersion=${INFORMATIONAL_VERSION}
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-azurelinux3.0 AS runtime
+ARG VERSION
+ARG BUILD_DATE
+ARG VCS_REF
+
+# OCI Labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
+LABEL org.opencontainers.image.title="Ignixa FHIR Server" \
+      org.opencontainers.image.description="Modern FHIR R4/R4B/R5 server with advanced search capabilities" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.vendor="Ignixa Contributors" \
+      org.opencontainers.image.source="https://github.com/brendankowitz/fhir-server-contrib" \
+      org.opencontainers.image.licenses="MIT"
 
 # tdnf clean all - cleans all the repos used to obtain packages and reduces the size of our image.
 RUN tdnf clean all && tdnf repolist --refresh && tdnf update -y && tdnf clean all

@@ -388,7 +388,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             return;
         }
 
-        var sourceNode = provenance.ToSourceNode();
+        var sourceNode = provenance.ToSourceNavigator();
         var settings = new ValidationSettings
         {
             Depth = ValidationDepth.Spec // Use Spec-level validation for X-Provenance

@@ -127,7 +127,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     /// <summary>
     /// Wraps the JSON representation of the resource in an ISourceNavigator.
     /// </summary>
-    public ISourceNavigator ToSourceNode()
+    public ISourceNavigator ToSourceNavigator()
     {
         _cachedSourceNode ??= JsonNodeSourceNode.FromRoot(MutableNode, ResourceType);
         return _cachedSourceNode;
@@ -146,7 +146,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
         }
 
         // Cache miss: Create and cache new element
-        _cachedElement = ToSourceNode().ToElement(schema);
+        _cachedElement = ToSourceNavigator().ToElement(schema);
         _cachedProvider = schema;
         return _cachedElement;
     }
@@ -159,7 +159,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     /// CACHE LIFECYCLE:
     /// - SourceNode and IElement caches are created lazily on first access
     /// - Mutations via MutableNode operations (e.g., PATCH) invalidate cached views
-    /// - This method ensures next access to ToSourceNode() or ToElement() creates fresh wrappers
+    /// - This method ensures next access to ToSourceNavigator() or ToElement() creates fresh wrappers
     /// - Request-scoped: Each HTTP request gets fresh ResourceJsonNode with empty cache
     ///
     /// SAFE FOR PATCH OPERATIONS:

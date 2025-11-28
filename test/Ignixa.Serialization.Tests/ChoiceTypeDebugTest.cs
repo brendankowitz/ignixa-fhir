@@ -215,7 +215,7 @@ public class ChoiceTypeDebugTest
         try
         {
             // Use our ISourceNode for our testing
-            ISourceNavigator ourSourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
+            ISourceNavigator ourSourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNavigator();
             IElement ourElement = ourSourceNode.ToElement(_ourProvider);
             var ourPath = "Resource.meta.extension.where(url = 'http://example.com/deleted-state')";
             var ourResult = ourElement.Select(ourPath).ToArray();

@@ -60,8 +60,8 @@ public class FhirPathBenchmarks
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
         _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
-        _ignixaPatientTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaPatient.ToSourceNode(), _ignixaSchemaProvider);
-        _ignixaObservationTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaObservation.ToSourceNode(), _ignixaSchemaProvider);
+        _ignixaPatientTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaPatient.ToSourceNavigator(), _ignixaSchemaProvider);
+        _ignixaObservationTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaObservation.ToSourceNavigator(), _ignixaSchemaProvider);
 
         _ignixaParser = new FhirPathParser();
 

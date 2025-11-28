@@ -9,6 +9,17 @@
     <NoWarn>$(NoWarn);CS3001;CS3002;CS3003;CS3009;CS3027</NoWarn>
   </PropertyGroup>
 
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>FHIR search parameter indexing and query infrastructure</Description>
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
@@ -16,7 +27,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Infrastructure\" />
     <Folder Include="Models" />
   </ItemGroup>
 

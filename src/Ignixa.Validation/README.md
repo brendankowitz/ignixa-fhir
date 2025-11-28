@@ -6,23 +6,37 @@ FHIR validation system with three-tier architecture.
 
 **Three-Tier Validation Pipeline** (ADR-2527):
 
-| Tier | Target | Checks | Use Case |
-|------|--------|--------|----------|
-| **Fast** | <25ms | JSON structure, required fields | CREATE/UPDATE (blocking) |
-| **Spec** | <200ms | + Cardinality, types, FHIRPath invariants | CREATE/UPDATE (blocking) |
-| **Profile** | <1000ms | + Custom profiles, slicing, terminology | $validate (async) |
+| Tier | Checks | Use Case |
+|------|--------|----------|
+| **Fast** | JSON structure, required fields | CREATE/UPDATE (blocking) |
+| **Spec** | + Cardinality, types, FHIRPath invariants | CREATE/UPDATE (blocking) |
+| **Profile** | + Custom profiles, slicing, terminology | $validate (async) |
 
 ## Quick Start
 
-### Tier 1 (Fast) Validation
+### Basic Validation (Recommended)
 
 ```csharp
-using Ignixa.Validation;
-using Ignixa.SourceNodeSerialization.SourceNodes;
+using Ignixa.Validation.Schema;
+using Ignixa.Specification.Generated;
+using Ignixa.Serialization;
 
-var json = JsonNode.Parse("{\"resourceType\":\"Patient\"}");
-var validator = new FastValidator();
-var result = validator.Validate(json);
+// 1. Get FHIR schema for your version (R4, R4B, R5, or STU3)
+var fhirSchema = new R4CoreSchemaProvider();
+
+// 2. Get the type definition for the resource you want to validate
+var patientType = fhirSchema.GetTypeDefinition("Patient");
+
+// 3. Build validation schema (automatically creates all checks from StructureDefinition)
+var builder = new StructureDefinitionSchemaBuilder();
+var validationSchema = builder.BuildSchema(patientType!, fhirSchema);
+
+// 4. Parse and validate your FHIR resource
+var json = "{\"resourceType\":\"Patient\",\"id\":\"123\"}";
+var sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
+var element = sourceNode.ToElement(fhirSchema);
+
+var result = validationSchema.Validate(element);
 
 if (!result.IsValid)
 {
@@ -31,100 +45,65 @@ if (!result.IsValid)
 }
 ```
 
-### Custom Validation Checks
+### Validating Different Resource Types
 
 ```csharp
-using Ignixa.Validation.Checks;
+using Ignixa.Validation.Schema;
+using Ignixa.Specification.Generated;
+using Ignixa.Serialization;
 
-var sourceNode = JsonNodeSourceNode.Create(json);
-var checks = new List<IValidationCheck>
-{
-    new RequiredFieldCheck("id", isRequired: true),
-    new CardinalityCheck("name", min: 1, max: null) // 1..*
-};
+var fhirSchema = new R4CoreSchemaProvider();
+var builder = new StructureDefinitionSchemaBuilder();
 
-var result = validator.Validate(sourceNode, checks);
+// Validate Observation
+var observationType = fhirSchema.GetTypeDefinition("Observation");
+var observationSchema = builder.BuildSchema(observationType!, fhirSchema);
+
+var observationJson = "{\"resourceType\":\"Observation\",\"status\":\"final\",\"code\":{}}";
+var sourceNode = JsonSourceNodeFactory.Parse(observationJson).ToSourceNode();
+var result = observationSchema.Validate(sourceNode.ToElement(fhirSchema));
 ```
 
-## Project Structure
+## What Gets Validated
 
-```
-Ignixa.Validation/
-├── Abstractions/
-│   ├── IValidationCheck.cs           - Base interface for all checks
-│   ├── IValidationSchemaResolver.cs  - Schema resolution interface
-│   └── ValidationSchema.cs           - Schema container with checks
-├── Checks/
-│   ├── JsonStructureCheck.cs         - Validates JSON structure
-│   ├── RequiredFieldCheck.cs         - Validates required fields
-│   ├── CardinalityCheck.cs           - Validates min/max cardinality
-│   ├── TypeCheck.cs                  - Validates FHIR data types
-│   ├── ReferenceFormatCheck.cs       - Validates Reference elements
-│   ├── CodingStructureCheck.cs       - Validates Coding/CodeableConcept
-│   ├── FhirPathInvariantCheck.cs     - Validates FHIRPath constraints (ele-1, etc.)
-│   ├── ChoiceElementCheck.cs         - Validates value[x] choice types
-│   └── ExtensionStructureCheck.cs    - Validates extension structure
-├── Schema/
-│   ├── StructureDefinitionSchemaBuilder.cs      - Builds schemas from metadata
-│   ├── StructureDefinitionSchemaResolver.cs     - Resolves by canonical URL
-│   └── CachedValidationSchemaResolver.cs        - Caching decorator
-├── FastValidator.cs                  - Tier 1 validator service
-├── ValidationResult.cs               - Result model with ToOperationOutcome()
-├── ValidationIssue.cs                - Issue model (HAPI-compatible)
-├── ValidationState.cs                - Immutable state threading
-└── ValidationSettings.cs             - Three-tier configuration
-```
-
-## Key Design Decisions
-
-1. **ISourceNode over JsonNode**: Uses FHIR-aware navigation (choice types, shadow properties)
-2. **HAPI Compatibility**: OperationOutcome structure matches HAPI FHIR patterns
-3. **No SDK Dependencies**: Uses only Ignixa models (OperationOutcomeJsonNode)
-4. **Immutable State**: ValidationState uses record pattern for thread-safety
-5. **Composable Checks**: IValidationCheck interface enables pluggable validators
-
-## Available Validators
+When you use `StructureDefinitionSchemaBuilder`, it automatically extracts and creates validation checks from FHIR StructureDefinition metadata. Here's what gets checked:
 
 ### Tier 1 (Fast) - Universal Checks
 
-| Check | Purpose | Error Code |
-|-------|---------|------------|
-| **JsonStructureCheck** | Validates JSON is well-formed object | `structure-invalid` |
-| **IdFormatCheck** | Validates id format (64 char max, a-zA-Z0-9.-) | `id-format-invalid` |
-| **NarrativeCheck** | Validates Narrative.status and Narrative.div | `narrative-invalid` |
+These checks run for every CREATE/UPDATE operation:
+
+| Check | Purpose | When Applied |
+|-------|---------|--------------|
+| **JsonStructureCheck** | Validates JSON is well-formed object with resourceType | Resources only |
+| **NarrativeCheck** | Validates Narrative.status and Narrative.div | Resources only |
+| **CardinalityCheck** | Validates min/max element count (0..1, 1..1, 0..*, 1..*) | All elements except xhtml |
+| **TypeCheck** | Validates primitive types (id, string, integer, boolean, etc.) | All primitive elements |
 
 ### Tier 2 (Spec) - Schema-Driven Checks
 
-| Check | Purpose | Error Code | Extracted From |
-|-------|---------|------------|----------------|
-| **CardinalityCheck** | Validates min/max element count (includes required fields) | `cardinality-violation` | `Min`, `Max` |
-| **TypeCheck** | Validates primitive types (string, integer, etc.) | `type-mismatch` | `DefaultTypeName` |
-| **ReferenceFormatCheck** | Validates Reference format (relative/literal) | `reference-format-invalid` | Type == "Reference" |
-| **CodingStructureCheck** | Validates Coding/CodeableConcept structure | `coding-structure-invalid` | Type == "Coding\|CodeableConcept" |
-| **FhirPathInvariantCheck** | Validates FHIRPath constraints (ele-1, dom-1, etc.) | Constraint key (e.g., `ele-1`) | `Constraints[]` |
-| **ChoiceElementCheck** | Validates choice type elements (value[x] one variant only) | `choice-multiple`, `choice-invalid-type` | `IsChoiceElement` |
-| **ExtensionStructureCheck** | Validates extension structure (url + value/nested) | `ext-url-required`, `ext-content-required`, `ext-both-value-and-nested` | Type == "Extension" |
+Additional checks extracted from StructureDefinition metadata:
 
-### Schema-Driven Validation Example
+| Check | Purpose                                                          | When Applied |
+|-------|------------------------------------------------------------------|--------------|
+| **ReferenceFormatCheck** | Validates Reference.reference format (relative/literal/url)      | Elements with type=Reference |
+| **CodingStructureCheck** | Validates Coding.system + Coding.code structure                  | Elements with type=Coding or CodeableConcept |
+| **ChoiceElementCheck** | Validates choice elements (only one variant present)             | Elements with name ending in [x] |
+| **ExtensionStructureCheck** | Validates Extension.url is present and value/extension rules     | Elements named "extension" |
+| **FixedValueCheck** | Validates element has exact fixed value                          | Elements with fixedValue constraint |
+| **PatternCheck** | Validates element matches pattern constraint                     | Elements with patternValue constraint |
+| **BindingCheck** | Validates coded values against built-in, required ValueSets      | Elements with binding |
+| **NestedComplexTypeCheck** | Validates nested BackboneElement and complex types               | BackboneElement children |
+| **UnknownPropertyCheck** | Rejects unknown/undefined properties                             | All resources |
+| **FhirPathInvariantCheck** | Validates FHIRPath constraints (ele-1, dom-1, custom invariants) | Elements with constraint definitions |
 
-```csharp
-// Build schema from StructureDefinition
-var provider = new MemoryStructureDefinitionSummaryProvider();
-var builder = new StructureDefinitionSchemaBuilder();
-var schema = builder.BuildSchema(provider.Provide("Patient"), provider);
+### Tier 3 (Profile) - Slicing, advanced terminology
 
-// Validate using schema
-var sourceNode = JsonNodeSourceNode.Create(patientJson);
-var result = schema.Validate(sourceNode, settings, state);
-```
+Advanced validation for custom profiles:
 
-## Phase Status
+| Check | Purpose | When Applied |
+|-------|---------|--------------|
+| **BindingCheck** | Validates coded values against ValueSet | Elements with binding (requires ITerminologyService) |
 
-- ✅ **Phase 1**: Core abstractions (COMPLETED Oct 20, 2025)
-- ✅ **Phase 2**: Basic checks (COMPLETED Oct 20, 2025)
-- ✅ **Phase 3**: Schema building (COMPLETED Oct 20, 2025)
-- ✅ **Phase 4 Week 1**: FHIRPath invariants (COMPLETED Oct 20, 2025)
-- ✅ **Phase 4 Week 2**: Cardinality & choice types (COMPLETED Oct 20, 2025)
-- 📋 **Phase 5-6**: Terminology, slicing, integration (PLANNED)
+## License
 
-See [ADR-2527](../../docs/investigations/ADR-2527-comprehensive-validation-system.md) for details.
+MIT License - see LICENSE file in repository root

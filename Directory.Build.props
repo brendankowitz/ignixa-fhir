@@ -3,8 +3,13 @@
   <!-- Nuget related properties.-->
   <PropertyGroup>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Product>Microsoft FHIR Server for Azure</Product>
-    <RepositoryUrl>https://github.com/microsoft/fhir-server/</RepositoryUrl>
+    <Product>Ignixa FHIR Server</Product>
+    <RepositoryUrl>https://github.com/brendankowitz/fhir-server-contrib</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/brendankowitz/fhir-server-contrib</PackageProjectUrl>
+    <PackageTags>fhir;fhir-server;healthcare;hl7;r4;r4b;r5;stu3</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsAsErrors/>
     <!-- allow pre-release dependencies -->
@@ -15,10 +20,10 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <CLRSupport>true</CLRSupport>
-    <Authors>Microsoft Health Team</Authors>
+    <Authors>Ignixa Contributors</Authors>
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
-    <Company>Microsoft Corporation</Company>
-    <Copyright>Copyright © Microsoft Corporation. All rights reserved.</Copyright>
+    <Company>Ignixa Contributors</Company>
+    <Copyright>Copyright © Ignixa Contributors. All rights reserved.</Copyright>
     <Deterministic>true</Deterministic>
     <!--This will target the latest patch release of the runtime released with the current SDK.  -->
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
@@ -36,6 +41,14 @@
     <HealthcareSharedPackageVersion>7.1.5</HealthcareSharedPackageVersion>
     <Hl7FhirVersion>4.3.0</Hl7FhirVersion>
   </PropertyGroup>
+
+  <!-- GitVersion for semantic versioning -->
+  <ItemGroup>
+    <PackageReference Include="GitVersion.MsBuild">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
   <Choose>
     <When Condition="$(MSBuildProjectName.Contains('Test'))">

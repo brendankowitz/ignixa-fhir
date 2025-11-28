@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <NoWarn>$(NoWarn);CA1707;CA1826</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA1826;SDK0001;CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,9 +22,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.FhirPath\Ignixa.FhirPath.csproj"/>
     <ProjectReference Include="..\..\src\Ignixa.Search\Ignixa.Search.csproj"/>
     <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj"/>
     <ProjectReference Include="..\..\src\Ignixa.Serialization\Ignixa.Serialization.csproj"/>
+    <ProjectReference Include="..\..\src\Ignixa.Validation\Ignixa.Validation.csproj"/>
   </ItemGroup>
 
 </Project>

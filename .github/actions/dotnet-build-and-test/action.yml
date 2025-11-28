@@ -15,9 +15,38 @@ inputs:
     required: false
     default: 'Release'
 
+outputs:
+  version:
+    description: 'Semantic version calculated by GitVersion'
+    value: ${{ steps.gitversion.outputs.semVer }}
+  assembly-version:
+    description: 'Assembly version (Major.Minor.Patch)'
+    value: ${{ steps.gitversion.outputs.assemblySemVer }}
+  informational-version:
+    description: 'Full informational version with metadata'
+    value: ${{ steps.gitversion.outputs.informationalVersion }}
+
 runs:
   using: 'composite'
   steps:
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v1
+      with:
+        versionSpec: '6.x'
+
+    - name: Determine Version
+      id: gitversion
+      uses: gittools/actions/gitversion/execute@v1
+      with:
+        useConfigFile: true
+
+    - name: Display GitVersion outputs
+      run: |
+        echo "SemVer: ${{ steps.gitversion.outputs.semVer }}"
+        echo "AssemblySemVer: ${{ steps.gitversion.outputs.assemblySemVer }}"
+        echo "InformationalVersion: ${{ steps.gitversion.outputs.informationalVersion }}"
+      shell: bash
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:

@@ -62,8 +62,8 @@ internal class SchemaAwareElement : IElement
     /// </summary>
     private static string? DeriveInstanceType(ISourceNavigator source, IType? definition)
     {
-        // For resources, check for resourceType element first
-        var resourceTypeIndicator = source.Children("resourceType").FirstOrDefault()?.Text;
+        // For resources, check for resourceType property first (exposed via ISourceNavigator.ResourceType)
+        var resourceTypeIndicator = source.ResourceType;
 
         if (definition != null && definition.Info.IsResource)
         {
@@ -385,17 +385,12 @@ internal class SchemaAwareElement : IElement
 #pragma warning restore CA1308 // Normalize strings to uppercase
     }
 
-    public IEnumerable<object> Annotations(Type type)
-    {
-        return _source.Annotations(type);
-    }
-
     /// <summary>
     /// Retrieves metadata of the specified type (IElement interface).
     /// </summary>
     public T? Meta<T>() where T : class
     {
-        return Annotations(typeof(T)).OfType<T>().FirstOrDefault();
+        return _source.Meta<T>();
     }
 }
 

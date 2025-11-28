@@ -29,14 +29,14 @@ public abstract class BaseSourceNode<T> : ISourceNavigator
 
     public abstract string Location { get; }
 
-    public IEnumerable<object> Annotations(Type type)
+    public TMeta? Meta<TMeta>() where TMeta : class
     {
-        if (type == GetType() || type == typeof(ISourceNavigator))
+        if (this is TMeta typed)
         {
-            return [this];
+            return typed;
         }
 
-        return Enumerable.Empty<object>();
+        return null;
     }
 
     public IEnumerable<ISourceNavigator> Children(string name = null)

@@ -105,7 +105,7 @@ public class R4StructureDefinitionProviderComparisonTests
         var patientJson = Samples.GetJson("Patient");
 
         // Our implementation
-        ISourceNavigator ourSourceNode = JsonSourceNodeFactory.Parse(patientJson).ToSourceNode();
+        ISourceNavigator ourSourceNode = JsonSourceNodeFactory.Parse(patientJson).ToSourceNavigator();
         IElement ourElement = ourSourceNode.ToElement(_ourProvider);
         var ourId = ourElement.Select("Patient.id").SingleOrDefault();
 

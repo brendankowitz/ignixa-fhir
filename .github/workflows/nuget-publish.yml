@@ -1,0 +1,147 @@
+name: NuGet Publish
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/Ignixa.Abstractions/**'
+      - 'src/Ignixa.FhirPath/**'
+      - 'src/Ignixa.FhirMappingLanguage/**'
+      - 'src/Ignixa.PackageManagement/**'
+      - 'src/Ignixa.Search/**'
+      - 'src/Ignixa.Serialization/**'
+      - 'src/Ignixa.Specification/**'
+      - 'src/Ignixa.SqlOnFhir/**'
+      - 'src/Ignixa.Validation/**'
+      - 'src/Ignixa.Extensions.FirelySdk/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'GitVersion.yml'
+      - '.github/workflows/nuget-publish.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+concurrency:
+  group: nuget-publish-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel in-progress publishes
+
+jobs:
+  build-and-pack:
+    name: Build and Pack NuGet Packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for GitVersion
+          submodules: recursive
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1
+        with:
+          versionSpec: '6.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v1
+        with:
+          useConfigFile: true
+
+      - name: Display version
+        run: |
+          echo "NuGetVersion: ${{ steps.gitversion.outputs.nuGetVersion }}"
+          echo "SemVer: ${{ steps.gitversion.outputs.semVer }}"
+          echo "AssemblySemVer: ${{ steps.gitversion.outputs.assemblySemVer }}"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore All.sln
+
+      - name: Build solution
+        run: dotnet build All.sln --configuration Release --no-restore /p:Version=${{ steps.gitversion.outputs.nuGetVersion }}
+
+      - name: Pack Core projects
+        run: |
+          dotnet pack src/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.Search/Ignixa.Search.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.Serialization/Ignixa.Serialization.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.Extensions.FirelySdk/Ignixa.Extensions.FirelySdk.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+
+      - name: List packages
+        run: ls -lh ./packages/
+
+      - name: Upload packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./packages/*.nupkg
+          retention-days: 30
+
+  publish-to-nuget:
+    name: Publish to NuGet.org
+    runs-on: ubuntu-latest
+    needs: [ build-and-pack ]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./packages
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish to NuGet.org
+        run: |
+          dotnet nuget push "./packages/*.nupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+      - name: Create release summary
+        run: |
+          echo "## 📦 NuGet Packages Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following packages have been published to NuGet.org:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for pkg in ./packages/*.nupkg; do
+            basename "$pkg" >> $GITHUB_STEP_SUMMARY
+          done
+
+  notify-success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [ publish-to-nuget ]
+    if: success()
+
+    steps:
+      - name: Success notification
+        run: echo "✅ NuGet packages published successfully"
+
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [ build-and-pack, publish-to-nuget ]
+    if: failure()
+
+    steps:
+      - name: Failure notification
+        run: |
+          echo "❌ NuGet publishing failed"
+          exit 1

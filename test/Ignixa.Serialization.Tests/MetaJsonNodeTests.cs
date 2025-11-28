@@ -137,7 +137,7 @@ public class MetaJsonNodeTests
     public void ReadExtension()
     {
         // Test our implementation
-        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson).ToSourceNode();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientMinExtJson).ToSourceNavigator();
         IElement node = sourceNode.ToElement(_r4Schema);
 
         // Test the original where() expression with polymorphic "value" property
@@ -165,7 +165,7 @@ public class MetaJsonNodeTests
     public void SourceNode()
     {
         // Use our implementation
-        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNavigator();
         IElement node = sourceNode.ToElement(_r4Schema);
         var familyType = node.Select("Patient.name.family").Single();
 
@@ -181,7 +181,7 @@ public class MetaJsonNodeTests
     public void FindId()
     {
         // Use our implementation
-        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNode();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(_patientJson).ToSourceNavigator();
         IElement node = sourceNode.ToElement(_r4Schema);
         var id = node.Select("Resource.id").Single();
         Assert.Equal("example", id.Value);
@@ -194,7 +194,7 @@ public class MetaJsonNodeTests
         poco.Effective = new FhirDateTime(_currentDate.Year);
 
         // Simplified test - just verify basic structure navigation works
-        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson()).ToSourceNode();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(poco.ToJson()).ToSourceNavigator();
         IElement node = sourceNode.ToElement(_r4Schema);
 
         // Try to select resourceType which should always work

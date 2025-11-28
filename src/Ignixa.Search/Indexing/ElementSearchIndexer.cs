@@ -14,33 +14,32 @@ using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Abstractions;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Search.Indexing;
 
 /// <summary>
 /// Provides a mechanism to create search indices.
 /// </summary>
-public partial class TypedElementSearchIndexer : ISearchIndexer
+public partial class ElementSearchIndexer : ISearchIndexer
 {
     private readonly IElementToSearchValueConverterManager _fhirElementTypeConverterManager;
-    private readonly ILogger<TypedElementSearchIndexer> _logger;
+    private readonly ILogger<ElementSearchIndexer> _logger;
     private readonly IReferenceToElementResolver _referenceToElementResolver;
     private readonly ISupportedSearchParameterDefinitionManager _searchParameterDefinitionManager;
     private readonly ConcurrentDictionary<string, List<string>> _targetTypesLookup = new();
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="TypedElementSearchIndexer"/> class.
+    /// Initializes a new instance of the <see cref="ElementSearchIndexer"/> class.
     /// </summary>
     /// <param name="searchParameterDefinitionManager">The search parameter definition manager.</param>
     /// <param name="fhirElementTypeConverterManager">The FHIR element type converter manager.</param>
     /// <param name="referenceToElementResolver">Used for parsing reference strings</param>
     /// <param name="logger">The logger.</param>
-    public TypedElementSearchIndexer(
+    public ElementSearchIndexer(
         ISupportedSearchParameterDefinitionManager searchParameterDefinitionManager,
         IElementToSearchValueConverterManager fhirElementTypeConverterManager,
         IReferenceToElementResolver referenceToElementResolver,
-        ILogger<TypedElementSearchIndexer> logger)
+        ILogger<ElementSearchIndexer> logger)
     {
         EnsureArg.IsNotNull(searchParameterDefinitionManager, nameof(searchParameterDefinitionManager));
         EnsureArg.IsNotNull(fhirElementTypeConverterManager, nameof(fhirElementTypeConverterManager));

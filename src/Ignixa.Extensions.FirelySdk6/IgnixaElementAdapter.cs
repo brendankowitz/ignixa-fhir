@@ -19,7 +19,7 @@ namespace Ignixa.Extensions.FirelySdk;
 /// This adapter enables using Firely SDK types with Ignixa-based libraries.
 /// Children are lazily materialized to avoid allocation storms.
 /// </remarks>
-public class CoreElementAdapter : IElement
+public class IgnixaElementAdapter : IElement
 {
     private readonly Hl7.Fhir.ElementModel.ITypedElement _firelyElement;
     private IReadOnlyList<IElement>? _cachedAllChildren;
@@ -28,7 +28,7 @@ public class CoreElementAdapter : IElement
     /// Creates a new adapter wrapping a Firely SDK ITypedElement.
     /// </summary>
     /// <param name="firelyElement">Firely SDK typed element to adapt</param>
-    public CoreElementAdapter(Hl7.Fhir.ElementModel.ITypedElement firelyElement)
+    public IgnixaElementAdapter(Hl7.Fhir.ElementModel.ITypedElement firelyElement)
     {
         _firelyElement = firelyElement ?? throw new ArgumentNullException(nameof(firelyElement));
     }
@@ -57,7 +57,7 @@ public class CoreElementAdapter : IElement
         if (_cachedAllChildren == null)
         {
             _cachedAllChildren = _firelyElement.Children()
-                .Select(child => (IElement)new CoreElementAdapter(child))
+                .Select(child => (IElement)new IgnixaElementAdapter(child))
                 .ToArray();
         }
 

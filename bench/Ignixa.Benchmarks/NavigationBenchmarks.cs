@@ -51,7 +51,7 @@ public class NavigationBenchmarks
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
         _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
-        var sourceNode = _ignixaObservation.ToSourceNode();
+        var sourceNode = _ignixaObservation.ToSourceNavigator();
         _ignixaTypedElement = (IElement)SchemaAwareElementExtensions.ToElement(sourceNode, _ignixaSchemaProvider);
 
         // Firely setup
@@ -194,7 +194,7 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Conversion")]
     public ISourceNavigator IgnixaToSourceNode()
     {
-        return _ignixaObservation.ToSourceNode();
+        return _ignixaObservation.ToSourceNavigator();
     }
 
     [Benchmark(Description = "Firely: Already ISourceNode (no-op)")]
@@ -210,7 +210,7 @@ public class NavigationBenchmarks
     [BenchmarkCategory("Conversion")]
     public IElement IgnixaToTypedElement()
     {
-        var sourceNode = _ignixaObservation.ToSourceNode();
+        var sourceNode = _ignixaObservation.ToSourceNavigator();
         return (IElement)SchemaAwareElementExtensions.ToElement(sourceNode, _ignixaSchemaProvider);
     }
 

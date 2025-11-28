@@ -63,17 +63,9 @@ public interface ISourceNavigator
     IEnumerable<ISourceNavigator> Children(string? name = null);
 
     /// <summary>
-    /// Gets annotations of the specified type attached to this node.
+    /// Retrieves metadata of the specified type attached to this node.
     /// </summary>
-    /// <param name="type">The type of annotations to retrieve.</param>
-    /// <returns>An enumerable of annotations of the specified type, or an empty enumerable if none found.</returns>
-    IEnumerable<object> Annotations(Type type);
-}
-
-/// <summary>
-/// Backward compatibility alias for ISourceNavigator.
-/// </summary>
-[Obsolete("Use ISourceNavigator instead. This alias will be removed in a future version.")]
-public interface ISourceNode : ISourceNavigator
-{
+    /// <typeparam name="T">Metadata type to retrieve</typeparam>
+    /// <returns>Metadata instance or null if not present</returns>
+    T? Meta<T>() where T : class;
 }

@@ -88,7 +88,7 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
 
             if (schema != null)
             {
-                var sourceNode = request.JsonNode.ToSourceNode(); // Use cached ISourceNode
+                var sourceNode = request.JsonNode.ToSourceNavigator(); // Use cached ISourceNode
                 var settings = new ValidationSettings
                 {
                     Depth = validationDepth,

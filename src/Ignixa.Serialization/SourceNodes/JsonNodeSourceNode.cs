@@ -82,25 +82,22 @@ public class JsonNodeSourceNode : ISourceNavigator
 
     public string Location { get; }
 
-    public IEnumerable<object> Annotations(Type type)
+    public T? Meta<T>() where T : class
     {
-        if (type == GetType() || type == typeof(ISourceNavigator))
+        if (this is T typed)
         {
-            return [this];
+            return typed;
         }
 
         // Expose the underlying JsonNode for direct mutation
-        if (type == typeof(JsonNode))
+        if (typeof(T) == typeof(JsonNode))
         {
             // Return the content node (JsonObject) if available, otherwise the value node
             var node = _contentNode ?? _valueNode;
-            if (node != null)
-            {
-                return [node];
-            }
+            return node as T;
         }
 
-        return [];
+        return null;
     }
 
     // ========== ISourceNavigator Implementation ==========

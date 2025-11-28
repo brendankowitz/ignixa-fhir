@@ -162,9 +162,9 @@ internal class BundleParserState
         {
             var resourceJson = _resourceJsonBuilder.ToString();
             // Parse to ResourceJsonNode to enable caching
-            // Using cached ToSourceNode() prevents repeated ReflectedSourceNode allocations
+            // Using cached ToSourceNavigator() prevents repeated ReflectedSourceNode allocations
             var parsedResource = ResourceJsonNode.Parse(resourceJson);
-            resourceNode = parsedResource.ToSourceNode();
+            resourceNode = parsedResource.ToSourceNavigator();
             resourceType = resourceNode.Name;
         }
 

@@ -29,9 +29,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # Full history for GitVersion
           submodules: recursive
 
       - name: Build and test solution
+        id: build
         uses: ./.github/actions/dotnet-build-and-test
         with:
           dotnet-version: ${{ matrix.dotnet-version }}
@@ -47,7 +49,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # Full history for GitVersion
           submodules: recursive
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1
+        with:
+          versionSpec: '6.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v1
+        with:
+          useConfigFile: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -62,6 +76,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: true
+          build-args: |
+            VERSION=${{ steps.gitversion.outputs.semVer }}
+            ASSEMBLY_VERSION=${{ steps.gitversion.outputs.assemblySemVer }}
+            INFORMATIONAL_VERSION=${{ steps.gitversion.outputs.informationalVersion }}
 
       - name: Test Docker image
         run: |
@@ -76,6 +94,10 @@ jobs:
     if: success()
 
     steps:
+      - name: Get version from build job
+        id: get_version
+        run: echo "This PR validation completed successfully"
+
       - name: Comment PR on success
         uses: actions/github-script@v7
         with:
@@ -84,7 +106,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ **PR Validation Successful**\n\n- All tests passed\n- Docker image builds successfully'
+              body: '✅ **PR Validation Successful**\n\n- All tests passed\n- Docker image builds successfully\n- Build uses GitVersion for semantic versioning'
             })
 
   pr-failure:

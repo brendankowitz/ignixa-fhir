@@ -5,6 +5,7 @@
   <ItemGroup>
     <!-- Firely SDK 6.0.0 final (released October 14, 2025) -->
     <PackageVersion Include="Fhir.Metrics" Version="1.3.1" />
+    <PackageVersion Include="Hl7.Fhir.Base" Version="6.0.0" />
     <PackageVersion Include="Hl7.Fhir.R4" Version="6.0.0" />
     <PackageVersion Include="Hl7.Fhir.R4B" Version="6.0.0" />
     <PackageVersion Include="Hl7.Fhir.R5" Version="6.0.0" />
@@ -75,5 +76,7 @@
     <PackageVersion Include="System.Text.Json" Version="8.0.0" />
     <!-- SearchParameter Conflict Resolution -->
     <PackageVersion Include="NuGet.Versioning" Version="6.8.0" />
+    <!-- GitVersion for semantic versioning -->
+    <PackageVersion Include="GitVersion.MsBuild" Version="6.0.5" />
   </ItemGroup>
 </Project>

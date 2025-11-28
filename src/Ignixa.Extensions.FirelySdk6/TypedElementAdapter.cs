@@ -22,7 +22,7 @@ namespace Ignixa.Extensions.FirelySdk;
 /// This adapter enables using Ignixa types with Firely SDK-based tools
 /// (e.g., Hl7.FhirPath, Firely Validator).
 /// </remarks>
-public class TypedElementAdapter : Hl7.Fhir.ElementModel.ITypedElement
+public class TypedElementAdapter : ITypedElement
 {
     private readonly IElement _coreElement;
 

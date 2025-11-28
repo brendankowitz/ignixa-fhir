@@ -52,7 +52,7 @@ public class BindingCheckTests
           "gender":"custom"
         }
         """;
-        var node = (await JsonSourceNodeFactory.Parse(new MemoryStream(Encoding.UTF8.GetBytes(json)))).ToSourceNode();
+        var node = (await JsonSourceNodeFactory.Parse(new MemoryStream(Encoding.UTF8.GetBytes(json)))).ToSourceNavigator();
 
         var settings = new ValidationSettings
         {
@@ -100,7 +100,7 @@ public class BindingCheckTests
           "gender":"custom"
         }
         """;
-        var node = (await JsonSourceNodeFactory.Parse(new MemoryStream(Encoding.UTF8.GetBytes(json)))).ToSourceNode();
+        var node = (await JsonSourceNodeFactory.Parse(new MemoryStream(Encoding.UTF8.GetBytes(json)))).ToSourceNavigator();
 
         var settings = new ValidationSettings
         {

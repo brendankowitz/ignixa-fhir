@@ -153,14 +153,11 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
     /// </summary>
     private static object ConvertElementToSerializable(IElement element)
     {
-        // Try to extract the annotation (JsonNode) if available
-        if (element is ISourceNode sourceNode)
+        // Try to extract the JsonNode if available via Meta<T>
+        var jsonNode = element.Meta<JsonNode>();
+        if (jsonNode != null)
         {
-            var jsonNode = sourceNode.Annotations(typeof(JsonNode)).OfType<JsonNode>().FirstOrDefault();
-            if (jsonNode != null)
-            {
-                return JsonSerializer.Deserialize<object>(jsonNode.ToJsonString()) ?? "null";
-            }
+            return JsonSerializer.Deserialize<object>(jsonNode.ToJsonString()) ?? "null";
         }
 
         // Fallback: extract value from the typed element

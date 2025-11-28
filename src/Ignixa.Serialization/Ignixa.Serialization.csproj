@@ -10,6 +10,17 @@
     <RootNamespace>Ignixa.Serialization</RootNamespace>
   </PropertyGroup>
 
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>High-performance FHIR JSON/XML serialization</Description>
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Ensure.That" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />

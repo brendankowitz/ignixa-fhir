@@ -8,6 +8,17 @@
     <NoWarn>$(NoWarn);CS3001;CS3002;CS3003;CS3009;CS3027</NoWarn>
   </PropertyGroup>
 
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>FHIR specification data and structure providers (R4/R4B/R5/STU3)</Description>
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
   </ItemGroup>
 

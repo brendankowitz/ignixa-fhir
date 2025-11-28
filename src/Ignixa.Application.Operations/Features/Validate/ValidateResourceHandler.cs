@@ -63,7 +63,7 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
             fhirVersionEnum,
             validationDepth);
 
-        var sourceNode = request.JsonNode.ToSourceNode();
+        var sourceNode = request.JsonNode.ToSourceNavigator();
         var issues = new List<object>();
 
         // If no resource type is specified in the request, extract from the resource itself

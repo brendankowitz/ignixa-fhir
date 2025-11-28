@@ -7,7 +7,6 @@ namespace Ignixa.Abstractions;
 
 /// <summary>
 /// Represents a single element in the FHIR element tree (runtime instance).
-/// This is the modern replacement for <see cref="ITypedElement"/>.
 /// </summary>
 /// <remarks>
 /// This interface provides the minimal metadata required for:

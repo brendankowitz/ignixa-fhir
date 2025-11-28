@@ -67,14 +67,14 @@ internal class JsonElementSourceNode : ISourceNavigator
 
     public string Location { get; }
 
-    public IEnumerable<object> Annotations(Type type)
+    public T? Meta<T>() where T : class
     {
-        if (type == GetType() || type == typeof(ISourceNavigator))
+        if (this is T typed)
         {
-            return [this];
+            return typed;
         }
 
-        return [];
+        return null;
     }
 
     public IEnumerable<ISourceNavigator> Children(string? name = null)

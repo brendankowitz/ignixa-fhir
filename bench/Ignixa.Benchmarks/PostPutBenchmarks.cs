@@ -113,7 +113,7 @@ public class PostPutBenchmarks
     [BenchmarkCategory("Navigation")]
     public Ignixa.Abstractions.IElement ConvertToTypedElement()
     {
-        var sourceNode = _patientNode.ToSourceNode();
+        var sourceNode = _patientNode.ToSourceNavigator();
         return (Ignixa.Abstractions.IElement)sourceNode.ToElement(_schemaProvider);
     }
 

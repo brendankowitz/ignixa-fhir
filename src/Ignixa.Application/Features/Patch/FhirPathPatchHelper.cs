@@ -45,7 +45,7 @@ public class FhirPathPatchHelper
         var expression = _parser.Parse(fhirPathExpression);
 
         // 2. Convert ResourceJsonNode to ISourceNode (with annotations)
-        var sourceNode = resource.ToSourceNode();
+        var sourceNode = resource.ToSourceNavigator();
 
         // 3. Convert ISourceNode to IElement (preserves annotations)
         var typedElement = sourceNode.ToElement(_structureProvider);
@@ -53,16 +53,13 @@ public class FhirPathPatchHelper
         // 4. Evaluate FHIRPath expression
         var matches = _evaluator.Evaluate((IElement)typedElement, expression);
 
-        // 5. Extract JsonNodes using ISourceNode
+        // 5. Extract JsonNodes using Meta<T>
         foreach (var match in matches)
         {
-            if (match is ISourceNode matchSourceNode)
+            var jsonNode = match.Meta<JsonNode>();
+            if (jsonNode != null)
             {
-                var jsonNode = matchSourceNode.Annotations(typeof(JsonNode)).OfType<JsonNode>().FirstOrDefault();
-                if (jsonNode != null)
-                {
-                    yield return jsonNode;
-                }
+                yield return jsonNode;
             }
         }
     }

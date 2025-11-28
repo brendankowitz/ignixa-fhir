@@ -1,15 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Ignixa.Extensions.FirelySdk</RootNamespace>
   </PropertyGroup>
 
   <!-- NuGet Package Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <Description>SQL on FHIR implementation for analytics queries</Description>
+    <Description>Firely SDK interoperability shims for bidirectional conversion</Description>
+    <PackageTags>FHIR;HL7;Healthcare;Firely;Interop;Adapter</PackageTags>
   </PropertyGroup>
 
   <!-- Include README in NuGet package -->
@@ -18,19 +20,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Ignixa abstractions with new interfaces -->
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
-    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <!-- Ignixa serialization for SchemaAwareElement (ISourceNavigator → IElement) -->
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- Firely SDK base package for ITypedElement, ISourceNode, IElementDefinitionSummary -->
+    <PackageReference Include="Hl7.Fhir.Base" />
   </ItemGroup>
-
-  <!-- Embed FHIR package JSON files as resources -->
-  <ItemGroup>
-    <EmbeddedResource Include="packages\**\*.json" />
-  </ItemGroup>
-
 </Project>

@@ -578,7 +578,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 return null;
             }
 
-            var sourceNode = resourceNode.ToSourceNode();
+            var sourceNode = resourceNode.ToSourceNavigator();
             var typedElement = sourceNode.ToElement(_schemaProvider);
 
             // Cast ITypedElement to IElement (SchemaAwareElement implements both interfaces)

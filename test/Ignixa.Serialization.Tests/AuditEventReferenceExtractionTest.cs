@@ -56,7 +56,7 @@ public class AuditEventReferenceExtractionTest
 }";
 
         // Act
-        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNode();
+        ISourceNavigator sourceNode = JsonSourceNodeFactory.Parse(json).ToSourceNavigator();
         IElement element = sourceNode.ToElement(_provider);
 
         _output.WriteLine("=== Root AuditEvent ===");

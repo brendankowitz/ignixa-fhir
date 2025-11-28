@@ -50,6 +50,25 @@ var navigator = firelyElement.ToFhirPathNavigator();
 var result = navigator.Scalar("Patient.name.family");
 ```
 
+### ISourceNode → IElement Conversion
+
+Convert Firely's schema-less `ISourceNode` to Ignixa's schema-aware `IElement`:
+
+```csharp
+using Ignixa.Extensions.FirelySdk;
+using Hl7.Fhir.Serialization;
+
+// Parse JSON with Firely SDK
+ISourceNode sourceNode = FhirJsonNode.Parse(json);
+
+// Convert to schema-aware IElement using Ignixa schema
+IElement element = sourceNode.ToElement(schema);
+
+// Access type-aware properties
+var instanceType = element.InstanceType;  // e.g., "Patient"
+var name = element.Children("name").First();
+```
+
 ### Batch Conversions
 
 Convert collections efficiently:
@@ -68,7 +87,7 @@ IEnumerable<ITypedElement> firelyElements = ignixaElements.ToTypedElements();
 
 ### Adapter Classes
 
-1. **CoreElementAdapter**: Wraps Firely `ITypedElement` → Implements Ignixa `IElement`
+1. **IgnixaElementAdapter**: Wraps Firely `ITypedElement` → Implements Ignixa `IElement`
    - Lazy child materialization
    - Caches all children to avoid repeated enumeration
    - Filters by name efficiently
@@ -77,10 +96,18 @@ IEnumerable<ITypedElement> firelyElements = ignixaElements.ToTypedElements();
    - Streaming conversion (no upfront materialization)
    - Preserves Ignixa annotation system
 
+3. **SourceNavigatorAdapter**: Wraps Firely `ISourceNode` → Implements Ignixa `ISourceNavigator`
+   - Bridges the schema-less interfaces between Firely and Ignixa
+   - Derives `ResourceType` from child elements
+   - Forwards annotations via `IAnnotatable`
+
 ### Extension Methods
 
-- **CoreExtensions**: `.ToCoreElement()`, `.ToCoreElements()` - Firely → Ignixa
-- **FirelySdkExtensions**: `.ToTypedElement()`, `.ToTypedElements()` - Ignixa → Firely
+- **IgnixaExtensions**: `.ToIgnixaElement()`, `.ToCoreElements()` - Firely `ITypedElement` → Ignixa `IElement`
+- **FirelySdkExtensions**:
+  - `.ToTypedElement()`, `.ToTypedElements()` - Ignixa `IElement` → Firely `ITypedElement`
+  - `.ToSourceNavigator()` - Firely `ISourceNode` → Ignixa `ISourceNavigator`
+  - `.ToElement(schema)` - Firely `ISourceNode` → Ignixa `IElement` (with schema metadata)
 
 ### Smart Unwrapping
 
@@ -118,7 +145,10 @@ TypedElementAdapter (Ignixa → Firely):
 ## Dependencies
 
 - **Ignixa.Abstractions**: Modern Ignixa interfaces (IElement, IType, etc.)
-- **Hl7.Fhir.R4**: Firely SDK (provides ITypedElement, IElementDefinitionSummary, etc.)
+- **Ignixa.Serialization**: SchemaAwareElement for ISourceNode → IElement conversion
+- **Hl7.Fhir.Base**: Firely SDK base package (provides ITypedElement, ISourceNode, IElementDefinitionSummary, etc.)
+
+> **Note**: This package uses `Hl7.Fhir.Base` instead of version-specific packages like `Hl7.Fhir.R4`, making it compatible with any FHIR version (R4, R4B, R5, STU3).
 
 ## Migration Strategy
 

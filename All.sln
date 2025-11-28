@@ -120,9 +120,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement.Tests", "test\Ignixa.PackageManagement.Tests\Ignixa.PackageManagement.Tests.csproj", "{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk", "src\Ignixa.Extensions.FirelySdk\Ignixa.Extensions.FirelySdk.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk6", "src\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Extensions", "Extensions", "{5413DD8F-4CB6-48E7-8289-E76063861D4B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.Tests", "test\Ignixa.Extensions.Tests\Ignixa.Extensions.Tests.csproj", "{E33026F5-67A4-43BF-9611-31D6C8B721BD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -470,6 +472,18 @@ Global
 		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x64.Build.0 = Release|Any CPU
 		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x86.ActiveCfg = Release|Any CPU
 		{C282DC1F-6F99-4A9F-8639-C0885D2C820A}.Release|x86.Build.0 = Release|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Debug|x64.Build.0 = Debug|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Debug|x86.Build.0 = Debug|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Release|x64.ActiveCfg = Release|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Release|x64.Build.0 = Release|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Release|x86.ActiveCfg = Release|Any CPU
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -511,5 +525,6 @@ Global
 		{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{C282DC1F-6F99-4A9F-8639-C0885D2C820A} = {5413DD8F-4CB6-48E7-8289-E76063861D4B}
 		{5413DD8F-4CB6-48E7-8289-E76063861D4B} = {0955C698-034D-424C-A981-095EB50A5673}
+		{E33026F5-67A4-43BF-9611-31D6C8B721BD} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal
