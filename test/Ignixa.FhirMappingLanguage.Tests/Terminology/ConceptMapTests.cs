@@ -9,6 +9,7 @@ using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Terminology;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Terminology;
@@ -518,7 +519,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         loader.AddConceptMap("http://example.org/fhir/ConceptMap/gender", conceptMapContent);
 
         var resolver = new ConceptMapResolver(loader);
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext

@@ -8,6 +8,7 @@ using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Evaluation;
@@ -72,7 +73,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry first;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -109,7 +110,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry not_first;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -146,7 +147,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry last;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -183,7 +184,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry not_last;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -220,7 +221,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id only_one;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -251,7 +252,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry only_one;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -284,7 +285,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry only_one;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -319,7 +320,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry single;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -356,7 +357,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry first;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -387,7 +388,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id not_first;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -418,7 +419,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id not_last;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -460,7 +461,7 @@ group Transform(source src : Patient, target tgt : Bundle) {{
   src.name -> tgt.entry {listMode};
 }}";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var map = compiler.Parse(mappingText);

@@ -17,7 +17,7 @@ namespace Ignixa.FhirMappingLanguage.Parser;
 /// Parser grammar for FHIR Mapping Language.
 /// Converts token streams into Expression abstract syntax trees.
 /// </summary>
-public static class MappingGrammar
+internal static class MappingGrammar
 {
     // Helper: Create position info from token
     private static ISourcePositionInfo CreatePosition(Token<MappingTokenKind> token) =>

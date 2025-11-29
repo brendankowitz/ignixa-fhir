@@ -6,6 +6,7 @@
 
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Parser;
@@ -24,7 +25,7 @@ map 'http://example.org/fhir/StructureMap/Example' = 'ExampleMap'
 group Main(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -43,7 +44,7 @@ group Main(source src : Patient, target tgt : Bundle) {
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Empty' = 'EmptyMap'
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -68,7 +69,7 @@ uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
 group Main(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -96,7 +97,7 @@ uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as {mode}
 group Main(source src : Patient, target tgt : Bundle) {{
 }}
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -117,7 +118,7 @@ uses 'http://hl7.org/fhir/StructureDefinition/Patient' as source
 group Main(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -140,7 +141,7 @@ uses 'http://hl7.org/fhir/StructureDefinition/Observation' alias Obs as queried
 group Main(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -168,7 +169,7 @@ imports 'http://example.org/fhir/StructureMap/Helpers'
 group Main(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -191,7 +192,7 @@ imports 'http://example.org/fhir/StructureMap/Utils'
 group Main(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -214,7 +215,7 @@ map 'http://example.org' = 'Test'
 group PatientToBundle(source src : Patient, target tgt : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -244,7 +245,7 @@ group Base(source src : Patient, target tgt : Bundle) {
 group Derived(source src : Patient, target tgt : Bundle) extends Base {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -264,7 +265,7 @@ map 'http://example.org' = 'Test'
 group NoParams() {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -288,7 +289,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.name;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -314,7 +315,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name as vn, src.telecom as vt -> tgt.contact;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -334,7 +335,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry as entry, tgt.total;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -354,7 +355,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name as vn;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -379,7 +380,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name as vn -> tgt.name;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -400,7 +401,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name : HumanName -> tgt.name;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -421,7 +422,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name : HumanName as vn -> tgt.name;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -443,7 +444,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name.given -> tgt.entry;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -470,7 +471,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry as entry;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -491,7 +492,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry = create('HumanName');
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -523,7 +524,7 @@ group Main(source src : Patient, target tgt : Bundle) {{
   src.name -> tgt.entry {modeText};
 }}
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -548,7 +549,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.name -> tgt.entry = uuid();
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -573,7 +574,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src.code -> tgt.code = translate(src, '#conceptMap', 'code');
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -598,7 +599,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   src -> tgt.value = copy('test', 42, 3.14, true);
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -632,7 +633,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   };
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -658,7 +659,7 @@ group Main(source src : Patient, target tgt : Bundle) {
   };
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -704,7 +705,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
   };
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -728,7 +729,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
     {
         // Arrange
         var mappingText = "'http://example.org' = 'Test'";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);
@@ -744,7 +745,7 @@ map 'http://example.org' = 'Test'
 
 group Main(source src : Patient, target tgt : Bundle)
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);
@@ -760,7 +761,7 @@ map 'http://example.org' = 'Test'
 
 group Main(source src : Patient, target tgt : Bundle
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);

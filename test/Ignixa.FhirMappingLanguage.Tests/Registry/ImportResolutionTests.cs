@@ -9,6 +9,7 @@ using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 #pragma warning disable xUnit1031 // Test methods should not use blocking task operations - Intentional for testing
@@ -48,7 +49,7 @@ public class ImportResolutionTests
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(@"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -69,7 +70,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map1 = compiler.Parse(@"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test1'
 group TestGroup(source src : Patient, target tgt : Bundle) {}");
@@ -93,7 +94,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(@"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 group TestGroup(source src : Patient, target tgt : Bundle) {}");
@@ -113,7 +114,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         var map1 = compiler.Parse(@"
 map 'http://example.org/fhir/StructureMap/Test1' = 'Test1'
@@ -192,7 +193,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var loader = new DictionaryMapLoader();
 
         var importedMapContent = @"
@@ -227,7 +228,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var loader = new DictionaryMapLoader();
 
         var baseMapContent = @"
@@ -264,7 +265,7 @@ group TopGroup(source src : Patient, target tgt : Bundle) {}";
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var loader = new DictionaryMapLoader();
 
         var map1Content = @"
@@ -296,7 +297,7 @@ group Group2(source src : Patient, target tgt : Bundle) {}";
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var loader = new DictionaryMapLoader();
 
         var importedMapContent = @"
@@ -333,7 +334,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) {
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var loader = new DictionaryMapLoader();
 
         var mainMapContent = @"
@@ -362,7 +363,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) {}";
     {
         // Arrange
         var registry = new MapRegistry();
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var loader = new DictionaryMapLoader();
 
         var importedMapContent = @"
@@ -410,7 +411,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
     public async Task GivenCompositeLoader_WhenMultipleLoaders_ThenTriesInOrder()
     {
         // Arrange
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var composite = new CompositeMapLoader(compiler);
 
         var loader1 = new DictionaryMapLoader();
@@ -435,7 +436,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
     public async Task GivenCompositeLoader_WhenNoLoaderCanHandle_ThenReturnsNull()
     {
         // Arrange
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var composite = new CompositeMapLoader(compiler);
 
         var loader = new DictionaryMapLoader();

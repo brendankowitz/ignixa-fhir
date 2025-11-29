@@ -8,18 +8,17 @@
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Lexer;
-using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.TypeSystem;
 using Superpower;
 using Superpower.Model;
 
-namespace Ignixa.FhirMappingLanguage;
+namespace Ignixa.FhirMappingLanguage.Parser;
 
 /// <summary>
 /// Compiler for FHIR Mapping Language expressions.
 /// Provides methods to parse mapping definitions and create executable mappings.
 /// </summary>
-public class MappingCompiler
+public class MappingParser
 {
     private readonly bool _preserveTrivia;
     private readonly ITypeValidator? _typeValidator;
@@ -29,7 +28,7 @@ public class MappingCompiler
     /// </summary>
     /// <param name="preserveTrivia">Whether to preserve whitespace and comments for round-tripping</param>
     /// <param name="typeValidator">Optional type validator for type checking</param>
-    public MappingCompiler(bool preserveTrivia = false, ITypeValidator? typeValidator = null)
+    public MappingParser(bool preserveTrivia = false, ITypeValidator? typeValidator = null)
     {
         _preserveTrivia = preserveTrivia;
         _typeValidator = typeValidator;

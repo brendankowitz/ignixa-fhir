@@ -7,6 +7,7 @@
 
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Integration;
@@ -37,7 +38,7 @@ group PatientContent(source src : Patient, target tgt : Patient) {
   src.telecom -> tgt.telecom;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -70,7 +71,7 @@ group PatientToPatient(source src : Patient, target tgt : PatientR5) {
   };
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -101,7 +102,7 @@ group PatientToPatient(source src : Patient, target tgt : PatientR5) {
   };
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -141,7 +142,7 @@ group Patient(source src : PatientR4, target tgt : PatientR5) extends DomainReso
   src.photo -> tgt.photo;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -199,7 +200,7 @@ group PatientToBundle(source patient : Patient, target bundle : Bundle) {
   };
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -238,7 +239,7 @@ group TransformExamples(source src : Patient, target tgt : PatientOut) {
   src.birthDate -> tgt.birthDate = truncate(src.birthDate, 10);
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -281,7 +282,7 @@ group Patient(source src : Patient, target tgt : PatientOut) extends DomainResou
   src.gender -> tgt.gender;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -318,7 +319,7 @@ group MultiSource(source patient : Patient, source obs : Observation, target bun
   obs.id -> obsEntry.resource;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);

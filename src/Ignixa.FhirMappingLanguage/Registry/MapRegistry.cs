@@ -5,6 +5,7 @@
  */
 
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Parser;
 
 namespace Ignixa.FhirMappingLanguage.Registry;
 
@@ -95,11 +96,11 @@ public class MapRegistry : IMapRegistry
 public class CompositeMapLoader : IMapLoader
 {
     private readonly List<IMapLoader> _loaders = new();
-    private readonly MappingCompiler _compiler;
+    private readonly MappingParser _parser;
 
-    public CompositeMapLoader(MappingCompiler compiler)
+    public CompositeMapLoader(MappingParser parser)
     {
-        _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
     }
 
     /// <summary>

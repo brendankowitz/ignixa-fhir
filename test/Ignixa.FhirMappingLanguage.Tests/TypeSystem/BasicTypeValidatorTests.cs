@@ -7,6 +7,7 @@
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage.TypeSystem;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.TypeSystem;
@@ -287,7 +288,7 @@ public class BasicTypeValidatorTests
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 uses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source
@@ -310,7 +311,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -333,7 +334,7 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -355,7 +356,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -378,7 +379,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -403,7 +404,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -424,7 +425,7 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
     public void GivenCompilerWithoutValidator_WhenCompilingWithValidation_ThenDoesNotThrow()
     {
         // Arrange
-        var compiler = new MappingCompiler(); // No validator
+        var compiler = new MappingParser(); // No validator
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
@@ -444,7 +445,7 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
     {
         // Arrange
         var validator = new BasicTypeValidator();
-        var compiler = new MappingCompiler(typeValidator: validator);
+        var compiler = new MappingParser(typeValidator: validator);
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 

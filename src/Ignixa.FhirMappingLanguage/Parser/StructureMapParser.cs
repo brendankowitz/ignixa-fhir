@@ -8,7 +8,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Expressions;
 
-namespace Ignixa.FhirMappingLanguage.Serialization;
+namespace Ignixa.FhirMappingLanguage.Parser;
 
 /// <summary>
 /// Parses a FHIR StructureMap resource (JsonNode) into a MapExpression AST.

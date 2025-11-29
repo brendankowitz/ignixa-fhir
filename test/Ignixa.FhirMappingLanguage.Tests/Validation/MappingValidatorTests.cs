@@ -6,6 +6,7 @@
 
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
+using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Validation;
 using Xunit;
@@ -27,7 +28,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -106,7 +107,7 @@ group Transform(source src : Observation, target tgt : Bundle) {
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -133,7 +134,7 @@ group Transform() {
   // No parameters - unusual
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -155,7 +156,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   // No rules
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -177,7 +178,7 @@ group Transform(source src : Patient, target tgt : Bundle) extends NonExistent {
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -204,7 +205,7 @@ group Group2(source src : Patient, target tgt : Bundle) extends Group1 {
   src.name -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -270,7 +271,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -296,7 +297,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id = unknownFunction(src.id);
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -318,7 +319,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.entry = create();
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -341,7 +342,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.gender -> tgt.type = translate(src.gender);
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -368,7 +369,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.status default 'active' where status.exists() -> tgt.type;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 
@@ -429,7 +430,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
 
         var registry = new MapRegistry();
@@ -548,7 +549,7 @@ group Extended(source src : Patient, target tgt : Bundle) extends Base {
   src.gender where gender.exists() check gender.length() > 0 log 'gender processed' -> tgt.total;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var validator = new MappingValidator();
 

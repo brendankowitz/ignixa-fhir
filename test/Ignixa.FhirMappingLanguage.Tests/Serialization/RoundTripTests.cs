@@ -10,6 +10,7 @@ using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Serialization;
 using System.Text.Json.Nodes;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Serialization;
@@ -22,10 +23,10 @@ namespace Ignixa.FhirMappingLanguage.Tests.Serialization;
 /// </summary>
 public class RoundTripTests
 {
-    private readonly MappingCompiler _compiler = new();
+    private readonly MappingParser _parser = new();
     private readonly FmlSerializer _serializer = new();
     private readonly StructureMapBuilder _builder = new();
-    private readonly StructureMapParser _parser = new();
+    private readonly StructureMapParser _structureMapParser = new();
 
     #region FML → AST → FML Round-Trip
 
@@ -41,9 +42,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -67,9 +68,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -96,9 +97,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -119,9 +120,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -153,9 +154,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -180,9 +181,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -216,9 +217,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -243,9 +244,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -279,9 +280,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -308,9 +309,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -337,9 +338,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -378,9 +379,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast = _compiler.Parse(originalFml);
+        var ast = _parser.Parse(originalFml);
         var serializedFml = _serializer.Serialize(ast);
-        var roundTrippedAst = _compiler.Parse(serializedFml);
+        var roundTrippedAst = _parser.Parse(serializedFml);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -439,9 +440,9 @@ public class RoundTripTests
         };
 
         // Act
-        var ast = _parser.Parse(structureMap);
+        var ast = _structureMapParser.Parse(structureMap);
         var rebuiltStructureMap = _builder.Build(ast);
-        var roundTrippedAst = _parser.Parse(rebuiltStructureMap);
+        var roundTrippedAst = _structureMapParser.Parse(rebuiltStructureMap);
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
@@ -486,7 +487,7 @@ public class RoundTripTests
         };
 
         // Act
-        var ast = _parser.Parse(structureMap);
+        var ast = _structureMapParser.Parse(structureMap);
         var rebuiltStructureMap = _builder.Build(ast);
 
         // Assert
@@ -513,15 +514,15 @@ public class RoundTripTests
             """;
 
         // Act - Full pipeline: FML → AST → StructureMap → AST → FML
-        var ast1 = _compiler.Parse(originalFml);
+        var ast1 = _parser.Parse(originalFml);
         var structureMap = _builder.Build(ast1);
-        var ast2 = _parser.Parse(structureMap);
+        var ast2 = _structureMapParser.Parse(structureMap);
         var finalFml = _serializer.Serialize(ast2);
 
         // Assert - semantic equivalence across full pipeline
         AssertAstEquivalent(ast1, ast2);
 
-        var finalAst = _compiler.Parse(finalFml);
+        var finalAst = _parser.Parse(finalFml);
         finalAst.Url.Should().Be("http://example.org/test");
         finalAst.Identifier.Should().Be("TestMap");
         finalAst.Uses.Should().HaveCount(2);
@@ -544,9 +545,9 @@ public class RoundTripTests
             """;
 
         // Act
-        var ast1 = _compiler.Parse(originalFml);
+        var ast1 = _parser.Parse(originalFml);
         var structureMap = _builder.Build(ast1);
-        var ast2 = _parser.Parse(structureMap);
+        var ast2 = _structureMapParser.Parse(structureMap);
 
         // Assert
         AssertAstEquivalent(ast1, ast2);

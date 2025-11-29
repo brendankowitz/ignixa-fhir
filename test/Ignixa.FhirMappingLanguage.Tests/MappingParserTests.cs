@@ -1,16 +1,17 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Unit tests for FHIR Mapping Language compiler.
+ * Unit tests for FHIR Mapping Language parser.
  */
 
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests;
 
-public class MappingCompilerTests
+public class MappingParserTests
 {
     [Fact]
     public void GivenSimpleMap_WhenParsing_ThenReturnsMapExpression()
@@ -22,7 +23,7 @@ map 'http://example.org/fhir/StructureMap/Example' = 'ExampleMap'
 group PatientToBundle(source src : Patient, target bundle : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -49,7 +50,7 @@ uses 'http://hl7.org/fhir/StructureDefinition/Bundle' alias Bundle as target
 group PatientToBundle(source src : Patient, target bundle : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -76,7 +77,7 @@ imports 'http://example.org/fhir/StructureMap/Helpers'
 group PatientToBundle(source src : Patient, target bundle : Bundle) {
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -97,7 +98,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
   src.name as vn -> bundle.entry as entry;
 }
 ";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var result = compiler.Parse(mappingText);
@@ -116,7 +117,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
     {
         // Arrange
         var mappingText = "invalid mapping text";
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);

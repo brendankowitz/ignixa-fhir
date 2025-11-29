@@ -7,13 +7,14 @@
 using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Parser;
 
 public class NewFeaturesTests
 {
-    private readonly MappingCompiler _compiler = new();
+    private readonly MappingParser _parser = new();
 
     #region Rule Names (Trailing Strings)
 
@@ -29,7 +30,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.Groups.Should().HaveCount(1);
@@ -49,7 +50,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.Groups[0].Rules[0].Name.Should().BeNull();
@@ -67,7 +68,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         var rule = result.Groups[0].Rules[0];
@@ -92,7 +93,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.Constants.Should().HaveCount(1);
@@ -113,7 +114,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.Constants.Should().HaveCount(1);
@@ -136,7 +137,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.Constants.Should().HaveCount(3);
@@ -164,7 +165,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.ConceptMaps.Should().HaveCount(1);
@@ -193,7 +194,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         result.ConceptMaps.Should().HaveCount(1);
@@ -228,7 +229,7 @@ public class NewFeaturesTests
             """;
 
         // Act
-        var result = _compiler.Parse(fml);
+        var result = _parser.Parse(fml);
 
         // Assert
         var map = result.ConceptMaps[0].Groups[0].CodeMaps[0];

@@ -8,6 +8,7 @@ using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Evaluation;
@@ -87,7 +88,7 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends BaseGroup
   src.name -> tgt.type;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -125,7 +126,7 @@ group SimpleGroup(source src : Patient, target tgt : Bundle) {
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -166,7 +167,7 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends MiddleGro
   src.gender -> tgt.timestamp;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -203,7 +204,7 @@ group GroupB (source src : Patient, target tgt : Bundle) extends GroupA {
   src.name -> tgt.type;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -233,7 +234,7 @@ group RecursiveGroup (source src : Patient, target tgt : Bundle) extends Recursi
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -263,7 +264,7 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends NonExiste
   src.id -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -305,7 +306,7 @@ group GroupD (source src : Patient, target tgt : Bundle) extends GroupB {
   src.birthDate -> tgt.total;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -343,7 +344,7 @@ group GROUPB (source src : Patient, target tgt : Bundle) extends groupa {
   src.name -> tgt.type;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -385,7 +386,7 @@ group Group3 (source src : Patient, target tgt : Bundle) extends Group1 {
   src.gender -> tgt.timestamp;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -422,7 +423,7 @@ group Group3 (source src : Patient, target tgt : Bundle) extends Group1 {
   src.gender -> tgt.timestamp;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
@@ -459,7 +460,7 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends BaseGroup
   src.name -> tgt.type;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var map = compiler.Parse(mappingText);
@@ -495,7 +496,7 @@ group C (source src : Patient, target tgt : Bundle) extends B {
   src.gender -> tgt.timestamp;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var map = compiler.Parse(mappingText);

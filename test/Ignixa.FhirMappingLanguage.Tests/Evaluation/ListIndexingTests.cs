@@ -8,6 +8,7 @@ using FluentAssertions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Evaluation;
@@ -72,7 +73,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var map = compiler.Parse(mappingText);
@@ -98,7 +99,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0].given[1] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var map = compiler.Parse(mappingText);
@@ -122,7 +123,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.identifier[0].system -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
 
         // Act
         var map = compiler.Parse(mappingText);
@@ -151,7 +152,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0] log src.name[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -188,7 +189,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[2] log src.name[2] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -225,7 +226,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0] log src.name[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -260,7 +261,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0] log src.name[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -294,7 +295,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[5] log src.name[5] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -328,7 +329,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[1].given[0] log src.name[1].given[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -372,7 +373,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.identifier[0].system log src.identifier[0].system -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -420,7 +421,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0] default 'Unknown' log src.name[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -455,7 +456,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[0] where src.name.exists() log src.name[0] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -492,7 +493,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.identifier[0].system -> tgt.id;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();
@@ -533,7 +534,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
   src.name[999] log src.name[999] -> tgt.entry;
 }";
 
-        var compiler = new MappingCompiler();
+        var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext();

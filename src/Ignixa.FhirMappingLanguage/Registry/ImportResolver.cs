@@ -5,6 +5,7 @@
  */
 
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.FhirMappingLanguage.Parser;
 
 namespace Ignixa.FhirMappingLanguage.Registry;
 
@@ -16,12 +17,12 @@ public class ImportResolver
 {
     private readonly IMapRegistry _registry;
     private readonly IMapLoader? _loader;
-    private readonly MappingCompiler _compiler;
+    private readonly MappingParser _parser;
 
-    public ImportResolver(IMapRegistry registry, MappingCompiler compiler, IMapLoader? loader = null)
+    public ImportResolver(IMapRegistry registry, MappingParser parser, IMapLoader? loader = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
-        _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
         _loader = loader;
     }
 
@@ -161,6 +162,6 @@ public class ImportResolver
         }
 
         // Parse the loaded map
-        return _compiler.Parse(content);
+        return _parser.Parse(content);
     }
 }

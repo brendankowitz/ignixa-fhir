@@ -27,7 +27,7 @@ public abstract class Expression
 
     /// <summary>
     /// Original source text for this expression (preserves whitespace and comments for round-tripping).
-    /// Only populated when MappingCompiler is constructed with preserveTrivia = true.
+    /// Only populated when MappingParser is constructed with preserveTrivia = true.
     /// </summary>
     public string? SourceText { get; set; }
 
