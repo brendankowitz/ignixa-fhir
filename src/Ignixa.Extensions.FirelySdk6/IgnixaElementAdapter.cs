@@ -23,6 +23,7 @@ public class IgnixaElementAdapter : IElement
 {
     private readonly Hl7.Fhir.ElementModel.ITypedElement _firelyElement;
     private IReadOnlyList<IElement>? _cachedAllChildren;
+    private Dictionary<string, IReadOnlyList<IElement>>? _childrenByName;
 
     /// <summary>
     /// Creates a new adapter wrapping a Firely SDK ITypedElement.
@@ -65,8 +66,16 @@ public class IgnixaElementAdapter : IElement
         if (name == null)
             return _cachedAllChildren;
 
-        // Filter to matching children
-        return _cachedAllChildren.Where(c => c.Name == name).ToArray();
+        // Cache filtered children to avoid repeated allocations
+        _childrenByName ??= new Dictionary<string, IReadOnlyList<IElement>>();
+
+        if (!_childrenByName.TryGetValue(name, out var filtered))
+        {
+            filtered = _cachedAllChildren.Where(c => c.Name == name).ToArray();
+            _childrenByName[name] = filtered;
+        }
+
+        return filtered;
     }
 
     /// <inheritdoc/>

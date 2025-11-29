@@ -41,20 +41,23 @@ COPY src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj src/Ignixa.SqlOnFhir/
 COPY src/Ignixa.Validation/Ignixa.Validation.csproj src/Ignixa.Validation/
 
 # Restore dependencies for API project only (excludes test/bench projects)
+# DisableGitVersion=true because .git folder is not available in Docker build context
 WORKDIR /src/src/Ignixa.Api
-RUN dotnet restore Ignixa.Api.csproj
+RUN dotnet restore Ignixa.Api.csproj /p:DisableGitVersion=true
 
 # Copy remaining source files
 WORKDIR /src
 COPY src/ src/
 
 # Build and publish with version information
+# DisableGitVersion=true because .git folder is not available in Docker build context
 WORKDIR /src/src/Ignixa.Api
 RUN dotnet publish Ignixa.Api.csproj \
     --configuration Release \
     --no-restore \
     --output /app/publish \
     /p:UseAppHost=false \
+    /p:DisableGitVersion=true \
     /p:Version=${VERSION} \
     /p:AssemblyVersion=${ASSEMBLY_VERSION} \
     /p:FileVersion=${ASSEMBLY_VERSION} \

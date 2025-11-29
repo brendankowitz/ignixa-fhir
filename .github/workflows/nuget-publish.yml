@@ -13,7 +13,7 @@ on:
       - 'src/Ignixa.Specification/**'
       - 'src/Ignixa.SqlOnFhir/**'
       - 'src/Ignixa.Validation/**'
-      - 'src/Ignixa.Extensions.FirelySdk/**'
+      - 'src/Ignixa.Extensions.FirelySdk6/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'GitVersion.yml'
@@ -37,13 +37,13 @@ jobs:
           submodules: recursive
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v1
+        uses: gittools/actions/gitversion/setup@v3
         with:
           versionSpec: '6.x'
 
       - name: Determine Version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v1
+        uses: gittools/actions/gitversion/execute@v3
         with:
           useConfigFile: true
 
@@ -75,7 +75,7 @@ jobs:
           dotnet pack src/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.Extensions.FirelySdk/Ignixa.Extensions.FirelySdk.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
 
       - name: List packages
         run: ls -lh ./packages/

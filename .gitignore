@@ -183,6 +183,12 @@ PublishScripts/
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
+# except our source code folders named Packages/packages
+!src/Ignixa.Application/Features/Packages/
+!src/Ignixa.Application/Features/Packages/*
+!src/Ignixa.SqlOnFhir/packages/
+!src/Ignixa.SqlOnFhir/packages/*
+!src/Ignixa.SqlOnFhir/packages/**/*
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files

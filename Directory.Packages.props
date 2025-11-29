@@ -78,5 +78,8 @@
     <PackageVersion Include="NuGet.Versioning" Version="6.8.0" />
     <!-- GitVersion for semantic versioning -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.0.5" />
+    <!-- Source Link and Reproducible Builds -->
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Include="DotNet.ReproducibleBuilds" Version="1.2.25" />
   </ItemGroup>
 </Project>
