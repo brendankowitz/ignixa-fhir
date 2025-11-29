@@ -48,7 +48,7 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"\btarget\b"), MappingTokenKind.Target, requireDelimiters: false)
             .Match(Span.Regex(@"\bqueried\b"), MappingTokenKind.Queried, requireDelimiters: false)
             .Match(Span.Regex(@"\bproduced\b"), MappingTokenKind.Produced, requireDelimiters: false)
-            .Match(Span.Regex(@"\bconceptMap\b"), MappingTokenKind.ConceptMap, requireDelimiters: false)
+            .Match(Span.Regex(@"\b[cC]oncept[mM]ap\b"), MappingTokenKind.ConceptMap, requireDelimiters: false)
             .Match(Span.Regex(@"\bprefix\b"), MappingTokenKind.Prefix, requireDelimiters: false)
             .Match(Span.Regex(@"\btypes\b"), MappingTokenKind.Types, requireDelimiters: false)
             .Match(Span.Regex(@"\btype\b"), MappingTokenKind.Type, requireDelimiters: false)
@@ -59,6 +59,7 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"\bonly_one\b"), MappingTokenKind.OnlyOne, requireDelimiters: false)
             .Match(Span.Regex(@"\bshare\b"), MappingTokenKind.Share, requireDelimiters: false)
             .Match(Span.Regex(@"\bsingle\b"), MappingTokenKind.Single, requireDelimiters: false)
+            .Match(Span.Regex(@"\bconstant\b"), MappingTokenKind.Constant, requireDelimiters: false)
 
             // Boolean literals
             .Match(Span.Regex(@"\btrue\b"), MappingTokenKind.True, requireDelimiters: false)
@@ -75,8 +76,9 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
             .Match(Span.Regex(@"[0-9]+"), MappingTokenKind.IntegerLiteral, requireDelimiters: true)
 
-            // URLs (supports both http://example.com and urn:uuid:... patterns)
-            .Match(Span.Regex(@"[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
+            // URLs (supports http://, https://, and urn: patterns)
+            // More restrictive pattern to avoid matching prefix:code patterns like s:male
+            .Match(Span.Regex(@"(https?|urn|ftp|file):[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
 
             // Identifiers (letters/underscore start, alphanumeric/underscore continuation)
             .Match(Identifier.CStyle, MappingTokenKind.Identifier)
@@ -84,6 +86,10 @@ public static class MappingTokenizer
             // Multi-character operators (longest first)
             .Match(Span.EqualTo("->"), MappingTokenKind.Arrow)
             .Match(Span.EqualTo(".."), MappingTokenKind.Range)
+            .Match(Span.EqualTo("=="), MappingTokenKind.DoubleEquals)
+            .Match(Span.EqualTo("~="), MappingTokenKind.RelatedTo)
+            .Match(Span.EqualTo("!="), MappingTokenKind.NotEquals)
+            .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -132,7 +138,7 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"\btarget\b"), MappingTokenKind.Target, requireDelimiters: false)
             .Match(Span.Regex(@"\bqueried\b"), MappingTokenKind.Queried, requireDelimiters: false)
             .Match(Span.Regex(@"\bproduced\b"), MappingTokenKind.Produced, requireDelimiters: false)
-            .Match(Span.Regex(@"\bconceptMap\b"), MappingTokenKind.ConceptMap, requireDelimiters: false)
+            .Match(Span.Regex(@"\b[cC]oncept[mM]ap\b"), MappingTokenKind.ConceptMap, requireDelimiters: false)
             .Match(Span.Regex(@"\bprefix\b"), MappingTokenKind.Prefix, requireDelimiters: false)
             .Match(Span.Regex(@"\btypes\b"), MappingTokenKind.Types, requireDelimiters: false)
             .Match(Span.Regex(@"\btype\b"), MappingTokenKind.Type, requireDelimiters: false)
@@ -143,6 +149,7 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"\bonly_one\b"), MappingTokenKind.OnlyOne, requireDelimiters: false)
             .Match(Span.Regex(@"\bshare\b"), MappingTokenKind.Share, requireDelimiters: false)
             .Match(Span.Regex(@"\bsingle\b"), MappingTokenKind.Single, requireDelimiters: false)
+            .Match(Span.Regex(@"\bconstant\b"), MappingTokenKind.Constant, requireDelimiters: false)
 
             // Boolean literals
             .Match(Span.Regex(@"\btrue\b"), MappingTokenKind.True, requireDelimiters: false)
@@ -159,8 +166,9 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
             .Match(Span.Regex(@"[0-9]+"), MappingTokenKind.IntegerLiteral, requireDelimiters: true)
 
-            // URLs (supports both http://example.com and urn:uuid:... patterns)
-            .Match(Span.Regex(@"[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
+            // URLs (supports http://, https://, and urn: patterns)
+            // More restrictive pattern to avoid matching prefix:code patterns like s:male
+            .Match(Span.Regex(@"(https?|urn|ftp|file):[^\s<>""{}|\\^`\[\]]+"), MappingTokenKind.Url, requireDelimiters: false)
 
             // Identifiers (letters/underscore start, alphanumeric/underscore continuation)
             .Match(Identifier.CStyle, MappingTokenKind.Identifier)
@@ -168,6 +176,10 @@ public static class MappingTokenizer
             // Multi-character operators (longest first)
             .Match(Span.EqualTo("->"), MappingTokenKind.Arrow)
             .Match(Span.EqualTo(".."), MappingTokenKind.Range)
+            .Match(Span.EqualTo("=="), MappingTokenKind.DoubleEquals)
+            .Match(Span.EqualTo("~="), MappingTokenKind.RelatedTo)
+            .Match(Span.EqualTo("!="), MappingTokenKind.NotEquals)
+            .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)

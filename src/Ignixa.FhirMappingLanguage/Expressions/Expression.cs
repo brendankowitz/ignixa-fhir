@@ -123,13 +123,17 @@ public class MapExpression : Expression
         IEnumerable<UsesExpression> uses,
         IEnumerable<ImportsExpression> imports,
         IEnumerable<GroupExpression> groups,
+        IEnumerable<ConceptMapDeclarationExpression>? conceptMaps = null,
+        IEnumerable<ConstantDeclarationExpression>? constants = null,
         ISourcePositionInfo? location = null) : base(location)
     {
         Url = url ?? throw new ArgumentNullException(nameof(url));
         Identifier = identifier ?? throw new ArgumentNullException(nameof(identifier));
-        Uses = uses?.ToList() ?? new List<UsesExpression>();
-        Imports = imports?.ToList() ?? new List<ImportsExpression>();
-        Groups = groups?.ToList() ?? new List<GroupExpression>();
+        Uses = uses?.ToList() ?? [];
+        Imports = imports?.ToList() ?? [];
+        Groups = groups?.ToList() ?? [];
+        ConceptMaps = conceptMaps?.ToList() ?? [];
+        Constants = constants?.ToList() ?? [];
     }
 
     public string Url { get; }
@@ -137,6 +141,16 @@ public class MapExpression : Expression
     public IReadOnlyList<UsesExpression> Uses { get; }
     public IReadOnlyList<ImportsExpression> Imports { get; }
     public IReadOnlyList<GroupExpression> Groups { get; }
+
+    /// <summary>
+    /// Inline ConceptMap declarations.
+    /// </summary>
+    public IReadOnlyList<ConceptMapDeclarationExpression> ConceptMaps { get; }
+
+    /// <summary>
+    /// Constant declarations.
+    /// </summary>
+    public IReadOnlyList<ConstantDeclarationExpression> Constants { get; }
 
     public override string ToString() => $"Map({Url} = {Identifier})";
 }
@@ -206,9 +220,9 @@ public class GroupExpression : Expression
         ISourcePositionInfo? location = null) : base(location)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
-        Parameters = parameters?.ToList() ?? new List<ParameterExpression>();
+        Parameters = parameters?.ToList() ?? [];
         Extends = extends;
-        Rules = rules?.ToList() ?? new List<RuleExpression>();
+        Rules = rules?.ToList() ?? [];
     }
 
     public string Name { get; }
@@ -266,8 +280,8 @@ public class RuleExpression : Expression
         ISourcePositionInfo? location = null) : base(location)
     {
         Name = name;
-        Sources = sources?.ToList() ?? new List<SourceExpression>();
-        Targets = targets?.ToList() ?? new List<TargetExpression>();
+        Sources = sources?.ToList() ?? [];
+        Targets = targets?.ToList() ?? [];
         Dependent = dependent;
     }
 
@@ -426,7 +440,7 @@ public class TransformExpression : Expression
         ISourcePositionInfo? location = null) : base(location)
     {
         FunctionName = functionName ?? throw new ArgumentNullException(nameof(functionName));
-        Arguments = arguments?.ToList() ?? new List<Expression>();
+        Arguments = arguments?.ToList() ?? [];
     }
 
     public string FunctionName { get; }
@@ -489,7 +503,7 @@ public class GroupInvocationExpression : Expression
         ISourcePositionInfo? location = null) : base(location)
     {
         GroupName = groupName ?? throw new ArgumentNullException(nameof(groupName));
-        Arguments = arguments?.ToList() ?? new List<Expression>();
+        Arguments = arguments?.ToList() ?? [];
     }
 
     public string GroupName { get; }
@@ -508,10 +522,158 @@ public class RuleSetExpression : Expression
         IEnumerable<RuleExpression> rules,
         ISourcePositionInfo? location = null) : base(location)
     {
-        Rules = rules?.ToList() ?? new List<RuleExpression>();
+        Rules = rules?.ToList() ?? [];
     }
 
     public IReadOnlyList<RuleExpression> Rules { get; }
 
     public override string ToString() => $"{{ {Rules.Count} rules }}";
+}
+
+/// <summary>
+/// Represents an inline ConceptMap declaration.
+/// Example: conceptmap "#genderMap" { prefix s = "http://snomed.info/sct" ... }
+/// </summary>
+public class ConceptMapDeclarationExpression : Expression
+{
+    public ConceptMapDeclarationExpression(
+        string identifier,
+        IEnumerable<ConceptMapPrefixExpression> prefixes,
+        IEnumerable<ConceptMapGroupExpression> groups,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        Identifier = identifier ?? throw new ArgumentNullException(nameof(identifier));
+        Prefixes = prefixes?.ToList() ?? [];
+        Groups = groups?.ToList() ?? [];
+    }
+
+    /// <summary>
+    /// The conceptmap identifier (e.g., "#genderMap").
+    /// </summary>
+    public string Identifier { get; }
+
+    /// <summary>
+    /// Prefix declarations for code systems.
+    /// </summary>
+    public IReadOnlyList<ConceptMapPrefixExpression> Prefixes { get; }
+
+    /// <summary>
+    /// Groups of code mappings (source system -> target system).
+    /// </summary>
+    public IReadOnlyList<ConceptMapGroupExpression> Groups { get; }
+
+    public override string ToString() => $"ConceptMap({Identifier})";
+}
+
+/// <summary>
+/// Represents a prefix declaration within a ConceptMap.
+/// Example: prefix s = "http://snomed.info/sct"
+/// </summary>
+public class ConceptMapPrefixExpression : Expression
+{
+    public ConceptMapPrefixExpression(
+        string prefixName,
+        string url,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        PrefixName = prefixName ?? throw new ArgumentNullException(nameof(prefixName));
+        Url = url ?? throw new ArgumentNullException(nameof(url));
+    }
+
+    public string PrefixName { get; }
+    public string Url { get; }
+
+    public override string ToString() => $"Prefix({PrefixName} = {Url})";
+}
+
+/// <summary>
+/// Represents a group of code mappings from source to target system.
+/// Example: source "http://hl7.org/fhir/gender" target "http://snomed.info/sct" { ... }
+/// </summary>
+public class ConceptMapGroupExpression : Expression
+{
+    public ConceptMapGroupExpression(
+        string? sourceSystem,
+        string? targetSystem,
+        IEnumerable<ConceptMapCodeMapExpression> codeMaps,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        SourceSystem = sourceSystem;
+        TargetSystem = targetSystem;
+        CodeMaps = codeMaps?.ToList() ?? [];
+    }
+
+    public string? SourceSystem { get; }
+    public string? TargetSystem { get; }
+    public IReadOnlyList<ConceptMapCodeMapExpression> CodeMaps { get; }
+
+    public override string ToString() => $"ConceptMapGroup({SourceSystem} -> {TargetSystem})";
+}
+
+/// <summary>
+/// Represents a single code mapping within a ConceptMap.
+/// Example: s:12345 == t:67890
+/// </summary>
+public class ConceptMapCodeMapExpression : Expression
+{
+    public ConceptMapCodeMapExpression(
+        string sourcePrefix,
+        string sourceCode,
+        ConceptMapEquivalence equivalence,
+        string targetPrefix,
+        string targetCode,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        SourcePrefix = sourcePrefix ?? throw new ArgumentNullException(nameof(sourcePrefix));
+        SourceCode = sourceCode ?? throw new ArgumentNullException(nameof(sourceCode));
+        Equivalence = equivalence;
+        TargetPrefix = targetPrefix ?? throw new ArgumentNullException(nameof(targetPrefix));
+        TargetCode = targetCode ?? throw new ArgumentNullException(nameof(targetCode));
+    }
+
+    public string SourcePrefix { get; }
+    public string SourceCode { get; }
+    public ConceptMapEquivalence Equivalence { get; }
+    public string TargetPrefix { get; }
+    public string TargetCode { get; }
+
+    public override string ToString() => $"{SourcePrefix}:{SourceCode} {Equivalence} {TargetPrefix}:{TargetCode}";
+}
+
+/// <summary>
+/// Equivalence relationship for ConceptMap code mappings.
+/// </summary>
+public enum ConceptMapEquivalence
+{
+    /// <summary>Equivalent (==)</summary>
+    Equivalent,
+    /// <summary>Related to (~=)</summary>
+    RelatedTo,
+    /// <summary>Not related to (!=)</summary>
+    NotRelatedTo,
+    /// <summary>Broader (&lt;-)</summary>
+    Broader,
+    /// <summary>Narrower (-&gt;)</summary>
+    Narrower
+}
+
+/// <summary>
+/// Represents a constant declaration.
+/// Example: constant MY_VALUE = 'some value'
+/// </summary>
+public class ConstantDeclarationExpression : Expression
+{
+    public ConstantDeclarationExpression(
+        string name,
+        Expression value,
+        ISourcePositionInfo? location = null) : base(location)
+    {
+        Name = name ?? throw new ArgumentNullException(nameof(name));
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public string Name { get; }
+    public Expression Value { get; }
+
+    public override string ToString() => $"Constant({Name})";
 }

@@ -6,6 +6,7 @@
  */
 
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using Ignixa.FhirMappingLanguage.Expressions;
 
@@ -38,6 +39,17 @@ public class FmlSerializer
         context.AppendLine($"map '{EscapeStringLiteral(map.Url)}' = '{EscapeStringLiteral(map.Identifier)}'");
         context.AppendLine();
 
+        // ConceptMap declarations
+        foreach (var conceptMap in map.ConceptMaps)
+        {
+            SerializeConceptMap(conceptMap, context);
+        }
+
+        if (map.ConceptMaps.Count > 0)
+        {
+            context.AppendLine();
+        }
+
         // Uses declarations
         foreach (var uses in map.Uses)
         {
@@ -56,6 +68,17 @@ public class FmlSerializer
         }
 
         if (map.Imports.Count > 0)
+        {
+            context.AppendLine();
+        }
+
+        // Constant declarations
+        foreach (var constant in map.Constants)
+        {
+            SerializeConstant(constant, context);
+        }
+
+        if (map.Constants.Count > 0)
         {
             context.AppendLine();
         }
@@ -106,6 +129,59 @@ public class FmlSerializer
     private void SerializeImports(ImportsExpression imports, SerializationContext context)
     {
         context.AppendLine($"imports '{EscapeStringLiteral(imports.Url)}'");
+    }
+
+    /// <summary>
+    /// Serializes a constant declaration.
+    /// Format: constant NAME = value
+    /// </summary>
+    private void SerializeConstant(ConstantDeclarationExpression constant, SerializationContext context)
+    {
+        context.Append($"constant {constant.Name} = ");
+        SerializeExpression(constant.Value, context);
+        context.AppendLine();
+    }
+
+    /// <summary>
+    /// Serializes a ConceptMap declaration.
+    /// Format: conceptmap "#id" { prefixes codeMaps }
+    /// </summary>
+    private void SerializeConceptMap(ConceptMapDeclarationExpression conceptMap, SerializationContext context)
+    {
+        context.AppendLine($"conceptmap '{EscapeStringLiteral(conceptMap.Identifier)}' {{");
+        context.IncreaseIndent();
+
+        // Prefixes
+        foreach (var prefix in conceptMap.Prefixes)
+        {
+            context.AppendLine($"prefix {prefix.PrefixName} = '{EscapeStringLiteral(prefix.Url)}'");
+        }
+
+        if (conceptMap.Prefixes.Count > 0 && conceptMap.Groups.Any(g => g.CodeMaps.Count > 0))
+        {
+            context.AppendLine();
+        }
+
+        // Code mappings
+        foreach (var group in conceptMap.Groups)
+        {
+            foreach (var codeMap in group.CodeMaps)
+            {
+                var equivOp = codeMap.Equivalence switch
+                {
+                    ConceptMapEquivalence.Equivalent => "==",
+                    ConceptMapEquivalence.RelatedTo => "~=",
+                    ConceptMapEquivalence.NotRelatedTo => "!=",
+                    ConceptMapEquivalence.Broader => "<-",
+                    ConceptMapEquivalence.Narrower => "->",
+                    _ => "=="
+                };
+                context.AppendLine($"{codeMap.SourcePrefix}:{codeMap.SourceCode} {equivOp} {codeMap.TargetPrefix}:{codeMap.TargetCode}");
+            }
+        }
+
+        context.DecreaseIndent();
+        context.AppendLine("}");
     }
 
     /// <summary>

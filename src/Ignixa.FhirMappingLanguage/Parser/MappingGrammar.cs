@@ -80,6 +80,13 @@ public static class MappingGrammar
             .Or(Token.EqualTo(MappingTokenKind.False)
                 .Select(t => new LiteralExpression(false, CreatePosition(t))));
 
+    // Combined literal parser (for constants and other literal contexts)
+    private static readonly TokenListParser<MappingTokenKind, LiteralExpression> Literal =
+        StringLiteral
+            .Or(DecimalLiteral)
+            .Or(IntegerLiteral)
+            .Or(BooleanLiteral);
+
     // Identifier parser - accepts keywords that can be used as identifiers
     private static readonly TokenListParser<MappingTokenKind, IdentifierExpression> Identifier =
         Token.EqualTo(MappingTokenKind.Identifier)
@@ -400,9 +407,8 @@ public static class MappingGrammar
         from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
         select new RuleSetExpression(rules, CreatePosition(lbrace));
 
-    // Rule: source [, source]* [-> target [, target]*] [then (GroupInvocation | NestedRules)]
-    // NOTE: Rule names (ruleName::) are not supported - not part of FHIR spec
-    // FHIR spec uses trailing quoted strings for rule names instead
+    // Rule: source [, source]* [-> target [, target]*] [then (GroupInvocation | NestedRules)] ["rule name"]
+    // FHIR spec uses trailing quoted strings for rule names
     // A rule MUST have at least one source (AtLeastOnceDelimitedBy prevents zero-width parser error)
     private static readonly TokenListParser<MappingTokenKind, RuleExpression> Rule =
         from sources in Source.AtLeastOnceDelimitedBy(Token.EqualTo(MappingTokenKind.Comma))
@@ -416,12 +422,67 @@ public static class MappingGrammar
             from content in GroupInvocation.Select(g => (Expression)g).Or(NestedRules.Select(r => (Expression)r))
             select content
         ).OptionalOrDefault()
+        from ruleName in StringLiteral.Select(lit => lit.Value as string).OptionalOrDefault()
         from semicolon in Token.EqualTo(MappingTokenKind.Semicolon).Optional()
         select new RuleExpression(
-            null, // Rule name not supported - see FHIR spec for trailing string syntax
+            ruleName,
             sources,
             targets ?? Array.Empty<TargetExpression>(),
             dependent);
+
+    // Constant: constant NAME = value
+    private static readonly TokenListParser<MappingTokenKind, ConstantDeclarationExpression> Constant =
+        from constToken in Token.EqualTo(MappingTokenKind.Constant)
+        from name in Identifier
+        from eq in Token.EqualTo(MappingTokenKind.Equals)
+        from value in Literal
+        select new ConstantDeclarationExpression(name.Name, value, CreatePosition(constToken));
+
+    // ConceptMap prefix: prefix name = "url"
+    private static readonly TokenListParser<MappingTokenKind, ConceptMapPrefixExpression> ConceptMapPrefix =
+        from prefixToken in Token.EqualTo(MappingTokenKind.Prefix)
+        from name in Identifier
+        from eq in Token.EqualTo(MappingTokenKind.Equals)
+        from url in StringLiteral
+        select new ConceptMapPrefixExpression(name.Name, url.Value.ToString()!, CreatePosition(prefixToken));
+
+    // ConceptMap equivalence operator
+    private static readonly TokenListParser<MappingTokenKind, ConceptMapEquivalence> EquivalenceOp =
+        Token.EqualTo(MappingTokenKind.DoubleEquals).Select(_ => ConceptMapEquivalence.Equivalent)
+        .Or(Token.EqualTo(MappingTokenKind.RelatedTo).Select(_ => ConceptMapEquivalence.RelatedTo))
+        .Or(Token.EqualTo(MappingTokenKind.NotEquals).Select(_ => ConceptMapEquivalence.NotRelatedTo))
+        .Or(Token.EqualTo(MappingTokenKind.LeftArrow).Select(_ => ConceptMapEquivalence.Broader))
+        .Or(Token.EqualTo(MappingTokenKind.Arrow).Select(_ => ConceptMapEquivalence.Narrower));
+
+    // ConceptMap code mapping: prefix:code op prefix:code
+    private static readonly TokenListParser<MappingTokenKind, ConceptMapCodeMapExpression> ConceptMapCodeMap =
+        from srcPrefix in Identifier
+        from colon1 in Token.EqualTo(MappingTokenKind.Colon)
+        from srcCode in Token.EqualTo(MappingTokenKind.Identifier).Or(Token.EqualTo(MappingTokenKind.IntegerLiteral))
+        from equiv in EquivalenceOp
+        from tgtPrefix in Identifier
+        from colon2 in Token.EqualTo(MappingTokenKind.Colon)
+        from tgtCode in Token.EqualTo(MappingTokenKind.Identifier).Or(Token.EqualTo(MappingTokenKind.IntegerLiteral))
+        select new ConceptMapCodeMapExpression(
+            srcPrefix.Name,
+            srcCode.ToStringValue(),
+            equiv,
+            tgtPrefix.Name,
+            tgtCode.ToStringValue());
+
+    // ConceptMap declaration: conceptmap "#id" { prefixes codeMaps }
+    private static readonly TokenListParser<MappingTokenKind, ConceptMapDeclarationExpression> ConceptMapDeclaration =
+        from cmToken in Token.EqualTo(MappingTokenKind.ConceptMap)
+        from id in Token.EqualTo(MappingTokenKind.StringLiteral).Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier))
+        from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
+        from prefixes in ConceptMapPrefix.Many()
+        from codeMaps in ConceptMapCodeMap.Many()
+        from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
+        select new ConceptMapDeclarationExpression(
+            UnescapeString(id.ToStringValue()),
+            prefixes,
+            codeMaps.Any() ? [new ConceptMapGroupExpression(null, null, codeMaps)] : [],
+            CreatePosition(cmToken));
 
     // Group: group Name(params) [extends OtherGroup] { rules }
     private static readonly TokenListParser<MappingTokenKind, GroupExpression> Group =
@@ -445,14 +506,16 @@ public static class MappingGrammar
             rules,
             CreatePosition(groupToken));
 
-    // Map: map "url" = "Identifier" [uses]* [imports]* [groups]*
+    // Map: map "url" = "Identifier" [conceptMaps]* [uses]* [imports]* [constants]* [groups]*
     public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
         from mapToken in Token.EqualTo(MappingTokenKind.Map)
         from url in StringLiteral
         from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
         from identifier in StringLiteral
+        from conceptMaps in ConceptMapDeclaration.Many()
         from uses in Uses.Many()
         from imports in Imports.Many()
+        from constants in Constant.Many()
         from groups in Group.Many()
         select new MapExpression(
             url.Value.ToString()!,
@@ -460,5 +523,7 @@ public static class MappingGrammar
             uses,
             imports,
             groups,
+            conceptMaps,
+            constants,
             CreatePosition(mapToken));
 }

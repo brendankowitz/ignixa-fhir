@@ -42,6 +42,7 @@ public enum MappingTokenKind
 #pragma warning disable CA1720 // Identifier contains type name - 'Single' is a FHIR spec keyword for list modes
     Single,
 #pragma warning restore CA1720
+    Constant,
 
     // Boolean literals
     True,
@@ -64,6 +65,12 @@ public enum MappingTokenKind
     Comma,               // ,
     Semicolon,           // ;
     Asterisk,            // * (for unbounded cardinality)
+
+    // ConceptMap equivalence operators
+    DoubleEquals,        // ==
+    RelatedTo,           // ~=
+    NotEquals,           // !=
+    LeftArrow,           // <- (broader)
 
     // Delimiters
     LeftParen,           // (

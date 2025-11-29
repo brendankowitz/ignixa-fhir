@@ -46,8 +46,9 @@ public class StructureMapParser
         var uses = ParseStructures(obj["structure"]?.AsArray());
         var imports = ParseImports(obj["import"]?.AsArray());
         var groups = ParseGroups(obj["group"]?.AsArray());
+        var conceptMaps = ParseContainedConceptMaps(obj["contained"]?.AsArray());
 
-        return new MapExpression(url, name, uses, imports, groups);
+        return new MapExpression(url, name, uses, imports, groups, conceptMaps, []);
     }
 
     /// <summary>
@@ -546,5 +547,123 @@ public class StructureMapParser
         "share" => ListMode.Share,
         "single" => ListMode.Single,
         _ => ListMode.First // Default fallback
+    };
+
+    /// <summary>
+    /// Parses contained[] array for ConceptMap resources.
+    /// </summary>
+    private static List<ConceptMapDeclarationExpression> ParseContainedConceptMaps(JsonArray? contained)
+    {
+        if (contained is null)
+        {
+            return [];
+        }
+
+        var result = new List<ConceptMapDeclarationExpression>();
+
+        foreach (var item in contained)
+        {
+            if (item is null) continue;
+
+            var obj = item.AsObject();
+            var resourceType = obj["resourceType"]?.GetValue<string>();
+
+            // Only process ConceptMap resources
+            if (resourceType != "ConceptMap") continue;
+
+            var id = obj["id"]?.GetValue<string>();
+            if (id is null) continue;
+
+            // Build identifier with # prefix for inline reference
+            var identifier = $"#{id}";
+
+            // Parse groups into prefixes and code mappings
+            var prefixes = new List<ConceptMapPrefixExpression>();
+            var groups = new List<ConceptMapGroupExpression>();
+
+            var groupArray = obj["group"]?.AsArray();
+            if (groupArray is not null)
+            {
+                foreach (var groupItem in groupArray)
+                {
+                    if (groupItem is null) continue;
+
+                    var groupObj = groupItem.AsObject();
+                    var sourceUrl = groupObj["source"]?.GetValue<string>();
+                    var targetUrl = groupObj["target"]?.GetValue<string>();
+
+                    // Create prefix entries from source/target URLs
+                    var sourcePrefix = "s";
+                    var targetPrefix = "t";
+
+                    if (sourceUrl is not null && !prefixes.Any(p => p.Url == sourceUrl))
+                    {
+                        prefixes.Add(new ConceptMapPrefixExpression(sourcePrefix, sourceUrl));
+                    }
+                    if (targetUrl is not null && !prefixes.Any(p => p.Url == targetUrl))
+                    {
+                        prefixes.Add(new ConceptMapPrefixExpression(targetPrefix, targetUrl));
+                    }
+
+                    // Parse element mappings
+                    var codeMaps = new List<ConceptMapCodeMapExpression>();
+                    var elementArray = groupObj["element"]?.AsArray();
+                    if (elementArray is not null)
+                    {
+                        foreach (var elementItem in elementArray)
+                        {
+                            if (elementItem is null) continue;
+
+                            var elementObj = elementItem.AsObject();
+                            var sourceCode = elementObj["code"]?.GetValue<string>();
+                            if (sourceCode is null) continue;
+
+                            var targetArray = elementObj["target"]?.AsArray();
+                            if (targetArray is not null)
+                            {
+                                foreach (var targetItem in targetArray)
+                                {
+                                    if (targetItem is null) continue;
+
+                                    var targetObj = targetItem.AsObject();
+                                    var targetCode = targetObj["code"]?.GetValue<string>();
+                                    var equivalenceStr = targetObj["equivalence"]?.GetValue<string>() ?? "equivalent";
+
+                                    if (targetCode is not null)
+                                    {
+                                        var equivalence = ParseEquivalence(equivalenceStr);
+                                        codeMaps.Add(new ConceptMapCodeMapExpression(
+                                            sourcePrefix,
+                                            sourceCode,
+                                            equivalence,
+                                            targetPrefix,
+                                            targetCode));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    groups.Add(new ConceptMapGroupExpression(sourceUrl, targetUrl, codeMaps));
+                }
+            }
+
+            result.Add(new ConceptMapDeclarationExpression(identifier, prefixes, groups));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Parses ConceptMapEquivalence from string.
+    /// </summary>
+    private static ConceptMapEquivalence ParseEquivalence(string equivalence) => equivalence.ToLowerInvariant() switch
+    {
+        "equivalent" => ConceptMapEquivalence.Equivalent,
+        "relatedto" => ConceptMapEquivalence.RelatedTo,
+        "wider" => ConceptMapEquivalence.Broader,
+        "narrower" => ConceptMapEquivalence.Narrower,
+        "unmatched" => ConceptMapEquivalence.NotRelatedTo,
+        _ => ConceptMapEquivalence.Equivalent
     };
 }

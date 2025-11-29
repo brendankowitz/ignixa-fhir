@@ -54,6 +54,17 @@ public class StructureMapBuilder
             structureMap["import"] = importArray;
         }
 
+        // Add contained ConceptMaps (inline conceptmap declarations)
+        if (map.ConceptMaps.Count > 0)
+        {
+            var containedArray = new JsonArray();
+            foreach (var conceptMap in map.ConceptMaps)
+            {
+                containedArray.Add(BuildConceptMapResource(conceptMap, map.Url));
+            }
+            structureMap["contained"] = containedArray;
+        }
+
         // Add group array
         if (map.Groups.Count > 0)
         {
@@ -481,5 +492,113 @@ public class StructureMapBuilder
         ListMode.Share => "share",
         ListMode.Single => "single",
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid list mode")
+    };
+
+    /// <summary>
+    /// Builds a contained ConceptMap resource from a ConceptMapDeclarationExpression.
+    /// </summary>
+    private static JsonObject BuildConceptMapResource(ConceptMapDeclarationExpression conceptMap, string structureMapUrl)
+    {
+        // Extract ID from the identifier (remove leading # if present)
+        var id = conceptMap.Identifier.StartsWith('#')
+            ? conceptMap.Identifier.Substring(1)
+            : conceptMap.Identifier;
+
+        var resource = new JsonObject
+        {
+            ["resourceType"] = "ConceptMap",
+            ["id"] = id,
+            ["status"] = "active"
+        };
+
+        // Build groups with element mappings
+        if (conceptMap.Groups.Count > 0)
+        {
+            var groupArray = new JsonArray();
+
+            foreach (var group in conceptMap.Groups)
+            {
+                var groupObj = new JsonObject();
+
+                // Find source and target URLs from prefixes
+                if (group.SourceSystem is not null)
+                {
+                    groupObj["source"] = group.SourceSystem;
+                }
+                if (group.TargetSystem is not null)
+                {
+                    groupObj["target"] = group.TargetSystem;
+                }
+
+                // Build elements from code mappings
+                if (group.CodeMaps.Count > 0)
+                {
+                    // Group code maps by source prefix to determine source/target URLs
+                    var prefixUrls = conceptMap.Prefixes.ToDictionary(
+                        p => p.PrefixName,
+                        p => p.Url);
+
+                    var elementArray = new JsonArray();
+
+                    // Group by source code to create element entries
+                    var bySource = group.CodeMaps.GroupBy(m => (m.SourcePrefix, m.SourceCode));
+                    foreach (var sourceGroup in bySource)
+                    {
+                        var elementObj = new JsonObject
+                        {
+                            ["code"] = sourceGroup.Key.SourceCode
+                        };
+
+                        var targetArray = new JsonArray();
+                        foreach (var mapping in sourceGroup)
+                        {
+                            var targetObj = new JsonObject
+                            {
+                                ["code"] = mapping.TargetCode,
+                                ["equivalence"] = EquivalenceToString(mapping.Equivalence)
+                            };
+                            targetArray.Add(targetObj);
+                        }
+                        elementObj["target"] = targetArray;
+                        elementArray.Add(elementObj);
+                    }
+
+                    // Set source/target from first mapping's prefixes if not already set
+                    var firstMap = group.CodeMaps.Count > 0 ? group.CodeMaps[0] : null;
+                    if (firstMap is not null)
+                    {
+                        if (!groupObj.ContainsKey("source") && prefixUrls.TryGetValue(firstMap.SourcePrefix, out var sourceUrl))
+                        {
+                            groupObj["source"] = sourceUrl;
+                        }
+                        if (!groupObj.ContainsKey("target") && prefixUrls.TryGetValue(firstMap.TargetPrefix, out var targetUrl))
+                        {
+                            groupObj["target"] = targetUrl;
+                        }
+                    }
+
+                    groupObj["element"] = elementArray;
+                }
+
+                groupArray.Add(groupObj);
+            }
+
+            resource["group"] = groupArray;
+        }
+
+        return resource;
+    }
+
+    /// <summary>
+    /// Converts ConceptMapEquivalence to FHIR string representation.
+    /// </summary>
+    private static string EquivalenceToString(ConceptMapEquivalence equivalence) => equivalence switch
+    {
+        ConceptMapEquivalence.Equivalent => "equivalent",
+        ConceptMapEquivalence.RelatedTo => "relatedto",
+        ConceptMapEquivalence.Broader => "wider",
+        ConceptMapEquivalence.Narrower => "narrower",
+        ConceptMapEquivalence.NotRelatedTo => "unmatched",
+        _ => "equivalent"
     };
 }
