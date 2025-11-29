@@ -13,7 +13,7 @@ namespace Ignixa.FhirMappingLanguage.Validation;
 /// <summary>
 /// Validates FHIR Mapping Language mappings without executing transformations.
 /// </summary>
-public class MappingValidator
+internal class MappingValidator
 {
     private readonly ImportResolver? _importResolver;
 

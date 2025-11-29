@@ -11,7 +11,7 @@ namespace Ignixa.FhirMappingLanguage.Terminology;
 /// <summary>
 /// Resolves terminology translations using FHIR ConceptMap resources.
 /// </summary>
-public class ConceptMapResolver
+internal class ConceptMapResolver
 {
     private readonly Dictionary<string, JsonDocument> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly IConceptMapLoader? _loader;
@@ -32,7 +32,7 @@ public class ConceptMapResolver
     public async Task<string?> TranslateAsync(string conceptMapUrl, string sourceCode, string? targetSystem = null)
     {
         var conceptMap = await LoadConceptMapAsync(conceptMapUrl);
-        if (conceptMap == null)
+        if (conceptMap is null)
         {
             return null;
         }
@@ -46,7 +46,7 @@ public class ConceptMapResolver
         foreach (var group in groups.EnumerateArray())
         {
             // If target system is specified, filter by target
-            if (targetSystem != null)
+            if (targetSystem is not null)
             {
                 if (!group.TryGetProperty("target", out var target) ||
                     target.GetString() != targetSystem)
@@ -128,7 +128,7 @@ public class ConceptMapResolver
         }
 
         // Load from loader
-        if (_loader == null)
+        if (_loader is null)
         {
             throw new InvalidOperationException(
                 $"Cannot load ConceptMap '{url}': no loader configured");
@@ -140,7 +140,7 @@ public class ConceptMapResolver
         }
 
         var content = await _loader.LoadAsync(url);
-        if (content == null)
+        if (content is null)
         {
             return null;
         }

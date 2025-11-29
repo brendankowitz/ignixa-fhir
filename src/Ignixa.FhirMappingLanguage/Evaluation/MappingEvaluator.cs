@@ -26,12 +26,23 @@ public class MappingEvaluator
     /// Creates a new MappingEvaluator instance.
     /// </summary>
     /// <param name="enableFhirPath">Whether to enable FhirPath integration</param>
-    /// <param name="importResolver">Optional import resolver for cross-map group invocation</param>
-    public MappingEvaluator(bool enableFhirPath = true, ImportResolver? importResolver = null)
+    public MappingEvaluator(bool enableFhirPath = true)
     {
-        _fhirPathIntegration = enableFhirPath ? new FhirPathIntegration() : null;
+        _fhirPathIntegration = enableFhirPath ? new() : null;
+        _importResolver = null;
+    }
+
+    /// <summary>
+    /// Creates a new MappingEvaluator instance with import resolution.
+    /// </summary>
+    /// <param name="enableFhirPath">Whether to enable FhirPath integration</param>
+    /// <param name="importResolver">Optional import resolver for cross-map group invocation</param>
+    internal MappingEvaluator(bool enableFhirPath, ImportResolver? importResolver)
+    {
+        _fhirPathIntegration = enableFhirPath ? new() : null;
         _importResolver = importResolver;
     }
+
     /// <summary>
     /// Executes a map expression to transform source resources to target resources.
     /// </summary>
@@ -194,7 +205,7 @@ public class MappingEvaluator
                     context.AddError($"Error evaluating source: {ex.Message}", location, "SOURCE_ERROR", ex);
                     // Continue with other sources
                     var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
-                    sourceValues[key] = Enumerable.Empty<IElement>();
+                    sourceValues[key] = [];
                 }
             }
 
@@ -389,14 +400,14 @@ public class MappingEvaluator
                         if (!conditionMet)
                         {
                             // Filter out all elements
-                            contextValues = Enumerable.Empty<IElement>();
+                            contextValues = [];
                         }
                         // Otherwise keep all elements
                     }
                     catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
                     {
                         context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
-                        contextValues = Enumerable.Empty<IElement>(); // Exclude all on error
+                        contextValues = []; // Exclude all on error
                     }
                 }
                 else
@@ -594,7 +605,7 @@ public class MappingEvaluator
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
         {
             context.AddError($"Error visiting source: {ex.Message}", location, "SOURCE_VISIT_ERROR", ex);
-            return Enumerable.Empty<IElement>();
+            return [];
         }
     }
 
@@ -749,7 +760,7 @@ public class MappingEvaluator
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
         {
             context.AddError($"Error evaluating expression: {ex.Message}", location, "EXPRESSION_ERROR", ex);
-            return Enumerable.Empty<IElement>();
+            return [];
         }
     }
 
@@ -776,7 +787,7 @@ public class MappingEvaluator
             return new[] { element };
         }
 
-        return Enumerable.Empty<IElement>();
+        return [];
     }
 
     private IEnumerable<IElement> VisitQualifiedIdentifier(QualifiedIdentifierExpression qual, MappingContext context)
@@ -926,7 +937,7 @@ public class MappingEvaluator
                     if (int.TryParse(indexStr, out var index))
                     {
                         var list = current.ToList();
-                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<IElement>();
+                        current = index >= 0 && index < list.Count ? new[] { list[index] } : [];
                     }
                 }
                 else
@@ -937,7 +948,7 @@ public class MappingEvaluator
                     if (int.TryParse(indexStr, out var index))
                     {
                         var list = current.ToList();
-                        current = index >= 0 && index < list.Count ? new[] { list[index] } : Enumerable.Empty<IElement>();
+                        current = index >= 0 && index < list.Count ? new[] { list[index] } : [];
                     }
                 }
             }

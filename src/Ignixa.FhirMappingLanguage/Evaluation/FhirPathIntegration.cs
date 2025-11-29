@@ -15,7 +15,7 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// <summary>
 /// Provides FHIRPath evaluation capabilities for mapping expressions.
 /// </summary>
-public class FhirPathIntegration
+internal class FhirPathIntegration
 {
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
@@ -27,9 +27,9 @@ public class FhirPathIntegration
     /// <param name="cacheExpressions">Whether to cache compiled expressions for performance</param>
     public FhirPathIntegration(bool cacheExpressions = true)
     {
-        _parser = new FhirPathParser();
-        _evaluator = new FhirPathEvaluator();
-        _expressionCache = cacheExpressions ? new Dictionary<string, Ignixa.FhirPath.Expressions.Expression>() : null!;
+        _parser = new();
+        _evaluator = new();
+        _expressionCache = cacheExpressions ? [] : null!;
     }
 
     /// <summary>
@@ -42,7 +42,7 @@ public class FhirPathIntegration
     {
         if (string.IsNullOrWhiteSpace(expression))
         {
-            return Enumerable.Empty<IElement>();
+            return [];
         }
 
         try

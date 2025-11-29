@@ -5,7 +5,6 @@
  */
 
 using Ignixa.FhirMappingLanguage.Expressions;
-using Ignixa.FhirMappingLanguage.Parser;
 
 namespace Ignixa.FhirMappingLanguage.Registry;
 
@@ -87,88 +86,5 @@ public class MapRegistry : IMapRegistry
         {
             _maps.Clear();
         }
-    }
-}
-
-/// <summary>
-/// Composite map loader that tries multiple loaders in sequence.
-/// </summary>
-public class CompositeMapLoader : IMapLoader
-{
-    private readonly List<IMapLoader> _loaders = new();
-    private readonly MappingParser _parser;
-
-    public CompositeMapLoader(MappingParser parser)
-    {
-        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
-    }
-
-    /// <summary>
-    /// Adds a loader to the composite.
-    /// Loaders are tried in the order they are added.
-    /// </summary>
-    public void AddLoader(IMapLoader loader)
-    {
-        ArgumentNullException.ThrowIfNull(loader);
-
-        _loaders.Add(loader);
-    }
-
-    public async Task<string?> LoadAsync(string url)
-    {
-        foreach (var loader in _loaders)
-        {
-            if (loader.CanLoad(url))
-            {
-                var content = await loader.LoadAsync(url);
-                if (content != null)
-                {
-                    return content;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    public bool CanLoad(string url)
-    {
-        return _loaders.Any(loader => loader.CanLoad(url));
-    }
-}
-
-/// <summary>
-/// Map loader that loads from a dictionary of URL->content mappings.
-/// Useful for testing and in-memory scenarios.
-/// </summary>
-public class DictionaryMapLoader : IMapLoader
-{
-    private readonly Dictionary<string, string> _maps = new(StringComparer.OrdinalIgnoreCase);
-
-    public void AddMap(string url, string content)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            throw new ArgumentException("URL cannot be null or empty", nameof(url));
-        }
-
-        ArgumentNullException.ThrowIfNull(content);
-
-        _maps[url] = content;
-    }
-
-    public Task<string?> LoadAsync(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return Task.FromResult<string?>(null);
-        }
-
-        return Task.FromResult(_maps.TryGetValue(url, out var content) ? content : null);
-    }
-
-    public bool CanLoad(string url)
-    {
-        return !string.IsNullOrWhiteSpace(url) && _maps.ContainsKey(url);
     }
 }

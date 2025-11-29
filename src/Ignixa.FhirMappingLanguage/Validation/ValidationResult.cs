@@ -11,8 +11,8 @@ namespace Ignixa.FhirMappingLanguage.Validation;
 /// </summary>
 public class ValidationResult
 {
-    private readonly List<ValidationError> _errors = new();
-    private readonly List<ValidationWarning> _warnings = new();
+    private readonly List<ValidationError> _errors = [];
+    private readonly List<ValidationWarning> _warnings = [];
 
     /// <summary>
     /// Gets whether the validation passed (no errors).
@@ -73,70 +73,4 @@ public class ValidationResult
 
         return $"Validation failed with {_errors.Count} error(s) and {_warnings.Count} warning(s).";
     }
-}
-
-/// <summary>
-/// Represents a validation error.
-/// </summary>
-public class ValidationError
-{
-    public ValidationError(string message, string? location = null, string? code = null)
-    {
-        Message = message;
-        Location = location;
-        Code = code;
-    }
-
-    /// <summary>
-    /// Gets the error message.
-    /// </summary>
-    public string Message { get; }
-
-    /// <summary>
-    /// Gets the location where the error occurred (e.g., "Group: Transform, Rule: 1").
-    /// </summary>
-    public string? Location { get; }
-
-    /// <summary>
-    /// Gets the error code (e.g., "TYPE_MISMATCH", "MISSING_SOURCE").
-    /// </summary>
-    public string? Code { get; }
-
-    public override string ToString() =>
-        Location != null
-            ? $"{Location}: {Message}" + (Code != null ? $" [{Code}]" : "")
-            : Message + (Code != null ? $" [{Code}]" : "");
-}
-
-/// <summary>
-/// Represents a validation warning.
-/// </summary>
-public class ValidationWarning
-{
-    public ValidationWarning(string message, string? location = null, string? code = null)
-    {
-        Message = message;
-        Location = location;
-        Code = code;
-    }
-
-    /// <summary>
-    /// Gets the warning message.
-    /// </summary>
-    public string Message { get; }
-
-    /// <summary>
-    /// Gets the location where the warning occurred.
-    /// </summary>
-    public string? Location { get; }
-
-    /// <summary>
-    /// Gets the warning code.
-    /// </summary>
-    public string? Code { get; }
-
-    public override string ToString() =>
-        Location != null
-            ? $"{Location}: {Message}" + (Code != null ? $" [{Code}]" : "")
-            : Message + (Code != null ? $" [{Code}]" : "");
 }

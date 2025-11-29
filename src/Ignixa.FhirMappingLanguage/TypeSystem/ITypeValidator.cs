@@ -1,11 +1,7 @@
-/*
- * Copyright (c) 2025, Ignixa Contributors
- *
- * Type validation interfaces for FHIR Mapping Language.
- */
+/* Copyright (c) 2025, Ignixa Contributors */
 
-using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Expressions;
 
 namespace Ignixa.FhirMappingLanguage.TypeSystem;
 
@@ -44,86 +40,4 @@ public interface ITypeValidator
     /// <param name="expectedType">The expected type</param>
     /// <returns>Validation error if type mismatch, null if valid</returns>
     TypeValidationError? ValidateElement(IElement element, string expectedType);
-}
-
-/// <summary>
-/// Represents a type validation error.
-/// </summary>
-public class TypeValidationError
-{
-    public TypeValidationError(string message, ISourcePositionInfo? location = null)
-    {
-        Message = message ?? throw new ArgumentNullException(nameof(message));
-        Location = location;
-    }
-
-    public string Message { get; }
-    public ISourcePositionInfo? Location { get; }
-
-    public override string ToString()
-    {
-        if (Location != null)
-        {
-            return $"{Location.LineNumber}:{Location.LinePosition} - {Message}";
-        }
-        return Message;
-    }
-}
-
-/// <summary>
-/// Represents resolved type information.
-/// </summary>
-public class TypeInfo
-{
-    public TypeInfo(string name, TypeCategory category, string? baseType = null)
-    {
-        Name = name ?? throw new ArgumentNullException(nameof(name));
-        Category = category;
-        BaseType = baseType;
-    }
-
-    public string Name { get; }
-    public TypeCategory Category { get; }
-    public string? BaseType { get; }
-
-    /// <summary>
-    /// Whether this type is a primitive type.
-    /// </summary>
-    public bool IsPrimitive => Category == TypeCategory.Primitive;
-
-    /// <summary>
-    /// Whether this type is a complex type.
-    /// </summary>
-    public bool IsComplex => Category == TypeCategory.Complex || Category == TypeCategory.Resource;
-
-    /// <summary>
-    /// Whether this type is a resource type.
-    /// </summary>
-    public bool IsResource => Category == TypeCategory.Resource;
-}
-
-/// <summary>
-/// Category of FHIR type.
-/// </summary>
-public enum TypeCategory
-{
-    /// <summary>
-    /// Primitive type (string, integer, decimal, boolean, etc.)
-    /// </summary>
-    Primitive,
-
-    /// <summary>
-    /// Complex data type (HumanName, Address, CodeableConcept, etc.)
-    /// </summary>
-    Complex,
-
-    /// <summary>
-    /// Resource type (Patient, Observation, etc.)
-    /// </summary>
-    Resource,
-
-    /// <summary>
-    /// Unknown or unresolved type
-    /// </summary>
-    Unknown
 }

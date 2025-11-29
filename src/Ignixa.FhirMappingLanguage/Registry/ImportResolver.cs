@@ -13,7 +13,7 @@ namespace Ignixa.FhirMappingLanguage.Registry;
 /// Resolves imports in FHIR mapping definitions.
 /// Handles loading imported maps and detecting circular dependencies.
 /// </summary>
-public class ImportResolver
+internal class ImportResolver
 {
     private readonly IMapRegistry _registry;
     private readonly IMapLoader? _loader;
@@ -21,8 +21,11 @@ public class ImportResolver
 
     public ImportResolver(IMapRegistry registry, MappingParser parser, IMapLoader? loader = null)
     {
-        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
-        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(parser);
+
+        _registry = registry;
+        _parser = parser;
         _loader = loader;
     }
 
@@ -47,7 +50,7 @@ public class ImportResolver
     public GroupExpression? GetImportedGroup(string mapUrl, string groupName)
     {
         var importedMap = _registry.GetByUrl(mapUrl);
-        if (importedMap == null)
+        if (importedMap is null)
         {
             return null;
         }
@@ -68,7 +71,7 @@ public class ImportResolver
         var group = map.Groups.FirstOrDefault(g =>
             g.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase));
 
-        if (group != null)
+        if (group is not null)
         {
             return group;
         }
@@ -77,7 +80,7 @@ public class ImportResolver
         foreach (var import in map.Imports)
         {
             group = GetImportedGroup(import.Url, groupName);
-            if (group != null)
+            if (group is not null)
             {
                 return group;
             }
@@ -128,7 +131,7 @@ public class ImportResolver
 
             // Load the imported map
             var importedMap = await LoadMapAsync(import.Url);
-            if (importedMap == null)
+            if (importedMap is null)
             {
                 throw new InvalidOperationException(
                     $"Failed to load imported map '{import.Url}'");
@@ -144,7 +147,7 @@ public class ImportResolver
 
     private async Task<MapExpression?> LoadMapAsync(string url)
     {
-        if (_loader == null)
+        if (_loader is null)
         {
             throw new InvalidOperationException(
                 $"Cannot load map '{url}': no map loader configured");
@@ -156,7 +159,7 @@ public class ImportResolver
         }
 
         var content = await _loader.LoadAsync(url);
-        if (content == null)
+        if (content is null)
         {
             return null;
         }
