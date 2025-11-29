@@ -262,15 +262,15 @@ group Transform(source src : Patient, target tgt : Bundle) {
         // Act & Assert
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
         act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Cardinality constraint*1..*");
+            .WithMessage("*Source element 'identifier' not found*cardinality 1..*");
     }
 
     #endregion
 
-    #region Graceful Mode Tests
+    #region Lenient Mode Tests
 
     [Fact]
-    public void GivenGracefulMode_WhenCardinalityViolated_ThenCollectsError()
+    public void GivenLenientMode_WhenCardinalityViolated_ThenCollectsError()
     {
         // Arrange
         var mappingText = @"
@@ -285,7 +285,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -306,7 +306,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
     }
 
     [Fact]
-    public void GivenGracefulMode_WhenMinimumNotMet_ThenCollectsErrorAndContinues()
+    public void GivenLenientMode_WhenMinimumNotMet_ThenCollectsErrorAndContinues()
     {
         // Arrange
         var mappingText = @"
@@ -322,7 +322,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -361,7 +361,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -393,7 +393,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -425,7 +425,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -463,7 +463,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -502,7 +502,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -538,7 +538,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");
@@ -571,7 +571,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var evaluator = new MappingEvaluator(enableFhirPath: true);
         var context = new MappingContext
         {
-            ErrorMode = ErrorMode.Graceful
+            ErrorMode = ErrorMode.Lenient
         };
 
         var source = new TestTypedElement("Patient");

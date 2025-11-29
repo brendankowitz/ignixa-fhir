@@ -28,7 +28,7 @@ public class TargetExpression : Expression
 
     public override string ToString()
     {
-        var parts = new List<string>();
+        List<string> parts = [];
 
         if (Context is not null)
         {

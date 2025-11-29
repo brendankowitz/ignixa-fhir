@@ -19,5 +19,5 @@ public enum ErrorMode
     /// <summary>
     /// Collect errors and continue execution where possible.
     /// </summary>
-    Graceful
+    Lenient
 }

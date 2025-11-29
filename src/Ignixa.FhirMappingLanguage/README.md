@@ -1,15 +1,6 @@
 # Ignixa.FhirMappingLanguage
 
-A .NET implementation of the FHIR Mapping Language (FML) based on the FHIR StructureMap specification. This library provides parsing, compilation, and execution of FHIR mapping expressions to transform FHIR resources.
-
-## Architecture
-
-This library follows the same architecture patterns as `Ignixa.FhirPath`:
-
-- **Lexer**: Tokenizes mapping language text using Superpower
-- **Parser**: Converts token streams into an abstract syntax tree (AST)
-- **Expression Tree**: Strongly-typed expression classes representing mapping constructs
-- **Evaluator**: Visitor pattern for executing mappings
+A .NET implementation of the FHIR Mapping Language (FML). This library provides parsing, compilation, and execution of FHIR mapping expressions to transform FHIR resources.
 
 ## Features
 
@@ -40,9 +31,10 @@ This library follows the same architecture patterns as `Ignixa.FhirPath`:
 ```csharp
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
+using Ignixa.FhirMappingLanguage.Parser;
 
 // Parse a mapping
-var compiler = new MappingCompiler();
+var parser = new MappingParser();
 var mapping = @"
 map 'http://example.org/fhir/StructureMap/PatientTransform' = 'PatientTransform'
 
@@ -54,7 +46,11 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
 }
 ";
 
-var map = compiler.Parse(mapping);
+var map = parser.Parse(mapping);
+
+// Create evaluator with security options
+var options = MappingEvaluatorOptions.Default; // Recommended security settings
+var evaluator = new MappingEvaluator(options);
 
 // Create evaluation context
 var context = new MappingContext();
@@ -62,7 +58,6 @@ context.SetSource("src", sourcePatient);
 context.SetTarget("bundle", targetBundle);
 
 // Execute the mapping
-var evaluator = compiler.CreateEvaluator();
 evaluator.Execute(map, context);
 ```
 
@@ -70,33 +65,51 @@ evaluator.Execute(map, context);
 
 ```csharp
 // Compile once, execute many times
-var compiled = compiler.Compile(mappingText);
+var parser = new MappingParser();
+var compiled = parser.Compile(mappingText);
 
 // Set sources and targets
 compiled.Context.SetSource("src", sourcePatient);
 compiled.Context.SetTarget("bundle", targetBundle);
 
-// Execute
+// Execute the first (default) group
 compiled.Execute();
 
-// Or execute a specific group
+// Or execute a specific group by name
 compiled.ExecuteGroup("PatientToBundle");
 ```
 
 ### Working with FHIRPath Expressions
 
+**FHIRPath support is built-in and enabled by default.** The evaluator automatically uses `Ignixa.FhirPath` for all embedded FHIRPath expressions like `where`, `check`, and `log` clauses.
+
 ```csharp
-// Configure FHIRPath evaluator
+// FHIRPath expressions work out of the box - no configuration needed!
+var mapping = @"
+map 'http://example.org/map' = 'Example'
+group Transform(source src : Patient, target tgt : Bundle) {
+  src.name where (use = 'official') -> tgt.entry;
+  src.identifier check (system.exists()) -> tgt.id;
+}
+";
+
+var parser = new MappingParser();
+var map = parser.Parse(mapping);
+var evaluator = new MappingEvaluator(); // FHIRPath enabled by default
+evaluator.Execute(map, context);
+```
+
+**Custom FHIRPath Evaluator** (optional - only if you need custom behavior):
+
+```csharp
+// Disable built-in integration and provide your own
+var evaluator = new MappingEvaluator(enableFhirPath: false);
+
 context.FhirPathEvaluator = (expression, element) =>
 {
-    var fhirPathCompiler = new FhirPathCompiler();
-    var parsed = fhirPathCompiler.Parse(expression);
-    var evaluator = new FhirPathEvaluator();
-    return evaluator.Evaluate(element, parsed);
+    // Your custom FHIRPath evaluation logic
+    return MyCustomFhirPathEvaluator(expression, element);
 };
-
-// Now embedded FHIRPath expressions will be evaluated
-// Example: src.name where name.exists() -> bundle.entry
 ```
 
 ### Custom Transform Functions
@@ -114,6 +127,143 @@ context.TransformResolver = (functionName, arguments) =>
     };
 };
 ```
+
+## Security and Error Handling
+
+### Security Configuration
+
+`MappingEvaluatorOptions` provides comprehensive security controls to prevent resource exhaustion attacks:
+
+```csharp
+var options = new MappingEvaluatorOptions
+{
+    // Resource limits
+    MaxRecursionDepth = 50,              // Prevent infinite recursion
+    MaxElementsCreated = 100_000,        // Prevent memory exhaustion
+    MaxMapSizeBytes = 50_000_000,        // 50 MB max map size
+    MaxInputResourceSizeBytes = 10_000_000, // 10 MB max input size
+
+    // Timeouts
+    TransformTimeout = TimeSpan.FromSeconds(30),
+    FhirPathTimeout = TimeSpan.FromSeconds(5),
+
+    // Import security
+    AllowFileSystemImports = false,      // Disable file:// imports by default
+    AllowedImportDomains = { "hl7.org", "fhir.org" },
+
+    // ConceptMap security
+    AllowedConceptMapTargetSystems = { "http://snomed.info/sct", "http://loinc.org" },
+    MaxCodeLength = 100,
+
+    // Error handling
+    ErrorMode = ErrorMode.Strict,        // Fail fast on errors
+    MaxErrorsCollected = 100             // Limit errors in Lenient mode
+};
+
+var evaluator = new MappingEvaluator(options);
+```
+
+**Default Configuration**: `MappingEvaluatorOptions.Default` provides recommended security settings suitable for production use.
+
+### Error Handling Modes
+
+The library supports two error handling modes:
+
+#### Strict Mode (Default)
+
+Throws `MappingExecutionException` on the first error:
+
+```csharp
+var context = new MappingContext
+{
+    ErrorMode = ErrorMode.Strict
+};
+
+try
+{
+    evaluator.Execute(map, context);
+}
+catch (MappingExecutionException ex)
+{
+    Console.WriteLine($"Mapping failed: {ex.Message}");
+}
+```
+
+#### Lenient Mode
+
+Collects all errors and continues execution where possible:
+
+```csharp
+var options = new MappingEvaluatorOptions
+{
+    ErrorMode = ErrorMode.Lenient,
+    MaxErrorsCollected = 100  // Throw if too many errors
+};
+
+var context = new MappingContext
+{
+    ErrorMode = ErrorMode.Lenient
+};
+
+evaluator.Execute(map, context);
+
+// Check for errors after execution
+if (context.Errors.Any())
+{
+    foreach (var error in context.Errors)
+    {
+        Console.WriteLine($"Rule '{error.RuleName}': {error.Message}");
+        Console.WriteLine($"Location: {error.Location}");
+        Console.WriteLine($"Path: {error.ElementPath}");
+
+        if (error.AvailableElements != null)
+        {
+            Console.WriteLine($"Available elements: {string.Join(", ", error.AvailableElements)}");
+        }
+    }
+}
+```
+
+### Enhanced Error Messages
+
+Error messages include rich contextual information:
+
+- **RuleName**: Name of the failing rule
+- **GroupName**: Name of the group containing the rule
+- **RuleIndex**: Index of the rule within the group
+- **ElementPath**: Path to the element that caused the error (e.g., `src.name.family`)
+- **AvailableElements**: List of valid child elements when accessing non-existent elements
+
+Example error output:
+```
+Rule 'copyName' in group 'PatientTransform' at index 0
+Source element 'middleName' not found (cardinality 1..1 requires at least 1)
+Path: Patient.name.middleName
+Available elements: family, given, prefix, suffix, use
+Location: StructureMap.group[PatientTransform].rule[0]
+```
+
+### Cardinality Constraints
+
+Source expressions support cardinality constraints to validate element counts:
+
+```csharp
+// Require exactly one element
+src.identifier : Identifier 1..1 -> tgt.id;
+
+// Require at least one element
+src.name : HumanName 1..* -> tgt.entry;
+
+// Allow zero or one element
+src.telecom : ContactPoint 0..1 -> tgt.contact;
+
+// Allow any number of elements (default)
+src.address : Address 0..* -> tgt.addresses;
+```
+
+When cardinality constraints are violated, the evaluator:
+- **Strict mode**: Throws `MappingExecutionException` immediately
+- **Lenient mode**: Collects error and continues with next rule
 
 ## FHIR Mapping Language Syntax
 
@@ -143,8 +293,10 @@ group Name(source src : Type, target tgt : Type) [extends OtherGroup] {
 ### Source Syntax
 
 ```
-context [as variable] [: type] [where (condition)] [check (condition)] [log (message)]
+context [as variable] [: type] [cardinality] [where (condition)] [check (condition)] [log (message)] [default expression]
 ```
+
+Where `cardinality` is optional and follows the pattern `min..max` (e.g., `1..1`, `0..*`, `1..*`)
 
 ### Target Syntax
 
@@ -174,8 +326,9 @@ This library follows the exact same architectural patterns as `Ignixa.FhirPath`:
 ### Dependencies
 
 - **Superpower**: Parser combinator library for lexing and parsing
-- **Ignixa.Domain**: Core domain abstractions
+- **Ignixa.Abstractions**: Core abstractions
 - **Ignixa.FhirPath**: FHIRPath evaluation for embedded expressions
+- **Ignixa.Serialization**: FHIR Serialization and Deserialization
 
 ## Testing
 
@@ -191,14 +344,6 @@ This implementation is based on the FHIR Mapping Language specification:
 - [FHIR R5 Mapping Language](https://hl7.org/fhir/mapping-language.html)
 - [FHIR R6 Mapping Language (Development)](https://build.fhir.org/mapping-language.html)
 - [StructureMap Resource](https://hl7.org/fhir/structuremap.html)
-
-## Future Enhancements
-
-- Complete implementation of all standard transform functions
-- Support for type inheritance and polymorphism
-- Optimization for large-scale transformations
-- Debugging and tracing capabilities
-- Integration with FHIR validation engine
 
 ## License
 

@@ -26,7 +26,7 @@ public class MappingExecutionException : Exception
 
     private static string FormatMessage(string message, string? location, string? code)
     {
-        var parts = new List<string>();
+        List<string> parts = [];
         if (location != null) parts.Add($"Location: {location}");
         if (code != null) parts.Add($"Code: {code}");
         parts.Add(message);

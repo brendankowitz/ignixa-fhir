@@ -267,7 +267,7 @@ public class StructureMapParser
             return [];
         }
 
-        var result = new List<Expression>();
+        List<Expression> result = [];
 
         foreach (var param in parameters)
         {
@@ -348,7 +348,7 @@ public class StructureMapParser
             return [];
         }
 
-        var result = new List<Expression>();
+        List<Expression> result = [];
 
         foreach (var param in parameters)
         {
@@ -525,8 +525,8 @@ public class StructureMapParser
         var identifier = $"#{id}";
 
         // Parse groups from the raw JsonNode
-        var prefixes = new List<ConceptMapPrefixExpression>();
-        var groups = new List<ConceptMapGroupExpression>();
+        List<ConceptMapPrefixExpression> prefixes = [];
+        List<ConceptMapGroupExpression> groups = [];
 
         var groupArray = conceptMap.MutableNode["group"]?.AsArray();
         if (groupArray is null)
@@ -556,7 +556,7 @@ public class StructureMapParser
             }
 
             // Parse element mappings
-            var codeMaps = new List<ConceptMapCodeMapExpression>();
+            List<ConceptMapCodeMapExpression> codeMaps = [];
             var elementArray = groupObj["element"]?.AsArray();
             if (elementArray is not null)
             {

@@ -42,7 +42,7 @@ public class SourceExpression : Expression
 
     public override string ToString()
     {
-        var parts = new List<string> { Context.ToString() ?? string.Empty };
+        List<string> parts = [Context.ToString() ?? string.Empty];
 
         if (Variable is not null)
         {

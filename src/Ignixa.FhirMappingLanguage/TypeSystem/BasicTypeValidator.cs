@@ -49,7 +49,7 @@ internal class BasicTypeValidator : ITypeValidator
 
     public IEnumerable<TypeValidationError> ValidateMap(MapExpression map)
     {
-        var errors = new List<TypeValidationError>();
+        List<TypeValidationError> errors = [];
 
         // Build a map of declared types from "uses" declarations
         var declaredTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -167,7 +167,7 @@ internal class BasicTypeValidator : ITypeValidator
 
     private IEnumerable<TypeValidationError> ValidateGroup(GroupExpression group, Dictionary<string, string> declaredTypes)
     {
-        var errors = new List<TypeValidationError>();
+        List<TypeValidationError> errors = [];
 
         // Validate parameter types
         foreach (var param in group.Parameters)
@@ -211,7 +211,7 @@ internal class BasicTypeValidator : ITypeValidator
 
     private IEnumerable<TypeValidationError> ValidateRule(RuleExpression rule, Dictionary<string, string> declaredTypes)
     {
-        var errors = new List<TypeValidationError>();
+        List<TypeValidationError> errors = [];
 
         // Validate source type annotations
         foreach (var source in rule.Sources)
@@ -248,7 +248,7 @@ internal class BasicTypeValidator : ITypeValidator
 
     private IEnumerable<TypeValidationError> ValidateDependentExpression(Expression dependent, Dictionary<string, string> declaredTypes)
     {
-        var errors = new List<TypeValidationError>();
+        List<TypeValidationError> errors = [];
 
         switch (dependent)
         {
@@ -277,7 +277,7 @@ internal class BasicTypeValidator : ITypeValidator
 
     private IEnumerable<TypeValidationError> ValidateTransform(TransformExpression transform)
     {
-        var errors = new List<TypeValidationError>();
+        List<TypeValidationError> errors = [];
 
         // Validate transform function exists (handled by StandardTransforms)
         // Here we can add additional type-specific validation if needed

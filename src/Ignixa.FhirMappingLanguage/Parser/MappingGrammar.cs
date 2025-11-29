@@ -107,7 +107,7 @@ internal static class MappingGrammar
             if (lparen.HasValue)
             {
                 // Parenthesized expression - collect until matching close paren
-                var tokens = new List<Token<MappingTokenKind>>();
+                List<Token<MappingTokenKind>> tokens = [];
                 var current = lparen.Remainder;
                 var depth = 0;
                 Token<MappingTokenKind> lastToken = lparen.Value;
@@ -184,7 +184,7 @@ internal static class MappingGrammar
                     MappingTokenKind.Comma,        // , separates parameters/arguments
                 };
 
-                var tokens = new List<Token<MappingTokenKind>>();
+                List<Token<MappingTokenKind>> tokens = [];
                 var current = input;
                 Token<MappingTokenKind>? lastToken = null;
                 var bracketDepth = 0;

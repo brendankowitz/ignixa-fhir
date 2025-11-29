@@ -49,10 +49,10 @@ public class MapExpression : Expression
 
     public override string ToString()
     {
-        var parts = new List<string>
-        {
+        List<string> parts =
+        [
             $"map \"{Url}\" = \"{Identifier}\""
-        };
+        ];
 
         // Add uses declarations
         if (Uses.Count > 0)

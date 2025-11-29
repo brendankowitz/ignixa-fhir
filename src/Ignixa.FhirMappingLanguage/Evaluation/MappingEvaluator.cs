@@ -18,9 +18,19 @@ namespace Ignixa.FhirMappingLanguage.Evaluation;
 /// </summary>
 public class MappingEvaluator
 {
+    private readonly MappingEvaluatorOptions _options;
     private readonly FhirPathIntegration? _fhirPathIntegration;
     private readonly ImportResolver? _importResolver;
     private MapExpression? _currentMap;
+
+    // Execution context tracking for enhanced error messages
+    private string? _currentGroupName;
+    private int? _currentRuleIndex;
+    private string? _currentRuleName;
+
+    // Security limit tracking
+    private int _recursionDepth;
+    private int _elementsCreated;
 
     /// <summary>
     /// Creates a new MappingEvaluator instance.
@@ -28,7 +38,21 @@ public class MappingEvaluator
     /// <param name="enableFhirPath">Whether to enable FhirPath integration</param>
     public MappingEvaluator(bool enableFhirPath = true)
     {
+        _options = MappingEvaluatorOptions.Default;
+        _options.Validate();
         _fhirPathIntegration = enableFhirPath ? new() : null;
+        _importResolver = null;
+    }
+
+    /// <summary>
+    /// Creates a new MappingEvaluator instance with options.
+    /// </summary>
+    /// <param name="options">Configuration options for the evaluator</param>
+    public MappingEvaluator(MappingEvaluatorOptions? options)
+    {
+        _options = options ?? MappingEvaluatorOptions.Default;
+        _options.Validate();
+        _fhirPathIntegration = new FhirPathIntegration();
         _importResolver = null;
     }
 
@@ -39,8 +63,36 @@ public class MappingEvaluator
     /// <param name="importResolver">Optional import resolver for cross-map group invocation</param>
     internal MappingEvaluator(bool enableFhirPath, ImportResolver? importResolver)
     {
+        _options = MappingEvaluatorOptions.Default;
+        _options.Validate();
         _fhirPathIntegration = enableFhirPath ? new() : null;
         _importResolver = importResolver;
+    }
+
+    /// <summary>
+    /// Creates a new MappingEvaluator instance with options and import resolution.
+    /// </summary>
+    /// <param name="options">Configuration options for the evaluator</param>
+    /// <param name="importResolver">Optional import resolver for cross-map group invocation</param>
+    internal MappingEvaluator(MappingEvaluatorOptions? options, ImportResolver? importResolver)
+    {
+        _options = options ?? MappingEvaluatorOptions.Default;
+        _options.Validate();
+        _fhirPathIntegration = new FhirPathIntegration();
+        _importResolver = importResolver;
+    }
+
+    /// <summary>
+    /// Resets the evaluator state for reuse.
+    /// Clears recursion depth, element creation count, and error tracking.
+    /// </summary>
+    public void Reset()
+    {
+        _recursionDepth = 0;
+        _elementsCreated = 0;
+        _currentGroupName = null;
+        _currentRuleIndex = null;
+        _currentRuleName = null;
     }
 
     /// <summary>
@@ -112,9 +164,24 @@ public class MappingEvaluator
     private void VisitGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<string>? visitedGroups = null)
     {
         var location = $"Group: {group.Name}";
+        var previousGroupName = _currentGroupName;
+        _recursionDepth++;
 
         try
         {
+            // Check recursion limit
+            if (_recursionDepth > _options.MaxRecursionDepth)
+            {
+                throw new MappingExecutionException(
+                    $"Maximum recursion depth exceeded ({_options.MaxRecursionDepth}). " +
+                    $"Check for circular group calls in group '{group.Name}'.",
+                    location,
+                    "MAX_RECURSION_EXCEEDED");
+            }
+
+            // Set current group for error tracking
+            _currentGroupName = group.Name;
+
             // Initialize visited groups set for circular inheritance detection
             visitedGroups ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -169,14 +236,23 @@ public class MappingEvaluator
             }
 
             // Execute each rule in the group
-            foreach (var rule in group.Rules)
+            for (int i = 0; i < group.Rules.Count; i++)
             {
-                VisitRule(rule, context, group.Name);
+                _currentRuleIndex = i;
+                VisitRule(group.Rules[i], context, group.Name);
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error executing group: {ex.Message}", location, "GROUP_EXECUTION_ERROR", ex);
+            CheckErrorLimit(context);
+            context.AddError($"Error executing group: {ex.Message}", location, "GROUP_EXECUTION_ERROR", ex, groupName: group.Name);
+        }
+        finally
+        {
+            // Restore previous group context
+            _currentGroupName = previousGroupName;
+            _currentRuleIndex = null;
+            _recursionDepth--;
         }
     }
 
@@ -184,9 +260,13 @@ public class MappingEvaluator
     {
         var ruleName = !string.IsNullOrEmpty(rule.Name) ? rule.Name : "anonymous";
         var location = groupName != null ? $"Group: {groupName}, Rule: {ruleName}" : $"Rule: {ruleName}";
+        var previousRuleName = _currentRuleName;
 
         try
         {
+            // Set current rule for error tracking
+            _currentRuleName = ruleName;
+
             // Visit sources
             var sourceValues = new Dictionary<string, IEnumerable<IElement>>();
             var anonymousSourceIndex = 0;
@@ -200,9 +280,17 @@ public class MappingEvaluator
                     var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
                     sourceValues[key] = values;
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
-                    context.AddError($"Error evaluating source: {ex.Message}", location, "SOURCE_ERROR", ex);
+                    CheckErrorLimit(context);
+                    context.AddError(
+                        $"Error evaluating source: {ex.Message}",
+                        location,
+                        "SOURCE_ERROR",
+                        ex,
+                        ruleName: ruleName,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                     // Continue with other sources
                     var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
                     sourceValues[key] = [];
@@ -222,9 +310,17 @@ public class MappingEvaluator
                 {
                     VisitTarget(target, context, sourceValues, location);
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
-                    context.AddError($"Error evaluating target: {ex.Message}", location, "TARGET_ERROR", ex);
+                    CheckErrorLimit(context);
+                    context.AddError(
+                        $"Error evaluating target: {ex.Message}",
+                        location,
+                        "TARGET_ERROR",
+                        ex,
+                        ruleName: ruleName,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                     // Continue with other targets
                 }
             }
@@ -235,9 +331,22 @@ public class MappingEvaluator
                 VisitDependentExpression(rule.Dependent, context, groupName, location);
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error executing rule: {ex.Message}", location, "RULE_EXECUTION_ERROR", ex);
+            CheckErrorLimit(context);
+            context.AddError(
+                $"Error executing rule: {ex.Message}",
+                location,
+                "RULE_EXECUTION_ERROR",
+                ex,
+                ruleName: ruleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
+        }
+        finally
+        {
+            // Restore previous rule context
+            _currentRuleName = previousRuleName;
         }
     }
 
@@ -264,9 +373,16 @@ public class MappingEvaluator
                     throw new NotSupportedException($"Dependent expression type {dependent.GetType().Name} not supported");
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error executing dependent expression: {ex.Message}", location, "DEPENDENT_ERROR", ex);
+            context.AddError(
+                $"Error executing dependent expression: {ex.Message}",
+                location,
+                "DEPENDENT_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
         }
     }
 
@@ -360,9 +476,16 @@ public class MappingEvaluator
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error invoking group '{invocation.GroupName}': {ex.Message}", location, "GROUP_INVOCATION_ERROR", ex);
+            context.AddError(
+                $"Error invoking group '{invocation.GroupName}': {ex.Message}",
+                location,
+                "GROUP_INVOCATION_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
         }
     }
 
@@ -370,14 +493,14 @@ public class MappingEvaluator
     {
         try
         {
-            // Visit the source context expression
-            var contextValues = VisitExpression(source.Context, context, location);
+            // Visit the source context expression (materialize to avoid double enumeration)
+            IEnumerable<IElement> contextValues = VisitExpression(source.Context, context, location).ToList();
 
             // Apply default value if source is empty and default is specified
             if (!contextValues.Any() && source.Default != null)
             {
                 // Evaluate the default expression
-                contextValues = VisitExpression(source.Default, context, location);
+                contextValues = VisitExpression(source.Default, context, location).ToList();
             }
 
             // Apply where condition if present
@@ -404,9 +527,16 @@ public class MappingEvaluator
                         }
                         // Otherwise keep all elements
                     }
-                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                    catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                     {
-                        context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
+                        context.AddError(
+                            $"Error evaluating where condition: {ex.Message}",
+                            location,
+                            "WHERE_ERROR",
+                            ex,
+                            ruleName: _currentRuleName,
+                            groupName: _currentGroupName,
+                            ruleIndex: _currentRuleIndex);
                         contextValues = []; // Exclude all on error
                     }
                 }
@@ -425,9 +555,16 @@ public class MappingEvaluator
                             var result = context.FhirPathEvaluator(fhirPathCondition.PathExpression, element);
                             return result.Any() && result.First().Value is bool b && b;
                         }
-                        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                         {
-                            context.AddError($"Error evaluating where condition: {ex.Message}", location, "WHERE_ERROR", ex);
+                            context.AddError(
+                                $"Error evaluating where condition: {ex.Message}",
+                                location,
+                                "WHERE_ERROR",
+                                ex,
+                                ruleName: _currentRuleName,
+                                groupName: _currentGroupName,
+                                ruleIndex: _currentRuleIndex);
                             return false; // Exclude element on error
                         }
                     });
@@ -442,15 +579,57 @@ public class MappingEvaluator
 
                 if (!source.Cardinality.IsSatisfiedBy(count))
                 {
-                    var message = $"Cardinality constraint {source.Cardinality} not satisfied: found {count} element(s)";
-                    context.AddError(message, location, "CARDINALITY_ERROR");
+                    // Build helpful error message with available elements if we have 0 elements
+                    string message;
+                    IReadOnlyList<string>? availableElements = null;
+                    string? elementPath = null;
+
+                    if (count == 0 && source.Context is QualifiedIdentifierExpression qual)
+                    {
+                        // Try to get the parent element to show what's available
+                        var parentElements = VisitExpression(qual.Context, context).ToList();
+                        if (parentElements.Any())
+                        {
+                            var firstParent = parentElements.First();
+                            availableElements = firstParent.Children()
+                                .Select(c => c.Name)
+                                .Where(n => !string.IsNullOrEmpty(n))
+                                .Distinct()
+                                .OrderBy(n => n)
+                                .ToList();
+
+                            elementPath = BuildExpressionString(qual);
+                            message = $"Source element '{qual.Property}' not found (cardinality {source.Cardinality} requires at least 1)";
+                        }
+                        else
+                        {
+                            message = $"Cardinality constraint {source.Cardinality} not satisfied: found {count} element(s)";
+                        }
+                    }
+                    else
+                    {
+                        message = $"Cardinality constraint {source.Cardinality} not satisfied: found {count} element(s)";
+                    }
+
+                    CheckErrorLimit(context);
+                    context.AddError(
+                        message,
+                        location,
+                        "CARDINALITY_ERROR",
+                        null,
+                        ruleName: _currentRuleName,
+                        elementPath: elementPath,
+                        availableElements: availableElements,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                 }
 
                 // Use the materialized list for further processing
                 contextValues = contextList;
             }
 
-            // Materialize context values to avoid multiple enumeration
+            // Materialize contextValues to a list to prevent multiple enumerations
+            // If already a List (most common case), this is a no-op cast
             var contextValuesList = contextValues.ToList();
 
             // Apply check condition if present
@@ -482,7 +661,7 @@ public class MappingEvaluator
                             if (originalRoot != null)
                             {
                                 // Create a wrapper that adds the context values as a child property
-                                tempWrapper = new TempPropertyWrapper(originalRoot, propertyName, contextValuesList);
+                                tempWrapper = new TempPropertyWrapper(originalRoot, propertyName, contextValuesList as IReadOnlyList<IElement> ?? contextValuesList.ToList());
                                 checkContext = new MappingContext();
                                 checkContext.SetSource(rootId.Name, tempWrapper);
 
@@ -507,9 +686,16 @@ public class MappingEvaluator
                         throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
-                    context.AddError($"Check condition failed: {ex.Message}", location, "CHECK_ERROR", ex);
+                    context.AddError(
+                        $"Check condition failed: {ex.Message}",
+                        location,
+                        "CHECK_ERROR",
+                        ex,
+                        ruleName: _currentRuleName,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                 }
             }
 
@@ -585,9 +771,16 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
-                    context.AddError($"Error executing log statement: {ex.Message}", location, "LOG_ERROR", ex);
+                    context.AddError(
+                        $"Error executing log statement: {ex.Message}",
+                        location,
+                        "LOG_ERROR",
+                        ex,
+                        ruleName: _currentRuleName,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                 }
             }
 
@@ -602,9 +795,17 @@ public class MappingEvaluator
 
             return contextValuesList;
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error visiting source: {ex.Message}", location, "SOURCE_VISIT_ERROR", ex);
+            CheckErrorLimit(context);
+            context.AddError(
+                $"Error visiting source: {ex.Message}",
+                location,
+                "SOURCE_VISIT_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
             return [];
         }
     }
@@ -661,16 +862,30 @@ public class MappingEvaluator
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
-                    context.AddError($"Error processing target element: {ex.Message}", location, "TARGET_ELEMENT_ERROR", ex);
+                    context.AddError(
+                        $"Error processing target element: {ex.Message}",
+                        location,
+                        "TARGET_ELEMENT_ERROR",
+                        ex,
+                        ruleName: _currentRuleName,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                     // Continue with next element
                 }
             }
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error visiting target: {ex.Message}", location, "TARGET_VISIT_ERROR", ex);
+            context.AddError(
+                $"Error visiting target: {ex.Message}",
+                location,
+                "TARGET_VISIT_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
         }
     }
 
@@ -715,7 +930,7 @@ public class MappingEvaluator
             }
 
             // Visit arguments
-            var args = new List<object>();
+            List<object> args = [];
             foreach (var arg in transform.Arguments)
             {
                 try
@@ -726,9 +941,16 @@ public class MappingEvaluator
                         args.Add(argValue.Value ?? argValue);
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
-                    context.AddError($"Error evaluating transform argument: {ex.Message}", location, "TRANSFORM_ARG_ERROR", ex);
+                    context.AddError(
+                        $"Error evaluating transform argument: {ex.Message}",
+                        location,
+                        "TRANSFORM_ARG_ERROR",
+                        ex,
+                        ruleName: _currentRuleName,
+                        groupName: _currentGroupName,
+                        ruleIndex: _currentRuleIndex);
                     // Continue with other arguments
                 }
             }
@@ -736,9 +958,16 @@ public class MappingEvaluator
             // Call the transform function
             return context.TransformResolver(transform.FunctionName, args);
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error executing transform '{transform.FunctionName}': {ex.Message}", location, "TRANSFORM_ERROR", ex);
+            context.AddError(
+                $"Error executing transform '{transform.FunctionName}': {ex.Message}",
+                location,
+                "TRANSFORM_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
             return null;
         }
     }
@@ -757,9 +986,16 @@ public class MappingEvaluator
                 _ => throw new NotSupportedException($"Expression type {expr.GetType().Name} not supported in this context")
             };
         }
-        catch (Exception ex) when (context.ErrorMode == ErrorMode.Graceful)
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
-            context.AddError($"Error evaluating expression: {ex.Message}", location, "EXPRESSION_ERROR", ex);
+            context.AddError(
+                $"Error evaluating expression: {ex.Message}",
+                location,
+                "EXPRESSION_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
             return [];
         }
     }
@@ -793,16 +1029,24 @@ public class MappingEvaluator
     private IEnumerable<IElement> VisitQualifiedIdentifier(QualifiedIdentifierExpression qual, MappingContext context)
     {
         // Visit the context first
-        var contextElements = VisitExpression(qual.Context, context);
+        var contextElements = VisitExpression(qual.Context, context).ToList();
 
-        // Navigate to the property
+        if (!contextElements.Any())
+        {
+            return [];
+        }
+
+        // Navigate to the property and collect all children
+        var result = new List<IElement>();
         foreach (var element in contextElements)
         {
-            foreach (var child in element.Children(qual.Property))
-            {
-                yield return child;
-            }
+            var children = element.Children(qual.Property).ToList();
+            result.AddRange(children);
         }
+
+        // Don't add error here - let VisitSource handle it based on cardinality constraints
+        // If cardinality allows 0, an empty result is valid
+        return result;
     }
 
     private IEnumerable<IElement> VisitIndex(IndexExpression idx, MappingContext context)
@@ -863,7 +1107,7 @@ public class MappingEvaluator
             return false;
         }
 
-        var parts = new List<string>();
+        List<string> parts = [];
         var currentPart = new System.Text.StringBuilder();
         var depth = 0;
 
@@ -965,6 +1209,8 @@ public class MappingEvaluator
 
     private IElement CreatePrimitive(object value)
     {
+        TrackElementCreation();
+
         var typeName = value switch
         {
             string => "string",
@@ -1042,7 +1288,7 @@ public class MappingEvaluator
 
         public IReadOnlyList<IElement> Children(string? name)
         {
-            var result = new List<IElement>();
+            List<IElement> result = [];
 
             if (name == null)
             {
@@ -1144,6 +1390,37 @@ public class MappingEvaluator
             {
                 yield return (kvp.Key, kvp.Value);
             }
+        }
+    }
+
+    /// <summary>
+    /// Checks if the error collection limit has been exceeded.
+    /// </summary>
+    private void CheckErrorLimit(MappingContext context)
+    {
+        if (context.Errors.Count >= _options.MaxErrorsCollected)
+        {
+            throw new MappingExecutionException(
+                $"Maximum errors collected ({_options.MaxErrorsCollected}). " +
+                $"Stopping evaluation to prevent memory exhaustion.",
+                null,
+                "MAX_ERRORS_EXCEEDED");
+        }
+    }
+
+    /// <summary>
+    /// Tracks element creation and checks if limit has been exceeded.
+    /// </summary>
+    private void TrackElementCreation()
+    {
+        _elementsCreated++;
+        if (_elementsCreated > _options.MaxElementsCreated)
+        {
+            throw new MappingExecutionException(
+                $"Maximum elements created exceeded ({_options.MaxElementsCreated}). " +
+                $"Transformation may be creating too many elements.",
+                null,
+                "MAX_ELEMENTS_EXCEEDED");
         }
     }
 

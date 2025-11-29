@@ -1126,6 +1126,36 @@ group Patient(source src : PatientR5, target tgt : PatientR6) {
 }
 ```
 
+**Typed API Access** (Ignixa implementation using `StructureMapJsonNode`):
+```csharp
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+
+// Parse JSON to typed model
+var structureMap = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(jsonText);
+
+// Strongly-typed property access
+string url = structureMap.Url;  // "http://example.org/PatientR5toR6"
+string name = structureMap.Name;  // "PatientTransform"
+string status = structureMap.Status;  // "active"
+
+// Access nested elements with IntelliSense support
+foreach (var structure in structureMap.Structure ?? [])
+{
+    Console.WriteLine($"Uses: {structure.Url} ({structure.Mode})");
+}
+
+// Access groups and rules
+foreach (var group in structureMap.Group ?? [])
+{
+    Console.WriteLine($"Group: {group.Name}");
+    foreach (var rule in group.Rule ?? [])
+    {
+        Console.WriteLine($"  Rule: {rule.Name}");
+    }
+}
+```
+
 ### Key Differences
 
 | Aspect | FML Text | StructureMap Resource |
@@ -1193,30 +1223,35 @@ For **StructureMap → FML → StructureMap** round-trip:
 #### Implementation Classes Needed
 
 ```csharp
-// FML Text → MapExpression (EXISTING)
-public class MappingCompiler
+// FML Text → MapExpression (EXISTING - MappingParser, not MappingCompiler)
+public class MappingParser
 {
     public MapExpression Parse(string fmlText);
 }
 
-// MapExpression → FML Text (NEW)
+// MapExpression → FML Text (EXISTING)
 public class FmlSerializer
 {
     public string Serialize(MapExpression map);
 }
 
-// StructureMap Resource → MapExpression (NEW)
+// StructureMap Resource → MapExpression (EXISTING - uses typed models)
 public class StructureMapParser
 {
-    public MapExpression Parse(StructureMap resource);
+    public MapExpression Parse(StructureMapJsonNode resource);
 }
 
-// MapExpression → StructureMap Resource (NEW)
+// MapExpression → StructureMap Resource (EXISTING - returns typed models)
 public class StructureMapBuilder
 {
-    public StructureMap Build(MapExpression map);
+    public StructureMapJsonNode Build(MapExpression map);
 }
 ```
+
+**Implementation Note**: The Ignixa implementation uses strongly-typed models from `Ignixa.Serialization`:
+- `StructureMapJsonNode` for the main resource
+- `StructureMapGroupJsonNode`, `StructureMapRuleJsonNode`, etc. for nested elements
+- All parsers/builders work with these typed models for type safety and IntelliSense support
 
 #### Validation Strategy
 
@@ -1229,29 +1264,32 @@ public void FmlToStructureMapToFml_PreservesSemantics()
     var originalFml = LoadTestMap("patient-r5-to-r6.map");
 
     // FML → AST → StructureMap → AST → FML
-    var ast1 = compiler.Parse(originalFml);
-    var structureMap = builder.Build(ast1);
-    var ast2 = parser.Parse(structureMap);
+    var ast1 = parser.Parse(originalFml);
+    var structureMap = builder.Build(ast1);  // Returns StructureMapJsonNode
+    var ast2 = structureMapParser.Parse(structureMap);  // Accepts StructureMapJsonNode
     var roundTrippedFml = serializer.Serialize(ast2);
 
     // Re-parse both and compare ASTs (ignores whitespace/formatting)
-    var finalAst = compiler.Parse(roundTrippedFml);
+    var finalAst = parser.Parse(roundTrippedFml);
     AstComparer.AssertEquivalent(ast1, finalAst);
 }
 
 [Fact]
 public void StructureMapToFmlToStructureMap_PreservesResource()
 {
-    var originalResource = LoadTestResource("patient-transform.json");
+    var originalJson = LoadTestResource("patient-transform.json");
+    var originalResource = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(originalJson);
 
     // StructureMap → AST → FML → AST → StructureMap
-    var ast1 = parser.Parse(originalResource);
+    var ast1 = structureMapParser.Parse(originalResource);
     var fml = serializer.Serialize(ast1);
-    var ast2 = compiler.Parse(fml);
-    var roundTrippedResource = builder.Build(ast2);
+    var ast2 = parser.Parse(fml);
+    var roundTrippedResource = builder.Build(ast2);  // Returns StructureMapJsonNode
 
     // Compare resources (ignoring meta.lastUpdated, etc.)
-    ResourceComparer.AssertEquivalent(originalResource, roundTrippedResource);
+    roundTrippedResource.Url.Should().Be(originalResource.Url);
+    roundTrippedResource.Name.Should().Be(originalResource.Name);
+    // ... more assertions
 }
 ```
 
@@ -1336,6 +1374,9 @@ The `Ignixa.FhirMappingLanguage` library provides:
 **File**: `src/Ignixa.Api/Infrastructure/TransformEndpoints.cs`
 
 ```csharp
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+
 public static class TransformEndpoints
 {
     public static IEndpointRouteBuilder MapTransformEndpoints(this IEndpointRouteBuilder endpoints)
@@ -1360,7 +1401,7 @@ public static class TransformEndpoints
         var command = new TransformResourceCommand
         {
             Source = parameters.GetParameter<string>("source"),
-            SourceMap = parameters.GetParameter<StructureMap>("sourceMap"),
+            SourceMap = parameters.GetParameter<StructureMapJsonNode>("sourceMap"),
             Content = parameters.GetParameter<Resource>("content")
         };
 
@@ -1375,6 +1416,8 @@ public static class TransformEndpoints
 **File**: `src/Ignixa.Application/Features/Transform/TransformResourceCommand.cs`
 
 ```csharp
+using Ignixa.Serialization.Models;
+
 public record TransformResourceCommand : IRequest<Resource>
 {
     /// <summary>
@@ -1383,9 +1426,9 @@ public record TransformResourceCommand : IRequest<Resource>
     public string? Source { get; init; }
 
     /// <summary>
-    /// Inline StructureMap resource.
+    /// Inline StructureMap resource (typed model).
     /// </summary>
-    public StructureMap? SourceMap { get; init; }
+    public StructureMapJsonNode? SourceMap { get; init; }
 
     /// <summary>
     /// Maps in FML text format (R6+).
@@ -1393,9 +1436,9 @@ public record TransformResourceCommand : IRequest<Resource>
     public IReadOnlyList<string>? SrcMaps { get; init; }
 
     /// <summary>
-    /// Supporting maps for dependencies.
+    /// Supporting maps for dependencies (typed models).
     /// </summary>
-    public IReadOnlyList<StructureMap>? SupportingMaps { get; init; }
+    public IReadOnlyList<StructureMapJsonNode>? SupportingMaps { get; init; }
 
     /// <summary>
     /// The input content to transform.
@@ -1409,24 +1452,30 @@ public record TransformResourceCommand : IRequest<Resource>
 **File**: `src/Ignixa.Application/Features/Transform/TransformResourceHandler.cs`
 
 ```csharp
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+
 public class TransformResourceHandler : IRequestHandler<TransformResourceCommand, Resource>
 {
     private readonly IStructureMapRepository _repository;
     private readonly IMapRegistry _mapRegistry;
-    private readonly MappingCompiler _compiler;
+    private readonly MappingParser _parser;
+    private readonly StructureMapParser _structureMapParser;
     private readonly IConceptMapService _conceptMapService;
     private readonly IFhirPathEngine _fhirPathEngine;
 
     public TransformResourceHandler(
         IStructureMapRepository repository,
         IMapRegistry mapRegistry,
-        MappingCompiler compiler,
+        MappingParser parser,
+        StructureMapParser structureMapParser,
         IConceptMapService conceptMapService,
         IFhirPathEngine fhirPathEngine)
     {
         _repository = repository;
         _mapRegistry = mapRegistry;
-        _compiler = compiler;
+        _parser = parser;
+        _structureMapParser = structureMapParser;
         _conceptMapService = conceptMapService;
         _fhirPathEngine = fhirPathEngine;
     }
@@ -1445,7 +1494,7 @@ public class TransformResourceHandler : IRequestHandler<TransformResourceCommand
         var context = CreateContext(request.Content);
 
         // 4. Execute transformation
-        var evaluator = _compiler.CreateEvaluator();
+        var evaluator = new MappingEvaluator();
         evaluator.Execute(map, context);
 
         // 5. Extract and return result
@@ -1461,14 +1510,13 @@ public class TransformResourceHandler : IRequestHandler<TransformResourceCommand
         if (request.SrcMaps?.Any() == true)
         {
             // Parse FML text directly
-            return _compiler.Parse(request.SrcMaps.First());
+            return _parser.Parse(request.SrcMaps.First());
         }
 
         if (request.SourceMap != null)
         {
-            // Convert StructureMap resource to FML, then parse
-            var fmlText = StructureMapToFml.Convert(request.SourceMap);
-            return _compiler.Parse(fmlText);
+            // Parse StructureMapJsonNode to MapExpression
+            return _structureMapParser.Parse(request.SourceMap);
         }
 
         if (!string.IsNullOrEmpty(request.Source))
@@ -1477,15 +1525,15 @@ public class TransformResourceHandler : IRequestHandler<TransformResourceCommand
             var cached = _mapRegistry.GetByUrl(request.Source);
             if (cached != null) return cached;
 
-            // Load from repository
+            // Load from repository (returns StructureMapJsonNode)
             var structureMap = await _repository.GetByUrlAsync(request.Source, cancellationToken);
             if (structureMap == null)
             {
                 throw new InvalidOperationException($"StructureMap not found: {request.Source}");
             }
 
-            var fmlText = StructureMapToFml.Convert(structureMap);
-            var map = _compiler.Parse(fmlText);
+            // Parse typed model to MapExpression
+            var map = _structureMapParser.Parse(structureMap);
             _mapRegistry.Register(map);
             return map;
         }
@@ -1763,13 +1811,19 @@ public class HttpMapLoader : IMapLoader
 public class FhirServerMapLoader : IMapLoader
 {
     private readonly IFhirClient _client;
+    private readonly FmlSerializer _serializer;
 
     public bool CanLoad(string url) => url.Contains("/StructureMap/");
 
     public async Task<string?> LoadAsync(string url)
     {
-        var structureMap = await _client.ReadAsync<StructureMap>(url);
-        return StructureMapToFml.Convert(structureMap);
+        // Fetch as StructureMapJsonNode
+        var structureMap = await _client.ReadAsync<StructureMapJsonNode>(url);
+
+        // Parse to MapExpression, then serialize to FML text
+        var parser = new StructureMapParser();
+        var mapExpression = parser.Parse(structureMap);
+        return _serializer.Serialize(mapExpression);
     }
 }
 
