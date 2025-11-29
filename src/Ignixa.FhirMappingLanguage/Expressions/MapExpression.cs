@@ -47,5 +47,53 @@ public class MapExpression : Expression
     /// </summary>
     public IReadOnlyList<ConstantDeclarationExpression> Constants { get; }
 
-    public override string ToString() => $"Map({Url} = {Identifier})";
+    public override string ToString()
+    {
+        var parts = new List<string>
+        {
+            $"map \"{Url}\" = \"{Identifier}\""
+        };
+
+        // Add uses declarations
+        if (Uses.Count > 0)
+        {
+            foreach (var use in Uses)
+            {
+                parts.Add($"  {use}");
+            }
+        }
+
+        // Add imports
+        if (Imports.Count > 0)
+        {
+            foreach (var import in Imports)
+            {
+                parts.Add($"  {import}");
+            }
+        }
+
+        // Add conceptmaps summary
+        if (ConceptMaps.Count > 0)
+        {
+            parts.Add($"  // {ConceptMaps.Count} conceptmap(s)");
+        }
+
+        // Add constants summary
+        if (Constants.Count > 0)
+        {
+            parts.Add($"  // {Constants.Count} constant(s)");
+        }
+
+        // Add groups with preview
+        if (Groups.Count > 0)
+        {
+            parts.Add("");
+            foreach (var group in Groups)
+            {
+                parts.Add($"  {group}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, parts);
+    }
 }

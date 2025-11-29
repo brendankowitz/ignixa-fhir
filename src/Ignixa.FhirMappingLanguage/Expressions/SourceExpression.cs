@@ -40,5 +40,45 @@ public class SourceExpression : Expression
     public Expression? Default { get; }
     public Cardinality? Cardinality { get; }
 
-    public override string ToString() => $"Source({Context})";
+    public override string ToString()
+    {
+        var parts = new List<string> { Context.ToString() ?? string.Empty };
+
+        if (Variable is not null)
+        {
+            parts.Add($"as {Variable}");
+        }
+
+        if (Type is not null)
+        {
+            parts.Add($": {Type}");
+        }
+
+        if (Cardinality is not null)
+        {
+            parts.Add(Cardinality.ToString() ?? string.Empty);
+        }
+
+        if (Condition is not null)
+        {
+            parts.Add($"where {Condition}");
+        }
+
+        if (Check is not null)
+        {
+            parts.Add($"check {Check}");
+        }
+
+        if (Default is not null)
+        {
+            parts.Add($"default {Default}");
+        }
+
+        if (Log is not null)
+        {
+            parts.Add($"log {Log}");
+        }
+
+        return $"({string.Join(" ", parts)})";
+    }
 }

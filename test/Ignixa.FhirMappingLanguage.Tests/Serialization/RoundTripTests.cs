@@ -446,8 +446,8 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
-        rebuiltStructureMap["url"]?.GetValue<string>().Should().Be("http://example.org/test");
-        rebuiltStructureMap["name"]?.GetValue<string>().Should().Be("TestMap");
+        rebuiltStructureMap.Url.Should().Be("http://example.org/test");
+        rebuiltStructureMap.Name.Should().Be("TestMap");
     }
 
     [Fact]
@@ -492,7 +492,7 @@ public class RoundTripTests
 
         // Assert
         ast.Uses.Should().HaveCount(2);
-        rebuiltStructureMap["structure"]?.AsArray().Should().HaveCount(2);
+        rebuiltStructureMap.Structure.Should().HaveCount(2);
     }
 
     #endregion

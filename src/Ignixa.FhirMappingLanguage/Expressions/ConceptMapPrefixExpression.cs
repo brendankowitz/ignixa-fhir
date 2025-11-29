@@ -23,5 +23,5 @@ public class ConceptMapPrefixExpression : Expression
     public string PrefixName { get; }
     public string Url { get; }
 
-    public override string ToString() => $"Prefix({PrefixName} = {Url})";
+    public override string ToString() => $"prefix {PrefixName} = \"{Url}\"";
 }

@@ -23,5 +23,5 @@ public class ConstantDeclarationExpression : Expression
     public string Name { get; }
     public Expression Value { get; }
 
-    public override string ToString() => $"Constant({Name})";
+    public override string ToString() => $"constant {Name} = {Value}";
 }

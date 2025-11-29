@@ -25,5 +25,10 @@ public class ParameterExpression : Expression
     public string Name { get; }
     public string? Type { get; }
 
-    public override string ToString() => $"Parameter({Mode} {Name}: {Type})";
+    public override string ToString()
+    {
+        var mode = Mode == ParameterMode.Source ? "source" : "target";
+        var type = Type is not null ? $": {Type}" : "";
+        return $"{mode} {Name}{type}";
+    }
 }

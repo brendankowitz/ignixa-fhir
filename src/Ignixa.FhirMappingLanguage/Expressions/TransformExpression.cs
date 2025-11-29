@@ -22,5 +22,11 @@ public class TransformExpression : Expression
     public string FunctionName { get; }
     public IReadOnlyList<Expression> Arguments { get; }
 
-    public override string ToString() => $"Transform({FunctionName})";
+    public override string ToString()
+    {
+        var args = Arguments.Count > 0
+            ? string.Join(", ", Arguments.Select(a => a.ToString()))
+            : "";
+        return $"{FunctionName}({args})";
+    }
 }

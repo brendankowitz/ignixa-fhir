@@ -36,5 +36,10 @@ public class ConceptMapDeclarationExpression : Expression
     /// </summary>
     public IReadOnlyList<ConceptMapGroupExpression> Groups { get; }
 
-    public override string ToString() => $"ConceptMap({Identifier})";
+    public override string ToString()
+    {
+        var prefixCount = Prefixes.Count > 0 ? $" {Prefixes.Count} prefixes" : "";
+        var groupCount = Groups.Count > 0 ? $" {Groups.Count} groups" : "";
+        return $"conceptmap {Identifier}{{{prefixCount}{groupCount} }}";
+    }
 }

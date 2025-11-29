@@ -34,5 +34,17 @@ public class ConceptMapCodeMapExpression : Expression
     public string TargetPrefix { get; }
     public string TargetCode { get; }
 
-    public override string ToString() => $"{SourcePrefix}:{SourceCode} {Equivalence} {TargetPrefix}:{TargetCode}";
+    public override string ToString()
+    {
+        var equiv = Equivalence switch
+        {
+            ConceptMapEquivalence.Equivalent => "==",
+            ConceptMapEquivalence.RelatedTo => "~=",
+            ConceptMapEquivalence.NotRelatedTo => "!=",
+            ConceptMapEquivalence.Broader => "<-",
+            ConceptMapEquivalence.Narrower => "->",
+            _ => "=="
+        };
+        return $"{SourcePrefix}:{SourceCode} {equiv} {TargetPrefix}:{TargetCode}";
+    }
 }

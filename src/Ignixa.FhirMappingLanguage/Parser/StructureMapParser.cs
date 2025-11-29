@@ -1,17 +1,20 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Parses a FHIR StructureMap resource (JsonNode) into a MapExpression AST.
+ * Parses a FHIR StructureMap resource into a MapExpression AST.
  * Enables conversion: StructureMap Resource → AST.
  */
 
 using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirMappingLanguage.Parser;
 
 /// <summary>
-/// Parses a FHIR StructureMap resource (JsonNode) into a MapExpression AST.
+/// Parses a FHIR StructureMap resource into a MapExpression AST.
 /// Enables conversion: StructureMap Resource → AST.
 /// </summary>
 public class StructureMapParser
@@ -19,36 +22,47 @@ public class StructureMapParser
     /// <summary>
     /// Parses a FHIR StructureMap resource into a MapExpression AST.
     /// </summary>
-    /// <param name="structureMap">The StructureMap resource as JsonNode</param>
+    /// <param name="structureMap">The StructureMap resource as StructureMapJsonNode</param>
     /// <returns>The parsed MapExpression</returns>
     /// <exception cref="ArgumentNullException">Thrown when structureMap is null</exception>
     /// <exception cref="InvalidOperationException">Thrown when required fields are missing</exception>
+    public MapExpression Parse(StructureMapJsonNode structureMap)
+    {
+        ArgumentNullException.ThrowIfNull(structureMap);
+
+        // Required fields
+        var url = structureMap.Url ?? throw new InvalidOperationException("StructureMap.url is required");
+        var name = structureMap.Name ?? throw new InvalidOperationException("StructureMap.name is required");
+
+        // Parse optional collections
+        var uses = ParseStructures(structureMap.Structure);
+        var imports = ParseImports(structureMap.Import);
+        var groups = ParseGroups(structureMap.Group);
+        var conceptMaps = ParseContainedConceptMaps(structureMap.Contained);
+
+        return new MapExpression(url, name, uses, imports, groups, conceptMaps, []);
+    }
+
+    /// <summary>
+    /// Parses a FHIR StructureMap resource from JsonNode (backward compatibility).
+    /// </summary>
+    /// <param name="structureMap">The StructureMap resource as JsonNode</param>
+    /// <returns>The parsed MapExpression</returns>
     public MapExpression Parse(JsonNode structureMap)
     {
         ArgumentNullException.ThrowIfNull(structureMap);
 
-        var obj = structureMap.AsObject();
-
         // Validate resourceType
+        var obj = structureMap.AsObject();
         var resourceType = obj["resourceType"]?.GetValue<string>();
         if (resourceType != "StructureMap")
         {
             throw new InvalidOperationException($"Expected resourceType 'StructureMap', got '{resourceType}'");
         }
 
-        // Required fields
-        var url = obj["url"]?.GetValue<string>()
-            ?? throw new InvalidOperationException("StructureMap.url is required");
-        var name = obj["name"]?.GetValue<string>()
-            ?? throw new InvalidOperationException("StructureMap.name is required");
-
-        // Parse optional collections
-        var uses = ParseStructures(obj["structure"]?.AsArray());
-        var imports = ParseImports(obj["import"]?.AsArray());
-        var groups = ParseGroups(obj["group"]?.AsArray());
-        var conceptMaps = ParseContainedConceptMaps(obj["contained"]?.AsArray());
-
-        return new MapExpression(url, name, uses, imports, groups, conceptMaps, []);
+        // Convert to typed model and delegate
+        var typed = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(structureMap.ToJsonString());
+        return Parse(typed);
     }
 
     /// <summary>
@@ -59,278 +73,194 @@ public class StructureMapParser
     /// <summary>
     /// Parses structure[] array into UsesExpression[].
     /// </summary>
-    private static List<UsesExpression> ParseStructures(JsonArray? structures)
+    private static List<UsesExpression> ParseStructures(IEnumerable<StructureMapStructureJsonNode>? structures)
     {
         if (structures is null)
         {
             return [];
         }
 
-        var result = new List<UsesExpression>();
-
-        foreach (var item in structures)
-        {
-            if (item is null) continue;
-
-            var obj = item.AsObject();
-            var url = obj["url"]?.GetValue<string>();
-            if (url is null) continue;
-
-            var alias = obj["alias"]?.GetValue<string>();
-            var modeString = obj["mode"]?.GetValue<string>() ?? "source";
-            var mode = ParseModelMode(modeString);
-
-            result.Add(new UsesExpression(url, alias, mode));
-        }
-
-        return result;
+        return structures
+            .Where(s => s.Url is not null)
+            .Select(s => new UsesExpression(
+                s.Url!,
+                s.Alias,
+                ConvertModelMode(s.Mode)))
+            .ToList();
     }
 
     /// <summary>
     /// Parses import[] array into ImportsExpression[].
     /// </summary>
-    private static List<ImportsExpression> ParseImports(JsonArray? imports)
+    private static List<ImportsExpression> ParseImports(IEnumerable<string>? imports)
     {
         if (imports is null)
         {
             return [];
         }
 
-        var result = new List<ImportsExpression>();
-
-        foreach (var item in imports)
-        {
-            if (item is null) continue;
-
-            var url = item.GetValue<string>();
-            result.Add(new ImportsExpression(url));
-        }
-
-        return result;
+        return imports.Select(url => new ImportsExpression(url)).ToList();
     }
 
     /// <summary>
     /// Parses group[] array into GroupExpression[].
     /// </summary>
-    private static List<GroupExpression> ParseGroups(JsonArray? groups)
+    private static List<GroupExpression> ParseGroups(IEnumerable<StructureMapGroupJsonNode>? groups)
     {
         if (groups is null)
         {
             return [];
         }
 
-        var result = new List<GroupExpression>();
-
-        foreach (var item in groups)
-        {
-            if (item is null) continue;
-
-            var obj = item.AsObject();
-            var name = obj["name"]?.GetValue<string>();
-            if (name is null) continue;
-
-            var extends_ = obj["extends"]?.GetValue<string>();
-            var parameters = ParseInputParameters(obj["input"]?.AsArray());
-            var rules = ParseRules(obj["rule"]?.AsArray());
-
-            result.Add(new GroupExpression(name, parameters, extends_, rules));
-        }
-
-        return result;
+        return groups
+            .Where(g => g.Name is not null)
+            .Select(g => new GroupExpression(
+                g.Name!,
+                ParseInputParameters(g.Input),
+                g.Extends,
+                ParseRules(g.Rule)))
+            .ToList();
     }
 
     /// <summary>
     /// Parses input[] array into ParameterExpression[].
     /// </summary>
-    private static List<ParameterExpression> ParseInputParameters(JsonArray? inputs)
+    private static List<ParameterExpression> ParseInputParameters(IEnumerable<StructureMapInputJsonNode>? inputs)
     {
         if (inputs is null)
         {
             return [];
         }
 
-        var result = new List<ParameterExpression>();
-
-        foreach (var item in inputs)
-        {
-            if (item is null) continue;
-
-            var obj = item.AsObject();
-            var name = obj["name"]?.GetValue<string>();
-            if (name is null) continue;
-
-            var type = obj["type"]?.GetValue<string>();
-            var modeString = obj["mode"]?.GetValue<string>() ?? "source";
-            var mode = ParseParameterMode(modeString);
-
-            result.Add(new ParameterExpression(mode, name, type));
-        }
-
-        return result;
+        return inputs
+            .Where(i => i.Name is not null)
+            .Select(i => new ParameterExpression(
+                ConvertParameterMode(i.Mode),
+                i.Name!,
+                i.Type))
+            .ToList();
     }
 
     /// <summary>
     /// Parses rule[] array into RuleExpression[].
     /// </summary>
-    private static List<RuleExpression> ParseRules(JsonArray? rules)
+    private static List<RuleExpression> ParseRules(IEnumerable<StructureMapRuleJsonNode>? rules)
     {
         if (rules is null)
         {
             return [];
         }
 
-        var result = new List<RuleExpression>();
-
-        foreach (var item in rules)
+        return rules.Select(r =>
         {
-            if (item is null) continue;
+            var sources = ParseSources(r.Source);
+            var targets = ParseTargets(r.Target);
+            var dependent = ParseDependent(r.Rule, r.Dependent);
 
-            var obj = item.AsObject();
-            var name = obj["name"]?.GetValue<string>();
-            var sources = ParseSources(obj["source"]?.AsArray());
-            var targets = ParseTargets(obj["target"]?.AsArray());
-            var dependent = ParseDependent(obj["rule"]?.AsArray(), obj["dependent"]?.AsArray());
-
-            result.Add(new RuleExpression(name, sources, targets, dependent));
-        }
-
-        return result;
+            return new RuleExpression(r.Name, sources, targets, dependent);
+        }).ToList();
     }
 
     /// <summary>
     /// Parses source[] array into SourceExpression[].
     /// </summary>
-    private static List<SourceExpression> ParseSources(JsonArray? sources)
+    private static List<SourceExpression> ParseSources(IEnumerable<StructureMapSourceJsonNode>? sources)
     {
         if (sources is null)
         {
             return [];
         }
 
-        var result = new List<SourceExpression>();
-
-        foreach (var item in sources)
-        {
-            if (item is null) continue;
-
-            var obj = item.AsObject();
-
-            // Parse context (required) and optional element to build qualified identifier
-            var context = obj["context"]?.GetValue<string>();
-            if (context is null) continue;
-
-            Expression contextExpr = new IdentifierExpression(context);
-            var element = obj["element"]?.GetValue<string>();
-            if (element is not null)
+        return sources
+            .Where(s => s.Context is not null)
+            .Select(s =>
             {
-                contextExpr = new QualifiedIdentifierExpression(contextExpr, element);
-            }
+                // Build context expression (context + optional element)
+                Expression contextExpr = new IdentifierExpression(s.Context!);
+                if (s.Element is not null)
+                {
+                    contextExpr = new QualifiedIdentifierExpression(contextExpr, s.Element);
+                }
 
-            var variable = obj["variable"]?.GetValue<string>();
-            var type = obj["type"]?.GetValue<string>();
+                // Parse optional expressions
+                Expression? condition = ParseFhirPathString(s.Condition);
+                Expression? check = ParseFhirPathString(s.Check);
+                Expression? log = ParseStringExpression(s.LogMessage);
+                Expression? defaultValue = ParseDefaultValue(s);
 
-            // Parse optional expressions
-            Expression? condition = ParseFhirPathString(obj["condition"]?.GetValue<string>());
-            Expression? check = ParseFhirPathString(obj["check"]?.GetValue<string>());
-            Expression? log = ParseStringExpression(obj["logMessage"]?.GetValue<string>());
-            Expression? defaultValue = ParseDefaultValue(obj);
+                // Parse cardinality
+                Cardinality? cardinality = ParseCardinality(s.Min, s.Max);
 
-            // Parse cardinality
-            Cardinality? cardinality = ParseCardinality(obj);
-
-            result.Add(new SourceExpression(
-                contextExpr,
-                variable,
-                type,
-                condition,
-                check,
-                log,
-                defaultValue,
-                cardinality));
-        }
-
-        return result;
+                return new SourceExpression(
+                    contextExpr,
+                    s.Variable,
+                    s.Type,
+                    condition,
+                    check,
+                    log,
+                    defaultValue,
+                    cardinality);
+            })
+            .ToList();
     }
 
     /// <summary>
     /// Parses target[] array into TargetExpression[].
     /// </summary>
-    private static List<TargetExpression> ParseTargets(JsonArray? targets)
+    private static List<TargetExpression> ParseTargets(IEnumerable<StructureMapTargetJsonNode>? targets)
     {
         if (targets is null)
         {
             return [];
         }
 
-        var result = new List<TargetExpression>();
-
-        foreach (var item in targets)
+        return targets.Select(t =>
         {
-            if (item is null) continue;
-
-            var obj = item.AsObject();
-
             // Parse context and element
             Expression? contextExpr = null;
-            var context = obj["context"]?.GetValue<string>();
-            if (context is not null)
+            if (t.Context is not null)
             {
-                contextExpr = new IdentifierExpression(context);
-                var element = obj["element"]?.GetValue<string>();
-                if (element is not null)
+                contextExpr = new IdentifierExpression(t.Context);
+                if (t.Element is not null)
                 {
-                    contextExpr = new QualifiedIdentifierExpression(contextExpr, element);
+                    contextExpr = new QualifiedIdentifierExpression(contextExpr, t.Element);
                 }
             }
-
-            var variable = obj["variable"]?.GetValue<string>();
 
             // Parse transform
-            Expression? transform = ParseTransform(obj);
+            Expression? transform = ParseTransform(t);
 
-            // Parse list mode - can be a string or an array with one element
+            // Parse list mode - take first element if available
             ListMode? listMode = null;
-            var listModeNode = obj["listMode"];
-            if (listModeNode is not null)
+            var listModeValue = t.ListMode.FirstOrDefault();
+            if (listModeValue is not null)
             {
-                string? listModeString = listModeNode switch
-                {
-                    JsonValue v => v.GetValue<string>(),
-                    JsonArray arr when arr.Count > 0 => arr[0]?.GetValue<string>(),
-                    _ => null
-                };
-
-                if (listModeString is not null)
-                {
-                    listMode = ParseListMode(listModeString);
-                }
+                listMode = ParseListMode(listModeValue);
             }
 
-            result.Add(new TargetExpression(contextExpr, variable, transform, listMode));
-        }
-
-        return result;
+            return new TargetExpression(contextExpr, t.Variable, transform, listMode);
+        }).ToList();
     }
 
     /// <summary>
     /// Parses transform and parameter[] into TransformExpression.
     /// </summary>
-    private static Expression? ParseTransform(JsonObject target)
+    private static Expression? ParseTransform(StructureMapTargetJsonNode target)
     {
-        var transformName = target["transform"]?.GetValue<string>();
-        if (transformName is null)
+        if (target.Transform is null)
         {
             return null;
         }
 
-        var parameters = ParseTransformParameters(target["parameter"]?.AsArray());
+        var transformName = target.Transform.Value.GetLiteral();
+        var parameters = ParseTransformParameters(target.Parameter);
         return new TransformExpression(transformName, parameters);
     }
 
     /// <summary>
     /// Parses parameter[] array into Expression[] for transforms.
     /// </summary>
-    private static List<Expression> ParseTransformParameters(JsonArray? parameters)
+    private static List<Expression> ParseTransformParameters(IEnumerable<StructureMapParameterJsonNode>? parameters)
     {
         if (parameters is null)
         {
@@ -339,32 +269,41 @@ public class StructureMapParser
 
         var result = new List<Expression>();
 
-        foreach (var item in parameters)
+        foreach (var param in parameters)
         {
-            if (item is null) continue;
+            var valueNode = param.GetValue();
+            if (valueNode is null) continue;
 
-            var obj = item.AsObject();
+            // Determine type from property name
+            foreach (var prop in param.MutableNode)
+            {
+                if (!prop.Key.StartsWith("value", StringComparison.Ordinal)) continue;
 
-            // Try different value[x] properties
-            if (obj["valueString"] is JsonNode strNode)
-            {
-                result.Add(new LiteralExpression(strNode.GetValue<string>()));
-            }
-            else if (obj["valueInteger"] is JsonNode intNode)
-            {
-                result.Add(new LiteralExpression(intNode.GetValue<int>()));
-            }
-            else if (obj["valueDecimal"] is JsonNode decNode)
-            {
-                result.Add(new LiteralExpression(decNode.GetValue<decimal>()));
-            }
-            else if (obj["valueBoolean"] is JsonNode boolNode)
-            {
-                result.Add(new LiteralExpression(boolNode.GetValue<bool>()));
-            }
-            else if (obj["valueId"] is JsonNode idNode)
-            {
-                result.Add(new IdentifierExpression(idNode.GetValue<string>()));
+                var suffix = prop.Key.Substring(5); // Remove "value" prefix
+
+                switch (suffix.ToLowerInvariant())
+                {
+                    case "string":
+                        result.Add(new LiteralExpression(param.GetValueAs<string>() ?? string.Empty));
+                        break;
+                    case "integer":
+                        result.Add(new LiteralExpression(param.GetValueAs<int>()));
+                        break;
+                    case "decimal":
+                        result.Add(new LiteralExpression(param.GetValueAs<decimal>()));
+                        break;
+                    case "boolean":
+                        result.Add(new LiteralExpression(param.GetValueAs<bool>()));
+                        break;
+                    case "id":
+                        var idValue = param.GetValueAs<string>();
+                        if (idValue is not null)
+                        {
+                            result.Add(new IdentifierExpression(idValue));
+                        }
+                        break;
+                }
+                break; // Only process first value[x] property
             }
         }
 
@@ -374,30 +313,25 @@ public class StructureMapParser
     /// <summary>
     /// Parses dependent clause (nested rules or group invocations).
     /// </summary>
-    private static Expression? ParseDependent(JsonArray? nestedRules, JsonArray? dependentCalls)
+    private static Expression? ParseDependent(
+        IEnumerable<StructureMapRuleJsonNode>? nestedRules,
+        IEnumerable<StructureMapDependentJsonNode>? dependentCalls)
     {
         // Check for nested rules first (RuleSetExpression)
-        if (nestedRules is not null && nestedRules.Count > 0)
+        if (nestedRules is not null && nestedRules.Any())
         {
             var rules = ParseRules(nestedRules);
             return new RuleSetExpression(rules);
         }
 
         // Check for dependent group invocations
-        if (dependentCalls is not null && dependentCalls.Count > 0)
+        if (dependentCalls is not null)
         {
-            // For simplicity, return the first dependent call
-            // In a full implementation, this might need to handle multiple calls
-            var first = dependentCalls[0];
-            if (first is not null)
+            var firstDependent = dependentCalls.FirstOrDefault();
+            if (firstDependent?.Name is not null)
             {
-                var obj = first.AsObject();
-                var name = obj["name"]?.GetValue<string>();
-                if (name is not null)
-                {
-                    var parameters = ParseInvocationParameters(obj["parameter"]?.AsArray());
-                    return new GroupInvocationExpression(name, parameters);
-                }
+                var parameters = ParseInvocationParameters(firstDependent.Parameter);
+                return new GroupInvocationExpression(firstDependent.Name, parameters);
             }
         }
 
@@ -407,7 +341,7 @@ public class StructureMapParser
     /// <summary>
     /// Parses parameter[] for group invocations.
     /// </summary>
-    private static List<Expression> ParseInvocationParameters(JsonArray? parameters)
+    private static List<Expression> ParseInvocationParameters(IEnumerable<StructureMapParameterJsonNode>? parameters)
     {
         if (parameters is null)
         {
@@ -416,20 +350,36 @@ public class StructureMapParser
 
         var result = new List<Expression>();
 
-        foreach (var item in parameters)
+        foreach (var param in parameters)
         {
-            if (item is null) continue;
+            var valueNode = param.GetValue();
+            if (valueNode is null) continue;
 
-            var obj = item.AsObject();
+            // Check property names to determine type
+            foreach (var prop in param.MutableNode)
+            {
+                if (!prop.Key.StartsWith("value", StringComparison.Ordinal)) continue;
 
-            // Try different value[x] properties
-            if (obj["valueString"] is JsonNode strNode)
-            {
-                result.Add(new LiteralExpression(strNode.GetValue<string>()));
-            }
-            else if (obj["valueId"] is JsonNode idNode)
-            {
-                result.Add(new IdentifierExpression(idNode.GetValue<string>()));
+                var suffix = prop.Key.Substring(5);
+
+                switch (suffix.ToLowerInvariant())
+                {
+                    case "string":
+                        var strValue = param.GetValueAs<string>();
+                        if (strValue is not null)
+                        {
+                            result.Add(new LiteralExpression(strValue));
+                        }
+                        break;
+                    case "id":
+                        var idValue = param.GetValueAs<string>();
+                        if (idValue is not null)
+                        {
+                            result.Add(new IdentifierExpression(idValue));
+                        }
+                        break;
+                }
+                break; // Only process first value[x] property
             }
         }
 
@@ -439,48 +389,55 @@ public class StructureMapParser
     /// <summary>
     /// Parses min/max into Cardinality.
     /// </summary>
-    private static Cardinality? ParseCardinality(JsonObject source)
+    private static Cardinality? ParseCardinality(int? min, string? max)
     {
-        var minNode = source["min"];
-        var maxNode = source["max"];
-
-        if (minNode is null && maxNode is null)
+        if (min is null && max is null)
         {
             return null;
         }
 
-        var min = minNode?.GetValue<int>() ?? 0;
+        var minValue = min ?? 0;
 
-        int? max = null;
-        if (maxNode is not null)
+        int? maxValue = null;
+        if (max is not null && max != "*" && int.TryParse(max, out var parsedMax))
         {
-            var maxString = maxNode.GetValue<string>();
-            if (maxString != "*" && int.TryParse(maxString, out var maxValue))
-            {
-                max = maxValue;
-            }
-            // If maxString is "*", max remains null (unbounded)
+            maxValue = parsedMax;
         }
 
-        return new Cardinality(min, max);
+        return new Cardinality(minValue, maxValue);
     }
 
     /// <summary>
     /// Parses default value[x] into Expression.
     /// </summary>
-    private static Expression? ParseDefaultValue(JsonObject source)
+    private static Expression? ParseDefaultValue(StructureMapSourceJsonNode source)
     {
-        if (source["defaultValueString"] is JsonNode strNode)
+        var defaultNode = source.GetDefaultValue();
+        if (defaultNode is null)
         {
-            return new LiteralExpression(strNode.GetValue<string>());
+            return null;
         }
-        if (source["defaultValueInteger"] is JsonNode intNode)
+
+        // Inspect MutableNode to find the actual property name
+        foreach (var prop in source.MutableNode)
         {
-            return new LiteralExpression(intNode.GetValue<int>());
-        }
-        if (source["defaultValueBoolean"] is JsonNode boolNode)
-        {
-            return new LiteralExpression(boolNode.GetValue<bool>());
+            if (!prop.Key.StartsWith("default", StringComparison.Ordinal)) continue;
+
+            var suffix = prop.Key.Substring(7); // Remove "default" prefix
+
+            switch (suffix.ToLowerInvariant())
+            {
+                case "string":
+                    var strValue = defaultNode.GetValue<string>();
+                    return new LiteralExpression(strValue);
+                case "integer":
+                    var intValue = defaultNode.GetValue<int>();
+                    return new LiteralExpression(intValue);
+                case "boolean":
+                    var boolValue = defaultNode.GetValue<bool>();
+                    return new LiteralExpression(boolValue);
+            }
+            break; // Only process first default[x] property
         }
 
         return null;
@@ -489,49 +446,35 @@ public class StructureMapParser
     /// <summary>
     /// Parses a FHIRPath expression string into a FhirPathExpression.
     /// </summary>
-    private static Expression? ParseFhirPathString(string? expression)
-    {
-        if (string.IsNullOrWhiteSpace(expression))
-        {
-            return null;
-        }
-
-        return new FhirPathExpression(expression);
-    }
+    private static Expression? ParseFhirPathString(string? expression) =>
+        string.IsNullOrWhiteSpace(expression) ? null : new FhirPathExpression(expression);
 
     /// <summary>
     /// Parses a string into a LiteralExpression.
     /// </summary>
-    private static Expression? ParseStringExpression(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        return new LiteralExpression(value);
-    }
+    private static Expression? ParseStringExpression(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : new LiteralExpression(value);
 
     /// <summary>
-    /// Parses ModelMode from string.
+    /// Converts StructureMapModelMode to ModelMode.
     /// </summary>
-    private static ModelMode ParseModelMode(string mode) => mode.ToLowerInvariant() switch
+    private static ModelMode ConvertModelMode(StructureMapModelMode? mode) => mode switch
     {
-        "source" => ModelMode.Source,
-        "queried" => ModelMode.Queried,
-        "target" => ModelMode.Target,
-        "produced" => ModelMode.Produced,
-        _ => ModelMode.Source // Default fallback
+        StructureMapModelMode.Source => ModelMode.Source,
+        StructureMapModelMode.Queried => ModelMode.Queried,
+        StructureMapModelMode.Target => ModelMode.Target,
+        StructureMapModelMode.Produced => ModelMode.Produced,
+        _ => ModelMode.Source
     };
 
     /// <summary>
-    /// Parses ParameterMode from string.
+    /// Converts StructureMapInputMode to ParameterMode.
     /// </summary>
-    private static ParameterMode ParseParameterMode(string mode) => mode.ToLowerInvariant() switch
+    private static ParameterMode ConvertParameterMode(StructureMapInputMode? mode) => mode switch
     {
-        "source" => ParameterMode.Source,
-        "target" => ParameterMode.Target,
-        _ => ParameterMode.Source // Default fallback
+        StructureMapInputMode.Source => ParameterMode.Source,
+        StructureMapInputMode.Target => ParameterMode.Target,
+        _ => ParameterMode.Source
     };
 
     /// <summary>
@@ -546,112 +489,115 @@ public class StructureMapParser
         "onlyone" or "only_one" => ListMode.OnlyOne,
         "share" => ListMode.Share,
         "single" => ListMode.Single,
-        _ => ListMode.First // Default fallback
+        _ => ListMode.First
     };
 
     /// <summary>
     /// Parses contained[] array for ConceptMap resources.
     /// </summary>
-    private static List<ConceptMapDeclarationExpression> ParseContainedConceptMaps(JsonArray? contained)
+    private static List<ConceptMapDeclarationExpression> ParseContainedConceptMaps(
+        IEnumerable<ResourceJsonNode>? contained)
     {
         if (contained is null)
         {
             return [];
         }
 
-        var result = new List<ConceptMapDeclarationExpression>();
+        return contained
+            .Where(r => r.ResourceType == "ConceptMap")
+            .Select(ParseConceptMap)
+            .Where(cm => cm is not null)
+            .ToList()!;
+    }
 
-        foreach (var item in contained)
+    /// <summary>
+    /// Parses a single ConceptMap resource into a ConceptMapDeclarationExpression.
+    /// </summary>
+    private static ConceptMapDeclarationExpression? ParseConceptMap(ResourceJsonNode conceptMap)
+    {
+        var id = conceptMap.Id;
+        if (string.IsNullOrEmpty(id))
         {
-            if (item is null) continue;
+            return null;
+        }
 
-            var obj = item.AsObject();
-            var resourceType = obj["resourceType"]?.GetValue<string>();
+        // Build identifier with # prefix for inline reference
+        var identifier = $"#{id}";
 
-            // Only process ConceptMap resources
-            if (resourceType != "ConceptMap") continue;
+        // Parse groups from the raw JsonNode
+        var prefixes = new List<ConceptMapPrefixExpression>();
+        var groups = new List<ConceptMapGroupExpression>();
 
-            var id = obj["id"]?.GetValue<string>();
-            if (id is null) continue;
+        var groupArray = conceptMap.MutableNode["group"]?.AsArray();
+        if (groupArray is null)
+        {
+            return new ConceptMapDeclarationExpression(identifier, prefixes, groups);
+        }
 
-            // Build identifier with # prefix for inline reference
-            var identifier = $"#{id}";
+        foreach (var groupItem in groupArray)
+        {
+            if (groupItem is null) continue;
 
-            // Parse groups into prefixes and code mappings
-            var prefixes = new List<ConceptMapPrefixExpression>();
-            var groups = new List<ConceptMapGroupExpression>();
+            var groupObj = groupItem.AsObject();
+            var sourceUrl = groupObj["source"]?.GetValue<string>();
+            var targetUrl = groupObj["target"]?.GetValue<string>();
 
-            var groupArray = obj["group"]?.AsArray();
-            if (groupArray is not null)
+            // Create prefix entries
+            var sourcePrefix = "s";
+            var targetPrefix = "t";
+
+            if (sourceUrl is not null && !prefixes.Any(p => p.Url == sourceUrl))
             {
-                foreach (var groupItem in groupArray)
+                prefixes.Add(new ConceptMapPrefixExpression(sourcePrefix, sourceUrl));
+            }
+            if (targetUrl is not null && !prefixes.Any(p => p.Url == targetUrl))
+            {
+                prefixes.Add(new ConceptMapPrefixExpression(targetPrefix, targetUrl));
+            }
+
+            // Parse element mappings
+            var codeMaps = new List<ConceptMapCodeMapExpression>();
+            var elementArray = groupObj["element"]?.AsArray();
+            if (elementArray is not null)
+            {
+                foreach (var elementItem in elementArray)
                 {
-                    if (groupItem is null) continue;
+                    if (elementItem is null) continue;
 
-                    var groupObj = groupItem.AsObject();
-                    var sourceUrl = groupObj["source"]?.GetValue<string>();
-                    var targetUrl = groupObj["target"]?.GetValue<string>();
+                    var elementObj = elementItem.AsObject();
+                    var sourceCode = elementObj["code"]?.GetValue<string>();
+                    if (sourceCode is null) continue;
 
-                    // Create prefix entries from source/target URLs
-                    var sourcePrefix = "s";
-                    var targetPrefix = "t";
-
-                    if (sourceUrl is not null && !prefixes.Any(p => p.Url == sourceUrl))
+                    var targetArray = elementObj["target"]?.AsArray();
+                    if (targetArray is not null)
                     {
-                        prefixes.Add(new ConceptMapPrefixExpression(sourcePrefix, sourceUrl));
-                    }
-                    if (targetUrl is not null && !prefixes.Any(p => p.Url == targetUrl))
-                    {
-                        prefixes.Add(new ConceptMapPrefixExpression(targetPrefix, targetUrl));
-                    }
-
-                    // Parse element mappings
-                    var codeMaps = new List<ConceptMapCodeMapExpression>();
-                    var elementArray = groupObj["element"]?.AsArray();
-                    if (elementArray is not null)
-                    {
-                        foreach (var elementItem in elementArray)
+                        foreach (var targetItem in targetArray)
                         {
-                            if (elementItem is null) continue;
+                            if (targetItem is null) continue;
 
-                            var elementObj = elementItem.AsObject();
-                            var sourceCode = elementObj["code"]?.GetValue<string>();
-                            if (sourceCode is null) continue;
+                            var targetObj = targetItem.AsObject();
+                            var targetCode = targetObj["code"]?.GetValue<string>();
+                            var equivalenceStr = targetObj["equivalence"]?.GetValue<string>() ?? "equivalent";
 
-                            var targetArray = elementObj["target"]?.AsArray();
-                            if (targetArray is not null)
+                            if (targetCode is not null)
                             {
-                                foreach (var targetItem in targetArray)
-                                {
-                                    if (targetItem is null) continue;
-
-                                    var targetObj = targetItem.AsObject();
-                                    var targetCode = targetObj["code"]?.GetValue<string>();
-                                    var equivalenceStr = targetObj["equivalence"]?.GetValue<string>() ?? "equivalent";
-
-                                    if (targetCode is not null)
-                                    {
-                                        var equivalence = ParseEquivalence(equivalenceStr);
-                                        codeMaps.Add(new ConceptMapCodeMapExpression(
-                                            sourcePrefix,
-                                            sourceCode,
-                                            equivalence,
-                                            targetPrefix,
-                                            targetCode));
-                                    }
-                                }
+                                var equivalence = ParseEquivalence(equivalenceStr);
+                                codeMaps.Add(new ConceptMapCodeMapExpression(
+                                    sourcePrefix,
+                                    sourceCode,
+                                    equivalence,
+                                    targetPrefix,
+                                    targetCode));
                             }
                         }
                     }
-
-                    groups.Add(new ConceptMapGroupExpression(sourceUrl, targetUrl, codeMaps));
                 }
             }
 
-            result.Add(new ConceptMapDeclarationExpression(identifier, prefixes, groups));
+            groups.Add(new ConceptMapGroupExpression(sourceUrl, targetUrl, codeMaps));
         }
 
-        return result;
+        return new ConceptMapDeclarationExpression(identifier, prefixes, groups);
     }
 
     /// <summary>

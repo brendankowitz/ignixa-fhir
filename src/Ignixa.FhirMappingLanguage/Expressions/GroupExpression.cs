@@ -30,5 +30,21 @@ public class GroupExpression : Expression
     public string? Extends { get; }
     public IReadOnlyList<RuleExpression> Rules { get; }
 
-    public override string ToString() => $"Group({Name})";
+    public override string ToString()
+    {
+        var parameters = string.Join(", ", Parameters.Select(p => p.ToString()));
+        var result = $"group {Name}({parameters})";
+
+        if (Extends is not null)
+        {
+            result += $" extends {Extends}";
+        }
+
+        if (Rules.Count > 0)
+        {
+            result += $" {{ {Rules.Count} rules }}";
+        }
+
+        return result;
+    }
 }

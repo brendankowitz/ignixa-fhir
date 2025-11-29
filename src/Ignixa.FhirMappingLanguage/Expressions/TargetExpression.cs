@@ -26,5 +26,30 @@ public class TargetExpression : Expression
     public Expression? Transform { get; }
     public ListMode? ListMode { get; }
 
-    public override string ToString() => $"Target({Context})";
+    public override string ToString()
+    {
+        var parts = new List<string>();
+
+        if (Context is not null)
+        {
+            parts.Add(Context.ToString() ?? string.Empty);
+        }
+
+        if (Variable is not null)
+        {
+            parts.Add($"as {Variable}");
+        }
+
+        if (Transform is not null)
+        {
+            parts.Add($"= {Transform}");
+        }
+
+        if (ListMode.HasValue)
+        {
+            parts.Add($"[{ListMode.Value.ToString().ToLowerInvariant()}]");
+        }
+
+        return parts.Count > 0 ? $"({string.Join(" ", parts)})" : "(target)";
+    }
 }

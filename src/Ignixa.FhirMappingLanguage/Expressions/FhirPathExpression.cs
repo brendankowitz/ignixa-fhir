@@ -19,5 +19,5 @@ public class FhirPathExpression : Expression
 
     public string PathExpression { get; }
 
-    public override string ToString() => $"FhirPath({PathExpression})";
+    public override string ToString() => PathExpression;
 }

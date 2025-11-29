@@ -23,5 +23,10 @@ public class ConceptMapGroupExpression : Expression
     public string? TargetSystem { get; }
     public IReadOnlyList<ConceptMapCodeMapExpression> CodeMaps { get; }
 
-    public override string ToString() => $"ConceptMapGroup({SourceSystem} -> {TargetSystem})";
+    public override string ToString()
+    {
+        var source = SourceSystem ?? "?";
+        var target = TargetSystem ?? "?";
+        return $"\"{source}\" -> \"{target}\" {{ {CodeMaps.Count} mappings }}";
+    }
 }

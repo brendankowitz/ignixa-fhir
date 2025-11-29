@@ -27,5 +27,18 @@ public class UsesExpression : Expression
     public string? Alias { get; }
     public ModelMode Mode { get; }
 
-    public override string ToString() => $"Uses({Url} as {Mode})";
+    public override string ToString()
+    {
+        var mode = Mode switch
+        {
+            ModelMode.Source => "source",
+            ModelMode.Queried => "queried",
+            ModelMode.Target => "target",
+            ModelMode.Produced => "produced",
+            _ => "source"
+        };
+
+        var alias = Alias is not null ? $" alias {Alias}" : "";
+        return $"uses {Url} {mode}{alias}";
+    }
 }

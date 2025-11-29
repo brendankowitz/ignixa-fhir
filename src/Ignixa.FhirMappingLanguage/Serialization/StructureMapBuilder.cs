@@ -6,11 +6,14 @@
 
 using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Expressions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirMappingLanguage.Serialization;
 
 /// <summary>
-/// Builds a FHIR StructureMap resource (as JsonNode) from a MapExpression AST.
+/// Builds a FHIR StructureMap resource from a MapExpression AST.
 /// Enables conversion: AST → StructureMap Resource.
 /// </summary>
 public class StructureMapBuilder
@@ -19,61 +22,40 @@ public class StructureMapBuilder
     /// Builds a FHIR StructureMap resource from a MapExpression AST.
     /// </summary>
     /// <param name="map">The parsed map expression.</param>
-    /// <returns>A JsonObject representing the StructureMap resource.</returns>
-    public JsonObject Build(MapExpression map)
+    /// <returns>A StructureMapJsonNode representing the StructureMap resource.</returns>
+    public StructureMapJsonNode Build(MapExpression map)
     {
         ArgumentNullException.ThrowIfNull(map);
 
-        var structureMap = new JsonObject
+        var structureMap = new StructureMapJsonNode
         {
-            ["resourceType"] = "StructureMap",
-            ["url"] = map.Url,
-            ["name"] = map.Identifier,
-            ["status"] = "active"
+            Url = map.Url,
+            Name = map.Identifier,
+            Status = PublicationStatus.Active
         };
 
-        // Add structure array (uses declarations)
-        if (map.Uses.Count > 0)
+        // Add structures (uses declarations)
+        foreach (var uses in map.Uses)
         {
-            var structureArray = new JsonArray();
-            foreach (var uses in map.Uses)
-            {
-                structureArray.Add(BuildStructure(uses));
-            }
-            structureMap["structure"] = structureArray;
+            structureMap.Structure.Add(BuildStructure(uses));
         }
 
-        // Add import array
-        if (map.Imports.Count > 0)
+        // Add imports
+        foreach (var import in map.Imports)
         {
-            var importArray = new JsonArray();
-            foreach (var import in map.Imports)
-            {
-                importArray.Add(import.Url);
-            }
-            structureMap["import"] = importArray;
+            structureMap.Import.Add(import.Url);
         }
 
-        // Add contained ConceptMaps (inline conceptmap declarations)
-        if (map.ConceptMaps.Count > 0)
+        // Add contained ConceptMaps
+        foreach (var conceptMap in map.ConceptMaps)
         {
-            var containedArray = new JsonArray();
-            foreach (var conceptMap in map.ConceptMaps)
-            {
-                containedArray.Add(BuildConceptMapResource(conceptMap, map.Url));
-            }
-            structureMap["contained"] = containedArray;
+            structureMap.Contained.Add(BuildConceptMapResource(conceptMap, map.Url));
         }
 
-        // Add group array
-        if (map.Groups.Count > 0)
+        // Add groups
+        foreach (var group in map.Groups)
         {
-            var groupArray = new JsonArray();
-            foreach (var group in map.Groups)
-            {
-                groupArray.Add(BuildGroup(group));
-            }
-            structureMap["group"] = groupArray;
+            structureMap.Group.Add(BuildGroup(group));
         }
 
         return structureMap;
@@ -82,116 +64,76 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a structure element from a UsesExpression.
     /// </summary>
-    private static JsonObject BuildStructure(UsesExpression uses)
+    private static StructureMapStructureJsonNode BuildStructure(UsesExpression uses)
     {
-        var structure = new JsonObject
+        return new StructureMapStructureJsonNode
         {
-            ["url"] = uses.Url,
-            ["mode"] = ModelModeToString(uses.Mode)
+            Url = uses.Url,
+            Alias = uses.Alias,
+            Mode = ConvertToStructureMapModelMode(uses.Mode)
         };
-
-        if (uses.Alias is not null)
-        {
-            structure["alias"] = uses.Alias;
-        }
-
-        return structure;
     }
 
     /// <summary>
     /// Builds a group element from a GroupExpression.
     /// </summary>
-    private static JsonObject BuildGroup(GroupExpression group)
+    private static StructureMapGroupJsonNode BuildGroup(GroupExpression group)
     {
-        var groupObj = new JsonObject
+        var groupNode = new StructureMapGroupJsonNode
         {
-            ["name"] = group.Name,
-            ["typeMode"] = "none"  // Default type mode per FHIR spec
+            Name = group.Name,
+            Extends = group.Extends,
+            TypeMode = StructureMapGroupTypeMode.None
         };
 
-        // Add extends if present
-        if (group.Extends is not null)
-        {
-            groupObj["extends"] = group.Extends;
-        }
-
         // Add input parameters
-        if (group.Parameters.Count > 0)
+        foreach (var param in group.Parameters)
         {
-            var inputArray = new JsonArray();
-            foreach (var param in group.Parameters)
-            {
-                inputArray.Add(BuildInput(param));
-            }
-            groupObj["input"] = inputArray;
+            groupNode.Input.Add(BuildInput(param));
         }
 
         // Add rules
-        if (group.Rules.Count > 0)
+        foreach (var rule in group.Rules)
         {
-            var ruleArray = new JsonArray();
-            foreach (var rule in group.Rules)
-            {
-                ruleArray.Add(BuildRule(rule));
-            }
-            groupObj["rule"] = ruleArray;
+            groupNode.Rule.Add(BuildRule(rule));
         }
 
-        return groupObj;
+        return groupNode;
     }
 
     /// <summary>
     /// Builds an input element from a ParameterExpression.
     /// </summary>
-    private static JsonObject BuildInput(ParameterExpression parameter)
+    private static StructureMapInputJsonNode BuildInput(ParameterExpression parameter)
     {
-        var input = new JsonObject
+        return new StructureMapInputJsonNode
         {
-            ["name"] = parameter.Name,
-            ["mode"] = ParameterModeToString(parameter.Mode)
+            Name = parameter.Name,
+            Type = parameter.Type,
+            Mode = ConvertToStructureMapInputMode(parameter.Mode)
         };
-
-        if (parameter.Type is not null)
-        {
-            input["type"] = parameter.Type;
-        }
-
-        return input;
     }
 
     /// <summary>
     /// Builds a rule element from a RuleExpression.
     /// </summary>
-    private static JsonObject BuildRule(RuleExpression rule)
+    private static StructureMapRuleJsonNode BuildRule(RuleExpression rule)
     {
-        var ruleObj = new JsonObject();
-
-        // Only add name if one was explicitly provided (preserve null for unnamed rules)
-        if (rule.Name is not null)
+        var ruleNode = new StructureMapRuleJsonNode
         {
-            ruleObj["name"] = rule.Name;
-        }
+            Name = rule.Name
+        };
 
         // Add sources
-        if (rule.Sources.Count > 0)
+        foreach (var source in rule.Sources)
         {
-            var sourceArray = new JsonArray();
-            foreach (var source in rule.Sources)
-            {
-                sourceArray.Add(BuildSource(source));
-            }
-            ruleObj["source"] = sourceArray;
+            ruleNode.Source.Add(BuildSource(source));
         }
 
         // Add targets
-        if (rule.Targets.Count > 0)
+        foreach (var target in rule.Targets)
         {
-            var targetArray = new JsonArray();
-            foreach (var target in rule.Targets)
-            {
-                targetArray.Add(BuildTarget(target));
-            }
-            ruleObj["target"] = targetArray;
+            ruleNode.Target.Add(BuildTarget(target));
         }
 
         // Add dependent (nested rules or group invocations)
@@ -201,61 +143,42 @@ public class StructureMapBuilder
             {
                 case RuleSetExpression ruleSet:
                     // Nested rules
-                    var nestedRules = new JsonArray();
                     foreach (var nestedRule in ruleSet.Rules)
                     {
-                        nestedRules.Add(BuildRule(nestedRule));
+                        ruleNode.Rule.Add(BuildRule(nestedRule));
                     }
-                    ruleObj["rule"] = nestedRules;
                     break;
 
                 case GroupInvocationExpression groupInvocation:
                     // Group invocation
-                    var dependentArray = new JsonArray
-                    {
-                        BuildDependent(groupInvocation)
-                    };
-                    ruleObj["dependent"] = dependentArray;
+                    ruleNode.Dependent.Add(BuildDependent(groupInvocation));
                     break;
             }
         }
 
-        return ruleObj;
+        return ruleNode;
     }
 
     /// <summary>
     /// Builds a source element from a SourceExpression.
     /// </summary>
-    private static JsonObject BuildSource(SourceExpression source)
+    private static StructureMapSourceJsonNode BuildSource(SourceExpression source)
     {
-        var sourceObj = new JsonObject();
-
-        // Extract context and element from qualified identifier
         var (context, element) = ExtractContextAndElement(source.Context);
-        sourceObj["context"] = context;
 
-        if (element is not null)
+        var sourceNode = new StructureMapSourceJsonNode
         {
-            sourceObj["element"] = element;
-        }
-
-        // Add variable
-        if (source.Variable is not null)
-        {
-            sourceObj["variable"] = source.Variable;
-        }
-
-        // Add type
-        if (source.Type is not null)
-        {
-            sourceObj["type"] = source.Type;
-        }
+            Context = context,
+            Element = element,
+            Variable = source.Variable,
+            Type = source.Type
+        };
 
         // Add cardinality
         if (source.Cardinality is not null)
         {
-            sourceObj["min"] = source.Cardinality.Min;
-            sourceObj["max"] = source.Cardinality.Max.HasValue
+            sourceNode.Min = source.Cardinality.Min;
+            sourceNode.Max = source.Cardinality.Max.HasValue
                 ? source.Cardinality.Max.Value.ToString()
                 : "*";
         }
@@ -263,54 +186,46 @@ public class StructureMapBuilder
         // Add condition
         if (source.Condition is not null)
         {
-            sourceObj["condition"] = ExpressionToString(source.Condition);
+            sourceNode.Condition = ExpressionToString(source.Condition);
         }
 
         // Add check
         if (source.Check is not null)
         {
-            sourceObj["check"] = ExpressionToString(source.Check);
+            sourceNode.Check = ExpressionToString(source.Check);
         }
 
         // Add log message
         if (source.Log is not null)
         {
-            sourceObj["logMessage"] = ExpressionToString(source.Log);
+            sourceNode.LogMessage = ExpressionToString(source.Log);
         }
 
         // Add default value
         if (source.Default is not null)
         {
-            // Default values are typically strings in StructureMap
-            sourceObj["defaultValueString"] = ExpressionToString(source.Default);
+            sourceNode.SetDefaultValue("String", JsonValue.Create(ExpressionToString(source.Default)));
         }
 
-        return sourceObj;
+        return sourceNode;
     }
 
     /// <summary>
     /// Builds a target element from a TargetExpression.
     /// </summary>
-    private static JsonObject BuildTarget(TargetExpression target)
+    private static StructureMapTargetJsonNode BuildTarget(TargetExpression target)
     {
-        var targetObj = new JsonObject();
+        var targetNode = new StructureMapTargetJsonNode
+        {
+            Variable = target.Variable
+        };
 
         // Extract context and element
         if (target.Context is not null)
         {
             var (context, element) = ExtractContextAndElement(target.Context);
-            targetObj["context"] = context;
-
-            if (element is not null)
-            {
-                targetObj["element"] = element;
-            }
-        }
-
-        // Add variable
-        if (target.Variable is not null)
-        {
-            targetObj["variable"] = target.Variable;
+            targetNode.Context = context;
+            targetNode.Element = element;
         }
 
         // Add transform and parameters
@@ -319,47 +234,37 @@ public class StructureMapBuilder
             switch (target.Transform)
             {
                 case TransformExpression transform:
-                    targetObj["transform"] = transform.FunctionName;
-
-                    if (transform.Arguments.Count > 0)
+                    if (TryParseTransformName(transform.FunctionName, out var transformEnum))
                     {
-                        var paramArray = new JsonArray();
-                        foreach (var arg in transform.Arguments)
-                        {
-                            paramArray.Add(BuildParameter(arg));
-                        }
-                        targetObj["parameter"] = paramArray;
+                        targetNode.Transform = transformEnum;
+                    }
+
+                    foreach (var arg in transform.Arguments)
+                    {
+                        targetNode.Parameter.Add(BuildParameter(arg));
                     }
                     break;
 
                 case LiteralExpression literal:
                     // Direct assignment - use 'copy' transform with the value
-                    targetObj["transform"] = "copy";
-                    var literalParam = new JsonArray
-                    {
-                        BuildParameter(literal)
-                    };
-                    targetObj["parameter"] = literalParam;
+                    targetNode.Transform = StructureMapTransform.Copy;
+                    targetNode.Parameter.Add(BuildParameter(literal));
                     break;
 
                 case IdentifierExpression identifier:
                     // Variable reference - use 'copy' transform
-                    targetObj["transform"] = "copy";
-                    var idParam = new JsonArray
-                    {
-                        new JsonObject { ["valueId"] = identifier.Name }
-                    };
-                    targetObj["parameter"] = idParam;
+                    targetNode.Transform = StructureMapTransform.Copy;
+                    var param = new StructureMapParameterJsonNode();
+                    param.SetValue("Id", JsonValue.Create(identifier.Name));
+                    targetNode.Parameter.Add(param);
                     break;
 
                 case QualifiedIdentifierExpression qualifiedId:
                     // Qualified reference - use 'copy' transform
-                    targetObj["transform"] = "copy";
-                    var qualParam = new JsonArray
-                    {
-                        new JsonObject { ["valueString"] = ExpressionToString(qualifiedId) }
-                    };
-                    targetObj["parameter"] = qualParam;
+                    targetNode.Transform = StructureMapTransform.Copy;
+                    var qualParam = new StructureMapParameterJsonNode();
+                    qualParam.SetValue("String", JsonValue.Create(ExpressionToString(qualifiedId)));
+                    targetNode.Parameter.Add(qualParam);
                     break;
             }
         }
@@ -367,30 +272,25 @@ public class StructureMapBuilder
         // Add list mode
         if (target.ListMode.HasValue)
         {
-            targetObj["listMode"] = new JsonArray { ListModeToString(target.ListMode.Value) };
+            targetNode.ListMode.Add(ConvertToListModeString(target.ListMode.Value));
         }
 
-        return targetObj;
+        return targetNode;
     }
 
     /// <summary>
     /// Builds a dependent element from a GroupInvocationExpression.
     /// </summary>
-    private static JsonObject BuildDependent(GroupInvocationExpression invocation)
+    private static StructureMapDependentJsonNode BuildDependent(GroupInvocationExpression invocation)
     {
-        var dependent = new JsonObject
+        var dependent = new StructureMapDependentJsonNode
         {
-            ["name"] = invocation.GroupName
+            Name = invocation.GroupName
         };
 
-        if (invocation.Arguments.Count > 0)
+        foreach (var arg in invocation.Arguments)
         {
-            var paramArray = new JsonArray();
-            foreach (var arg in invocation.Arguments)
-            {
-                paramArray.Add(BuildParameter(arg));
-            }
-            dependent["variable"] = paramArray;  // FHIR spec uses 'variable' for dependent parameters
+            dependent.Parameter.Add(BuildParameter(arg));
         }
 
         return dependent;
@@ -399,22 +299,47 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a parameter object from an expression.
     /// </summary>
-    private static JsonObject BuildParameter(Expression expression)
+    private static StructureMapParameterJsonNode BuildParameter(Expression expression)
     {
-        return expression switch
+        var param = new StructureMapParameterJsonNode();
+
+        switch (expression)
         {
-            LiteralExpression literal => literal.Value switch
-            {
-                string str => new JsonObject { ["valueString"] = str },
-                int i => new JsonObject { ["valueInteger"] = i },
-                decimal d => new JsonObject { ["valueDecimal"] = (double)d },
-                bool b => new JsonObject { ["valueBoolean"] = b },
-                _ => new JsonObject { ["valueString"] = literal.Value.ToString() }
-            },
-            IdentifierExpression identifier => new JsonObject { ["valueId"] = identifier.Name },
-            QualifiedIdentifierExpression qualifiedId => new JsonObject { ["valueString"] = ExpressionToString(qualifiedId) },
-            _ => new JsonObject { ["valueString"] = ExpressionToString(expression) }
-        };
+            case LiteralExpression literal:
+                switch (literal.Value)
+                {
+                    case string str:
+                        param.SetValue("String", JsonValue.Create(str));
+                        break;
+                    case int i:
+                        param.SetValue("Integer", JsonValue.Create(i));
+                        break;
+                    case decimal d:
+                        param.SetValue("Decimal", JsonValue.Create((double)d));
+                        break;
+                    case bool b:
+                        param.SetValue("Boolean", JsonValue.Create(b));
+                        break;
+                    default:
+                        param.SetValue("String", JsonValue.Create(literal.Value.ToString()));
+                        break;
+                }
+                break;
+
+            case IdentifierExpression identifier:
+                param.SetValue("Id", JsonValue.Create(identifier.Name));
+                break;
+
+            case QualifiedIdentifierExpression qualifiedId:
+                param.SetValue("String", JsonValue.Create(ExpressionToString(qualifiedId)));
+                break;
+
+            default:
+                param.SetValue("String", JsonValue.Create(ExpressionToString(expression)));
+                break;
+        }
+
+        return param;
     }
 
     /// <summary>
@@ -458,31 +383,31 @@ public class StructureMapBuilder
     }
 
     /// <summary>
-    /// Converts a ModelMode enum to its FHIR string representation.
+    /// Converts ModelMode to StructureMapModelMode.
     /// </summary>
-    private static string ModelModeToString(ModelMode mode) => mode switch
+    private static StructureMapModelMode ConvertToStructureMapModelMode(ModelMode mode) => mode switch
     {
-        ModelMode.Source => "source",
-        ModelMode.Target => "target",
-        ModelMode.Queried => "queried",
-        ModelMode.Produced => "produced",
+        ModelMode.Source => StructureMapModelMode.Source,
+        ModelMode.Target => StructureMapModelMode.Target,
+        ModelMode.Queried => StructureMapModelMode.Queried,
+        ModelMode.Produced => StructureMapModelMode.Produced,
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid model mode")
     };
 
     /// <summary>
-    /// Converts a ParameterMode enum to its FHIR string representation.
+    /// Converts ParameterMode to StructureMapInputMode.
     /// </summary>
-    private static string ParameterModeToString(ParameterMode mode) => mode switch
+    private static StructureMapInputMode ConvertToStructureMapInputMode(ParameterMode mode) => mode switch
     {
-        ParameterMode.Source => "source",
-        ParameterMode.Target => "target",
+        ParameterMode.Source => StructureMapInputMode.Source,
+        ParameterMode.Target => StructureMapInputMode.Target,
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid parameter mode")
     };
 
     /// <summary>
-    /// Converts a ListMode enum to its FHIR string representation.
+    /// Converts ListMode to its FHIR string representation.
     /// </summary>
-    private static string ListModeToString(ListMode mode) => mode switch
+    private static string ConvertToListModeString(ListMode mode) => mode switch
     {
         ListMode.First => "first",
         ListMode.NotFirst => "not_first",
@@ -495,21 +420,33 @@ public class StructureMapBuilder
     };
 
     /// <summary>
+    /// Tries to parse a transform function name to StructureMapTransform enum.
+    /// </summary>
+    private static bool TryParseTransformName(string functionName, out StructureMapTransform transform)
+    {
+        var parsed = EnumUtility.ParseLiteral<StructureMapTransform>(functionName);
+        transform = parsed ?? StructureMapTransform.Copy;
+        return parsed.HasValue;
+    }
+
+    /// <summary>
     /// Builds a contained ConceptMap resource from a ConceptMapDeclarationExpression.
     /// </summary>
-    private static JsonObject BuildConceptMapResource(ConceptMapDeclarationExpression conceptMap, string structureMapUrl)
+    private static ResourceJsonNode BuildConceptMapResource(ConceptMapDeclarationExpression conceptMap, string structureMapUrl)
     {
         // Extract ID from the identifier (remove leading # if present)
         var id = conceptMap.Identifier.StartsWith('#')
             ? conceptMap.Identifier.Substring(1)
             : conceptMap.Identifier;
 
-        var resource = new JsonObject
+        var resource = new ResourceJsonNode
         {
-            ["resourceType"] = "ConceptMap",
-            ["id"] = id,
-            ["status"] = "active"
+            ResourceType = "ConceptMap",
+            Id = id
         };
+
+        // Use MutableNode to add ConceptMap-specific properties
+        resource.MutableNode["status"] = JsonValue.Create("active");
 
         // Build groups with element mappings
         if (conceptMap.Groups.Count > 0)
@@ -525,6 +462,7 @@ public class StructureMapBuilder
                 {
                     groupObj["source"] = group.SourceSystem;
                 }
+
                 if (group.TargetSystem is not null)
                 {
                     groupObj["target"] = group.TargetSystem;
@@ -555,10 +493,11 @@ public class StructureMapBuilder
                             var targetObj = new JsonObject
                             {
                                 ["code"] = mapping.TargetCode,
-                                ["equivalence"] = EquivalenceToString(mapping.Equivalence)
+                                ["equivalence"] = ConvertToEquivalenceString(mapping.Equivalence)
                             };
                             targetArray.Add(targetObj);
                         }
+
                         elementObj["target"] = targetArray;
                         elementArray.Add(elementObj);
                     }
@@ -571,6 +510,7 @@ public class StructureMapBuilder
                         {
                             groupObj["source"] = sourceUrl;
                         }
+
                         if (!groupObj.ContainsKey("target") && prefixUrls.TryGetValue(firstMap.TargetPrefix, out var targetUrl))
                         {
                             groupObj["target"] = targetUrl;
@@ -583,7 +523,7 @@ public class StructureMapBuilder
                 groupArray.Add(groupObj);
             }
 
-            resource["group"] = groupArray;
+            resource.MutableNode["group"] = groupArray;
         }
 
         return resource;
@@ -592,7 +532,7 @@ public class StructureMapBuilder
     /// <summary>
     /// Converts ConceptMapEquivalence to FHIR string representation.
     /// </summary>
-    private static string EquivalenceToString(ConceptMapEquivalence equivalence) => equivalence switch
+    private static string ConvertToEquivalenceString(ConceptMapEquivalence equivalence) => equivalence switch
     {
         ConceptMapEquivalence.Equivalent => "equivalent",
         ConceptMapEquivalence.RelatedTo => "relatedto",

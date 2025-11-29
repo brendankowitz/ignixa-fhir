@@ -19,5 +19,14 @@ public class LiteralExpression : Expression
 
     public object Value { get; }
 
-    public override string ToString() => $"Literal({Value})";
+    public override string ToString()
+    {
+        return Value switch
+        {
+            string s => $"'{s}'",
+            bool b => b ? "true" : "false",
+            null => "null",
+            _ => Value.ToString() ?? ""
+        };
+    }
 }

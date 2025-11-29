@@ -19,5 +19,5 @@ public class ImportsExpression : Expression
 
     public string Url { get; }
 
-    public override string ToString() => $"Imports({Url})";
+    public override string ToString() => $"imports {Url}";
 }
