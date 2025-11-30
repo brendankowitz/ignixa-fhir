@@ -2,14 +2,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
-    <ProjectReference Include="..\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
-    <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
-    <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
-    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
-    <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
-    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
-    <ProjectReference Include="..\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
+    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
   </ItemGroup>
 
   <ItemGroup>

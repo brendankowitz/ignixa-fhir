@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
   </ItemGroup>
 
 </Project>

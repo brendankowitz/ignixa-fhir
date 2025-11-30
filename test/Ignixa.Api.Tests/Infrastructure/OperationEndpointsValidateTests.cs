@@ -37,7 +37,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson));
 
         // Act
-        var jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
 
         // Assert
         jsonNode.Should().NotBeNull();
@@ -68,7 +68,7 @@ public class OperationEndpointsValidateTests
         // Invalid JSON should throw an exception when parsing
         var exception = await Assert.ThrowsAsync<System.Text.Json.JsonException>(async () =>
         {
-            await JsonSourceNodeFactory.Parse(memoryStream);
+            await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
         });
 
         exception.Should().NotBeNull();
@@ -104,7 +104,7 @@ public class OperationEndpointsValidateTests
 
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
         var requestResource = jsonNode.MutableNode;
 
         // Act
@@ -145,7 +145,7 @@ public class OperationEndpointsValidateTests
 
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
         var requestResource = jsonNode.MutableNode;
 
         // Act
@@ -193,7 +193,7 @@ public class OperationEndpointsValidateTests
 
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parametersJson));
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
         var requestResource = jsonNode.MutableNode;
 
         // Act
@@ -323,7 +323,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(observationJson));
 
         // Act
-        var jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
 
         // Assert
         jsonNode.ResourceType.Should().Be("Observation");
@@ -343,7 +343,7 @@ public class OperationEndpointsValidateTests
         var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(invalidJson));
 
         // Act
-        var jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
 
         // Assert
         jsonNode.ResourceType.Should().BeNullOrEmpty();

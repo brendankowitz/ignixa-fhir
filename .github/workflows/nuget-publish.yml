@@ -4,16 +4,16 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/Ignixa.Abstractions/**'
-      - 'src/Ignixa.FhirPath/**'
-      - 'src/Ignixa.FhirMappingLanguage/**'
-      - 'src/Ignixa.PackageManagement/**'
-      - 'src/Ignixa.Search/**'
-      - 'src/Ignixa.Serialization/**'
-      - 'src/Ignixa.Specification/**'
-      - 'src/Ignixa.SqlOnFhir/**'
-      - 'src/Ignixa.Validation/**'
-      - 'src/Ignixa.Extensions.FirelySdk6/**'
+      - 'src/Core/Ignixa.Abstractions/**'
+      - 'src/Core/Ignixa.FhirPath/**'
+      - 'src/Core/Ignixa.FhirMappingLanguage/**'
+      - 'src/Core/Ignixa.PackageManagement/**'
+      - 'src/Core/Ignixa.Search/**'
+      - 'src/Core/Ignixa.Serialization/**'
+      - 'src/Core/Ignixa.Specification/**'
+      - 'src/Core/Ignixa.SqlOnFhir/**'
+      - 'src/Core/Ignixa.Validation/**'
+      - 'src/Core/Extensions/Ignixa.Extensions.FirelySdk6/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'GitVersion.yml'
@@ -66,16 +66,16 @@ jobs:
 
       - name: Pack Core projects
         run: |
-          dotnet pack src/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.Search/Ignixa.Search.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.Serialization/Ignixa.Serialization.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Search/Ignixa.Search.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
 
       - name: List packages
         run: ls -lh ./packages/

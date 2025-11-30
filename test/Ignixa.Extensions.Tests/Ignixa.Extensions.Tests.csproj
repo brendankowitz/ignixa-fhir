@@ -22,12 +22,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj" />
-    <ProjectReference Include="..\..\src\Ignixa.FhirPath\Ignixa.FhirPath.csproj"/>
-    <ProjectReference Include="..\..\src\Ignixa.Search\Ignixa.Search.csproj"/>
-    <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj"/>
-    <ProjectReference Include="..\..\src\Ignixa.Serialization\Ignixa.Serialization.csproj"/>
-    <ProjectReference Include="..\..\src\Ignixa.Validation\Ignixa.Validation.csproj"/>
+    <ProjectReference Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj"/>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj"/>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj"/>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj"/>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Validation\Ignixa.Validation.csproj"/>
   </ItemGroup>
 
 </Project>

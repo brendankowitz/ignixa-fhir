@@ -31,10 +31,10 @@ public static class JsonSourceNodeFactory
         return resource;
     }
 
-    public static async ValueTask<T> Parse<T>(Stream jsonReader)
+    public static async ValueTask<T> ParseAsync<T>(Stream jsonReader, CancellationToken cancellationToken)
         where T : ResourceJsonNode
     {
-        T resource = await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions).ConfigureAwait(false);
+        T resource = await JsonSerializer.DeserializeAsync<T>(jsonReader, _jsonSerializerOptions, cancellationToken).ConfigureAwait(false);
         return resource;
     }
 
@@ -43,9 +43,9 @@ public static class JsonSourceNodeFactory
         return Parse<ResourceJsonNode>(json);
     }
 
-    public static ValueTask<ResourceJsonNode> Parse(Stream jsonReader)
+    public static ValueTask<ResourceJsonNode> ParseAsync(Stream jsonReader, CancellationToken cancellationToken)
     {
-        return Parse<ResourceJsonNode>(jsonReader);
+        return ParseAsync<ResourceJsonNode>(jsonReader, cancellationToken);
     }
 
     /// <summary>

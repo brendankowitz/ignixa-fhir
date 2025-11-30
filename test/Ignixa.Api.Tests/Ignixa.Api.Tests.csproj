@@ -21,8 +21,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Ignixa.Api/Ignixa.Api.csproj" />
-    <ProjectReference Include="../../src/Ignixa.Validation/Ignixa.Validation.csproj" />
+    <ProjectReference Include="../../src/Application/Ignixa.Api/Ignixa.Api.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Validation/Ignixa.Validation.csproj" />
   </ItemGroup>
 
 </Project>

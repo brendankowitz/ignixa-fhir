@@ -84,7 +84,7 @@ public static class ProvenanceHeaderHelper
                 var bytes = System.Text.Encoding.UTF8.GetBytes(provenanceJson);
                 await memoryStream.WriteAsync(bytes, cancellationToken);
                 memoryStream.Position = 0;
-                resourceNode = await JsonSourceNodeFactory.Parse(memoryStream);
+                resourceNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
             }
         }
         catch (JsonException ex)

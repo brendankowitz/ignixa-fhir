@@ -371,7 +371,7 @@ public static class FhirEndpoints
         {
             await context.Request.Body.CopyToAsync(memoryStream, ct);
             memoryStream.Position = 0;
-            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+            jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, ct);
         }
 
         // Validate resource type matches
@@ -677,7 +677,7 @@ public static class FhirEndpoints
             {
                 await context.Request.Body.CopyToAsync(memoryStream, ct);
                 memoryStream.Position = 0;
-                conditionalJsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+                conditionalJsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, ct);
             }
 
             // Extract X-Provenance header if present (only for standalone operations)
@@ -788,7 +788,7 @@ public static class FhirEndpoints
         {
             await context.Request.Body.CopyToAsync(memoryStream, ct);
             memoryStream.Position = 0;
-            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+            jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, ct);
         }
 
         // Validate resource type matches
@@ -1090,7 +1090,7 @@ public static class FhirEndpoints
         {
             await context.Request.Body.CopyToAsync(memoryStream, ct);
             memoryStream.Position = 0;
-            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+            jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, ct);
         }
 
         // Extract X-Provenance header if present (only for standalone operations)

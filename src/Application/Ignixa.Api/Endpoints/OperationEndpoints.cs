@@ -295,7 +295,7 @@ public static class OperationEndpoints
         ResourceJsonNode jsonNode;
         try
         {
-            jsonNode = await JsonSourceNodeFactory.Parse(memoryStream);
+            jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
         }
         catch
         {
@@ -492,7 +492,7 @@ public static class OperationEndpoints
             await using var memoryStream = memoryStreamManager.GetStream("transform-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.Parse<ParametersJsonNode>(memoryStream);
+            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
         }
         catch
         {
@@ -561,7 +561,7 @@ public static class OperationEndpoints
             await using var memoryStream = memoryStreamManager.GetStream("transform-request");
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            parameters = await JsonSourceNodeFactory.Parse<ParametersJsonNode>(memoryStream);
+            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
         }
         catch
         {

@@ -2,23 +2,23 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api", "src\Ignixa.Api\Ignixa.Api.csproj", "{CBAC04FB-F384-450D-86BD-651FB920672C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api", "src\Application\Ignixa.Api\Ignixa.Api.csproj", "{CBAC04FB-F384-450D-86BD-651FB920672C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api.Tests", "test\Ignixa.Api.Tests\Ignixa.Api.Tests.csproj", "{817ACD8E-4EC0-48DF-8AFC-232ADEB168CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Serialization", "src\Ignixa.Serialization\Ignixa.Serialization.csproj", "{73ACFCE5-F840-42F1-8382-DDFAF74529AF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Serialization", "src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj", "{73ACFCE5-F840-42F1-8382-DDFAF74529AF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Search", "src\Ignixa.Search\Ignixa.Search.csproj", "{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Search", "src\Core\Ignixa.Search\Ignixa.Search.csproj", "{52C9E4FE-4CC1-411B-9D1C-454463B53D9A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Domain", "src\Ignixa.Domain\Ignixa.Domain.csproj", "{273139D4-CF7F-4C85-8508-1CDAEAC37AA4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Domain", "src\Application\Ignixa.Domain\Ignixa.Domain.csproj", "{273139D4-CF7F-4C85-8508-1CDAEAC37AA4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application", "src\Ignixa.Application\Ignixa.Application.csproj", "{999C64CD-7D66-4F0D-A74C-BCC043176DF4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application", "src\Application\Ignixa.Application\Ignixa.Application.csproj", "{999C64CD-7D66-4F0D-A74C-BCC043176DF4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.FileSystem", "src\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj", "{6E30F2C0-2751-4D2A-8697-E43AE77018F1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.FileSystem", "src\DataLayer\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj", "{6E30F2C0-2751-4D2A-8697-E43AE77018F1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.InMemoryIndex", "src\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj", "{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.InMemoryIndex", "src\DataLayer\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj", "{A39EBDE9-F557-4461-BAFF-7BF8F3ABCA8B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Specification", "src\Ignixa.Specification\Ignixa.Specification.csproj", "{D8408542-07AD-492E-AD47-332DF415BAE3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Specification", "src\Core\Ignixa.Specification\Ignixa.Specification.csproj", "{D8408542-07AD-492E-AD47-332DF415BAE3}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Project Items", "Project Items", "{AD2040B0-EAE8-450D-A625-57E825C7F297}"
 	ProjectSection(SolutionItems) = preProject
@@ -37,17 +37,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Serialization.Tests", "test\Ignixa.Serialization.Tests\Ignixa.Serialization.Tests.csproj", "{12496AA6-CA27-442E-9A67-0417FE38EEFC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Validation", "src\Ignixa.Validation\Ignixa.Validation.csproj", "{F6F5D9E6-8F04-4F23-99F8-C6857C6BBE2E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Validation", "src\Core\Ignixa.Validation\Ignixa.Validation.csproj", "{F6F5D9E6-8F04-4F23-99F8-C6857C6BBE2E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Validation.Tests", "test\Ignixa.Validation.Tests\Ignixa.Validation.Tests.csproj", "{1C8E45E1-D24D-42A7-9034-160992AE3823}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath", "src\Ignixa.FhirPath\Ignixa.FhirPath.csproj", "{A42DB787-393B-4080-84F9-03C2DDE06C14}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath", "src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj", "{A42DB787-393B-4080-84F9-03C2DDE06C14}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Tests", "test\Ignixa.FhirPath.Tests\Ignixa.FhirPath.Tests.csproj", "{6D7B9490-CB5B-43E2-B149-C6CA54C18502}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.SqlEntityFramework", "src\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj", "{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.SqlEntityFramework", "src\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj", "{17F74AEE-ADC9-45ED-A27C-14B86AEE9B96}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.BlobStorage", "src\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj", "{089356BA-B0B3-4363-B360-915EC45FAD72}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.BlobStorage", "src\DataLayer\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj", "{089356BA-B0B3-4363-B360-915EC45FAD72}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Application", "Application", "{D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}"
 EndProject
@@ -76,7 +76,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Agents", "Agents", "{C0A088
 		.claude\agents\ef.md = .claude\agents\ef.md
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.BackgroundOperations", "src\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj", "{F450B9BC-9675-4940-A8F0-C8C75241091F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.BackgroundOperations", "src\Application\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj", "{F450B9BC-9675-4940-A8F0-C8C75241091F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Setup", "Setup", "{4E79045F-F848-4683-88EE-9AF17228E267}"
 	ProjectSection(SolutionItems) = preProject
@@ -99,23 +99,23 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Compatibility", "Compatibil
 		run-compat-tests.ps1 = run-compat-tests.ps1
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.Operations", "src\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj", "{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Application.Operations", "src\Application\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj", "{D5CB0BBA-7FB9-4D2D-800A-93965AB7B304}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirMappingLanguage", "src\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj", "{B8E12345-1111-2222-3333-444444444444}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirMappingLanguage", "src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj", "{B8E12345-1111-2222-3333-444444444444}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirMappingLanguage.Tests", "test\Ignixa.FhirMappingLanguage.Tests\Ignixa.FhirMappingLanguage.Tests.csproj", "{B8E12345-5555-6666-7777-888888888888}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SqlOnFhir", "src\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj", "{2D584F39-B573-4314-9853-86531D633918}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SqlOnFhir", "src\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj", "{2D584F39-B573-4314-9853-86531D633918}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SqlOnFhir.Tests", "test\Ignixa.SqlOnFhir.Tests\Ignixa.SqlOnFhir.Tests.csproj", "{6EDA50E1-5817-4B03-AFA1-EFACA8549087}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Abstractions", "src\Ignixa.Abstractions\Ignixa.Abstractions.csproj", "{D5354C86-98F8-4488-AEF4-738BD35CDEE2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Abstractions", "src\Core\Ignixa.Abstractions\Ignixa.Abstractions.csproj", "{D5354C86-98F8-4488-AEF4-738BD35CDEE2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement", "src\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj", "{D62AAF79-C7D4-4002-BE91-38FFC458DD59}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement", "src\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj", "{D62AAF79-C7D4-4002-BE91-38FFC458DD59}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.PackageManagement.Tests", "test\Ignixa.PackageManagement.Tests\Ignixa.PackageManagement.Tests.csproj", "{3B85ADED-AC56-46EF-8DAA-6E1283B5BE72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk6", "src\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk6", "src\Core\Extensions\Ignixa.Extensions.FirelySdk6\Ignixa.Extensions.FirelySdk6.csproj", "{C282DC1F-6F99-4A9F-8639-C0885D2C820A}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Extensions", "Extensions", "{5413DD8F-4CB6-48E7-8289-E76063861D4B}"
 EndProject

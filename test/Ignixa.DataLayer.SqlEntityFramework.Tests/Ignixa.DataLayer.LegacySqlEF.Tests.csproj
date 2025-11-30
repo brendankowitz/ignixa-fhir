@@ -24,8 +24,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
-    <ProjectReference Include="..\..\src\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\..\src\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
   </ItemGroup>
 
 </Project>

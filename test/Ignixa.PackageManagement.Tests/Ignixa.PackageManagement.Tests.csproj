@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj" />
   </ItemGroup>
 
 </Project>

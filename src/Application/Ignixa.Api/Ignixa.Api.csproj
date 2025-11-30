@@ -34,18 +34,17 @@
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
-    <ProjectReference Include="..\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
-    <ProjectReference Include="..\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
-    <ProjectReference Include="..\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
-    <ProjectReference Include="..\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj" />
-    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
-    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
-    <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
-    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
-    <ProjectReference Include="..\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
+    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
+    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
+    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj" />
-    <ProjectReference Include="..\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
-    <ProjectReference Include="..\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
   </ItemGroup>
 
 </Project>

@@ -56,8 +56,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -84,8 +84,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(invalidJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(invalidJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: null,
@@ -116,8 +116,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(observationJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(observationJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: null,  // Not provided in command
@@ -150,8 +150,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -189,8 +189,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -228,8 +228,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -272,8 +272,8 @@ public class ValidateResourceHandlerTests
         """;
 
         var customProfileUri = "http://example.com/StructureDefinition/CustomPatient";
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -302,8 +302,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -332,8 +332,8 @@ public class ValidateResourceHandlerTests
         """;
 
         var missingProfileUri = "http://example.com/StructureDefinition/NonExistent";
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -371,8 +371,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -411,8 +411,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -454,8 +454,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",
@@ -484,8 +484,8 @@ public class ValidateResourceHandlerTests
         }
         """;
 
-        var jsonNode = await JsonSourceNodeFactory.Parse(
-            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)));
+        var jsonNode = await JsonSourceNodeFactory.ParseAsync(
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes(patientJson)), CancellationToken.None);
         var command = new ValidateResourceCommand(
             TenantId: 1,
             ResourceType: "Patient",

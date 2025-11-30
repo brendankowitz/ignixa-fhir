@@ -21,9 +21,9 @@
 
   <ItemGroup>
     <!-- Ignixa abstractions with new interfaces -->
-    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <!-- Ignixa serialization for SchemaAwareElement (ISourceNavigator → IElement) -->
-    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

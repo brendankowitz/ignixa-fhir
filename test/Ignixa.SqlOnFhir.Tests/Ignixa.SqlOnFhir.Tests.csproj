@@ -19,9 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj" />
-    <ProjectReference Include="../../src/Ignixa.FhirPath/Ignixa.FhirPath.csproj" />
-    <ProjectReference Include="../../src/Ignixa.Specification/Ignixa.Specification.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Specification/Ignixa.Specification.csproj" />
   </ItemGroup>
 
   <ItemGroup>

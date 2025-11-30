@@ -97,7 +97,7 @@ public class PostPutBenchmarks
     public async Task<ResourceJsonNode> ParseJsonToNode()
     {
         using var stream = new MemoryStream(_patientJsonBytes);
-        return await JsonSourceNodeFactory.Parse(stream);
+        return await JsonSourceNodeFactory.ParseAsync(stream, CancellationToken.None);
     }
 
     [Benchmark(Description = "1a. Parse JSON (JsonSerializer only)")]
@@ -128,7 +128,7 @@ public class PostPutBenchmarks
         ResourceJsonNode node;
         using (var stream = new MemoryStream(_patientJsonBytes))
         {
-            node = await JsonSourceNodeFactory.Parse(stream);
+            node = await JsonSourceNodeFactory.ParseAsync(stream, CancellationToken.None);
         }
 
         var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
@@ -146,7 +146,7 @@ public class PostPutBenchmarks
         ResourceJsonNode node;
         using (var stream = new MemoryStream(_patientJsonBytes))
         {
-            node = await JsonSourceNodeFactory.Parse(stream);
+            node = await JsonSourceNodeFactory.ParseAsync(stream, CancellationToken.None);
         }
 
         // Step 2: Convert to ITypedElement
@@ -177,7 +177,7 @@ public class PostPutBenchmarks
         ResourceJsonNode node;
         using (var stream = new MemoryStream(_patientJsonBytes))
         {
-            node = await JsonSourceNodeFactory.Parse(stream);
+            node = await JsonSourceNodeFactory.ParseAsync(stream, CancellationToken.None);
         }
 
         var typedElement = node.ToElement(_schemaProvider);

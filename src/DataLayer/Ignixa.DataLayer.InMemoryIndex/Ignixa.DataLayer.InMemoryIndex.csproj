@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

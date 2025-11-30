@@ -21,28 +21,32 @@ COPY GitVersion.yml ./
 COPY .editorconfig ./
 
 # Copy all source project files for layer caching
-COPY src/Ignixa.Abstractions/Ignixa.Abstractions.csproj src/Ignixa.Abstractions/
-COPY src/Ignixa.Api/Ignixa.Api.csproj src/Ignixa.Api/
-COPY src/Ignixa.Application/Ignixa.Application.csproj src/Ignixa.Application/
-COPY src/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj src/Ignixa.Application.BackgroundOperations/
-COPY src/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj src/Ignixa.Application.Operations/
-COPY src/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj src/Ignixa.DataLayer.BlobStorage/
-COPY src/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj src/Ignixa.DataLayer.FileSystem/
-COPY src/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj src/Ignixa.DataLayer.InMemoryIndex/
-COPY src/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj src/Ignixa.DataLayer.SqlEntityFramework/
-COPY src/Ignixa.Domain/Ignixa.Domain.csproj src/Ignixa.Domain/
-COPY src/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj src/Ignixa.FhirMappingLanguage/
-COPY src/Ignixa.FhirPath/Ignixa.FhirPath.csproj src/Ignixa.FhirPath/
-COPY src/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj src/Ignixa.PackageManagement/
-COPY src/Ignixa.Search/Ignixa.Search.csproj src/Ignixa.Search/
-COPY src/Ignixa.Serialization/Ignixa.Serialization.csproj src/Ignixa.Serialization/
-COPY src/Ignixa.Specification/Ignixa.Specification.csproj src/Ignixa.Specification/
-COPY src/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj src/Ignixa.SqlOnFhir/
-COPY src/Ignixa.Validation/Ignixa.Validation.csproj src/Ignixa.Validation/
+# Application layer
+COPY src/Application/Ignixa.Api/Ignixa.Api.csproj src/Application/Ignixa.Api/
+COPY src/Application/Ignixa.Application/Ignixa.Application.csproj src/Application/Ignixa.Application/
+COPY src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj src/Application/Ignixa.Application.BackgroundOperations/
+COPY src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj src/Application/Ignixa.Application.Operations/
+COPY src/Application/Ignixa.Domain/Ignixa.Domain.csproj src/Application/Ignixa.Domain/
+# Core layer
+COPY src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj src/Core/Ignixa.Abstractions/
+COPY src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj src/Core/Ignixa.FhirMappingLanguage/
+COPY src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj src/Core/Ignixa.FhirPath/
+COPY src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj src/Core/Ignixa.PackageManagement/
+COPY src/Core/Ignixa.Search/Ignixa.Search.csproj src/Core/Ignixa.Search/
+COPY src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj src/Core/Ignixa.Serialization/
+COPY src/Core/Ignixa.Specification/Ignixa.Specification.csproj src/Core/Ignixa.Specification/
+COPY src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj src/Core/Ignixa.SqlOnFhir/
+COPY src/Core/Ignixa.Validation/Ignixa.Validation.csproj src/Core/Ignixa.Validation/
+COPY src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj src/Core/Extensions/Ignixa.Extensions.FirelySdk6/
+# DataLayer
+COPY src/DataLayer/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj src/DataLayer/Ignixa.DataLayer.BlobStorage/
+COPY src/DataLayer/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj src/DataLayer/Ignixa.DataLayer.FileSystem/
+COPY src/DataLayer/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj src/DataLayer/Ignixa.DataLayer.InMemoryIndex/
+COPY src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/
 
 # Restore dependencies for API project only (excludes test/bench projects)
 # DisableGitVersion=true because .git folder is not available in Docker build context
-WORKDIR /src/src/Ignixa.Api
+WORKDIR /src/src/Application/Ignixa.Api
 RUN dotnet restore Ignixa.Api.csproj /p:DisableGitVersion=true
 
 # Copy remaining source files
@@ -51,7 +55,7 @@ COPY src/ src/
 
 # Build and publish with version information
 # DisableGitVersion=true because .git folder is not available in Docker build context
-WORKDIR /src/src/Ignixa.Api
+WORKDIR /src/src/Application/Ignixa.Api
 RUN dotnet publish Ignixa.Api.csproj \
     --configuration Release \
     --no-restore \

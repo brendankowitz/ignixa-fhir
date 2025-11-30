@@ -148,7 +148,7 @@ public static class PatchEndpoints
         {
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            patchDocument = await JsonSourceNodeFactory.Parse(memoryStream);
+            patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
         }
 
         // Execute patch via mediator
@@ -221,7 +221,7 @@ public static class PatchEndpoints
         {
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
             memoryStream.Position = 0;
-            patchDocument = await JsonSourceNodeFactory.Parse(memoryStream);
+            patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
         }
 
         // Execute conditional patch

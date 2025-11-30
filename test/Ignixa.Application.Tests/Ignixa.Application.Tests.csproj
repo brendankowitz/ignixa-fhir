@@ -23,9 +23,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Ignixa.Application\Ignixa.Application.csproj" />
-    <ProjectReference Include="..\..\src\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
-    <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
 </Project>
