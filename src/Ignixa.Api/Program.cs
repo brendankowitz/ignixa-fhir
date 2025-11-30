@@ -123,6 +123,11 @@ builder.Services.AddHostedService<IndexLoaderService>();
 // Embedded packages are loaded via EmbeddedPackageLoader when referenced in PreloadPackages
 builder.Services.AddHostedService<TenantPackagePreloadService>();
 
+// Register SqlReferenceDataPreloadHandler for SQL reference data cache warming
+// Pre-warms ResourceType and SearchParam mappings to avoid DB hits on first bundle
+// Triggered by TenantPackagePreloadCompletedEvent after packages are loaded
+builder.Services.AddSingleton<SqlReferenceDataPreloadHandler>();
+
 // Bootstrap service to trigger terminology imports for existing packages (runs after preload)
 // DISABLED by default: previously caused startup performance issues. Enable via Terminology:EnableAutoImport=true.
 if (terminologyAutoImportEnabled)

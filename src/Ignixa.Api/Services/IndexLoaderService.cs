@@ -162,11 +162,16 @@ public class IndexLoaderService : BackgroundService
 
             stopwatch.Stop();
 
+            var resourcesPerSecond = stopwatch.ElapsedMilliseconds > 0
+                ? totalResourceCount / (stopwatch.ElapsedMilliseconds / 1000.0)
+                : 0;
+
             _logger.LogInformation(
-                "IndexLoaderService completed: Loaded {ResourceCount} resources from {TenantCount} partition(s) in {ElapsedMs:N0}ms ({ErrorCount} errors)",
+                "IndexLoaderService completed: Loaded {ResourceCount} resources from {TenantCount} partition(s) in {ElapsedMs:N0}ms ({ResourcesPerSecond:N1} resources/sec, {ErrorCount} errors)",
                 totalResourceCount,
                 tenantCount,
                 stopwatch.ElapsedMilliseconds,
+                resourcesPerSecond,
                 totalErrorCount);
 
             // Log performance warning if slow (target: <3ms per resource)

@@ -3,8 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Serialization;
@@ -25,6 +27,7 @@ public class PackageLoadedSearchParameterSyncHandler : INotificationHandler<Pack
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly SqlEntityFrameworkRepositoryFactory _repositoryFactory;
     private readonly ITenantConfigurationStore _tenantConfigStore;
+    private readonly ICapabilityCacheInvalidator _capabilityCacheInvalidator;
     private readonly ILogger<PackageLoadedSearchParameterSyncHandler> _logger;
 
     /// <summary>
@@ -33,16 +36,19 @@ public class PackageLoadedSearchParameterSyncHandler : INotificationHandler<Pack
     /// <param name="fhirVersionContext">FHIR version context for getting search parameter managers.</param>
     /// <param name="repositoryFactory">Repository factory for getting tenant-specific reference data cache.</param>
     /// <param name="tenantConfigStore">Tenant configuration store for getting tenant FHIR version.</param>
+    /// <param name="capabilityCacheInvalidator">Cache invalidator for capability statements.</param>
     /// <param name="logger">Logger instance.</param>
     public PackageLoadedSearchParameterSyncHandler(
         IFhirVersionContext fhirVersionContext,
         SqlEntityFrameworkRepositoryFactory repositoryFactory,
         ITenantConfigurationStore tenantConfigStore,
+        ICapabilityCacheInvalidator capabilityCacheInvalidator,
         ILogger<PackageLoadedSearchParameterSyncHandler> logger)
     {
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _tenantConfigStore = tenantConfigStore ?? throw new ArgumentNullException(nameof(tenantConfigStore));
+        _capabilityCacheInvalidator = capabilityCacheInvalidator ?? throw new ArgumentNullException(nameof(capabilityCacheInvalidator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -61,6 +67,8 @@ public class PackageLoadedSearchParameterSyncHandler : INotificationHandler<Pack
 
         try
         {
+            var stopwatch = Stopwatch.StartNew();
+
             // Get tenant configuration to determine FHIR version
             var tenantConfig = await _tenantConfigStore.GetTenantConfigurationAsync(
                 notification.TenantId,
@@ -117,9 +125,27 @@ public class PackageLoadedSearchParameterSyncHandler : INotificationHandler<Pack
                 searchParamUrls,
                 searchParamManager);
 
+            stopwatch.Stop();
+            var paramsPerSecond = stopwatch.ElapsedMilliseconds > 0
+                ? searchParamUrls.Count / (stopwatch.ElapsedMilliseconds / 1000.0)
+                : 0;
+
             _logger.LogInformation(
-                "Successfully synced {SyncedCount} new search parameters to database for tenant {TenantId} after loading {PackageId}@{PackageVersion}",
+                "Successfully synced {SyncedCount} new search parameters ({TotalParams} total) for tenant {TenantId} in {ElapsedMs:N0}ms ({ParamsPerSecond:N1} params/sec) - {PackageId}@{PackageVersion}",
                 syncedCount,
+                searchParamUrls.Count,
+                notification.TenantId,
+                stopwatch.ElapsedMilliseconds,
+                paramsPerSecond,
+                notification.PackageId,
+                notification.PackageVersion);
+
+            // Invalidate capability statement cache for this tenant
+            // This ensures metadata endpoint reflects the newly loaded search parameters
+            await _capabilityCacheInvalidator.InvalidateForTenantAsync(notification.TenantId, cancellationToken);
+
+            _logger.LogInformation(
+                "Invalidated capability cache for tenant {TenantId} after loading {PackageId}@{PackageVersion}",
                 notification.TenantId,
                 notification.PackageId,
                 notification.PackageVersion);

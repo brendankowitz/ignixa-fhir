@@ -5,7 +5,10 @@
 
 using System.Diagnostics;
 using Ignixa.Api.Infrastructure;
+using Ignixa.Application.Events.Startup;
 using Ignixa.Application.Features.Admin;
+using Ignixa.Application.Features.Metadata;
+using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -22,8 +25,9 @@ namespace Ignixa.Api.Services;
 /// Loads packages configured in TenantConfiguration.Packages.PreloadPackages for each tenant.
 /// Embedded packages (like SQL-on-FHIR ViewDefinition) are handled by EmbeddedPackageLoader
 /// when referenced via "local.{packageId}@{version}" format in PreloadPackages configuration.
-/// After loading packages, warms IFhirSchemaProvider and ISearchParameterDefinitionManager
-/// for each tenant and FHIR version to ensure predictable first-request performance.
+/// After loading packages, warms IFhirSchemaProvider, ISearchParameterDefinitionManager,
+/// and CapabilityStatementService caches for each tenant and FHIR version to ensure
+/// predictable first-request performance.
 /// Runs after all other services are initialized.
 /// </summary>
 public class TenantPackagePreloadService : BackgroundService
@@ -69,6 +73,7 @@ public class TenantPackagePreloadService : BackgroundService
             }
 
             _logger.LogInformation("Preloading packages for {Count} tenant(s)", allTenants.Count);
+            var totalResourcesImported = 0;
 
             foreach (var tenant in allTenants)
             {
@@ -135,6 +140,7 @@ public class TenantPackagePreloadService : BackgroundService
                                 version,
                                 tenant.TenantId,
                                 result.ImportedResources);
+                            totalResourcesImported += result.ImportedResources;
                         }
                     }
                     catch (InvalidOperationException ex) when (ex.Message.Contains("already loaded", StringComparison.OrdinalIgnoreCase))
@@ -210,10 +216,62 @@ public class TenantPackagePreloadService : BackgroundService
                 }
             }
 
+            // Warm capability statement caches for all tenants
+            _logger.LogInformation("Warming capability statement caches for {Count} tenant(s)", allTenants.Count);
+
+            var capabilityService = scope.ServiceProvider.GetRequiredService<CapabilityStatementService>();
+
+            foreach (var tenant in allTenants.Where(x => x.IsActive))
+            {
+                try
+                {
+                    using (startupTiming.StartPhase($"CapabilityStatement.Tenant{tenant.TenantId}"))
+                    {
+                        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
+                        var context = new CapabilityContext(
+                            FhirVersion: fhirVersion,
+                            TenantId: tenant.TenantId);
+
+                        // This call warms both the capability statement cache AND the version hash cache
+                        _ = await capabilityService.GetCapabilityStatementAsync(context, stoppingToken);
+
+                        _logger.LogInformation(
+                            "Warmed capability statement cache for tenant {TenantId} ({DisplayName}) - FHIR {FhirVersion}",
+                            tenant.TenantId,
+                            tenant.DisplayName,
+                            tenant.FhirVersion);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to warm capability statement cache for tenant {TenantId}. Cache will be populated on first request.",
+                        tenant.TenantId);
+                }
+            }
+
+            // Publish completion event for services that depend on package preload
+            var packagesLoaded = allTenants.Sum(t => t.Packages.PreloadPackages.Count);
+            await mediator.PublishAsync(
+                new TenantPackagePreloadCompletedEvent(
+                    TenantCount: allTenants.Count,
+                    PackagesLoaded: packagesLoaded,
+                    ElapsedMilliseconds: overallStopwatch.ElapsedMilliseconds),
+                stoppingToken);
+
+            _logger.LogDebug("Published TenantPackagePreloadCompletedEvent");
+
             overallStopwatch.Stop();
+            var resourcesPerSecond = overallStopwatch.ElapsedMilliseconds > 0
+                ? totalResourcesImported / (overallStopwatch.ElapsedMilliseconds / 1000.0)
+                : 0;
+
             _logger.LogInformation(
-                "Package preload service completed successfully in {Elapsed:N0}ms",
-                overallStopwatch.ElapsedMilliseconds);
+                "Package preload service completed: {TotalResources} resources imported in {Elapsed:N0}ms ({ResourcesPerSecond:N1} resources/sec)",
+                totalResourcesImported,
+                overallStopwatch.ElapsedMilliseconds,
+                resourcesPerSecond);
         }
         catch (Exception ex)
         {
