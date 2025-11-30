@@ -9,6 +9,8 @@ using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Abstractions;
+using Ignixa.FhirMappingLanguage.Mutator;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirMappingLanguage.Evaluation;
 
@@ -21,6 +23,7 @@ public class MappingEvaluator
     private readonly MappingEvaluatorOptions _options;
     private readonly FhirPathIntegration? _fhirPathIntegration;
     private readonly ImportResolver? _importResolver;
+    private readonly IJsonNodeMutator? _mutator;
     private MapExpression? _currentMap;
 
     // Execution context tracking for enhanced error messages
@@ -79,6 +82,35 @@ public class MappingEvaluator
         _options = options ?? MappingEvaluatorOptions.Default;
         _options.Validate();
         _fhirPathIntegration = new FhirPathIntegration();
+        _importResolver = importResolver;
+    }
+
+    /// <summary>
+    /// Creates a new MappingEvaluator instance with mutation support.
+    /// </summary>
+    /// <param name="options">Configuration options for the evaluator</param>
+    /// <param name="mutator">Optional mutator for applying changes to target resources</param>
+    public MappingEvaluator(MappingEvaluatorOptions? options, IJsonNodeMutator? mutator)
+    {
+        _options = options ?? MappingEvaluatorOptions.Default;
+        _options.Validate();
+        _fhirPathIntegration = new FhirPathIntegration();
+        _mutator = mutator;
+        _importResolver = null;
+    }
+
+    /// <summary>
+    /// Creates a new MappingEvaluator instance with mutation support and import resolution.
+    /// </summary>
+    /// <param name="options">Configuration options for the evaluator</param>
+    /// <param name="mutator">Optional mutator for applying changes to target resources</param>
+    /// <param name="importResolver">Optional import resolver for cross-map group invocation</param>
+    internal MappingEvaluator(MappingEvaluatorOptions? options, IJsonNodeMutator? mutator, ImportResolver? importResolver)
+    {
+        _options = options ?? MappingEvaluatorOptions.Default;
+        _options.Validate();
+        _fhirPathIntegration = new FhirPathIntegration();
+        _mutator = mutator;
         _importResolver = importResolver;
     }
 
@@ -810,6 +842,7 @@ public class MappingEvaluator
         }
     }
 
+#pragma warning disable CA1303 // Do not pass literals as localized parameters (debug logging)
     private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<IElement>> sourceValues, string? location = null)
     {
         try
@@ -837,28 +870,50 @@ public class MappingEvaluator
                             if (target.Variable != null)
                             {
                                 context.SetVariable(target.Variable, element);
+
+                                // Mutate target resource if mutator is available
+                                if (_mutator != null && target.Context != null)
+                                {
+                                    MutateTargetResource(target, element, context, location);
+                                }
                             }
                         }
                     }
                     else if (target.Transform != null)
                     {
-                        // Handle literal value assignment (e.g., tgt.type = 'collection')
+                        // Handle literal value assignment (e.g., tgt.type = 'collection' or tgt.name = vn)
                         var expressionResult = VisitExpression(target.Transform, context, location);
                         if (target.Context != null && expressionResult.Any())
                         {
+                            // Set variable if specified (for rules with "as varname" on target)
                             if (target.Variable != null)
                             {
                                 context.SetVariable(target.Variable, expressionResult.First());
+                            }
+
+                            // Always mutate the target resource (variable is optional)
+                            if (_mutator != null)
+                            {
+                                MutateTargetResource(target, expressionResult.First(), context, location);
                             }
                         }
                     }
                     else if (target.Context != null)
                     {
-                        // Simple assignment without transform
-                        var contextValues = VisitExpression(target.Context, context, location);
+                        // Simple assignment without transform - use sourceElement from loop
+                        // For "src.id -> tgt.id": target.Context=QualifiedIdentifierExpression(tgt.id), target.Variable=null
+                        // For "src.name as vn -> tgt.name = vn": this goes through the transform case above
+
+                        // Set variable if specified (for rules with "as varname")
                         if (target.Variable != null)
                         {
-                            context.SetVariable(target.Variable, contextValues.FirstOrDefault()!);
+                            context.SetVariable(target.Variable, sourceElement);
+                        }
+
+                        // Always mutate the target resource (variable is optional)
+                        if (_mutator != null)
+                        {
+                            MutateTargetResource(target, sourceElement, context, location);
                         }
                     }
                 }
@@ -888,6 +943,7 @@ public class MappingEvaluator
                 ruleIndex: _currentRuleIndex);
         }
     }
+#pragma warning restore CA1303
 
     private IEnumerable<IElement> ApplyListModeFiltering(IReadOnlyList<IElement> elements, ListMode? listMode)
     {
@@ -1422,6 +1478,162 @@ public class MappingEvaluator
                 null,
                 "MAX_ELEMENTS_EXCEEDED");
         }
+    }
+
+    /// <summary>
+    /// Mutates the target resource by setting the property specified in the target expression.
+    /// Extracts the ResourceJsonNode from context and calls IJsonNodeMutator.
+    /// </summary>
+    private void MutateTargetResource(TargetExpression target, IElement element, MappingContext context, string? location)
+    {
+        try
+        {
+            // Extract root context and property path from target.Context
+            // For "tgt.id", target.Context is QualifiedIdentifierExpression(tgt, id)
+            // For "tgt", target.Context is IdentifierExpression(tgt)
+            string contextName;
+            string propertyPath;
+
+            if (target.Context is QualifiedIdentifierExpression qualifiedExpr)
+            {
+                // Extract root context (e.g., "tgt" from "tgt.id.family")
+                contextName = ExtractRootContext(qualifiedExpr);
+                // Extract property path (e.g., "id.family" from "tgt.id.family")
+                propertyPath = ExtractPropertyPath(qualifiedExpr);
+            }
+            else if (target.Context is IdentifierExpression identifierExpr)
+            {
+                // Simple context without property (e.g., "tgt")
+                // This shouldn't happen for mutation, but handle it gracefully
+                contextName = identifierExpr.Name;
+
+                // If there's a variable, use it as the property path
+                if (target.Variable != null)
+                {
+                    propertyPath = target.Variable;
+                }
+                else
+                {
+                    // No property path - can't mutate
+                    return;
+                }
+            }
+            else
+            {
+                // Unsupported context expression type
+                return;
+            }
+
+            // Get target ResourceJsonNode from context
+            var targetResource = context.GetTargetResource<Ignixa.Serialization.SourceNodes.ResourceJsonNode>(contextName);
+            if (targetResource == null)
+            {
+                if (context.ErrorMode == ErrorMode.Strict)
+                {
+                    throw new MappingExecutionException(
+                        $"Target resource '{contextName}' not found or is not a ResourceJsonNode",
+                        location,
+                        "TARGET_RESOURCE_NOT_FOUND");
+                }
+                return;
+            }
+
+            // Build FHIRPath from resource type and property path
+            // e.g., "Patient.id" or "Patient.name.family"
+            var fhirPath = $"{targetResource.ResourceType}.{propertyPath}";
+
+            // Determine mutation mode from list mode
+            var mutationMode = GetMutationMode(target.ListMode);
+
+            // Apply mutation
+            _mutator!.SetProperty(targetResource, fhirPath, element, mutationMode);
+        }
+        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+        {
+            context.AddError(
+                $"Failed to mutate target property: {ex.Message}",
+                location,
+                "TARGET_MUTATION_ERROR",
+                ex,
+                ruleName: _currentRuleName,
+                groupName: _currentGroupName,
+                ruleIndex: _currentRuleIndex);
+        }
+    }
+
+    /// <summary>
+    /// Extracts the root context name from a QualifiedIdentifierExpression.
+    /// For "tgt.id.family", returns "tgt".
+    /// </summary>
+    private static string ExtractRootContext(QualifiedIdentifierExpression expr)
+    {
+        // Walk down the Context chain until we find an IdentifierExpression
+        Expression current = expr;
+        while (current is QualifiedIdentifierExpression qualified)
+        {
+            current = qualified.Context;
+        }
+
+        if (current is IdentifierExpression identifier)
+        {
+            return identifier.Name;
+        }
+
+        throw new InvalidOperationException($"Unable to extract root context from {expr}");
+    }
+
+    /// <summary>
+    /// Extracts the property path from a QualifiedIdentifierExpression.
+    /// For "tgt.id.family", returns "id.family".
+    /// For "tgt.name", returns "name".
+    /// </summary>
+    private static string ExtractPropertyPath(QualifiedIdentifierExpression expr)
+    {
+        List<string> parts = [];
+
+        // Build the parts list by walking down the expression tree
+        Expression current = expr;
+        while (current is QualifiedIdentifierExpression qualified)
+        {
+            parts.Insert(0, qualified.Property);
+            current = qualified.Context;
+        }
+
+        return string.Join('.', parts);
+    }
+
+    /// <summary>
+    /// Builds a FHIRPath expression from FML variable name.
+    /// Converts "tgt.name.family" to "Patient.name.family" using resource type.
+    /// </summary>
+    private static string BuildFhirPath(ResourceJsonNode resource, string fmlVariable)
+    {
+        // Remove context prefix: "tgt.name" → "name"
+        var parts = fmlVariable.Split('.');
+        if (parts.Length < 2)
+        {
+            throw new ArgumentException($"Invalid FML variable '{fmlVariable}' - expected format 'context.property'");
+        }
+
+        var pathWithoutContext = string.Join('.', parts.Skip(1));
+
+        // Build FHIRPath: "Patient.name"
+        return $"{resource.ResourceType}.{pathWithoutContext}";
+    }
+
+    /// <summary>
+    /// Maps FML list mode to PropertyMutationMode.
+    /// </summary>
+    private static PropertyMutationMode GetMutationMode(ListMode? listMode)
+    {
+        return listMode switch
+        {
+            ListMode.OnlyOne => PropertyMutationMode.Replace,
+            ListMode.Share => PropertyMutationMode.Replace,
+            ListMode.Single => PropertyMutationMode.Replace,
+            ListMode.First or ListMode.Last or ListMode.NotFirst or ListMode.NotLast => PropertyMutationMode.Append,
+            _ => PropertyMutationMode.AutoDetect
+        };
     }
 
     /// <summary>

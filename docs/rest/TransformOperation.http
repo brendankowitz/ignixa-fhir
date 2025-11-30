@@ -1,0 +1,496 @@
+@hostname = https://localhost:7058
+
+###############################################################################
+# StructureMap $transform Operation Tests
+# FHIR R6 $transform operation for FHIR Mapping Language (FML)
+# Transforms FHIR resources using StructureMap definitions
+###############################################################################
+
+### Variables
+@testPatientId = transform-test-patient
+
+###############################################################################
+# Setup: Load a package containing StructureMaps
+###############################################################################
+
+### Load an Implementation Guide with StructureMaps
+# Example: Load a package that contains mapping definitions
+# Note: Core packages (hl7.fhir.r4.core) are blocked - use IGs instead
+POST {{hostname}}/tenant/1/admin/package
+Content-Type: application/json
+
+{
+    "packageId": "hl7.fhir.us.core",
+    "version": "5.0.1"
+}
+
+###############################################################################
+# Basic $transform - Type Level (FML Text Format)
+###############################################################################
+
+### Transform Patient using inline FML text (srcMap parameter)
+# Simplest approach: provide FML text directly in the request
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "srcMap",
+            "valueString": "map 'http://example.org/PatientSimplify' = 'PatientSimplify'\n\nuses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source\nuses 'http://hl7.org/fhir/StructureDefinition/Patient' alias SimplePatient as target\n\ngroup Transform(source src : Patient, target tgt : SimplePatient) {\n  src.id -> tgt.id;\n  src.name as vn -> tgt.name = vn;\n  src.birthDate -> tgt.birthDate;\n  src.gender -> tgt.gender;\n}"
+        },
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "{{testPatientId}}",
+                "name": [
+                    {
+                        "use": "official",
+                        "family": "TransformTest",
+                        "given": ["Alice", "Marie"]
+                    },
+                    {
+                        "use": "nickname",
+                        "given": ["Ali"]
+                    }
+                ],
+                "birthDate": "1990-05-15",
+                "gender": "female",
+                "address": [
+                    {
+                        "use": "home",
+                        "line": ["123 Main St"],
+                        "city": "Seattle",
+                        "state": "WA",
+                        "postalCode": "98101"
+                    }
+                ],
+                "telecom": [
+                    {
+                        "system": "phone",
+                        "value": "+1-555-0123",
+                        "use": "mobile"
+                    }
+                ]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# $transform with Inline StructureMap Resource (sourceMap parameter)
+###############################################################################
+
+### Transform using inline StructureMap resource
+# Alternative: provide a complete StructureMap resource
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "sourceMap",
+            "resource": {
+                "resourceType": "StructureMap",
+                "id": "patient-name-copy",
+                "url": "http://example.org/StructureMap/PatientNameCopy",
+                "name": "PatientNameCopy",
+                "status": "draft",
+                "structure": [
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+                        "mode": "source",
+                        "alias": "Patient"
+                    },
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+                        "mode": "target",
+                        "alias": "PatientOut"
+                    }
+                ],
+                "group": [
+                    {
+                        "name": "Transform",
+                        "typeMode": "none",
+                        "input": [
+                            {
+                                "name": "src",
+                                "type": "Patient",
+                                "mode": "source"
+                            },
+                            {
+                                "name": "tgt",
+                                "type": "PatientOut",
+                                "mode": "target"
+                            }
+                        ],
+                        "rule": [
+                            {
+                                "name": "copyId",
+                                "source": [
+                                    {
+                                        "context": "src",
+                                        "element": "id",
+                                        "variable": "vid"
+                                    }
+                                ],
+                                "target": [
+                                    {
+                                        "context": "tgt",
+                                        "element": "id",
+                                        "transform": "copy",
+                                        "parameter": [
+                                            {
+                                                "valueId": "vid"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "copyName",
+                                "source": [
+                                    {
+                                        "context": "src",
+                                        "element": "name",
+                                        "variable": "vn"
+                                    }
+                                ],
+                                "target": [
+                                    {
+                                        "context": "tgt",
+                                        "element": "name",
+                                        "transform": "copy",
+                                        "parameter": [
+                                            {
+                                                "valueId": "vn"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "inline-map-test",
+                "name": [
+                    {
+                        "family": "Smith",
+                        "given": ["Bob"]
+                    }
+                ]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# $transform with Canonical URL (source parameter)
+###############################################################################
+
+### Setup: Create a StructureMap resource first
+# @name createMap
+PUT {{hostname}}/tenant/1/StructureMap/patient-to-bundle
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "StructureMap",
+    "id": "patient-to-bundle",
+    "url": "http://example.org/StructureMap/PatientToBundle",
+    "name": "PatientToBundle",
+    "status": "active",
+    "structure": [
+        {
+            "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "mode": "source",
+            "alias": "Patient"
+        },
+        {
+            "url": "http://hl7.org/fhir/StructureDefinition/Bundle",
+            "mode": "target",
+            "alias": "Bundle"
+        }
+    ],
+    "group": [
+        {
+            "name": "PatientToBundle",
+            "typeMode": "none",
+            "input": [
+                {
+                    "name": "src",
+                    "type": "Patient",
+                    "mode": "source"
+                },
+                {
+                    "name": "bundle",
+                    "type": "Bundle",
+                    "mode": "target"
+                }
+            ],
+            "rule": [
+                {
+                    "name": "bundleType",
+                    "source": [
+                        {
+                            "context": "src"
+                        }
+                    ],
+                    "target": [
+                        {
+                            "context": "bundle",
+                            "element": "type",
+                            "transform": "copy",
+                            "parameter": [
+                                {
+                                    "valueString": "collection"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+
+### Transform using canonical URL reference
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "source",
+            "valueUri": "http://example.org/StructureMap/PatientToBundle"
+        },
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "url-test-patient",
+                "name": [
+                    {
+                        "family": "UrlTest",
+                        "given": ["Charlie"]
+                    }
+                ],
+                "birthDate": "1985-03-20"
+            }
+        }
+    ]
+}
+
+###############################################################################
+# Instance-Level $transform (using StructureMap/{id})
+###############################################################################
+
+### Transform using instance-level operation
+# Uses the StructureMap ID directly from the URL path
+POST {{hostname}}/tenant/1/StructureMap/patient-to-bundle/$transform
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "instance-test-patient",
+                "name": [
+                    {
+                        "family": "InstanceTest",
+                        "given": ["Diana"]
+                    }
+                ]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# GET-based Instance Transform (if supported)
+###############################################################################
+
+### GET-based transform (query parameters)
+# Some implementations may support GET for simple cases
+GET {{hostname}}/tenant/1/StructureMap/patient-to-bundle/$transform?content=Patient/{{testPatientId}}
+Accept: application/fhir+json
+
+###############################################################################
+# Advanced: Transform with Supporting Maps
+###############################################################################
+
+### Transform with supporting maps (for imports)
+# When a StructureMap imports other maps, provide them as supportingMap parameters
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "srcMap",
+            "valueString": "map 'http://example.org/MainMap' = 'MainMap'\n\nimports 'http://example.org/HelperMap'\n\nuses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source\nuses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Out as target\n\ngroup Main(source src : Patient, target tgt : Out) {\n  src -> Helper(src, tgt) 'callHelper';\n}"
+        },
+        {
+            "name": "supportingMap",
+            "resource": {
+                "resourceType": "StructureMap",
+                "url": "http://example.org/HelperMap",
+                "name": "HelperMap",
+                "status": "draft",
+                "structure": [
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+                        "mode": "source"
+                    },
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/Patient",
+                        "mode": "target"
+                    }
+                ],
+                "group": [
+                    {
+                        "name": "Helper",
+                        "typeMode": "none",
+                        "input": [
+                            {
+                                "name": "src",
+                                "type": "Patient",
+                                "mode": "source"
+                            },
+                            {
+                                "name": "tgt",
+                                "type": "Patient",
+                                "mode": "target"
+                            }
+                        ],
+                        "rule": [
+                            {
+                                "name": "copyId",
+                                "source": [{"context": "src", "element": "id"}],
+                                "target": [{"context": "tgt", "element": "id"}]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "supporting-map-test",
+                "name": [{"family": "SupportTest", "given": ["Eve"]}]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# Error Cases
+###############################################################################
+
+### Error: Missing content parameter
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "source",
+            "valueUri": "http://example.org/StructureMap/Missing"
+        }
+    ]
+}
+# Expected: 400 Bad Request - content parameter is required
+
+### Error: Missing mapping source
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "no-map-test"
+            }
+        }
+    ]
+}
+# Expected: 400 Bad Request - one of source/sourceMap/srcMap is required
+
+### Error: Invalid FML syntax
+POST {{hostname}}/tenant/1/StructureMap/$transform
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "srcMap",
+            "valueString": "map 'invalid syntax here"
+        },
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "syntax-error-test"
+            }
+        }
+    ]
+}
+# Expected: 400 Bad Request - FML parsing error
+
+###############################################################################
+# Tenant-Agnostic Endpoint (if multi-tenant mode allows)
+###############################################################################
+
+### Transform using tenant-agnostic endpoint
+POST {{hostname}}/$transform
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "srcMap",
+            "valueString": "map 'http://example.org/Simple' = 'Simple'\n\nuses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Patient as source\nuses 'http://hl7.org/fhir/StructureDefinition/Patient' alias Out as target\n\ngroup Transform(source src : Patient, target tgt : Out) {\n  src.id -> tgt.id;\n}"
+        },
+        {
+            "name": "content",
+            "resource": {
+                "resourceType": "Patient",
+                "id": "tenant-agnostic-test"
+            }
+        }
+    ]
+}
+
+###############################################################################
+# Cleanup
+###############################################################################
+
+### Delete test StructureMap
+DELETE {{hostname}}/tenant/1/StructureMap/patient-to-bundle

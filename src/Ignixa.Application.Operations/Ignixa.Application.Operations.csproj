@@ -6,6 +6,8 @@
     <ProjectReference Include="..\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
     <ProjectReference Include="..\Ignixa.Validation\Ignixa.Validation.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
+    <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
   </ItemGroup>
 
   <ItemGroup>

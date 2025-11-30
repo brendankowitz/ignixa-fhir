@@ -1,4 +1,5 @@
 using Ignixa.Application.Events.Package;
+using Ignixa.PackageManagement;
 using Ignixa.PackageManagement.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -45,6 +46,19 @@ public class LoadPackageHandler : IRequestHandler<LoadPackageCommand, LoadPackag
             throw new InvalidOperationException("Package ID cannot be null or empty");
         if (string.IsNullOrWhiteSpace(request.Version))
             throw new InvalidOperationException("Version cannot be null or empty");
+
+        // Prevent loading core FHIR packages that conflict with pre-compiled definitions
+        if (KnownPackages.IsCorePackage(request.PackageId))
+        {
+            _logger.LogWarning(
+                "Attempted to load core FHIR package {PackageId} which conflicts with pre-compiled definitions",
+                request.PackageId);
+
+            throw new InvalidOperationException(
+                $"Cannot load core FHIR package '{request.PackageId}'. " +
+                $"Core FHIR definitions are already available as pre-compiled resources in Ignixa.Specification. " +
+                $"Loading this package would create conflicts with SearchParameters, StructureDefinitions, and other conformance resources.");
+        }
 
         _logger.LogInformation(
             "Loading package {PackageId}@{Version} into tenant {TenantId}",

@@ -53,7 +53,7 @@ public static class IgnixaExtensions
     /// </summary>
     /// <param name="elements">Firely SDK typed elements</param>
     /// <returns>Ignixa element adapters</returns>
-    public static IEnumerable<IElement> ToCoreElements(this IEnumerable<Hl7.Fhir.ElementModel.ITypedElement> elements)
+    public static IEnumerable<IElement> ToIgnixaElements(this IEnumerable<Hl7.Fhir.ElementModel.ITypedElement> elements)
     {
         ArgumentNullException.ThrowIfNull(elements);
 

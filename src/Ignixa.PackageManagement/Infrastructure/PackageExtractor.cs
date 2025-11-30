@@ -22,6 +22,7 @@ public class PackageExtractor : IPackageExtractor
         "ValueSet",
         "CodeSystem",
         "ConceptMap",
+        "StructureMap",
         "SearchParameter",
         "OperationDefinition",
         "CapabilityStatement",

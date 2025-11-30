@@ -761,6 +761,42 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
         return entities.Select(MapEntityToModel).ToList().AsReadOnly();
     }
 
+    public async Task<PackageResource?> GetStructureMapByUrlAsync(
+        string canonicalUrl,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalUrl);
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        // Query for the most recent active StructureMap with matching canonical URL
+        var entity = await dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.ResourceType == "StructureMap"
+                && pr.Canonical == canonicalUrl
+                && pr.IsActive)
+            .OrderByDescending(pr => pr.LoadedDate)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (entity != null)
+        {
+            _logger.LogDebug(
+                "Found StructureMap with canonical {Canonical} from package {PackageId}@{PackageVersion}",
+                canonicalUrl,
+                entity.PackageId,
+                entity.PackageVersion);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "StructureMap with canonical {Canonical} not found in loaded packages",
+                canonicalUrl);
+        }
+
+        return entity != null ? MapEntityToModel(entity) : null;
+    }
+
     /// <summary>
     /// Checks if a SearchParameter applies to a given resource type by parsing the base[] field.
     /// </summary>

@@ -24,7 +24,7 @@ using Hl7.Fhir.ElementModel;
 ITypedElement firelyElement = ...;
 
 // Convert to Ignixa
-IElement ignixaElement = firelyElement.ToCoreElement();
+IElement ignixaElement = firelyElement.ToIgnixaElement();
 
 // Use with Ignixa libraries
 var validator = new IgnixaValidator();
@@ -76,7 +76,7 @@ Convert collections efficiently:
 ```csharp
 // Firely → Ignixa
 IEnumerable<ITypedElement> firelyElements = ...;
-IEnumerable<IElement> ignixaElements = firelyElements.ToCoreElements();
+IEnumerable<IElement> ignixaElements = firelyElements.ToIgnixaElements();
 
 // Ignixa → Firely
 IReadOnlyList<IElement> ignixaElements = ...;
@@ -103,7 +103,7 @@ IEnumerable<ITypedElement> firelyElements = ignixaElements.ToTypedElements();
 
 ### Extension Methods
 
-- **IgnixaExtensions**: `.ToIgnixaElement()`, `.ToCoreElements()` - Firely `ITypedElement` → Ignixa `IElement`
+- **IgnixaExtensions**: `.ToIgnixaElement()`, `.ToIgnixaElements()` - Firely `ITypedElement` → Ignixa `IElement`
 - **FirelySdkExtensions**:
   - `.ToTypedElement()`, `.ToTypedElements()` - Ignixa `IElement` → Firely `ITypedElement`
   - `.ToSourceNavigator()` - Firely `ISourceNode` → Ignixa `ISourceNavigator`

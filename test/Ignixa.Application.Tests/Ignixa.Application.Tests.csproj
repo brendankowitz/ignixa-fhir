@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\src\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
 </Project>

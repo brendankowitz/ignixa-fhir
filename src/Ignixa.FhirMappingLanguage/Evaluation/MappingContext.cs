@@ -18,6 +18,7 @@ public class MappingContext : ITransformContext
     private readonly Dictionary<string, object> _variables = new();
     private readonly Dictionary<string, IElement> _sources = new();
     private readonly Dictionary<string, IElement> _targets = new();
+    private readonly Dictionary<string, object> _targetResources = new();
 
     /// <summary>
     /// Gets or sets a variable in the context.
@@ -48,6 +49,16 @@ public class MappingContext : ITransformContext
 
     public void SetTarget(string name, IElement element) =>
         _targets[name] = element;
+
+    /// <summary>
+    /// Gets or sets a target resource (e.g., ResourceJsonNode) for mutation.
+    /// This is stored separately from the IElement target to enable mutation via IJsonNodeMutator.
+    /// </summary>
+    public T? GetTargetResource<T>(string name) where T : class =>
+        _targetResources.TryGetValue(name, out var value) ? value as T : null;
+
+    public void SetTargetResource(string name, object resource) =>
+        _targetResources[name] = resource;
 
     /// <summary>
     /// FHIRPath evaluator for evaluating embedded FHIRPath expressions.

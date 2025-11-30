@@ -445,7 +445,7 @@ public class FirelySdkInteropTests
         IEnumerable<ITypedElement>? elements = null;
 
         // Act & Assert
-        var exception = Assert.Throws<ArgumentNullException>(() => elements!.ToCoreElements());
+        var exception = Assert.Throws<ArgumentNullException>(() => elements!.ToIgnixaElements());
         Assert.Equal("elements", exception.ParamName);
     }
 
@@ -461,7 +461,7 @@ public class FirelySdkInteropTests
         };
 
         // Act
-        var result = elements.ToCoreElements().ToList();
+        var result = elements.ToIgnixaElements().ToList();
 
         // Assert
         Assert.Equal(3, result.Count);

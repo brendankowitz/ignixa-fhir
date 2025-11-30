@@ -89,6 +89,25 @@ public class ParameterJsonNode : BaseJsonNode
     public MutableJsonList<ParameterJsonNode> Part => GetListProperty<ParameterJsonNode>("part");
 
     /// <summary>
+    /// Gets the resource property (for Parameters.parameter.resource).
+    /// </summary>
+    [JsonIgnore]
+    public ResourceJsonNode? Resource
+    {
+        get
+        {
+            if (!MutableNode.TryGetPropertyValue("resource", out var resourceNode) || resourceNode == null)
+            {
+                return null;
+            }
+
+            // Parse as ResourceJsonNode
+            var json = resourceNode.ToJsonString();
+            return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
+        }
+    }
+
+    /// <summary>
     /// Finds a part by name.
     /// </summary>
     public ParameterJsonNode FindPart(string name)

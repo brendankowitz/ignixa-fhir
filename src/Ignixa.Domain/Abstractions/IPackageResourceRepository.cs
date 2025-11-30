@@ -241,4 +241,16 @@ public interface IPackageResourceRepository
         IReadOnlyList<string> operationNames,
         string? fhirVersion = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a StructureMap resource by canonical URL.
+    /// Searches across all loaded packages for the most recent version.
+    /// Used by $transform operation to resolve mapping definitions.
+    /// </summary>
+    /// <param name="canonicalUrl">The canonical URL of the StructureMap.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The StructureMap package resource, or null if not found.</returns>
+    Task<PackageResource?> GetStructureMapByUrlAsync(
+        string canonicalUrl,
+        CancellationToken cancellationToken);
 }
