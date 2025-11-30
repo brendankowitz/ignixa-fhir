@@ -78,7 +78,11 @@ public class FhirPathExpressionCache
         finally
         {
             stopwatch.Stop();
-            Interlocked.Add(ref _compilationTimeMs, stopwatch.ElapsedMilliseconds);
+            // Use ceiling to ensure at least 1ms is recorded if any time elapsed
+            var elapsedMs = stopwatch.Elapsed.TotalMilliseconds > 0
+                ? (long)Math.Ceiling(stopwatch.Elapsed.TotalMilliseconds)
+                : 0;
+            Interlocked.Add(ref _compilationTimeMs, elapsedMs);
         }
 
         // Add to cache (TryAdd handles concurrent additions gracefully)
