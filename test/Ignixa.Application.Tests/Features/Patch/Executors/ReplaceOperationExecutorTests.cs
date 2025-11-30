@@ -3,14 +3,13 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Features.Search;
+using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -29,23 +28,24 @@ namespace Ignixa.Application.Tests.Features.Patch.Executors;
 public class ReplaceOperationExecutorTests
 {
     private readonly ILogger<ReplaceOperationExecutor> _logger;
-    private readonly FhirPathPatchHelper _fhirPathHelper;
+    private readonly IJsonNodeMutator _mutator;
     private readonly ReplaceOperationExecutor _executor;
 
     public ReplaceOperationExecutorTests()
     {
         _logger = Substitute.For<ILogger<ReplaceOperationExecutor>>();
 
-        // Create real FhirPathPatchHelper with dependencies
         var evaluator = new Ignixa.FhirPath.Evaluation.FhirPathEvaluator();
         var compiler = new FhirPathParser();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);
-        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
-        _fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
-        _executor = new ReplaceOperationExecutor(_logger, _fhirPathHelper);
+        // Schema provider factory for tests (always returns R4)
+        var schemaProviderFactory = () => versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        _mutator = new JsonNodeMutator(evaluator, compiler, schemaProviderFactory);
+
+        _executor = new ReplaceOperationExecutor(_logger, _mutator);
     }
 
     #region Simple Path Tests

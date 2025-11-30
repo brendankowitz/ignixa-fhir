@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Features.Search;
+using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -34,13 +35,15 @@ public class MoveOperationExecutorTests
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);
-        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
-        var fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
 
-        var deleteExecutor = new DeleteOperationExecutor(deleteLogger, fhirPathHelper);
-        var addExecutor = new AddOperationExecutor(addLogger, fhirPathHelper);
+        // Schema provider factory for tests (always returns R4)
+        var schemaProviderFactory = () => versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        var mutator = new JsonNodeMutator(evaluator, compiler, schemaProviderFactory);
 
-        _executor = new MoveOperationExecutor(logger, deleteExecutor, addExecutor, fhirPathHelper);
+        var deleteExecutor = new DeleteOperationExecutor(deleteLogger, mutator);
+        var addExecutor = new AddOperationExecutor(addLogger, mutator);
+
+        _executor = new MoveOperationExecutor(logger, deleteExecutor, addExecutor, mutator);
     }
 
     [Fact]

@@ -767,6 +767,24 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonicalUrl);
 
+        // Validate canonical URL format (must be absolute URI)
+        if (!Uri.TryCreate(canonicalUrl, UriKind.Absolute, out var uri))
+        {
+            _logger.LogWarning(
+                "Invalid canonical URL format for StructureMap lookup: {CanonicalUrl}",
+                canonicalUrl);
+            return null; // Invalid URL = not found
+        }
+
+        // Canonical URLs should use http or https scheme
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            _logger.LogWarning(
+                "Canonical URL must use http or https scheme: {CanonicalUrl}",
+                canonicalUrl);
+            return null;
+        }
+
         using var dbContext = _dbContextFactory.CreateDbContext();
 
         // Query for the most recent active StructureMap with matching canonical URL

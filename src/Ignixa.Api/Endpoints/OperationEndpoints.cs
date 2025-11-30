@@ -329,12 +329,8 @@ public static class OperationEndpoints
                         var resourceNode = param.GetValue("resource");
                         if (resourceNode is not null)
                         {
-                            var resourceJson = resourceNode.ToJsonString();
-                            if (resourceJson is not null)
-                            {
-                                using var resourceStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(resourceJson));
-                                jsonNode = await JsonSourceNodeFactory.Parse(resourceStream);
-                            }
+                            var resourceBytes = System.Text.Encoding.UTF8.GetBytes(resourceNode.ToJsonString() ?? "{}");
+                            jsonNode = JsonSourceNodeFactory.Parse(resourceBytes);
                         }
                         break;
                 }
@@ -533,9 +529,7 @@ public static class OperationEndpoints
         {
             var result = await mediator.SendAsync(command, cancellationToken);
 
-            // Serialize using proper FHIR serialization (same pattern as PATCH endpoints)
-            var resourceJson = result.SerializeToString();
-            var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+            var resourceBytes = result.SerializeToBytes();
 
             return FhirResults.Ok(resourceBytes);
         }
@@ -597,9 +591,7 @@ public static class OperationEndpoints
         {
             var result = await mediator.SendAsync(command, cancellationToken);
 
-            // Serialize using proper FHIR serialization (same pattern as PATCH endpoints)
-            var resourceJson = result.SerializeToString();
-            var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+            var resourceBytes = result.SerializeToBytes();
 
             return FhirResults.Ok(resourceBytes);
         }

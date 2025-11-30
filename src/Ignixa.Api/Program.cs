@@ -455,24 +455,38 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .AsSelf()
         .InstancePerDependency();
 
-    // FhirPathPatchHelper with structure provider from FhirVersionContext
-    containerBuilder.Register<Ignixa.Application.Features.Patch.FhirPathPatchHelper>(c =>
+    // IJsonNodeMutator for PATCH and Transform operations (shared mutation logic, Phase 2: request-aware via factory)
+    // All PATCH executors use IJsonNodeMutator for consistent mutation logic
+    containerBuilder.Register<Ignixa.FhirMappingLanguage.Mutator.IJsonNodeMutator>(c =>
     {
         var evaluator = c.Resolve<Ignixa.FhirPath.Evaluation.FhirPathEvaluator>();
-        var compiler = c.Resolve<FhirPathParser>();
-        var versionContext = c.Resolve<IFhirVersionContext>();
+        var parser = c.Resolve<FhirPathParser>();
 
-        // Use R4 as default structure provider (Phase 1)
-        // TODO Phase 2+: Extract version from tenant context
-        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        // Schema provider factory that resolves per-request context
+        Func<ISchema> schemaProviderFactory = () =>
+        {
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            var requestContextAccessor = c.Resolve<IFhirRequestContextAccessor>();
+            var requestContext = requestContextAccessor.RequestContext;
 
-        return new Ignixa.Application.Features.Patch.FhirPathPatchHelper(
+            if (requestContext is null)
+            {
+                // Fallback for tests or non-HTTP contexts
+                return versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+            }
+
+            return versionContext.GetSchemaProvider(
+                requestContext.FhirVersion,
+                requestContext.TenantId);
+        };
+
+        return new Ignixa.FhirMappingLanguage.Mutator.JsonNodeMutator(
             evaluator,
-            compiler,
-            structureProvider);
+            parser,
+            schemaProviderFactory);
     })
-    .AsSelf()
-    .InstancePerDependency();
+    .As<Ignixa.FhirMappingLanguage.Mutator.IJsonNodeMutator>()
+    .InstancePerLifetimeScope();
 
     // Patch operation executors (Phase 2 - Strategy Pattern)
     containerBuilder.RegisterType<Ignixa.Application.Features.Patch.Executors.AddOperationExecutor>()

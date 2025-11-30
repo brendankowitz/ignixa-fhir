@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.Json;
 using Azure;
 using Ignixa.Abstractions;
@@ -700,9 +699,7 @@ public static class FhirEndpoints
 
             var result = await mediator.SendAsync(command, ct);
 
-            // Serialize the resource to bytes
-            var resourceJson = result.Resource.Resource.SerializeToString();
-            var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+            var resourceBytes = result.Resource.Resource.SerializeToBytes();
 
             // Extract return preference from Prefer header (RFC 7240)
             var returnPreferenceConditional = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
@@ -1115,9 +1112,7 @@ public static class FhirEndpoints
 
         var result = await mediator.SendAsync(command, ct);
 
-        // Serialize resource to JSON and convert to bytes
-        var resourceJson = result.Resource.Resource.SerializeToString();
-        var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+        var resourceBytes = result.Resource.Resource.SerializeToBytes();
 
         if (result.WasCreated)
         {

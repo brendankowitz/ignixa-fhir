@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Features.Search;
+using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -26,7 +27,7 @@ namespace Ignixa.Application.Tests.Features.Patch.Executors;
 public class AddOperationExecutorTests
 {
     private readonly ILogger<AddOperationExecutor> _logger;
-    private readonly FhirPathPatchHelper _fhirPathHelper;
+    private readonly IJsonNodeMutator _mutator;
     private readonly AddOperationExecutor _executor;
 
     public AddOperationExecutorTests()
@@ -38,10 +39,12 @@ public class AddOperationExecutorTests
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);
-        var structureProvider = versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
 
-        _fhirPathHelper = new FhirPathPatchHelper(evaluator, compiler, structureProvider);
-        _executor = new AddOperationExecutor(_logger, _fhirPathHelper);
+        // Schema provider factory for tests (always returns R4)
+        var schemaProviderFactory = () => versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        _mutator = new JsonNodeMutator(evaluator, compiler, schemaProviderFactory);
+
+        _executor = new AddOperationExecutor(_logger, _mutator);
     }
 
     #region Add to Existing Array Tests

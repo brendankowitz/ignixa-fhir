@@ -5,6 +5,7 @@
 
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -71,6 +72,36 @@ public static class JsonSourceNodeFactory
         return Parse<ResourceJsonNode>(jsonBytes);
     }
 
+    /// <summary>
+    /// Parses a ResourceJsonNode directly from a JsonNode without serialization.
+    /// More efficient than Parse(string) when you already have a JsonNode.
+    /// </summary>
+    /// <typeparam name="TResource">The resource type to deserialize to.</typeparam>
+    /// <param name="jsonNode">JsonNode to convert.</param>
+    /// <returns>Deserialized resource with proper converter options applied.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when jsonNode is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when deserialization fails.</exception>
+    public static TResource Parse<TResource>(JsonNode jsonNode)
+        where TResource : ResourceJsonNode
+    {
+        ArgumentNullException.ThrowIfNull(jsonNode);
+        return JsonSerializer.Deserialize<TResource>(jsonNode, _jsonSerializerOptions)
+            ?? throw new InvalidOperationException($"Failed to deserialize JsonNode to {typeof(TResource).Name}");
+    }
+
+    /// <summary>
+    /// Parses a ResourceJsonNode directly from a JsonNode without serialization.
+    /// More efficient than Parse(string) when you already have a JsonNode.
+    /// </summary>
+    /// <param name="jsonNode">JsonNode to convert.</param>
+    /// <returns>Deserialized resource with proper converter options applied.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when jsonNode is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when deserialization fails.</exception>
+    public static ResourceJsonNode Parse(JsonNode jsonNode)
+    {
+        return Parse<ResourceJsonNode>(jsonNode);
+    }
+
     public static string SerializeToString(this ResourceJsonNode resource)
     {
         return resource.MutableNode.ToJsonString(_jsonSerializerOptions);
@@ -79,5 +110,10 @@ public static class JsonSourceNodeFactory
     public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream)
     {
         JsonSerializer.Serialize(outStream, resource.MutableNode, _jsonSerializerOptions);
+    }
+    
+    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource)
+    {
+        return JsonSerializer.SerializeToUtf8Bytes(resource.MutableNode, _jsonSerializerOptions);
     }
 }

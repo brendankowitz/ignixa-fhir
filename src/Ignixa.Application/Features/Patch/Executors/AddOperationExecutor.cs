@@ -1,7 +1,9 @@
+using System;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -10,22 +12,13 @@ namespace Ignixa.Application.Features.Patch.Executors;
 /// <summary>
 /// Executes FHIR Patch 'add' operations.
 /// Adds a value to an array property or creates a new array with the value.
-/// Uses FHIRPath evaluation for navigation.
+/// Uses IJsonNodeMutator for all mutation operations.
 /// </summary>
-public class AddOperationExecutor : IOperationExecutor
+public class AddOperationExecutor(
+    ILogger<AddOperationExecutor> logger,
+    IJsonNodeMutator mutator) : IOperationExecutor
 {
-    private readonly ILogger<AddOperationExecutor> _logger;
-    private readonly FhirPathPatchHelper _fhirPathHelper;
-
     public FhirPatchOperationType OperationType => FhirPatchOperationType.Add;
-
-    public AddOperationExecutor(
-        ILogger<AddOperationExecutor> logger,
-        FhirPathPatchHelper fhirPathHelper)
-    {
-        _logger = logger;
-        _fhirPathHelper = fhirPathHelper;
-    }
 
     public Task<ResourceJsonNode> ExecuteAsync(
         ResourceJsonNode resource,
@@ -37,73 +30,58 @@ public class AddOperationExecutor : IOperationExecutor
             throw new FhirPatchException("Add operation requires 'path'");
         }
 
-        if (operation.Value == null)
+        if (operation.Value is null)
         {
             throw new FhirPatchException("Add operation requires 'value'");
         }
 
-        // Try to evaluate the path to see if it exists
-        var matches = _fhirPathHelper.EvaluateToJsonNodes(resource, operation.Path).ToList();
-
-        JsonObject targetParent;
-        string propertyName;
-
-        if (matches.Count == 0)
+        try
         {
-            // Path doesn't exist - try to get parent path and create array
-            // For now, use simplified approach - extract property name from path
+            // Validate parent path exists (FHIR PATCH requires parent to exist for Add)
             var lastDot = operation.Path.LastIndexOf('.');
-            if (lastDot < 0)
+            if (lastDot > 0)
             {
-                throw new FhirPatchException($"Path '{operation.Path}' not found and cannot be created");
+                var parentPath = operation.Path[..lastDot];
+                var parentMatches = mutator.Evaluate(resource, parentPath).ToList();
+                if (parentMatches.Count == 0)
+                {
+                    throw new FhirPatchException($"Parent path '{parentPath}' not found");
+                }
             }
 
-            var parentPath = operation.Path.Substring(0, lastDot);
-            propertyName = operation.Path.Substring(lastDot + 1);
+            // Try to evaluate the path to see if it exists and validate we can add to it
+            var matches = mutator.Evaluate(resource, operation.Path).ToList();
 
-            var parentMatches = _fhirPathHelper.EvaluateToJsonNodes(resource, parentPath).ToList();
-            if (parentMatches.Count != 1 || parentMatches[0] is not JsonObject parentObj)
+            // If path exists and is not an array element context, validate it's an array
+            if (matches.Count > 0)
             {
-                throw new FhirPatchException($"Parent path '{parentPath}' not found or is not an object");
+                var existingNode = matches[0];
+                // If the existing value's parent is not a JsonArray, and the value itself is not a JsonArray,
+                // then we cannot add to it (it's a single-valued property)
+                if (existingNode.Parent is not JsonArray && existingNode is not JsonArray)
+                {
+                    // Extract property name from path for better error message
+                    var propertyName = operation.Path.Split('.')[^1];
+                    throw new FhirPatchException($"Cannot add to non-array property '{propertyName}'");
+                }
             }
 
-            targetParent = parentObj;
+            var valueNode = JsonNodeMutator.SerializeValue(operation.Value)
+                ?? throw new FhirPatchException("Failed to serialize value");
+
+            // Use IJsonNodeMutator with Append mode
+            // This handles:
+            // - Path doesn't exist: creates array with value
+            // - Path exists as array: appends to array
+            // - Path exists as single value: converts to array with old + new values
+            mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Append);
+
+            logger.LogDebug("Added value to {Path}", operation.Path);
         }
-        else
+        catch (InvalidOperationException ex)
         {
-            // Path exists - get its parent
-            var targetJsonNode = matches[0];
-            var parentInfo = FhirPathPatchHelper.GetParentAndProperty(targetJsonNode, resource.MutableNode);
-            if (parentInfo == null)
-            {
-                throw new FhirPatchException($"Cannot find parent for path '{operation.Path}'");
-            }
-
-            (targetParent, propertyName) = parentInfo.Value;
+            throw new FhirPatchException(ex.Message, ex);
         }
-
-        var valueNode = FhirPathPatchHelper.SerializeValue(operation.Value);
-
-        // Get existing value
-        var existing = targetParent[propertyName];
-
-        if (existing is JsonArray existingArray)
-        {
-            // Add to existing array
-            existingArray.Add(valueNode);
-        }
-        else if (existing == null)
-        {
-            // Create new array with the value
-            var newArray = new JsonArray { valueNode };
-            targetParent[propertyName] = newArray;
-        }
-        else
-        {
-            throw new FhirPatchException($"Cannot add to non-array property '{propertyName}'");
-        }
-
-        _logger.LogDebug("Added value to {Path}", operation.Path);
 
         return Task.FromResult(resource);
     }

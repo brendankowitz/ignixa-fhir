@@ -17,25 +17,26 @@ namespace Ignixa.FhirMappingLanguage.Mutator;
 /// Service for mutating ResourceJsonNode properties using FHIRPath navigation.
 /// Extracted from PATCH operations to enable Transform operations to reuse the same mutation logic.
 /// Handles array vs single value detection, primitive vs complex types, and intermediate object creation.
+/// Request-aware via schema provider factory function.
 /// </summary>
 public class JsonNodeMutator : IJsonNodeMutator
 {
     private readonly FhirPathEvaluator _evaluator;
     private readonly FhirPathParser _parser;
-    private readonly ISchema _structureProvider;
+    private readonly Func<ISchema> _schemaProviderFactory;
 
     public JsonNodeMutator(
         FhirPathEvaluator evaluator,
         FhirPathParser parser,
-        ISchema structureProvider)
+        Func<ISchema> schemaProviderFactory)
     {
         ArgumentNullException.ThrowIfNull(evaluator);
         ArgumentNullException.ThrowIfNull(parser);
-        ArgumentNullException.ThrowIfNull(structureProvider);
+        ArgumentNullException.ThrowIfNull(schemaProviderFactory);
 
         _evaluator = evaluator;
         _parser = parser;
-        _structureProvider = structureProvider;
+        _schemaProviderFactory = schemaProviderFactory;
     }
 
     /// <inheritdoc />
@@ -97,9 +98,10 @@ public class JsonNodeMutator : IJsonNodeMutator
                     var propertyName = parts[^1]; // Last part
                     var resourceType = parts[0]; // First part
 
-                    // Get type definition from schema
-                    var typeDefinition = _structureProvider.GetTypeDefinition(resourceType);
-                    if (typeDefinition != null)
+                    // Get type definition from schema (request-aware via factory)
+                    var structureProvider = _schemaProviderFactory();
+                    var typeDefinition = structureProvider.GetTypeDefinition(resourceType);
+                    if (typeDefinition is not null)
                     {
                         // Find child property by name
                         var propertyDefinition = typeDefinition.Children.FirstOrDefault(c => c.Info.Name == propertyName);
@@ -192,7 +194,6 @@ public class JsonNodeMutator : IJsonNodeMutator
 
     /// <summary>
     /// Evaluate FHIRPath expression and return matching JsonNodes.
-    /// Extracted from FhirPathPatchHelper for reuse.
     /// </summary>
     /// <param name="resource">Resource to evaluate against</param>
     /// <param name="fhirPathExpression">FHIRPath expression (e.g., "Patient.name.where(use='official')")</param>
@@ -202,13 +203,14 @@ public class JsonNodeMutator : IJsonNodeMutator
         // 1. Parse FHIRPath expression
         var expression = _parser.Parse(fhirPathExpression);
 
-        // 2. Convert ResourceJsonNode to ISourceNode (with annotations)
-        var typedElement = resource.ToElement(_structureProvider);
+        // 2. Convert ResourceJsonNode to ISourceNode (with annotations) - uses request-aware schema provider via factory
+        var structureProvider = _schemaProviderFactory();
+        var typedElement = resource.ToElement(structureProvider);
 
         // 3. Evaluate FHIRPath expression
         var matches = _evaluator.Evaluate(typedElement, expression);
 
-        // 5. Extract JsonNodes using Meta<T>
+        // 4. Extract JsonNodes using Meta<T>
         foreach (var match in matches)
         {
             var jsonNode = match.Meta<JsonNode>();
@@ -299,7 +301,6 @@ public class JsonNodeMutator : IJsonNodeMutator
 
     /// <summary>
     /// Get the parent JsonObject and property name for a given JsonNode.
-    /// Extracted from FhirPathPatchHelper.GetParentAndProperty for reuse.
     /// </summary>
     /// <param name="jsonNode">The JsonNode to find the parent of</param>
     /// <param name="root">The root JsonNode to search from</param>
@@ -425,4 +426,219 @@ public class JsonNodeMutator : IJsonNodeMutator
 
         return obj;
     }
+
+    #region IJsonNodeMutator New Methods (PATCH Operation Support)
+
+    /// <inheritdoc />
+    public void DeleteProperty(ResourceJsonNode resource, string fhirPathExpression)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(fhirPathExpression);
+
+        var targetNode = EvaluateSingle(resource, fhirPathExpression);
+
+        // Check if array element or property
+        if (targetNode.Parent is JsonArray array)
+        {
+            // Remove from array
+            var index = array.IndexOf(targetNode);
+            if (index >= 0)
+            {
+                array.RemoveAt(index);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Cannot find element in array at path '{fhirPathExpression}'");
+            }
+        }
+        else
+        {
+            // Remove property from parent object
+            var parentInfo = GetParentAndProperty(targetNode, resource.MutableNode);
+            if (parentInfo is null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot find parent for path '{fhirPathExpression}'");
+            }
+
+            var (parent, propertyName) = parentInfo.Value;
+            parent.Remove(propertyName);
+        }
+    }
+
+    /// <inheritdoc />
+    public void InsertIntoArray(
+        ResourceJsonNode resource,
+        string fhirPathExpression,
+        JsonNode value,
+        int index)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(fhirPathExpression);
+        ArgumentNullException.ThrowIfNull(value);
+
+        // Try to evaluate the path to get the array
+        var matches = Evaluate(resource, fhirPathExpression).ToList();
+
+        JsonObject targetParent;
+        string propertyName;
+
+        if (matches.Count == 0)
+        {
+            // Path doesn't exist - try to get parent path and create array
+            var lastDot = fhirPathExpression.LastIndexOf('.');
+            if (lastDot < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Path '{fhirPathExpression}' not found and cannot determine parent");
+            }
+
+            var parentPath = fhirPathExpression[..lastDot];
+            propertyName = fhirPathExpression[(lastDot + 1)..];
+
+            var parentMatches = Evaluate(resource, parentPath).ToList();
+            if (parentMatches.Count != 1 || parentMatches[0] is not JsonObject parentObj)
+            {
+                throw new InvalidOperationException(
+                    $"Parent path '{parentPath}' not found or is not an object");
+            }
+
+            targetParent = parentObj;
+        }
+        else
+        {
+            // Path exists - get its parent using GetParentAndProperty helper
+            // FHIRPath returns array elements, not the array container, so we need to traverse up
+            var targetJsonNode = matches[0];
+            var parentInfo = GetParentAndProperty(targetJsonNode, resource.MutableNode);
+            if (parentInfo is null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot find parent for path '{fhirPathExpression}'");
+            }
+
+            (targetParent, propertyName) = parentInfo.Value;
+        }
+
+        // Access the array property on the parent
+        var existing = targetParent[propertyName];
+        JsonArray targetArray;
+
+        if (existing is JsonArray existingArray)
+        {
+            targetArray = existingArray;
+        }
+        else if (existing is null)
+        {
+            targetArray = [];
+            targetParent[propertyName] = targetArray;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"Cannot insert into non-array property '{propertyName}'");
+        }
+
+        // Validate index and insert
+        if (index < 0 || index > targetArray.Count)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(index),
+                $"Index {index} out of range (array length: {targetArray.Count})");
+        }
+
+        // Deep clone to avoid "node already has a parent" error
+        var clonedValue = JsonNode.Parse(value.ToJsonString());
+        targetArray.Insert(index, clonedValue);
+    }
+
+    /// <inheritdoc />
+    public void ReplaceArrayElement(
+        ResourceJsonNode resource,
+        string fhirPathExpression,
+        JsonNode value)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(fhirPathExpression);
+        ArgumentNullException.ThrowIfNull(value);
+
+        var targetNode = EvaluateSingle(resource, fhirPathExpression);
+
+        if (targetNode.Parent is not JsonArray parentArray)
+        {
+            throw new InvalidOperationException(
+                $"Path '{fhirPathExpression}' does not reference an array element");
+        }
+
+        var index = parentArray.IndexOf(targetNode);
+        if (index < 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot find index of target element in array at path '{fhirPathExpression}'");
+        }
+
+        // Deep clone to avoid "node already has a parent" error
+        var clonedValue = JsonNode.Parse(value.ToJsonString());
+        parentArray[index] = clonedValue;
+    }
+
+    /// <inheritdoc />
+    public IEnumerable<JsonNode> Evaluate(ResourceJsonNode resource, string fhirPathExpression)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(fhirPathExpression);
+
+        return EvaluateToJsonNodes(resource, fhirPathExpression);
+    }
+
+    /// <inheritdoc />
+    public JsonNode EvaluateSingle(ResourceJsonNode resource, string fhirPathExpression)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(fhirPathExpression);
+
+        var matches = Evaluate(resource, fhirPathExpression).ToList();
+
+        if (matches.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"FHIRPath expression '{fhirPathExpression}' did not match any elements");
+        }
+
+        if (matches.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"FHIRPath expression '{fhirPathExpression}' matched {matches.Count} elements (expected 1)");
+        }
+
+        return matches[0];
+    }
+
+    /// <summary>
+    /// Serialize value to JsonNode.
+    /// Handles object, JsonNode, JsonElement, and primitive types.
+    /// Deep clones if the value is already a JsonNode to avoid parent conflicts.
+    /// </summary>
+    /// <param name="value">The value to serialize</param>
+    /// <returns>JsonNode representation of the value</returns>
+    public static JsonNode? SerializeValue(object value)
+    {
+        if (value is JsonElement element)
+        {
+            return JsonNode.Parse(element.GetRawText());
+        }
+
+        if (value is JsonNode node)
+        {
+            // Deep clone to avoid "node already has a parent" error
+            // JsonNode doesn't allow a node to have multiple parents
+            return JsonNode.Parse(node.ToJsonString());
+        }
+
+        // For primitive types, use SerializePrimitive
+        return SerializePrimitive(value);
+    }
+
+    #endregion
 }

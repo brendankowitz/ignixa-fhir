@@ -32,12 +32,13 @@ When working on complex features, break down simple sub-tasks and delegate to fa
 ```markdown
 When implementing a new search parameter feature:
 
-1. [coding-agent] Design the parser interface and architecture
-2. [fast-coding-agent] Add _count parameter to parser (single file)
-3. [fast-coding-agent] Add _sort parameter to parser (single file)
-4. [coding-agent] Implement integration with search handler (multi-file)
-5. [fast-coding-agent] Fix build errors if any (targeted fixes)
-6. [coding-agent] Add integration tests (complex test scenarios)
+1. [complex-coding-agent] Design the parser interface and architecture (high complexity)
+2. [coding-agent] Implement core search parameter parsing logic (medium complexity)
+3. [fast-coding-agent] Add _count parameter to parser (single file, simple)
+4. [fast-coding-agent] Add _sort parameter to parser (single file, simple)
+5. [coding-agent] Implement integration with search handler (multi-file integration)
+6. [fast-coding-agent] Fix build errors if any (targeted fixes)
+7. [coding-agent] Add integration tests (complex test scenarios)
 ```
 
 Use Task tool to spawn fast-coding-agent with clear, specific instructions.

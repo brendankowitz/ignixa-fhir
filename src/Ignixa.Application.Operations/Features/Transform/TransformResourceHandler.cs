@@ -139,11 +139,12 @@ public class TransformResourceHandler(
             targetType,
             map.Url);
 
-        // Create mutator for resource mutations
+        // Create mutator for resource mutations (schema provider factory)
+        var schemaProvider = _currentSchema ?? throw new InvalidOperationException("Schema not initialized");
         var mutator = new JsonNodeMutator(
             fhirPathEvaluator,
             fhirPathParser,
-            _currentSchema ?? throw new InvalidOperationException("Schema not initialized"));
+            () => schemaProvider);
 
         var evaluator = new MappingEvaluator(
             MappingEvaluatorOptions.Default,
@@ -221,6 +222,20 @@ public class TransformResourceHandler(
         // Priority 3: Canonical URL (source parameter)
         if (!string.IsNullOrEmpty(request.Source))
         {
+            // Validate canonical URL format before calling repository
+            if (!Uri.TryCreate(request.Source, UriKind.Absolute, out var uri))
+            {
+                throw new InvalidOperationException(
+                    $"Invalid canonical URL format: {request.Source}. Must be an absolute URL (e.g., http://example.org/StructureMap/my-map)");
+            }
+
+            // Canonical URLs should use http or https scheme
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid canonical URL scheme: {request.Source}. Canonical URLs must use http or https scheme.");
+            }
+
             logger.LogDebug("Resolving StructureMap by canonical URL: {Url}", request.Source);
 
             // Use cache-aware GetOrLoadAsync (handles cache check, load, parse, and caching)

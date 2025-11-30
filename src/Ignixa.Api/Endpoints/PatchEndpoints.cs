@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
@@ -167,9 +166,7 @@ public static class PatchEndpoints
             return Results.NotFound();
         }
 
-        // Return 200 OK with patched resource
-        var resourceJson = result.Resource.SerializeToString();
-        var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+        var resourceBytes = result.Resource.SerializeToBytes();
         logger.LogInformation("Patched {ResourceType}/{Id} (version {VersionId})", resourceType, id, result.VersionId);
         return FhirResults.Ok(resourceBytes)
             .WithETag(result.VersionId)
@@ -237,9 +234,7 @@ public static class PatchEndpoints
 
         var result = await mediator.SendAsync(command, cancellationToken);
 
-        // Return 200 OK with patched resource (ConditionalPatchResult.Resource is ResourceWrapper)
-        var resourceJson = result.Resource.Resource.SerializeToString();
-        var resourceBytes = Encoding.UTF8.GetBytes(resourceJson);
+        var resourceBytes = result.Resource.Resource.SerializeToBytes();
         return FhirResults.Ok(resourceBytes)
             .WithETag(result.Resource.VersionId)
             .WithLastModified(result.Resource.LastModified);

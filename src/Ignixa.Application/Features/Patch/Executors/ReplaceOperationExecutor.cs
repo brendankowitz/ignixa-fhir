@@ -2,6 +2,8 @@ using System;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Application.Features.Patch.Validation;
+using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
 
@@ -10,22 +12,13 @@ namespace Ignixa.Application.Features.Patch.Executors;
 /// <summary>
 /// Executes FHIR Patch 'replace' operations.
 /// Replaces the value of a property or array element, with protection for immutable properties.
-/// Uses FHIRPath evaluation for navigation.
+/// Uses IJsonNodeMutator for all mutation operations.
 /// </summary>
-public class ReplaceOperationExecutor : IOperationExecutor
+public class ReplaceOperationExecutor(
+    ILogger<ReplaceOperationExecutor> logger,
+    IJsonNodeMutator mutator) : IOperationExecutor
 {
-    private readonly ILogger<ReplaceOperationExecutor> _logger;
-    private readonly FhirPathPatchHelper _fhirPathHelper;
-
     public FhirPatchOperationType OperationType => FhirPatchOperationType.Replace;
-
-    public ReplaceOperationExecutor(
-        ILogger<ReplaceOperationExecutor> logger,
-        FhirPathPatchHelper fhirPathHelper)
-    {
-        _logger = logger;
-        _fhirPathHelper = fhirPathHelper;
-    }
 
     public Task<ResourceJsonNode> ExecuteAsync(
         ResourceJsonNode resource,
@@ -37,49 +30,44 @@ public class ReplaceOperationExecutor : IOperationExecutor
             throw new FhirPatchException("Replace operation requires 'path'");
         }
 
-        if (operation.Value == null)
+        if (operation.Value is null)
         {
             throw new FhirPatchException("Replace operation requires 'value'");
         }
 
         // Check for immutable properties
-        if (FhirPathPatchHelper.IsImmutablePath(operation.Path))
+        if (ImmutablePathChecker.IsImmutablePath(operation.Path))
         {
             throw new FhirPatchException($"Cannot replace immutable property '{operation.Path}'");
         }
 
-        // Use FHIRPath to evaluate the target path
-        var targetJsonNode = _fhirPathHelper.EvaluateToSingleJsonNode(resource, operation.Path);
-
-        var valueNode = FhirPathPatchHelper.SerializeValue(operation.Value);
-
-        // Check if we're replacing an array element or a property
-        var parent = targetJsonNode.Parent;
-
-        if (parent is JsonArray parentArray)
+        try
         {
-            // Replacing an array element - find the index and replace at that position
-            var index = parentArray.IndexOf(targetJsonNode);
-            if (index < 0)
-            {
-                throw new FhirPatchException($"Cannot find index of target element in array at path '{operation.Path}'");
-            }
+            // Use FHIRPath to verify the target path exists (PATCH replace requires existing element)
+            var targetJsonNode = mutator.EvaluateSingle(resource, operation.Path);
 
-            parentArray[index] = valueNode;
-            _logger.LogDebug("Replaced array element at {Path} (index {Index})", operation.Path, index);
+            var valueNode = JsonNodeMutator.SerializeValue(operation.Value)
+                ?? throw new FhirPatchException("Failed to serialize value");
+
+            // Check if we're replacing an array element or a property
+            var parent = targetJsonNode.Parent;
+
+            if (parent is JsonArray)
+            {
+                // Replacing an array element - use ReplaceArrayElement
+                mutator.ReplaceArrayElement(resource, operation.Path, valueNode);
+                logger.LogDebug("Replaced array element at {Path}", operation.Path);
+            }
+            else
+            {
+                // Replacing a property - use SetProperty with Replace mode
+                mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Replace);
+                logger.LogDebug("Replaced property at {Path}", operation.Path);
+            }
         }
-        else
+        catch (InvalidOperationException ex)
         {
-            // Replacing a property - get the parent object and property name
-            var parentInfo = FhirPathPatchHelper.GetParentAndProperty(targetJsonNode, resource.MutableNode);
-            if (parentInfo == null)
-            {
-                throw new FhirPatchException($"Cannot find parent for path '{operation.Path}'");
-            }
-
-            var (parentObj, propertyName) = parentInfo.Value;
-            parentObj[propertyName] = valueNode;
-            _logger.LogDebug("Replaced property at {Path}", operation.Path);
+            throw new FhirPatchException(ex.Message, ex);
         }
 
         return Task.FromResult(resource);
