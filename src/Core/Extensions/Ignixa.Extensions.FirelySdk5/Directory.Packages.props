@@ -1,0 +1,22 @@
+<Project>
+  <!--
+    Local package version overrides for Firely SDK 5.x support.
+    This file overrides the solution-level Directory.Packages.props to use SDK 5.10.3.
+
+    NOTE: All source code is linked from Ignixa.Extensions.FirelySdk6 project.
+    The adapter interfaces (ITypedElement, ISourceNode, IElementDefinitionSummary)
+    remained stable between SDK 5.x and 6.x, allowing zero code duplication.
+  -->
+
+  <!-- Import parent Directory.Packages.props first to inherit all package versions -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <ItemGroup>
+    <!-- Override Firely SDK packages to use 5.10.3 (last stable 5.x release before 6.0) -->
+    <PackageVersion Update="Hl7.Fhir.Base" Version="5.10.3" />
+    <PackageVersion Update="Hl7.Fhir.R4" Version="5.10.3" />
+    <PackageVersion Update="Hl7.Fhir.R4B" Version="5.10.3" />
+    <PackageVersion Update="Hl7.Fhir.R5" Version="5.10.3" />
+    <PackageVersion Update="Hl7.Fhir.STU3" Version="5.10.3" />
+  </ItemGroup>
+</Project>

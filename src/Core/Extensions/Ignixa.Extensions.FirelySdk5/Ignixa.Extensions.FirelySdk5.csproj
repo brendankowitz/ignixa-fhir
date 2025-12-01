@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Ignixa.Extensions.FirelySdk</RootNamespace>
+    <!-- Define preprocessor symbol to handle SDK 5.x API differences -->
+    <DefineConstants>FIRELYSDK5</DefineConstants>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>Firely SDK 5.x interoperability shims for bidirectional conversion (legacy version support)</Description>
+    <PackageTags>FHIR;HL7;Healthcare;Firely;Interop;Adapter;SDK5</PackageTags>
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Link all source files from FirelySdk6 project (zero duplication) -->
+  <ItemGroup>
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\FirelySdkExtensions.cs" Link="FirelySdkExtensions.cs" />
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs" Link="IgnixaElementAdapter.cs" />
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs" Link="IgnixaExtensions.cs" />
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\SourceNavigatorAdapter.cs" Link="SourceNavigatorAdapter.cs" />
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\TypedElementAdapter.cs" Link="TypedElementAdapter.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ignixa abstractions with new interfaces -->
+    <ProjectReference Include="..\..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <!-- Ignixa serialization for SchemaAwareElement (ISourceNavigator → IElement) -->
+    <ProjectReference Include="..\..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Firely SDK 5.x base package - version overridden by Directory.Packages.props in this folder -->
+    <PackageReference Include="Hl7.Fhir.Base" />
+  </ItemGroup>
+</Project>

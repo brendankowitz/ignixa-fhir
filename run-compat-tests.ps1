@@ -73,7 +73,7 @@ function Write-ErrorMsg {
     Write-Host "[ERROR] $Message" -ForegroundColor Red
 }
 
-$apiProject = "src/Ignixa.Api/Ignixa.Api.csproj"
+$apiProject = "src/Application/Ignixa.Api/Ignixa.Api.csproj"
 $testProject = "test/Ignixa.Tests.Compatibility.CLI/Ignixa.Tests.Compatibility.CLI.csproj"
 $serverProcess = $null
 

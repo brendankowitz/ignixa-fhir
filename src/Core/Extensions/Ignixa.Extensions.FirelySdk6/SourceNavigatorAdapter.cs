@@ -94,10 +94,12 @@ public class SourceNavigatorAdapter : ISourceNavigator
     /// </remarks>
     public T? Meta<T>() where T : class
     {
-        // Firely's ISourceNode implementations typically implement IAnnotatable
-        if (_firelyNode is Hl7.Fhir.Utility.IAnnotatable annotatable)
+        // Firely's ISourceNode implementations typically implement IAnnotated (SDK 5.x+)
+        // In SDK 6.x, IAnnotatable extends IAnnotated, so we can cast to either
+        if (_firelyNode is Hl7.Fhir.Utility.IAnnotated annotated)
         {
-            return annotatable.Annotations(typeof(T)).OfType<T>().FirstOrDefault();
+            // SDK 5.x and 6.x: IAnnotated.Annotations(Type) method
+            return annotated.Annotations(typeof(T)).OfType<T>().FirstOrDefault();
         }
 
         // Check if the adapter itself matches
