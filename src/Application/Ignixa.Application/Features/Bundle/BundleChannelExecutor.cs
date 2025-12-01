@@ -61,22 +61,30 @@ public class BundleChannelExecutor
     /// <param name="options">Processing options (parallelism, channel capacity, bundle type).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="deferredWriteCoordinator">Optional coordinator for deferred batch writes.</param>
+    /// <param name="skipStreamingValidation">
+    /// If true, skips streaming entry validation (e.g., urn:uuid, conditional reference checks).
+    /// Use this for Phase 2 buffered entries that have already been validated during Phase 1.
+    /// Skipping validation prevents re-validation of conditional references that were resolved in Phase 1.
+    /// Default: false (perform validation, which is correct for Phase 1 streaming entries).
+    /// </param>
     /// <returns>Async enumerable of responses in the same order as input entries.</returns>
     public async IAsyncEnumerable<BundleEntryResponse> ExecuteStreamingAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         ReferenceResolutionContext referenceContext,
         BundleProcessingOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken,
-        DeferredWriteCoordinator? deferredWriteCoordinator = null)
+        DeferredWriteCoordinator? deferredWriteCoordinator = null,
+        bool skipStreamingValidation = false)
     {
         EnsureArg.IsNotNull(entryStream, nameof(entryStream));
         EnsureArg.IsNotNull(referenceContext, nameof(referenceContext));
         EnsureArg.IsNotNull(options, nameof(options));
 
         _logger.LogInformation(
-            "Executing bundle entries with streaming responses (type: {Type}, parallelism: {Parallelism})",
+            "Executing bundle entries with streaming responses (type: {Type}, parallelism: {Parallelism}, skipValidation: {SkipValidation})",
             options.Type,
-            options.MaxParallelism);
+            options.MaxParallelism,
+            skipStreamingValidation);
 
         // For transaction bundles with streaming, validate verb order and execute sequentially
         if (options.Type == BundleType.Transaction)
@@ -85,7 +93,8 @@ public class BundleChannelExecutor
                 entryStream,
                 referenceContext,
                 cancellationToken,
-                deferredWriteCoordinator))
+                deferredWriteCoordinator,
+                skipStreamingValidation))
             {
                 yield return response;
             }
@@ -98,7 +107,8 @@ public class BundleChannelExecutor
             referenceContext,
             options,
             cancellationToken,
-            deferredWriteCoordinator))
+            deferredWriteCoordinator,
+            skipStreamingValidation))
         {
             yield return response;
         }
@@ -108,14 +118,26 @@ public class BundleChannelExecutor
     /// Executes batch bundle entries in streaming mode with parallel execution.
     /// No verb ordering - processes all entries in parallel as they arrive.
     /// </summary>
+    /// <param name="entryStream">Stream of bundle entries to execute.</param>
+    /// <param name="referenceContext">Reference resolution context.</param>
+    /// <param name="options">Processing options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="deferredWriteCoordinator">Optional coordinator for deferred batch writes.</param>
+    /// <param name="skipStreamingValidation">
+    /// If true, skips streaming entry validation (e.g., urn:uuid, conditional reference checks).
+    /// Use this for Phase 2 buffered entries that have already been validated during Phase 1.
+    /// Skipping validation prevents re-validation of conditional references that were resolved in Phase 1.
+    /// Default: false (perform validation, which is correct for Phase 1 streaming entries).
+    /// </param>
     private async IAsyncEnumerable<BundleEntryResponse> ExecuteBatchStreamingAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         ReferenceResolutionContext referenceContext,
         BundleProcessingOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken,
-        DeferredWriteCoordinator? deferredWriteCoordinator = null)
+        DeferredWriteCoordinator? deferredWriteCoordinator = null,
+        bool skipStreamingValidation = false)
     {
-        _logger.LogInformation("Executing batch bundle in streaming mode with parallel execution");
+        _logger.LogInformation("Executing batch bundle in streaming mode with parallel execution (skipValidation: {SkipValidation})", skipStreamingValidation);
 
         // Create response channel with (index, response) tuples
         var responseChannel = Channel.CreateBounded<(int index, BundleEntryResponse response)>(
@@ -148,7 +170,11 @@ public class BundleChannelExecutor
                         await foreach (var entry in entryStream.WithCancellation(cancellationToken))
                         {
                             // Validate no urn:uuid or conditional references in streaming mode
-                            ValidateStreamingEntry(entry);
+                            // Skip validation if entries were pre-processed (buffered Phase 2)
+                            if (!skipStreamingValidation)
+                            {
+                                ValidateStreamingEntry(entry);
+                            }
 
                             await entryChannel.Writer.WriteAsync((entry.Index, entry), cancellationToken);
                         }
@@ -214,13 +240,19 @@ public class BundleChannelExecutor
     /// Streams entries into channel as they arrive, drains channel when verb changes.
     /// Validates DELETE → POST → PUT → PATCH → GET order.
     /// </summary>
+    /// <param name="entryStream">Stream of bundle entries to execute.</param>
+    /// <param name="referenceContext">Reference resolution context.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="deferredWriteCoordinator">Optional coordinator for deferred batch writes.</param>
+    /// <param name="skipStreamingValidation">Skip validation for urn:uuid/conditional refs (set true when entries were pre-processed/buffered).</param>
     private async IAsyncEnumerable<BundleEntryResponse> ExecuteTransactionStreamingAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         ReferenceResolutionContext referenceContext,
         [EnumeratorCancellation] CancellationToken cancellationToken,
-        DeferredWriteCoordinator? deferredWriteCoordinator = null)
+        DeferredWriteCoordinator? deferredWriteCoordinator = null,
+        bool skipStreamingValidation = false)
     {
-        _logger.LogInformation("Executing transaction bundle in streaming mode with verb-grouped parallel execution");
+        _logger.LogInformation("Executing transaction bundle in streaming mode with verb-grouped parallel execution (skipValidation: {SkipValidation})", skipStreamingValidation);
 
         // Create channels for work distribution
         var entryChannel = Channel.CreateUnbounded<(int index, BundleEntryContext entry)>(
@@ -272,7 +304,11 @@ public class BundleChannelExecutor
                     totalEntries++;
 
                     // Validate no urn:uuid or conditional references
-                    ValidateStreamingEntry(entry);
+                    // Skip validation if entries were pre-processed (buffered Phase 2)
+                    if (!skipStreamingValidation)
+                    {
+                        ValidateStreamingEntry(entry);
+                    }
 
                     // Validate verb order
                     if (!VerbOrderPriority.TryGetValue(entry.HttpVerb, out int currentVerbPriority))

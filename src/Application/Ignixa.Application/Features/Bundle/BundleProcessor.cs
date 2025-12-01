@@ -199,13 +199,18 @@ public class BundleProcessor
                 var phase2BatchProcessor = StartBatchProcessor(phase2Coordinator, cancellationToken);
 
                 // Execute buffered entries via streaming
+                // IMPORTANT: Pass skipStreamingValidation=true because buffered entries may contain
+                // conditional references (e.g., Patient?identifier=...) which are valid for Phase 2
+                // but would fail streaming validation. These entries were buffered precisely because
+                // they require reference resolution which is now complete.
                 var phase2ResponseList = new List<BundleEntryResponse>();
                 await foreach (var response in _channelExecutor.ExecuteStreamingAsync(
                     ToAsyncEnumerable(bufferedEntries),
                     referenceContext,
                     options,
                     cancellationToken,
-                    phase2Coordinator))
+                    phase2Coordinator,
+                    skipStreamingValidation: true))
                 {
                     phase2ResponseList.Add(response);
                 }

@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IO;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Search.Models;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -417,8 +418,8 @@ public static class OperationEndpoints
         HttpContext context,
         string id,
         [FromServices] IMediator mediator,
-        [FromQuery] DateOnly? start,
-        [FromQuery] DateOnly? end,
+        [FromQuery] string? start,
+        [FromQuery] string? end,
         [FromQuery] DateTimeOffset? _since,
         [FromQuery] string? _type,
         [FromQuery] int? _count,
@@ -431,13 +432,36 @@ public static class OperationEndpoints
             types = new HashSet<string>(_type.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
-        // Convert DateOnly to DateTimeOffset for filtering
-        DateTimeOffset? startOffset = start.HasValue
-            ? new DateTimeOffset(start.Value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
-            : null;
-        DateTimeOffset? endOffset = end.HasValue
-            ? new DateTimeOffset(end.Value.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero)
-            : null;
+        // Parse partial date strings using PartialDateTime for FHIR compliance
+        DateTimeOffset? startOffset = null;
+        if (!string.IsNullOrEmpty(start))
+        {
+            var partialStart = PartialDateTime.Parse(start);
+            // For start date: use first moment (month=1, day=1, hour=0, minute=0, second=0)
+            startOffset = partialStart.ToDateTimeOffset(
+                defaultMonth: 1,
+                defaultDaySelector: (year, month) => 1,
+                defaultHour: 0,
+                defaultMinute: 0,
+                defaultSecond: 0,
+                defaultFraction: 0,
+                defaultUtcOffset: TimeSpan.Zero);
+        }
+
+        DateTimeOffset? endOffset = null;
+        if (!string.IsNullOrEmpty(end))
+        {
+            var partialEnd = PartialDateTime.Parse(end);
+            // For end date: use last moment (month=12, day=last day of month, hour=23, minute=59, second=59)
+            endOffset = partialEnd.ToDateTimeOffset(
+                defaultMonth: 12,
+                defaultDaySelector: (year, month) => DateTime.DaysInMonth(year, month),
+                defaultHour: 23,
+                defaultMinute: 59,
+                defaultSecond: 59,
+                defaultFraction: 0.9999999m,
+                defaultUtcOffset: TimeSpan.Zero);
+        }
 
         // Create Patient $everything query
         var query = new PatientEverythingQuery(

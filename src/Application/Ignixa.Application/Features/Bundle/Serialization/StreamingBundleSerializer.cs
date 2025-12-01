@@ -360,17 +360,74 @@ public static class StreamingBundleSerializer
         // Write entry array
         writer.WriteStartArray("entry");
 
-        // Stream entry responses as they become available
-        await foreach (BundleEntryResponse entryResponse in entryResponses.WithCancellation(cancellationToken))
-        {
-            WriteEntryResponse(writer, entryResponse);
+        // Track whether we need to write an error entry
+        Exception? streamingException = null;
 
-            // Flush periodically to stream data to client
-            await writer.FlushAsync(cancellationToken);
+        // Stream entry responses as they become available
+        // CRITICAL: Wrap in try-catch to ensure JSON is always well-formed
+        // Once headers are sent, we cannot return a different HTTP status code,
+        // so we must complete the JSON structure and include the error as a bundle entry.
+        try
+        {
+            await foreach (BundleEntryResponse entryResponse in entryResponses.WithCancellation(cancellationToken))
+            {
+                WriteEntryResponse(writer, entryResponse);
+
+                // Flush periodically to stream data to client
+                await writer.FlushAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation requested - don't include error entry, just complete the JSON
+            // The client will see an incomplete response which is expected for cancellation
+        }
+        catch (Exception ex)
+        {
+            // Capture the exception to write as an error entry
+            // This ensures the JSON remains well-formed even when enumeration fails
+            streamingException = ex;
         }
 
-        // Write bundle footer
+        // If an exception occurred during streaming, write it as an error entry
+        // This ensures the bundle response is valid JSON with the error visible to the client
+        if (streamingException is not null)
+        {
+            WriteErrorEntry(writer, streamingException);
+        }
+
+        // Write bundle footer - ALWAYS called to ensure valid JSON
         await WriteBundleFooterAsync(writer, cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes an error entry to the bundle when streaming fails.
+    /// This ensures the response JSON remains valid even when an exception occurs.
+    /// </summary>
+    private static void WriteErrorEntry(FhirJsonWriter writer, Exception exception)
+    {
+        writer.WriteStartObject();
+
+        // Write response with 500 status
+        writer.WriteStartObject("response");
+        writer.WriteString("status", "500 Internal Server Error");
+        writer.WriteEndObject(); // end response
+
+        // Write OperationOutcome as resource
+        writer.WriteStartObject("resource");
+        writer.WriteString("resourceType", "OperationOutcome");
+
+        writer.WriteStartArray("issue");
+        writer.WriteStartObject();
+        writer.WriteString("severity", "fatal");
+        writer.WriteString("code", "exception");
+        writer.WriteString("diagnostics", $"Streaming serialization failed: {exception.Message}");
+        writer.WriteEndObject(); // end issue
+        writer.WriteEndArray(); // end issue array
+
+        writer.WriteEndObject(); // end resource (OperationOutcome)
+
+        writer.WriteEndObject(); // end entry
     }
 
     /// <summary>

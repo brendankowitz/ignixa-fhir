@@ -768,13 +768,7 @@ public static class FhirEndpoints
                 else if (actualReturnPreferenceConditional == ReturnPreference.OperationOutcome)
                 {
                     // return=OperationOutcome - return OperationOutcome with success message
-                    var outcome = new OperationOutcomeJsonNode();
-                    outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
-                    {
-                        Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                        Code = OperationOutcomeJsonNode.IssueType.Informational,
-                        Diagnostics = $"Successfully created {resourceType}/{result.Resource.ResourceId}"
-                    });
+                    var outcome = CreateSuccessOperationOutcome($"Successfully created {resourceType}/{result.Resource.ResourceId}");
                     return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status201Created);
                 }
                 else
@@ -813,13 +807,7 @@ public static class FhirEndpoints
                 else if (actualReturnPreferenceConditional == ReturnPreference.OperationOutcome)
                 {
                     // return=OperationOutcome - return OperationOutcome with ETag and Last-Modified headers
-                    var outcome = new OperationOutcomeJsonNode();
-                    outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
-                    {
-                        Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                        Code = OperationOutcomeJsonNode.IssueType.Informational,
-                        Diagnostics = $"No action taken, {resourceType}/{result.Resource.ResourceId} already exists"
-                    });
+                    var outcome = CreateSuccessOperationOutcome($"No action taken, {resourceType}/{result.Resource.ResourceId} already exists");
 
                     // Serialize to bytes for FhirResult
                     var outcomeBytes = outcome.SerializeToBytes();
@@ -1226,14 +1214,8 @@ public static class FhirEndpoints
             else if (actualReturnPreference == ReturnPreference.OperationOutcome)
             {
                 // return=OperationOutcome - return OperationOutcome with success message
-                var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                    Code = OperationOutcomeJsonNode.IssueType.Informational,
-                    Diagnostics = $"Successfully created {resourceType}/{result.Resource.ResourceId}"
-                });
-                return Results.Json(outcome, statusCode: StatusCodes.Status201Created, contentType: "application/fhir+json");
+                var outcome = CreateSuccessOperationOutcome($"Successfully created {resourceType}/{result.Resource.ResourceId}");
+                return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status201Created);
             }
             else
             {
@@ -1257,13 +1239,7 @@ public static class FhirEndpoints
             else if (actualReturnPreference == ReturnPreference.OperationOutcome)
             {
                 // return=OperationOutcome - return OperationOutcome with success message
-                var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
-                {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
-                    Code = OperationOutcomeJsonNode.IssueType.Informational,
-                    Diagnostics = $"Successfully updated {resourceType}/{result.Resource.ResourceId}"
-                });
+                var outcome = CreateSuccessOperationOutcome($"Successfully updated {resourceType}/{result.Resource.ResourceId}");
                 return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
             }
             else
@@ -1484,6 +1460,21 @@ public static class FhirEndpoints
 
         string queryString = "?" + string.Join("&", encodedPairs);
         return queryString;
+    }
+
+    /// <summary>
+    /// Creates a success OperationOutcome for write operations (create/update/delete).
+    /// </summary>
+    private static OperationOutcomeJsonNode CreateSuccessOperationOutcome(string message)
+    {
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+            Code = OperationOutcomeJsonNode.IssueType.Informational,
+            Diagnostics = message
+        });
+        return outcome;
     }
 
     /// <summary>
