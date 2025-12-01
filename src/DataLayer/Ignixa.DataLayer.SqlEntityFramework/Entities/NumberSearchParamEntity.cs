@@ -47,16 +47,18 @@ public class NumberSearchParamEntity
 
     /// <summary>
     /// Lower bound of numeric range.
+    /// Note: The table schema requires NOT NULL, but rows are never queried directly via EF.
+    /// The TVP accepts nullable values and the stored procedure converts nulls to defaults.
     /// </summary>
-    [Required]
     [Column("LowValue")]
     [Precision(36, 18)]
     public decimal LowValue { get; set; }
 
     /// <summary>
     /// Upper bound of numeric range.
+    /// Note: The table schema requires NOT NULL, but rows are never queried directly via EF.
+    /// The TVP accepts nullable values and the stored procedure converts nulls to defaults.
     /// </summary>
-    [Required]
     [Column("HighValue")]
     [Precision(36, 18)]
     public decimal HighValue { get; set; }

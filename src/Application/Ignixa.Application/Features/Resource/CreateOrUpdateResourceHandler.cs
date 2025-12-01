@@ -238,13 +238,19 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         }
         catch (Exception ex)
         {
-            // Log but don't fail - search indexing is optional for now
-            _logger.LogWarning(
+            // Log with full details to help diagnose indexing failures
+            _logger.LogError(
                 ex,
-                "Failed to extract search indices for {ResourceType}/{Id} (FHIR {Version})",
+                "Failed to extract search indices for {ResourceType}/{Id} (FHIR {Version}). Error: {ErrorMessage}. This may indicate a bug in search parameter extraction for this resource type.",
                 command.ResourceType,
                 command.Id,
-                fhirVersionEnum);
+                fhirVersionEnum,
+                ex.Message);
+
+            // Re-throw to fail the request - search indexing is not optional
+            throw new InvalidOperationException(
+                $"Failed to extract search indices for {command.ResourceType}/{command.Id}: {ex.Message}. See logs for details.",
+                ex);
         }
 
         // Set initial meta values
@@ -253,10 +259,12 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         command.JsonNode.Meta.LastUpdated = DateTimeOffset.UtcNow;
         command.JsonNode.Meta.VersionId = "1"; // Repository will update this for existing resources
 
-        if (command.HttpMethod == HttpMethod.Post)
-        {
-            command.JsonNode.Id = command.Id;
-        }
+        // Always set the ID on the JsonNode to match command.Id
+        // This is critical for:
+        // - POST: Server-assigned ID
+        // - PUT with conditional update: Existing resource ID (body ID ignored)
+        // - PUT with explicit ID: URL ID takes precedence
+        command.JsonNode.Id = command.Id;
 
         return new ResourceWrapper(
             command.ResourceType,
@@ -338,10 +346,17 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
+            // Log with full details to help diagnose indexing failures
+            _logger.LogError(
                 ex,
-                "Failed to extract search indices for Provenance/{Id}",
-                provenanceId);
+                "Failed to extract search indices for Provenance/{Id}. Error: {ErrorMessage}. This may indicate a bug in search parameter extraction.",
+                provenanceId,
+                ex.Message);
+
+            // Re-throw to fail the request - search indexing is not optional
+            throw new InvalidOperationException(
+                $"Failed to extract search indices for Provenance/{provenanceId}: {ex.Message}. See logs for details.",
+                ex);
         }
 
         var provenanceWrapper = new ResourceWrapper(

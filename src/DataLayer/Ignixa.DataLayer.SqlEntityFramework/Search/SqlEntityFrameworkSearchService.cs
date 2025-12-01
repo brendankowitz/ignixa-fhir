@@ -913,10 +913,16 @@ public class SqlEntityFrameworkSearchService : ISearchService
         // Include/revinclude needs all matching results, not just the current page
         IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: false).GetAwaiter().GetResult();
 
+        // Extract surrogate IDs from the base query BEFORE using in .Contains()
+        // This prevents EF Core from generating complex subqueries with sorting in the WHERE clause
+        var mainResultSurrogateIds = baseQuery
+            .Select(r => r.ResourceSurrogateId)
+            .Distinct();
+
         // Find resources referenced by these main results using a subquery
         // This keeps everything in the database query (no client-side materialization)
         var referencedTypeAndIds = _context.ReferenceSearchParams
-            .Where(rsp => baseQuery.Select(r => r.ResourceSurrogateId).Contains(rsp.ResourceSurrogateId) && rsp.SearchParamId == searchParamId)
+            .Where(rsp => mainResultSurrogateIds.Contains(rsp.ResourceSurrogateId) && rsp.SearchParamId == searchParamId)
             .Select(rsp => new { rsp.ReferenceResourceTypeId, rsp.ReferenceResourceId })
             .Distinct();
 
@@ -961,13 +967,20 @@ public class SqlEntityFrameworkSearchService : ISearchService
         IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: false)
             .GetAwaiter().GetResult();
 
+        // Extract resource type and ID pairs from the base query BEFORE using in .Any()
+        // This prevents EF Core from generating complex subqueries with sorting in EXISTS clauses
+        // which can cause translation errors or performance issues
+        var mainResultIdentifiers = baseQuery
+            .Select(r => new { r.ResourceTypeId, r.ResourceId })
+            .Distinct();
+
         // Find resources that reference these main results using a subquery
         // Filter by source resource type (e.g., Encounter), search parameter, and reference target
         // This keeps everything in the database query (no client-side materialization)
         var referencingRsps = _context.ReferenceSearchParams
             .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
                           rsp.SearchParamId == searchParamId &&
-                          baseQuery.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+                          mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
             .Select(rsp => rsp.ResourceSurrogateId)
             .Distinct();
 

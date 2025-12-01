@@ -17,6 +17,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    // Defaults for unbounded ranges in DECIMAL(36, 18) columns
+    // Note: The table requires NOT NULL for LowValue/HighValue, so we use sentinel values
+    // when the NumberSearchValue has only one bound (e.g., ">= 10" has Low but no High)
+    private const decimal DefaultLowValue = -999999999999999999m;
+    private const decimal DefaultHighValue = 999999999999999999m;
+
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -44,6 +50,10 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
                 continue;
 
+            // Deduplicate search indices per resource to prevent UNIQUE KEY constraint violations
+            // The TVP has a UNIQUE constraint on (ResourceTypeId, ResourceSurrogateId, SearchParamId, SingleValue, LowValue, HighValue)
+            var dedupSet = new HashSet<(short SearchParamId, decimal? SingleValue, decimal LowValue, decimal HighValue)>();
+
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not NumberSearchValue numberValue)
@@ -52,28 +62,48 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
+                // Calculate values for this row
+                decimal? singleValue;
+                decimal lowValue;
+                decimal highValue;
+
+                if (numberValue.Low.HasValue && numberValue.High.HasValue && numberValue.Low == numberValue.High)
+                {
+                    // Exact match: store in SingleValue and duplicate to Low/High
+                    var value = numberValue.Low.Value;
+                    singleValue = value;
+                    lowValue = value;
+                    highValue = value;
+                }
+                else
+                {
+                    // Range: SingleValue is null, Low/High use defaults if unbounded
+                    singleValue = null;
+                    lowValue = numberValue.Low ?? DefaultLowValue;
+                    highValue = numberValue.High ?? DefaultHighValue;
+                }
+
+                // Skip if duplicate
+                if (!dedupSet.Add((searchParamId, singleValue, lowValue, highValue)))
+                    continue;
+
+                // Create the record
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
 
-                if (numberValue.Low.HasValue && numberValue.High.HasValue && numberValue.Low == numberValue.High)
+                if (singleValue.HasValue)
                 {
-                    record.SetDecimal(3, numberValue.Low.Value);
-                    record.SetDBNull(4);
-                    record.SetDBNull(5);
+                    record.SetDecimal(3, singleValue.Value);
+                    record.SetDecimal(4, lowValue);
+                    record.SetDecimal(5, highValue);
                 }
                 else
                 {
                     record.SetDBNull(3);
-                    if (numberValue.Low.HasValue)
-                        record.SetDecimal(4, numberValue.Low.Value);
-                    else
-                        record.SetDBNull(4);
-                    if (numberValue.High.HasValue)
-                        record.SetDecimal(5, numberValue.High.Value);
-                    else
-                        record.SetDBNull(5);
+                    record.SetDecimal(4, lowValue);
+                    record.SetDecimal(5, highValue);
                 }
 
                 yield return record;

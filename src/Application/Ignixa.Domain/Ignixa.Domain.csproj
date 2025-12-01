@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Search\Ignixa.Search.csproj" />
   </ItemGroup>
 
   <ItemGroup>

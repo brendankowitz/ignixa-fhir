@@ -197,7 +197,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
         catch (Exception ex)
         {
-            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.GetType());
+            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -313,8 +313,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.")]
         public static partial void ComponentNullOrEmptyExpression(ILogger logger, int componentIndex, string searchParameterCode);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}'.")]
-        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, Type elementType);
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}'.")]
+        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType during search indexing.")]
         public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger);

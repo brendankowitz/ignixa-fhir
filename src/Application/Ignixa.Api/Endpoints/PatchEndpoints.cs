@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
@@ -206,6 +207,14 @@ public static class PatchEndpoints
     {
         // Extract query string (search criteria)
         var queryString = context.Request.QueryString.Value;
+
+        // FHIR spec: Bundle cannot be used in conditional operations
+        // Reject with "not selective enough" error (matches test expectations)
+        if (string.Equals(resourceType, KnownResourceTypes.Bundle, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                string.Format(Ignixa.Search.Resources.ConditionalOperationNotSelectiveEnough, resourceType));
+        }
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {

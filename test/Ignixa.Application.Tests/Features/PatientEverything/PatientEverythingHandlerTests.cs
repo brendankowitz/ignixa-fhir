@@ -366,7 +366,7 @@ public class PatientEverythingHandlerTests
 
         // Assert
         result.Should().NotBeNull();
-        result.SearchOptions.Summary.Should().Be(SummaryType.False);
+        result.SearchOptions.Summary.Should().Be(Ignixa.Search.Models.SummaryType.False);
     }
 
     [Fact]

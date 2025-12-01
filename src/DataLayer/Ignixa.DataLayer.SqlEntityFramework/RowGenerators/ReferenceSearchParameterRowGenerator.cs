@@ -45,6 +45,10 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
                 continue;
 
+            // Deduplicate search indices per resource to prevent UNIQUE KEY constraint violations
+            // The TVP has a UNIQUE constraint on (ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri, ReferenceResourceTypeId, ReferenceResourceId)
+            var dedupSet = new HashSet<(short SearchParamId, string? BaseUri, short? ReferenceResourceTypeId, string ReferenceResourceId)>();
+
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not ReferenceSearchValue refValue)
@@ -53,20 +57,30 @@ public class ReferenceSearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
+                // Calculate values for deduplication key
+                var baseUri = refValue.BaseUri?.ToString();
+                var refResourceTypeId = !string.IsNullOrEmpty(refValue.ResourceType) && resourceTypeIdMap.TryGetValue(refValue.ResourceType, out var tempRefTypeId)
+                    ? (short?)tempRefTypeId
+                    : null;
+
+                // Skip if duplicate
+                if (!dedupSet.Add((searchParamId, baseUri, refResourceTypeId, refValue.ResourceId)))
+                    continue;
+
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
 
                 // BaseUri is optional for local references
-                if (refValue.BaseUri != null)
-                    record.SetString(3, refValue.BaseUri.ToString());
+                if (baseUri != null)
+                    record.SetString(3, baseUri);
                 else
                     record.SetDBNull(3);
 
                 // ReferenceResourceTypeId lookup
-                if (!string.IsNullOrEmpty(refValue.ResourceType) && resourceTypeIdMap.TryGetValue(refValue.ResourceType, out var refResourceTypeId))
-                    record.SetInt16(4, refResourceTypeId);
+                if (refResourceTypeId.HasValue)
+                    record.SetInt16(4, refResourceTypeId.Value);
                 else
                     record.SetDBNull(4);
 

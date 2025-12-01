@@ -197,7 +197,10 @@ public class TenantResolutionMiddleware : IDisposable
         }
 
         // Exclude known non-resource endpoints
-        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
+        // CRITICAL: Must check for trailing slash or end-of-path to avoid false positives
+        // Example: /HealthcareService should NOT match /health endpoint check
+        if (path.Equals("/health", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/health/", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/.well-known", StringComparison.OrdinalIgnoreCase))
         {
             return false;

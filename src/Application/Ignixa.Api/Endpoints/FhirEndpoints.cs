@@ -752,13 +752,21 @@ public static class FhirEndpoints
             else
             {
                 // 200 OK - existing resource returned
+                // FHIR spec: Also include Location header for existing resource (for idempotency)
                 logger.LogInformation(
                     "Conditional create: Returned existing {ResourceType}/{Id} (version {VersionId})",
                     result.Resource.ResourceType,
                     result.Resource.ResourceId,
                     result.Resource.VersionId);
 
+                var isAgnosticRouteExisting = context.Items.ContainsKey("IsAgnosticRoute") && (bool)context.Items["IsAgnosticRoute"]!;
+                var relativePathExisting = isAgnosticRouteExisting
+                    ? $"/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}"
+                    : $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
+                var locationExisting = $"{context.Request.Scheme}://{context.Request.Host}{relativePathExisting}";
+
                 return FhirResults.Ok(resourceBytes)
+                    .WithLocation(locationExisting)
                     .WithETag(result.Resource.VersionId)
                     .WithLastModified(result.Resource.LastModified);
             }
@@ -1075,6 +1083,14 @@ public static class FhirEndpoints
         // Extract query string (search criteria)
         var queryString = context.Request.QueryString.Value;
 
+        // FHIR spec: Bundle cannot be used in conditional operations
+        // Reject with "not selective enough" error (matches test expectations)
+        if (string.Equals(resourceType, KnownResourceTypes.Bundle, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                string.Format(Ignixa.Search.Resources.ConditionalOperationNotSelectiveEnough, resourceType));
+        }
+
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {
             throw new Domain.Exceptions.BadRequestException("Conditional update requires search parameters in query string");
@@ -1168,6 +1184,14 @@ public static class FhirEndpoints
     {
         // Extract query string (search criteria)
         var queryString = context.Request.QueryString.Value;
+
+        // FHIR spec: Bundle cannot be used in conditional operations
+        // Reject with "not selective enough" error (matches test expectations)
+        if (string.Equals(resourceType, KnownResourceTypes.Bundle, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                string.Format(Ignixa.Search.Resources.ConditionalOperationNotSelectiveEnough, resourceType));
+        }
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {

@@ -167,10 +167,8 @@ public class ConditionalCreateHandler : IRequestHandler<ConditionalCreateCommand
                     MatchCount: 0);
             }
 
-            // Convert SearchEntryResult to ResourceWrapper
-            // We need to fetch the full ResourceWrapper, but IFhirRepository only returns SearchEntryResult
-            // For now, we'll create a lightweight wrapper using the search result data
-            var existingWrapper = ConvertSearchEntryToWrapper(existingEntry);
+            // Convert SearchEntryResult from GetAsync to ResourceWrapper
+            var existingWrapper = ConvertSearchEntryToWrapper(existingResource);
 
             return new ConditionalCreateResult(
                 Resource: existingWrapper,

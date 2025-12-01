@@ -3,6 +3,8 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.Search.Models;
+
 namespace Ignixa.Domain.Models;
 
 /// <summary>
@@ -47,6 +49,14 @@ public sealed record HistoryQueryParameters
     /// FHIR parameter: _total.
     /// </summary>
     public TotalMode Total { get; init; } = TotalMode.None;
+
+    /// <summary>
+    /// Controls the level of detail returned in the history response.
+    /// Default: False (full resources).
+    /// When set to Count, only Bundle.total is returned (no entries).
+    /// FHIR parameter: _summary.
+    /// </summary>
+    public SummaryType Summary { get; init; } = SummaryType.False;
 
     /// <summary>
     /// Maximum allowed page size (enforced by server).

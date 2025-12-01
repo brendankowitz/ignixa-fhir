@@ -6,12 +6,13 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Models;
 
 namespace Ignixa.Application.Features.History;
 
 /// <summary>
 /// Parses FHIR history query parameters from HTTP query string.
-/// Supports: _count, _offset, _since, _until, _sort.
+/// Supports: _count, _offset, _since, _until, _sort, _total, _summary.
 /// </summary>
 public static class HistoryQueryParametersParser
 {
@@ -24,14 +25,31 @@ public static class HistoryQueryParametersParser
     {
         ArgumentNullException.ThrowIfNull(queryString);
 
+        var count = ParseCount(queryString);
+        var summary = ParseSummary(queryString);
+        var total = ParseTotal(queryString);
+
+        // Auto-set Total=Accurate when _summary=count
+        if (summary == SummaryType.Count && total == TotalMode.None)
+        {
+            total = TotalMode.Accurate;
+        }
+
+        // Auto-set Total=Accurate when _count=0 (common pattern for count-only queries)
+        if (count == 0 && total == TotalMode.None)
+        {
+            total = TotalMode.Accurate;
+        }
+
         var parameters = new HistoryQueryParameters
         {
-            Count = ParseCount(queryString),
+            Count = count,
             Offset = ParseOffset(queryString),
             Since = ParseDateTimeOffset(queryString, "_since"),
             Until = ParseDateTimeOffset(queryString, "_until"),
             Sort = ParseSort(queryString),
-            Total = ParseTotal(queryString),
+            Total = total,
+            Summary = summary,
         };
 
         return parameters.Validate();
@@ -113,5 +131,26 @@ public static class HistoryQueryParametersParser
 
         // Default: None (most performant, no total calculation)
         return TotalMode.None;
+    }
+
+    private static SummaryType ParseSummary(IQueryCollection queryString)
+    {
+        if (queryString.TryGetValue("_summary", out var summaryValue))
+        {
+            var summaryString = summaryValue.ToString().ToUpperInvariant();
+
+            return summaryString switch
+            {
+                "COUNT" => SummaryType.Count,
+                "TRUE" => SummaryType.True,
+                "FALSE" => SummaryType.False,
+                "DATA" => SummaryType.Data,
+                "TEXT" => SummaryType.Text,
+                _ => SummaryType.False, // Default if invalid value
+            };
+        }
+
+        // Default: False (return full resources)
+        return SummaryType.False;
     }
 }

@@ -73,7 +73,7 @@ public class PatientEverythingHandler(
             Include = [], // Not applicable for $everything (already includes everything)
             RevInclude = [], // Not applicable for $everything
             Total = TotalType.None, // Total count calculation not currently enabled for $everything
-            Summary = SummaryType.False,
+            Summary = Ignixa.Search.Models.SummaryType.False,
             Elements = new HashSet<string>()
         };
 

@@ -18,6 +18,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    // Defaults for unbounded ranges in DECIMAL(36, 18) columns
+    // Note: The table requires NOT NULL for LowValue/HighValue, so we use sentinel values
+    // when the QuantitySearchValue has only one bound (e.g., ">= 10 mg" has Low but no High)
+    private const decimal DefaultLowValue = -999999999999999999m;
+    private const decimal DefaultHighValue = 999999999999999999m;
+
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -47,6 +53,10 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
                 continue;
 
+            // Deduplicate search indices per resource to prevent UNIQUE KEY constraint violations
+            // The TVP has a UNIQUE constraint on (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, QuantityCodeId, SingleValue, LowValue, HighValue)
+            var dedupSet = new HashSet<(short SearchParamId, int SystemId, int QuantityCodeId, decimal? SingleValue, decimal LowValue, decimal HighValue)>();
+
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not QuantitySearchValue quantityValue)
@@ -55,31 +65,50 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
                     continue;
 
+                // Calculate values for this row
+                var systemId = string.IsNullOrEmpty(quantityValue.System) ? 0 : quantityValue.System.GetHashCode(StringComparison.Ordinal);
+                var quantityCodeId = string.IsNullOrEmpty(quantityValue.Code) ? 0 : quantityValue.Code.GetHashCode(StringComparison.Ordinal);
+
+                decimal? singleValue;
+                decimal lowValue;
+                decimal highValue;
+
+                if (quantityValue.Low.HasValue && quantityValue.High.HasValue && quantityValue.Low == quantityValue.High)
+                {
+                    // Exact match: store in SingleValue and duplicate to Low/High
+                    var value = quantityValue.Low.Value;
+                    singleValue = value;
+                    lowValue = value;
+                    highValue = value;
+                }
+                else
+                {
+                    // Range: SingleValue is null, Low/High use defaults if unbounded
+                    singleValue = null;
+                    lowValue = quantityValue.Low ?? DefaultLowValue;
+                    highValue = quantityValue.High ?? DefaultHighValue;
+                }
+
+                // Skip if duplicate
+                if (!dedupSet.Add((searchParamId, systemId, quantityCodeId, singleValue, lowValue, highValue)))
+                    continue;
+
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
-                record.SetInt32(3, string.IsNullOrEmpty(quantityValue.System) ? 0 : quantityValue.System.GetHashCode(StringComparison.Ordinal));
-                record.SetInt32(4, string.IsNullOrEmpty(quantityValue.Code) ? 0 : quantityValue.Code.GetHashCode(StringComparison.Ordinal));
+                record.SetInt32(3, systemId);
+                record.SetInt32(4, quantityCodeId);
 
-                if (quantityValue.Low.HasValue && quantityValue.High.HasValue && quantityValue.Low == quantityValue.High)
+                if (singleValue.HasValue)
                 {
-                    // Single value - exact match
-                    // Populate all three columns with the same value to satisfy NOT NULL constraints
-                    record.SetDecimal(5, quantityValue.Low.Value);  // SingleValue
-                    record.SetDecimal(6, quantityValue.Low.Value);  // LowValue (same value)
-                    record.SetDecimal(7, quantityValue.Low.Value);  // HighValue (same value)
+                    record.SetDecimal(5, singleValue.Value);
+                    record.SetDecimal(6, lowValue);
+                    record.SetDecimal(7, highValue);
                 }
                 else
                 {
-                    // Range or single-sided value
-                    record.SetDBNull(5);                           // SingleValue = NULL
-
-                    // For range values, at least one of Low/High must be non-null per QuantitySearchValue constructor
-                    // If only one is provided, use it for both Low and High to satisfy NOT NULL constraints
-                    var lowValue = quantityValue.Low ?? quantityValue.High ?? throw new InvalidOperationException("Both Low and High are null");
-                    var highValue = quantityValue.High ?? quantityValue.Low ?? throw new InvalidOperationException("Both High and Low are null");
-
+                    record.SetDBNull(5);
                     record.SetDecimal(6, lowValue);
                     record.SetDecimal(7, highValue);
                 }
