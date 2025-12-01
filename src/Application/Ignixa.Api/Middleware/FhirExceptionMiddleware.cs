@@ -8,6 +8,7 @@ using System.Text.Json;
 using Ignixa.Api.Http;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Abstractions;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.Middleware;
 
@@ -18,7 +19,6 @@ public class FhirExceptionMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<FhirExceptionMiddleware> _logger;
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public FhirExceptionMiddleware(RequestDelegate next, ILogger<FhirExceptionMiddleware> logger)
     {
@@ -61,46 +61,38 @@ public class FhirExceptionMiddleware
             context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
             context.Response.StatusCode = fhirException.StatusCode;
 
-            var operationOutcomeJson = fhirException.OperationOutcome.SerializeToString();
-            return context.Response.WriteAsync(operationOutcomeJson);
+            return context.Response.Body.WriteAsync(fhirException.OperationOutcome.SerializeToBytes()).AsTask();
         }
 
         // Handle other exceptions with generic OperationOutcome
         var statusCode = HttpStatusCode.InternalServerError;
-        var severity = "error";
-        var code = "exception";
+        var severity = OperationOutcomeJsonNode.IssueSeverity.Error;
+        var code = OperationOutcomeJsonNode.IssueType.Exception;
 
         // Map specific exceptions to HTTP status codes
         if (exception is ArgumentException or ArgumentNullException)
         {
             statusCode = HttpStatusCode.BadRequest;
-            code = "invalid";
+            code = OperationOutcomeJsonNode.IssueType.Invalid;
         }
         else if (exception is InvalidOperationException)
         {
             statusCode = HttpStatusCode.BadRequest;
-            code = "processing";
+            code = OperationOutcomeJsonNode.IssueType.Processing;
         }
 
-        var operationOutcome = new
+        var operationOutcome = new OperationOutcomeJsonNode();
+        operationOutcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
         {
-            resourceType = "OperationOutcome",
-            issue = new[]
-            {
-                new
-                {
-                    severity,
-                    code,
-                    diagnostics = exception.Message
-                }
-            }
-        };
+            Severity = severity,
+            Code = code,
+            Diagnostics = exception.Message
+        });
 
-        context.Response.ContentType = "application/fhir+json";
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
         context.Response.StatusCode = (int)statusCode;
 
-        var json = JsonSerializer.Serialize(operationOutcome, JsonOptions);
-        return context.Response.WriteAsync(json);
+        return context.Response.Body.WriteAsync(operationOutcome.SerializeToBytes()).AsTask();
     }
 }
 

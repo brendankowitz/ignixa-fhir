@@ -15,6 +15,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -121,19 +122,14 @@ public static class CompartmentEndpoints
         // Tenant resolution handled by TenantResolutionMiddleware
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            return Results.BadRequest(new
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
-                resourceType = "OperationOutcome",
-                issue = new[]
-                {
-                    new
-                    {
-                        severity = "error",
-                        code = "required",
-                        diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}"
-                    }
-                }
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.Required,
+                Diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/{resourceType}"
             });
+            return Results.BadRequest(outcome);
         }
 
         return await ExecuteSearchCompartmentAsync(
@@ -210,19 +206,14 @@ public static class CompartmentEndpoints
         var validCompartmentTypes = new[] { "Patient", "Practitioner", "RelatedPerson", "Device", "Encounter" };
         if (!validCompartmentTypes.Contains(compartmentType, StringComparer.OrdinalIgnoreCase))
         {
-            return Results.BadRequest(new
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
-                resourceType = "OperationOutcome",
-                issue = new[]
-                {
-                    new
-                    {
-                        severity = "error",
-                        code = "invalid",
-                        diagnostics = $"Invalid compartment type '{compartmentType}'. Must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter"
-                    }
-                }
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                Diagnostics = $"Invalid compartment type '{compartmentType}'. Must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter"
             });
+            return Results.BadRequest(outcome);
         }
 
         // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
@@ -300,19 +291,14 @@ public static class CompartmentEndpoints
         // Tenant resolution handled by TenantResolutionMiddleware
         if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
         {
-            return Results.BadRequest(new
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
-                resourceType = "OperationOutcome",
-                issue = new[]
-                {
-                    new
-                    {
-                        severity = "error",
-                        code = "required",
-                        diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/*"
-                    }
-                }
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.Required,
+                Diagnostics = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{compartmentType}/{compartmentId}/*"
             });
+            return Results.BadRequest(outcome);
         }
 
         return await ExecuteSearchCompartmentAsync(

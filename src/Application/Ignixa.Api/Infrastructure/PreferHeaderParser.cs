@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 using Ignixa.Validation.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -24,16 +25,19 @@ public enum ReturnPreference
     /// <summary>
     /// Server should return full resource representation in response body.
     /// </summary>
+    [EnumLiteral("representation")]
     Representation = 1,
 
     /// <summary>
     /// Server should return minimal representation (headers only, no body).
     /// </summary>
+    [EnumLiteral("minimal")]
     Minimal = 2,
 
     /// <summary>
     /// Server should return OperationOutcome in response body.
     /// </summary>
+    [EnumLiteral("OperationOutcome")]
     OperationOutcome = 3
 }
 
@@ -132,6 +136,68 @@ public static class PreferHeaderParser
     }
 
     /// <summary>
+    /// Parses the Prefer header with strict validation, throwing on invalid values.
+    /// </summary>
+    /// <param name="headers">HTTP request headers.</param>
+    /// <param name="logger">Optional logger for validation warnings.</param>
+    /// <returns>
+    /// A tuple containing:
+    /// - ReturnPreference: The parsed preference (or Unspecified if not present)
+    /// - bool: True if parsing succeeded (or header not present), false if header was malformed
+    /// - string?: Error message if parsing failed
+    /// </returns>
+    /// <remarks>
+    /// Use this method when invalid Prefer headers should result in a 400 Bad Request.
+    /// Returns false for:
+    /// - Empty return value (e.g., "return=")
+    /// - Unknown return value (e.g., "return=unknown")
+    /// </remarks>
+    public static (ReturnPreference Preference, bool IsValid, string? ErrorMessage) ParseReturnPreferenceStrict(
+        IHeaderDictionary headers,
+        ILogger? logger = null)
+    {
+        if (!headers.TryGetValue("Prefer", out var preferHeader))
+        {
+            return (ReturnPreference.Unspecified, true, null);
+        }
+
+        var preferValue = preferHeader.ToString();
+        if (string.IsNullOrWhiteSpace(preferValue))
+        {
+            return (ReturnPreference.Unspecified, true, null);
+        }
+
+        // Parse comma-separated preferences
+        foreach (var preference in preferValue.Split(','))
+        {
+            var trimmedPref = preference.Trim();
+            if (trimmedPref.StartsWith("return=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = trimmedPref.Substring("return=".Length).Trim();
+
+                // Empty value is invalid
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    logger?.LogWarning("Prefer header has empty return value");
+                    return (ReturnPreference.Unspecified, false, "Prefer header 'return' has empty value");
+                }
+
+                var result = EnumUtility.ParseLiteral<ReturnPreference>(value);
+
+                if (result is null)
+                {
+                    logger?.LogWarning("Unknown Prefer header return value: {Value}", value);
+                    return (ReturnPreference.Unspecified, false, $"Prefer header has invalid return value: '{value}'");
+                }
+
+                return (result.Value, true, null);
+            }
+        }
+
+        return (ReturnPreference.Unspecified, true, null);
+    }
+
+    /// <summary>
     /// Converts the validation level to a response header value.
     /// </summary>
     /// <param name="depth">The validation depth that was applied.</param>
@@ -204,19 +270,14 @@ public static class PreferHeaderParser
             return ReturnPreference.Unspecified;
         }
 
-        var result = value.ToUpperInvariant() switch
-        {
-            "REPRESENTATION" => ReturnPreference.Representation,
-            "MINIMAL" => ReturnPreference.Minimal,
-            "OPERATIONOUTCOME" => ReturnPreference.OperationOutcome,
-            _ => ReturnPreference.Unspecified
-        };
+        var result = EnumUtility.ParseLiteral<ReturnPreference>(value);
 
-        if (result == ReturnPreference.Unspecified)
+        if (result is null)
         {
             logger?.LogWarning("Unknown Prefer header return value: {Value}", value);
+            return ReturnPreference.Unspecified;
         }
 
-        return result;
+        return result.Value;
     }
 }

@@ -8,6 +8,8 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+using Ignixa.Specification;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Ignixa.Api.Filters;
@@ -81,21 +83,15 @@ public class ResourceTypeValidationFilter : IEndpointFilter
                 tenantConfig.FhirVersion);
 
             // Return 404 Not Found with FHIR OperationOutcome
-            return Results.Json(
-                new
-                {
-                    resourceType = "OperationOutcome",
-                    issue = new[]
-                    {
-                        new
-                        {
-                            severity = "error",
-                            code = "not-found",
-                            diagnostics = $"Resource type '{resourceType}' is not supported by this server (FHIR {tenantConfig.FhirVersion})",
-                        },
-                    },
-                },
-                statusCode: StatusCodes.Status404NotFound);
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.NotFound,
+                Diagnostics = $"Resource type '{resourceType}' is not supported by this server (FHIR {tenantConfig.FhirVersion})"
+            });
+
+            return Results.Json(outcome, statusCode: StatusCodes.Status404NotFound);
         }
 
         // Resource type is valid - continue to handler

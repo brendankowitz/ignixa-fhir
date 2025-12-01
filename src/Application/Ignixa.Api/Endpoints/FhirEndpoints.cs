@@ -152,6 +152,15 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status501NotImplemented);
 
+        // GET / - Base-level search (system-wide search across all resource types)
+        tenantGroup.MapGet("/", (HttpContext context, int tenantId,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleBaseSearchResource(context, tenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
+            .WithName("BaseSearchResource")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
+
         return endpoints;
     }
 
@@ -253,6 +262,15 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status501NotImplemented);
+
+        // GET / - Base-level search (agnostic, system-wide search across all resource types)
+        agnosticGroup.MapGet("/", (HttpContext context,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandleBaseSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
+            .WithName("BaseSearchResourceAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
 
         return endpoints;
     }
@@ -687,6 +705,13 @@ public static class FhirEndpoints
                 logger,
                 ct);
 
+            // Validate Prefer header strictly (before executing command)
+            var (returnPreferenceConditional, isPreferValid, preferErrorMessage) = PreferHeaderParser.ParseReturnPreferenceStrict(context.Request.Headers, logger);
+            if (!isPreferValid)
+            {
+                throw new BadRequestException(preferErrorMessage ?? "Invalid Prefer header");
+            }
+
             // Execute conditional create
             var command = new Application.Features.ConditionalOperations.ConditionalCreate.ConditionalCreateCommand(
                 TenantId: tenantId,
@@ -700,13 +725,10 @@ public static class FhirEndpoints
 
             var resourceBytes = result.Resource.Resource.SerializeToBytes();
 
-            // Extract return preference from Prefer header (RFC 7240)
-            var returnPreferenceConditional = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
-
-            // Determine actual return preference: default to representation (FHIR spec), unless minimal explicitly requested
-            var actualReturnPreferenceConditional = returnPreferenceConditional == ReturnPreference.Minimal
-                ? ReturnPreference.Minimal
-                : ReturnPreference.Representation;
+            // Determine actual return preference: default to representation (FHIR spec)
+            var actualReturnPreferenceConditional = returnPreferenceConditional == ReturnPreference.Unspecified
+                ? ReturnPreference.Representation
+                : returnPreferenceConditional;
 
             // Add Preference-Applied header for return preference
             if (returnPreferenceConditional != ReturnPreference.Unspecified)
@@ -731,23 +753,37 @@ public static class FhirEndpoints
                     result.Resource.ResourceId,
                     result.Resource.VersionId);
 
-                if (actualReturnPreferenceConditional == ReturnPreference.Representation)
+                if (actualReturnPreferenceConditional == ReturnPreference.Minimal)
                 {
-                    // Return full resource representation
+                    // return=minimal - return minimal body
+                    return FhirResults.Created(location)
+                        .WithETag(result.Resource.VersionId)
+                        .WithLastModified(result.Resource.LastModified)
+                        .WithMinimalBody(
+                            result.Resource.ResourceType,
+                            result.Resource.ResourceId,
+                            result.Resource.VersionId,
+                            result.Resource.LastModified);
+                }
+                else if (actualReturnPreferenceConditional == ReturnPreference.OperationOutcome)
+                {
+                    // return=OperationOutcome - return OperationOutcome with success message
+                    var outcome = new OperationOutcomeJsonNode();
+                    outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                    {
+                        Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                        Code = OperationOutcomeJsonNode.IssueType.Informational,
+                        Diagnostics = $"Successfully created {resourceType}/{result.Resource.ResourceId}"
+                    });
+                    return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status201Created);
+                }
+                else
+                {
+                    // return=representation - return full resource
                     return FhirResults.Created(location, resourceBytes)
                         .WithETag(result.Resource.VersionId)
                         .WithLastModified(result.Resource.LastModified);
                 }
-
-                // Prefer: return=minimal - return minimal body
-                return FhirResults.Created(location)
-                    .WithETag(result.Resource.VersionId)
-                    .WithLastModified(result.Resource.LastModified)
-                    .WithMinimalBody(
-                        result.Resource.ResourceType,
-                        result.Resource.ResourceId,
-                        result.Resource.VersionId,
-                        result.Resource.LastModified);
             }
             else
             {
@@ -765,10 +801,41 @@ public static class FhirEndpoints
                     : $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
                 var locationExisting = $"{context.Request.Scheme}://{context.Request.Host}{relativePathExisting}";
 
-                return FhirResults.Ok(resourceBytes)
-                    .WithLocation(locationExisting)
-                    .WithETag(result.Resource.VersionId)
-                    .WithLastModified(result.Resource.LastModified);
+                if (actualReturnPreferenceConditional == ReturnPreference.Minimal)
+                {
+                    // return=minimal - return truly empty body with headers only (no JSON content)
+                    // FHIR spec: return=minimal means no resource body, only headers
+                    return new FhirResult(StatusCodes.Status200OK)
+                        .WithLocation(locationExisting)
+                        .WithETag(result.Resource.VersionId)
+                        .WithLastModified(result.Resource.LastModified);
+                }
+                else if (actualReturnPreferenceConditional == ReturnPreference.OperationOutcome)
+                {
+                    // return=OperationOutcome - return OperationOutcome with ETag and Last-Modified headers
+                    var outcome = new OperationOutcomeJsonNode();
+                    outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                    {
+                        Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                        Code = OperationOutcomeJsonNode.IssueType.Informational,
+                        Diagnostics = $"No action taken, {resourceType}/{result.Resource.ResourceId} already exists"
+                    });
+
+                    // Serialize to bytes for FhirResult
+                    var outcomeBytes = outcome.SerializeToBytes();
+                    return FhirResults.Ok(outcomeBytes.ToArray())
+                        .WithLocation(locationExisting)
+                        .WithETag(result.Resource.VersionId)
+                        .WithLastModified(result.Resource.LastModified);
+                }
+                else
+                {
+                    // return=representation - return full resource
+                    return FhirResults.Ok(resourceBytes)
+                        .WithLocation(locationExisting)
+                        .WithETag(result.Resource.VersionId)
+                        .WithLastModified(result.Resource.LastModified);
+                }
             }
         }
 
@@ -1129,20 +1196,83 @@ public static class FhirEndpoints
 
         var resourceBytes = result.Resource.Resource.SerializeToBytes();
 
+        // Extract return preference from Prefer header (RFC 7240)
+        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers, logger);
+
+        // Determine actual return preference: default to representation (FHIR spec), unless minimal or OperationOutcome explicitly requested
+        var actualReturnPreference = returnPreference == ReturnPreference.Unspecified
+            ? ReturnPreference.Representation
+            : returnPreference;
+
+        // Add Preference-Applied header for return preference
+        if (returnPreference != ReturnPreference.Unspecified)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
+        }
+
         if (result.WasCreated)
         {
             // 201 Created - include Location header (absolute URL per FHIR spec)
             var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
-            return FhirResults.Created(location, resourceBytes)
-                .WithETag(result.Resource.VersionId)
-                .WithLastModified(result.Resource.LastModified);
+
+            if (actualReturnPreference == ReturnPreference.Minimal)
+            {
+                // return=minimal - return minimal body
+                return FhirResults.Created(location)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified)
+                    .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
+            }
+            else if (actualReturnPreference == ReturnPreference.OperationOutcome)
+            {
+                // return=OperationOutcome - return OperationOutcome with success message
+                var outcome = new OperationOutcomeJsonNode();
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                {
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                    Code = OperationOutcomeJsonNode.IssueType.Informational,
+                    Diagnostics = $"Successfully created {resourceType}/{result.Resource.ResourceId}"
+                });
+                return Results.Json(outcome, statusCode: StatusCodes.Status201Created, contentType: "application/fhir+json");
+            }
+            else
+            {
+                // return=representation - return full resource
+                return FhirResults.Created(location, resourceBytes)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified);
+            }
         }
         else
         {
             // 200 OK
-            return FhirResults.Ok(resourceBytes)
-                .WithETag(result.Resource.VersionId)
-                .WithLastModified(result.Resource.LastModified);
+            if (actualReturnPreference == ReturnPreference.Minimal)
+            {
+                // return=minimal - return minimal body
+                return FhirResults.Ok(resourceBytes)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified)
+                    .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
+            }
+            else if (actualReturnPreference == ReturnPreference.OperationOutcome)
+            {
+                // return=OperationOutcome - return OperationOutcome with success message
+                var outcome = new OperationOutcomeJsonNode();
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+                {
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                    Code = OperationOutcomeJsonNode.IssueType.Informational,
+                    Diagnostics = $"Successfully updated {resourceType}/{result.Resource.ResourceId}"
+                });
+                return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+            }
+            else
+            {
+                // return=representation - return full resource
+                return FhirResults.Ok(resourceBytes)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified);
+            }
         }
     }
 
@@ -1234,27 +1364,87 @@ public static class FhirEndpoints
         else
         {
             // Multiple mode: 200 OK with verbose OperationOutcome
-            var outcome = new
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
-                resourceType = "OperationOutcome",
-                issue = new[]
-                {
-                    new
-                    {
-                        severity = "information",
-                        code = "informational",
-                        diagnostics = result.IsPartialDelete
-                            ? $"Partial delete: Deleted {result.DeletedCount} of {result.TotalMatches} matching resources (limit: {count}). " +
-                              $"Deleted IDs: {string.Join(", ", result.DeletedIds)}"
-                            : $"Deleted {result.DeletedCount} matching resource(s). Deleted IDs: {string.Join(", ", result.DeletedIds)}"
-                    }
-                }
-            };
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                Diagnostics = result.IsPartialDelete
+                    ? $"Partial delete: Deleted {result.DeletedCount} of {result.TotalMatches} matching resources (limit: {count}). " +
+                      $"Deleted IDs: {string.Join(", ", result.DeletedIds)}"
+                    : $"Deleted {result.DeletedCount} matching resource(s). Deleted IDs: {string.Join(", ", result.DeletedIds)}"
+            });
 
-            return Results.Json(outcome, statusCode: StatusCodes.Status200OK, contentType: "application/fhir+json");
+            return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
         }
     }
 
+
+    /// <summary>
+    /// GET / - Base-level search (system-wide search across all resource types)
+    /// Supports searching across all resources using common search parameters like _tag, _profile, _security.
+    /// Example: GET /?_tag=http://e2etests|conditional-tag&_summary=count
+    /// </summary>
+    private static async Task<IResult> HandleBaseSearchResource(
+        HttpContext context,
+        int tenantId,
+        IMediator mediator,
+        IQueryParameterParser queryParser,
+        ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        IFhirVersionContext versionContext,
+        IFhirRequestContextAccessor fhirContextAccessor,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        logger.LogInformation("GET /?{QueryString} (base-level search)", context.Request.QueryString);
+
+        // Get tenant configuration from FHIR request context
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for base-level search");
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+
+        // Get version-specific search options builder and schema provider
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
+
+        // Parse query parameters
+        var queryParameters = queryParser.Parse(context.Request.Query);
+
+        // Build SearchOptions for base-level search (resourceType = null for system-wide search)
+        // This will search across all resource types (handled by SqlEntityFrameworkSearchService)
+        var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
+
+        // Send search query for base-level search (null resourceType means search all types)
+        var searchQuery = new SearchResourcesQuery(null, searchOptions);
+        SearchResourcesResult result = await mediator.SendAsync(searchQuery, ct);
+
+        // Build base URL for link generation
+        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
+
+        // Set response headers
+        context.Response.ContentType = "application/fhir+json; charset=utf-8";
+
+        // Stream Bundle response with count-as-render pagination
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream: context.Response.Body,
+            bundleType: "searchset",
+            total: result.Total,
+            entries: result.Resources,
+            searchOptions: result.SearchOptions!,
+            baseUrl: baseUrl,
+            queryString: context.Request.QueryString.Value ?? string.Empty,
+            schemaProvider: schemaProvider,
+            pretty: false,
+            cancellationToken: ct);
+
+        return Results.Empty;
+    }
 
     /// <summary>
     /// Converts QueryParameter list to a query string suitable for URL links.

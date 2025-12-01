@@ -6,6 +6,8 @@
 using Ignixa.Api.Http;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.Middleware;
 
@@ -62,20 +64,17 @@ public class TenantResolutionMiddleware : IDisposable
                     context.Request.Path);
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                context.Response.ContentType = KnownContentTypes.ApplicationJson;
-                await context.Response.WriteAsJsonAsync(new
+                context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+
+                var outcome = new OperationOutcomeJsonNode();
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
                 {
-                    resourceType = "OperationOutcome",
-                    issue = new[]
-                    {
-                        new
-                        {
-                            severity = "error",
-                            code = "business-rule",
-                            diagnostics = "Partition 0 is reserved for system operations and cannot be accessed via tenant API routes"
-                        }
-                    }
-                }, context.RequestAborted);
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                    Code = OperationOutcomeJsonNode.IssueType.BusinessRule,
+                    Diagnostics = "Partition 0 is reserved for system operations and cannot be accessed via tenant API routes"
+                });
+
+                await context.Response.Body.WriteAsync(outcome.SerializeToBytes(), context.RequestAborted);
                 return;
             }
 
@@ -93,20 +92,17 @@ public class TenantResolutionMiddleware : IDisposable
                     context.Request.Path);
 
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
-                context.Response.ContentType = KnownContentTypes.ApplicationJson;
-                await context.Response.WriteAsJsonAsync(new
+                context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+
+                var outcome = new OperationOutcomeJsonNode();
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
                 {
-                    resourceType = "OperationOutcome",
-                    issue = new[]
-                    {
-                        new
-                        {
-                            severity = "error",
-                            code = "not-found",
-                            diagnostics = $"Tenant {tenantId} not found or inactive"
-                        }
-                    }
-                }, context.RequestAborted);
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                    Code = OperationOutcomeJsonNode.IssueType.NotFound,
+                    Diagnostics = $"Tenant {tenantId} not found or inactive"
+                });
+
+                await context.Response.Body.WriteAsync(outcome.SerializeToBytes(), context.RequestAborted);
                 return;
             }
 
@@ -158,20 +154,17 @@ public class TenantResolutionMiddleware : IDisposable
                     context.Request.Path);
 
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                context.Response.ContentType = KnownContentTypes.ApplicationJson;
-                await context.Response.WriteAsJsonAsync(new
+                context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+
+                var outcome = new OperationOutcomeJsonNode();
+                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
                 {
-                    resourceType = "OperationOutcome",
-                    issue = new[]
-                    {
-                        new
-                        {
-                            severity = "error",
-                            code = "required",
-                            diagnostics = "Tenant ID is required in multi-tenant scenarios. Use /tenant/{tenantId}/" + context.Request.Path.Value
-                        }
-                    }
-                }, context.RequestAborted);
+                    Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                    Code = OperationOutcomeJsonNode.IssueType.Required,
+                    Diagnostics = "Tenant ID is required in multi-tenant scenarios. Use /tenant/{tenantId}/" + context.Request.Path.Value
+                });
+
+                await context.Response.Body.WriteAsync(outcome.SerializeToBytes(), context.RequestAborted);
                 return;
             }
         }

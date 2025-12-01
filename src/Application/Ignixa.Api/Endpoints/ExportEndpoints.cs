@@ -6,6 +6,7 @@ using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization.Models;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -78,19 +79,14 @@ public static class ExportEndpoints
         }
         catch (ArgumentException ex)
         {
-            return Results.BadRequest(new
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
             {
-                resourceType = "OperationOutcome",
-                issue = new[]
-                {
-                    new
-                    {
-                        severity = "error",
-                        code = "not-supported",
-                        diagnostics = ex.Message
-                    }
-                }
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+                Code = OperationOutcomeJsonNode.IssueType.NotSupported,
+                Diagnostics = ex.Message
             });
+            return Results.BadRequest(outcome);
         }
     }
 

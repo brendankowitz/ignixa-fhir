@@ -6,10 +6,12 @@
 using Ignixa.Abstractions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
+using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalPatch;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
@@ -143,11 +145,33 @@ public static class PatchEndpoints
             return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
         }
 
-        // Parse request body to ResourceJsonNode (Parameters resource with patch operations)
+        // Parse request body - detect JSON Patch vs FHIR Parameters patch
         ResourceJsonNode patchDocument;
         await using (var memoryStream = memoryStreamManager.GetStream("patch-request"))
         {
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+            memoryStream.Position = 0;
+
+            // Check Content-Type header to detect JSON Patch (RFC 6902)
+            var contentType = context.Request.ContentType;
+            if (!string.IsNullOrEmpty(contentType) && contentType.Contains("application/json-patch+json", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Domain.Exceptions.NotImplementedException(
+                    "JSON Patch (RFC 6902) is not yet supported. Please use FHIRPath Patch with Content-Type: application/fhir+json. " +
+                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format using Parameters resource.");
+            }
+
+            // Peek at first character to detect array format (JSON Patch)
+            memoryStream.Position = 0;
+            using var reader = new System.IO.StreamReader(memoryStream, System.Text.Encoding.UTF8, leaveOpen: true);
+            var firstChar = (char)reader.Peek();
+            if (firstChar == '[')
+            {
+                throw new Domain.Exceptions.NotImplementedException(
+                    "JSON Patch (RFC 6902) array format is not yet supported. Please use FHIRPath Patch (Parameters resource). " +
+                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format.");
+            }
+
             memoryStream.Position = 0;
             patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
         }
@@ -218,17 +242,39 @@ public static class PatchEndpoints
 
         if (string.IsNullOrWhiteSpace(queryString) || queryString == "?")
         {
-            throw new Domain.Exceptions.BadRequestException("Conditional patch requires search parameters in query string");
+            throw new Domain.Exceptions.PreconditionFailedException("Conditional patch requires search parameters in query string");
         }
 
         // Remove leading '?'
         var searchCriteria = queryString.TrimStart('?');
 
-        // Parse request body to ResourceJsonNode (Parameters resource with patch operations)
+        // Parse request body - detect JSON Patch vs FHIR Parameters patch
         ResourceJsonNode patchDocument;
         await using (var memoryStream = memoryStreamManager.GetStream("conditional-patch-request"))
         {
             await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+            memoryStream.Position = 0;
+
+            // Check Content-Type header to detect JSON Patch (RFC 6902)
+            var contentType = context.Request.ContentType;
+            if (!string.IsNullOrEmpty(contentType) && contentType.Contains("application/json-patch+json", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Domain.Exceptions.NotImplementedException(
+                    "JSON Patch (RFC 6902) is not yet supported. Please use FHIRPath Patch with Content-Type: application/fhir+json. " +
+                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format using Parameters resource.");
+            }
+
+            // Peek at first character to detect array format (JSON Patch)
+            memoryStream.Position = 0;
+            using var reader = new System.IO.StreamReader(memoryStream, System.Text.Encoding.UTF8, leaveOpen: true);
+            var firstChar = (char)reader.Peek();
+            if (firstChar == '[')
+            {
+                throw new Domain.Exceptions.NotImplementedException(
+                    "JSON Patch (RFC 6902) array format is not yet supported. Please use FHIRPath Patch (Parameters resource). " +
+                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format.");
+            }
+
             memoryStream.Position = 0;
             patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
         }
@@ -244,9 +290,48 @@ public static class PatchEndpoints
         var result = await mediator.SendAsync(command, cancellationToken);
 
         var resourceBytes = result.Resource.Resource.SerializeToBytes();
-        return FhirResults.Ok(resourceBytes)
-            .WithETag(result.Resource.VersionId)
-            .WithLastModified(result.Resource.LastModified);
+
+        // Extract return preference from Prefer header (RFC 7240)
+        var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers);
+
+        // Determine actual return preference: default to representation (FHIR spec)
+        var actualReturnPreference = returnPreference == ReturnPreference.Unspecified
+            ? ReturnPreference.Representation
+            : returnPreference;
+
+        // Add Preference-Applied header for return preference
+        if (returnPreference != ReturnPreference.Unspecified)
+        {
+            context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
+        }
+
+        if (actualReturnPreference == ReturnPreference.Minimal)
+        {
+            // return=minimal - return minimal body
+            return FhirResults.Ok(resourceBytes)
+                .WithETag(result.Resource.VersionId)
+                .WithLastModified(result.Resource.LastModified)
+                .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
+        }
+        else if (actualReturnPreference == ReturnPreference.OperationOutcome)
+        {
+            // return=OperationOutcome - return OperationOutcome with success message
+            var outcome = new OperationOutcomeJsonNode();
+            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            {
+                Severity = OperationOutcomeJsonNode.IssueSeverity.Information,
+                Code = OperationOutcomeJsonNode.IssueType.Informational,
+                Diagnostics = $"Successfully patched {resourceType}/{result.Resource.ResourceId}"
+            });
+            return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+        }
+        else
+        {
+            // return=representation - return full resource
+            return FhirResults.Ok(resourceBytes)
+                .WithETag(result.Resource.VersionId)
+                .WithLastModified(result.Resource.LastModified);
+        }
     }
 
     /// <summary>
