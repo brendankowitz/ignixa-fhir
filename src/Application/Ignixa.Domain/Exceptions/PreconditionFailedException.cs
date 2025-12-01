@@ -12,6 +12,11 @@ namespace Ignixa.Domain.Exceptions;
 
 public class PreconditionFailedException : FhirException
 {
+    /// <summary>
+    /// Gets the HTTP status code for this exception. Returns 412 (Precondition Failed).
+    /// </summary>
+    public override int StatusCode => 412;
+
     public PreconditionFailedException()
         : base()
     {

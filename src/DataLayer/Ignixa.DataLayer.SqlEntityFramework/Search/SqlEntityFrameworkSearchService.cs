@@ -408,7 +408,8 @@ public class SqlEntityFrameworkSearchService : ISearchService
     private async Task<IQueryable<ResourceEntity>> BuildQueryAsync(
         SearchOptions options,
         short? resourceTypeId,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includePagination = true)
     {
         // Start with base query for current (non-history, non-deleted) resources
         IQueryable<ResourceEntity> baseQuery;
@@ -463,6 +464,12 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         // Apply sorting
         var sortedQuery = ApplySorting(filteredQuery, options.Sort);
+
+        // For include/revinclude subqueries, skip pagination - they need all matching results
+        if (!includePagination)
+        {
+            return sortedQuery;
+        }
 
         // Apply pagination: parse continuation token or use _count parameter
         int offset = 0;
@@ -902,9 +909,9 @@ public class SqlEntityFrameworkSearchService : ISearchService
             return _context.Resources.Where(r => false);  // Return empty
         }
 
-        // Step 1: Build main query as CTE (replicate filters, sort, and pagination)
-        // Get the base query with same filters as main search
-        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None).GetAwaiter().GetResult();
+        // Step 1: Build main query as CTE (replicate filters and sort, but NOT pagination)
+        // Include/revinclude needs all matching results, not just the current page
+        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: false).GetAwaiter().GetResult();
 
         // Find resources referenced by these main results using a subquery
         // This keeps everything in the database query (no client-side materialization)
@@ -949,8 +956,9 @@ public class SqlEntityFrameworkSearchService : ISearchService
             return _context.Resources.Where(r => false);  // Return empty
         }
 
-        // Build main query using BuildQueryAsync (already includes filters, sorting, pagination)
-        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None)
+        // Build main query using BuildQueryAsync (filters and sorting, but NOT pagination)
+        // Revinclude needs all matching results, not just the current page
+        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: false)
             .GetAwaiter().GetResult();
 
         // Find resources that reference these main results using a subquery

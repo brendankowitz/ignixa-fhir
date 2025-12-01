@@ -5,8 +5,10 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Medino;
@@ -22,17 +24,20 @@ namespace Ignixa.Application.Infrastructure.Behaviors;
 public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceCommand, ResourceKey>
 {
     private readonly IFhirRequestContextAccessor _contextAccessor;
-    private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidationBehavior> _logger;
 
     public ValidationBehavior(
         IFhirRequestContextAccessor contextAccessor,
-        Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
+        IFhirVersionContext fhirVersionContext,
+        Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidationBehavior> logger)
     {
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
+        _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
         _terminologyService = terminologyService ?? throw new ArgumentNullException(nameof(terminologyService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -87,14 +92,17 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
 
             if (schema != null)
             {
-                var sourceNode = request.JsonNode.ToSourceNavigator(); // Use cached ISourceNode
+                // Get schema provider for element conversion
+                var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
+                var element = request.JsonNode.ToElement(schemaProvider);
+
                 var settings = new ValidationSettings
                 {
                     Depth = validationDepth,
                     TerminologyService = _terminologyService
                 };
                 var state = new ValidationState();
-                var validationResult = schema.Validate((IElement)sourceNode, settings, state);
+                var validationResult = schema.Validate(element, settings, state);
 
                 if (!validationResult.IsValid)
                 {

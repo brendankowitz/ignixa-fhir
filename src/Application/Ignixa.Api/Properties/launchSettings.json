@@ -37,7 +37,7 @@
         "Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant": "1",
         "Tenants__Configurations__1__TenantId": "1",
         "Tenants__Configurations__1__DisplayName": "MS Health SQL Server Clinic",
-        "Tenants__Configurations__1__FhirVersion": "4.3",
+        "Tenants__Configurations__1__FhirVersion": "4.0",
         "Tenants__Configurations__1__IsActive": "true",
         "Tenants__Configurations__1__Storage__Type": "SqlEntityFramework",
         "Tenants__Configurations__1__Storage__ConnectionString": "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true",

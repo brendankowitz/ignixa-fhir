@@ -388,13 +388,14 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             return;
         }
 
-        var sourceNode = provenance.ToSourceNavigator();
+        var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersion);
+        var element = provenance.ToElement(schemaProvider);
         var settings = new ValidationSettings
         {
             Depth = ValidationDepth.Spec // Use Spec-level validation for X-Provenance
         };
         var state = new ValidationState();
-        var validationResult = schema.Validate((IElement)sourceNode, settings, state);
+        var validationResult = schema.Validate(element, settings, state);
 
         if (!validationResult.IsValid)
         {

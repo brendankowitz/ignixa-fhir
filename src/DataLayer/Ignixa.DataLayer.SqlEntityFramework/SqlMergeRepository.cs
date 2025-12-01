@@ -10,6 +10,7 @@ using System.Diagnostics;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.Server;
@@ -316,16 +317,32 @@ public class SqlMergeRepository
         };
 
         // Execute merge stored procedure
-        await _context.Database.ExecuteSqlRawAsync(
-            "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
-            "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
-            "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
-            "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
-            "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
-            "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
-            "@TokenNumberNumberCompositeSearchParams",
-            parameters,
-            cancellationToken);
+        try
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
+                "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
+                "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
+                "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
+                "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
+                "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
+                "@TokenNumberNumberCompositeSearchParams",
+                parameters,
+                cancellationToken);
+        }
+        catch (SqlException ex) when (ex.Number == 50409)
+        {
+            // SQL error 50409: Resource has been recently updated or added (version conflict)
+            // Convert to PreconditionFailedException (HTTP 412) instead of 500 Internal Server Error
+            _logger.LogWarning(
+                ex,
+                "Resource version conflict detected in transaction {TransactionId}: {Message}",
+                transactionId,
+                ex.Message);
+            throw new PreconditionFailedException(
+                "Resource has been recently updated or added. Please compare the resource content and retry.",
+                ex);
+        }
 
         var affectedRows = Convert.ToInt32(affectedRowsParam.Value);
         Debug.Assert(affectedRows > 0);

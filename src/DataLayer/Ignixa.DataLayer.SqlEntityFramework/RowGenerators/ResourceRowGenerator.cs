@@ -87,7 +87,10 @@ public class ResourceRowGenerator
 
             record.SetString(2, resource.ResourceId);
 
-            var version = int.Parse(resource.VersionId);
+            // Read version from the resource's meta (source of truth), not the wrapper's VersionId property
+            // The wrapper's VersionId may be stale if the repository updated Resource.Meta.VersionId
+            var versionString = resource.Resource.Meta.VersionId ?? resource.VersionId;
+            var version = int.Parse(versionString);
             record.SetInt32(3, version);
 
             // HasVersionToCompare logic:

@@ -254,8 +254,25 @@ public class FhirDbContext : DbContext
         entity.Property(t => t.IsVisible).HasDefaultValue(false);
         entity.Property(t => t.IsHistoryMoved).HasDefaultValue(false);
         entity.Property(t => t.IsControlledByClient).HasDefaultValue(true);
-        entity.Property(t => t.CreateDate).HasDefaultValueSql("getUTCdate()");
-        entity.Property(t => t.HeartbeatDate).HasDefaultValueSql("getUTCdate()");
+
+        // Date columns - using datetime2 (not datetimeoffset) to match MS Health FHIR Server schema.
+        // Value converter ensures DateTimeOffset properties map correctly to datetime2:
+        // - Write: DateTimeOffset.UtcDateTime (drops offset since DB stores UTC)
+        // - Read: new DateTimeOffset(DateTime, TimeSpan.Zero) (assumes UTC)
+        var utcConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTimeOffset, DateTime>(
+            dto => dto.UtcDateTime,
+            dt => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc), TimeSpan.Zero));
+
+        var nullableUtcConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTimeOffset?, DateTime?>(
+            dto => dto.HasValue ? dto.Value.UtcDateTime : null,
+            dt => dt.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(dt.Value, DateTimeKind.Utc), TimeSpan.Zero) : null);
+
+        entity.Property(t => t.CreateDate).HasColumnType("datetime2").HasDefaultValueSql("sysutcdatetime()").HasConversion(utcConverter);
+        entity.Property(t => t.HeartbeatDate).HasColumnType("datetime2").HasDefaultValueSql("sysutcdatetime()").HasConversion(utcConverter);
+        entity.Property(t => t.EndDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
+        entity.Property(t => t.VisibleDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
+        entity.Property(t => t.HistoryMovedDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
+        entity.Property(t => t.InvisibleHistoryRemovedDate).HasColumnType("datetime2").HasConversion(nullableUtcConverter);
     }
 
     private static void ConfigureSearchParamEntity(ModelBuilder modelBuilder)

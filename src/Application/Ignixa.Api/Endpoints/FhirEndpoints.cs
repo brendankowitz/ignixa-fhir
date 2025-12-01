@@ -469,7 +469,7 @@ public static class FhirEndpoints
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
         }
 
-        var location = $"/tenant/{tenantId}/{resourceType}/{result.Key.Id}";
+        var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Key.Id}";
 
         if (isCreated)
         {
@@ -1115,8 +1115,8 @@ public static class FhirEndpoints
 
         if (result.WasCreated)
         {
-            // 201 Created - include Location header
-            var location = $"/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
+            // 201 Created - include Location header (absolute URL per FHIR spec)
+            var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
             return FhirResults.Created(location, resourceBytes)
                 .WithETag(result.Resource.VersionId)
                 .WithLastModified(result.Resource.LastModified);

@@ -68,34 +68,39 @@ public class TransactionEntity
     /// <summary>
     /// UTC timestamp when the transaction was created.
     /// </summary>
+    /// <remarks>
+    /// Using DateTimeOffset ensures correct UTC handling. The database column is datetime2
+    /// with a default of sysutcdatetime(). EF Core reads datetime2 into DateTimeOffset
+    /// with UTC offset (+00:00).
+    /// </remarks>
     [Required]
     [Column("CreateDate")]
-    public DateTime CreateDate { get; set; }
+    public DateTimeOffset CreateDate { get; set; }
 
     /// <summary>
     /// UTC timestamp when the transaction ended.
     /// </summary>
     [Column("EndDate")]
-    public DateTime? EndDate { get; set; }
+    public DateTimeOffset? EndDate { get; set; }
 
     /// <summary>
     /// UTC timestamp when the transaction became visible.
     /// </summary>
     [Column("VisibleDate")]
-    public DateTime? VisibleDate { get; set; }
+    public DateTimeOffset? VisibleDate { get; set; }
 
     /// <summary>
     /// UTC timestamp when history was moved.
     /// </summary>
     [Column("HistoryMovedDate")]
-    public DateTime? HistoryMovedDate { get; set; }
+    public DateTimeOffset? HistoryMovedDate { get; set; }
 
     /// <summary>
     /// UTC timestamp of last heartbeat (for long-running transactions).
     /// </summary>
     [Required]
     [Column("HeartbeatDate")]
-    public DateTime HeartbeatDate { get; set; }
+    public DateTimeOffset HeartbeatDate { get; set; }
 
     /// <summary>
     /// Failure reason if transaction failed.
@@ -114,7 +119,7 @@ public class TransactionEntity
     /// UTC timestamp when invisible history was removed.
     /// </summary>
     [Column("InvisibleHistoryRemovedDate")]
-    public DateTime? InvisibleHistoryRemovedDate { get; set; }
+    public DateTimeOffset? InvisibleHistoryRemovedDate { get; set; }
 
     // Navigation properties
 
