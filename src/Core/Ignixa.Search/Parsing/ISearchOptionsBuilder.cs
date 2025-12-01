@@ -18,9 +18,9 @@ public interface ISearchOptionsBuilder
     /// <summary>
     /// Builds SearchOptions from parsed query parameters.
     /// </summary>
-    /// <param name="resourceType">The resource type being searched (e.g., "Patient").</param>
+    /// <param name="resourceType">The resource type being searched (e.g., "Patient"), or null for system-wide search.</param>
     /// <param name="parameters">The parsed query parameters.</param>
     /// <param name="schemaProvider">Optional schema provider for validating _elements parameter.</param>
     /// <returns>A SearchOptions instance configured according to the parameters.</returns>
-    SearchOptions Build(string resourceType, IReadOnlyList<QueryParameter> parameters, ISchema? schemaProvider = null);
+    SearchOptions Build(string? resourceType, IReadOnlyList<QueryParameter> parameters, ISchema? schemaProvider = null);
 }

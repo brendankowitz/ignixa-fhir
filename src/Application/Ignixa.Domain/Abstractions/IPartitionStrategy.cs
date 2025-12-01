@@ -50,12 +50,12 @@ public interface IPartitionStrategy
     /// - Example: GET /Observation?patient=Patient/123 → partition [1] (route to patient's shard)
     /// </summary>
     /// <param name="context">Partition resolution context (tenant ID, configuration)</param>
-    /// <param name="resourceType">The FHIR resource type being queried</param>
+    /// <param name="resourceType">The FHIR resource type being queried, or null for system-wide search</param>
     /// <param name="queryParams">Query parameters from the request (for distributed mode routing)</param>
     /// <returns>RequestPartition with partition ID(s) to query</returns>
     RequestPartition DetermineReadPartition(
         PartitionResolutionContext context,
-        string resourceType,
+        string? resourceType,
         IReadOnlyDictionary<string, string> queryParams);
 
     /// <summary>

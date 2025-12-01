@@ -89,31 +89,43 @@ public class BundleResponseBuilder
         }
 
         // Add resource to entry for GET and successful POST/PUT (201/200)
-        if (!string.IsNullOrEmpty(response.ResourceJson) &&
-            (response.StatusCode == 200 || response.StatusCode == 201))
+        if (response.StatusCode == 200 || response.StatusCode == 201)
         {
-            try
+            if (!string.IsNullOrEmpty(response.ResourceJson))
             {
-                // Parse JSON string back to ResourceJsonNode
-                var resource = ResourceJsonNode.Parse(response.ResourceJson);
-                entry.Resource = resource;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to parse resource JSON for response status {Status}",
-                    response.StatusCode);
-
-                // Add OperationOutcome if parsing fails
-                var outcome = new OperationOutcomeJsonNode();
-                outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
+                try
                 {
-                    Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
-                    Code = OperationOutcomeJsonNode.IssueType.Invalid,
-                    Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
-                });
-                entry.Response.Outcome = outcome;
+                    // Parse JSON string back to ResourceJsonNode
+                    var resource = ResourceJsonNode.Parse(response.ResourceJson);
+                    entry.Resource = resource;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to parse resource JSON for response status {Status}",
+                        response.StatusCode);
+
+                    // Add OperationOutcome if parsing fails
+                    var outcome = new OperationOutcomeJsonNode();
+                    outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent()
+                    {
+                        Severity = OperationOutcomeJsonNode.IssueSeverity.Warning,
+                        Code = OperationOutcomeJsonNode.IssueType.Invalid,
+                        Diagnostics = $"Failed to parse resource JSON: {ex.Message}"
+                    });
+                    entry.Response.Outcome = outcome;
+                }
+            }
+            else
+            {
+                // ResourceJson is null/empty for a successful operation (200/201)
+                // This might happen with Prefer: return=minimal, but entry.Resource should still be populated
+                _logger.LogWarning(
+                    "ResourceJson is null or empty for successful response (status {Status}, Location: {Location}). " +
+                    "Entry will not contain a resource, which may cause issues with bundle reference resolution.",
+                    response.StatusCode,
+                    response.Location ?? "null");
             }
         }
 

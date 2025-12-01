@@ -162,6 +162,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
     /// <summary>
     /// Creates a new resource from the parsed JSON.
     /// Used when 0 matches are found (conditional update creates new resource).
+    /// FHIR Spec: Use client-provided ID if present, otherwise server-assigned.
     /// </summary>
     private async Task<ResourceWrapper> CreateNewResourceAsync(
         string resourceType,
@@ -170,17 +171,30 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         ProvenanceJsonNode? provenanceResource,
         CancellationToken cancellationToken)
     {
-        // Generate new ID (server-assigned)
-        var newId = Guid.NewGuid().ToString("N");
+        // Use client-provided ID if present, otherwise generate server-assigned ID
+        string newId;
+        if (!string.IsNullOrEmpty(jsonNode.Id))
+        {
+            // Client provided ID - use it for creation
+            newId = jsonNode.Id;
+            _logger.LogDebug(
+                "Creating new {ResourceType} with client-provided ID: {Id}",
+                resourceType,
+                newId);
+        }
+        else
+        {
+            // No client ID - generate server-assigned ID
+            newId = Guid.NewGuid().ToString("N");
+            _logger.LogDebug(
+                "Creating new {ResourceType} with server-assigned ID: {Id}",
+                resourceType,
+                newId);
 
-        _logger.LogDebug(
-            "Creating new {ResourceType} with server-assigned ID: {Id}",
-            resourceType,
-            newId);
-
-        // IMPORTANT: Set the ID on the JsonNode since we're using PUT (not POST)
-        // CreateOrUpdateResourceHandler only sets ID for POST, but conditional update uses PUT
-        jsonNode.Id = newId;
+            // Set the ID on the JsonNode since we're using PUT (not POST)
+            // CreateOrUpdateResourceHandler only sets ID for POST, but conditional update uses PUT
+            jsonNode.Id = newId;
+        }
 
         // Create resource via CreateOrUpdateResourceHandler
         var createCommand = new CreateOrUpdateResourceCommand(
@@ -212,7 +226,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
     /// <summary>
     /// Updates an existing resource from the parsed JSON.
     /// Used when 1 match is found (conditional update updates existing resource).
-    /// Client-provided ID in body is ignored - existing ID is preserved.
+    /// FHIR Spec: If body contains an ID that differs from the matched resource, return 412 Precondition Failed.
     /// IMPORTANT: Sets If-Match header with existing version ID to prevent lost updates (optimistic concurrency control).
     /// </summary>
     private async Task<ResourceWrapper> UpdateExistingResourceAsync(
@@ -224,13 +238,18 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         ProvenanceJsonNode? provenanceResource,
         CancellationToken cancellationToken)
     {
-        // Log warning if client provided ID differs from existing ID
+        // FHIR Spec: If client provided ID differs from existing ID, return 400 BadRequest
+        // This is a malformed request, not a precondition failure
         if (!string.IsNullOrEmpty(jsonNode.Id) && jsonNode.Id != existingId)
         {
             _logger.LogWarning(
-                "Conditional update: Client-provided ID '{ClientId}' ignored, using existing ID '{ExistingId}'",
+                "Conditional update: Client-provided ID '{ClientId}' differs from existing ID '{ExistingId}' - returning 400 BadRequest",
                 jsonNode.Id,
                 existingId);
+
+            throw new Domain.Exceptions.BadRequestException(
+                $"Resource ID in body ('{jsonNode.Id}') does not match the ID of the existing resource ('{existingId}'). " +
+                "Cannot update resource with different ID.");
         }
 
         _logger.LogDebug(

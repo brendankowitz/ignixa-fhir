@@ -192,8 +192,8 @@ public class TenantResolutionMiddleware : IDisposable
         var path = context.Request.Path.Value;
         if (string.IsNullOrEmpty(path) || path == "/")
         {
-            // Root path could be bundle POST
-            return context.Request.Method == "POST";
+            // Root path: POST for Bundle transactions, GET for system-wide search
+            return context.Request.Method == "POST" || context.Request.Method == "GET";
         }
 
         // Exclude known non-resource endpoints

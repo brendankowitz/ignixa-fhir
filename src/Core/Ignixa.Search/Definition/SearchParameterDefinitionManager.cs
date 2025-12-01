@@ -88,6 +88,8 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
     /// Expands abstract base resource types to their concrete implementations.
     /// For example, "Resource" expands to all concrete resource types,
     /// "DomainResource" expands to all DomainResource-derived types.
+    /// Also includes the base type itself ("Resource", "DomainResource") to support
+    /// system-wide searches that use the base type for search parameter lookup.
     /// </summary>
     private IEnumerable<string> ExpandBaseResourceTypes(IReadOnlyList<string> baseResourceTypes, IReadOnlySet<string> concreteResourceTypes)
     {
@@ -98,6 +100,8 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
             if (baseType == "Resource")
             {
                 // "Resource" applies to all resource types
+                // Also add "Resource" itself to support system-wide search parameter lookup
+                expanded.Add("Resource");
                 foreach (var resourceType in concreteResourceTypes)
                 {
                     expanded.Add(resourceType);
@@ -108,6 +112,8 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
                 // "DomainResource" applies to all resource types except abstract types
                 // In practice, DomainResource covers all concrete clinical resources
                 // We exclude only the truly abstract types that don't appear in the concrete list
+                // Also add "DomainResource" itself to support compartment searches
+                expanded.Add("DomainResource");
                 foreach (var resourceType in concreteResourceTypes)
                 {
                     expanded.Add(resourceType);

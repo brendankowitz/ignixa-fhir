@@ -41,12 +41,12 @@ public class SearchParameterQueryGenerator
     /// <summary>
     /// Generates a query for a search parameter expression, returning matching resource surrogate IDs.
     /// </summary>
-    /// <param name="resourceTypeId">The resource type identifier.</param>
+    /// <param name="resourceTypeId">The resource type identifier, or null for system-wide search across all types.</param>
     /// <param name="expression">The search parameter expression.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A queryable of matching resource surrogate IDs.</returns>
     public async Task<IQueryable<long>> GenerateQueryAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         SearchParameterExpression expression,
         CancellationToken ct)
     {
@@ -71,10 +71,22 @@ public class SearchParameterQueryGenerator
             return await ProcessResourceTypeExpressionAsync(resourceTypeId, expression.Expression, ct);
         }
 
-        // TODO: other resource-level parameters like _profile, _security, _tag also need special handling
+        // Look up SearchParamId for this search parameter - required for filtering indexed search params
+        short? searchParamId = null;
+        if (expression.Parameter != null)
+        {
+            searchParamId = await _cache.GetSearchParamIdAsync(expression.Parameter);
+            if (!searchParamId.HasValue)
+            {
+                _logger.LogWarning(
+                    "SearchParamId not found for parameter {Code} ({Url}), search may return incorrect results",
+                    expression.Parameter.Code,
+                    expression.Parameter.Url);
+            }
+        }
 
-        // Process the inner expression based on its type
-        return await ProcessExpressionAsync(resourceTypeId, expression.Expression, ct);
+        // Process the inner expression based on its type, with SearchParamId for proper filtering
+        return await ProcessExpressionAsync(resourceTypeId, searchParamId, expression.Expression, ct);
     }
 
     /// <summary>
@@ -82,7 +94,7 @@ public class SearchParameterQueryGenerator
     /// The _id parameter is a resource-level parameter that matches against Resource.ResourceId.
     /// </summary>
     private async Task<IQueryable<long>> ProcessResourceIdExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         Expression expr,
         CancellationToken ct)
     {
@@ -92,8 +104,9 @@ public class SearchParameterQueryGenerator
         if (expr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
         {
             // Query the Resource table: WHERE ResourceTypeId = ? AND ResourceId = ?
+            // When resourceTypeId is null (system-wide search), don't filter by resource type
             var query = _context.Resources
-                .Where(r => r.ResourceTypeId == resourceTypeId
+                .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                     && r.ResourceId == stringExpr.Value
                     && !r.IsHistory
                     && !r.IsDeleted)
@@ -115,7 +128,7 @@ public class SearchParameterQueryGenerator
     /// Processes multiary expressions (e.g., multiple _id values) for resource-level parameters.
     /// </summary>
     private Task<IQueryable<long>> ProcessResourceIdMultiaryExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         MultiaryExpression multiaryExpr,
         CancellationToken ct)
     {
@@ -129,8 +142,9 @@ public class SearchParameterQueryGenerator
         {
             if (subExpr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
             {
+                // When resourceTypeId is null (system-wide search), don't filter by resource type
                 var query = _context.Resources
-                    .Where(r => r.ResourceTypeId == resourceTypeId
+                    .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                         && r.ResourceId == stringExpr.Value
                         && !r.IsHistory
                         && !r.IsDeleted)
@@ -162,7 +176,7 @@ public class SearchParameterQueryGenerator
     /// Compares resourceSurrogateId directly against the value produced by IdHelper.ToId() for the target DateTime.
     /// </summary>
     private async Task<IQueryable<long>> ProcessResourceLastUpdatedExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         Expression expr,
         CancellationToken ct)
     {
@@ -174,41 +188,42 @@ public class SearchParameterQueryGenerator
             // Query the Resource table: WHERE ResourceTypeId = ? AND resourceSurrogateId [operator] ToId(dateTime)
             var targetId = dateTimeValue.ToId();
 
+            // When resourceTypeId is null (system-wide search), don't filter by resource type
             var query = binaryExpr.BinaryOperator switch
             {
                 BinaryOperator.Equal =>
                     _context.Resources
-                        .Where(r => r.ResourceTypeId == resourceTypeId
+                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                             && r.ResourceSurrogateId == targetId
                             && !r.IsHistory
                             && !r.IsDeleted),
                 BinaryOperator.GreaterThan =>
                     _context.Resources
-                        .Where(r => r.ResourceTypeId == resourceTypeId
+                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                             && r.ResourceSurrogateId > targetId
                             && !r.IsHistory
                             && !r.IsDeleted),
                 BinaryOperator.GreaterThanOrEqual =>
                     _context.Resources
-                        .Where(r => r.ResourceTypeId == resourceTypeId
+                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                             && r.ResourceSurrogateId >= targetId
                             && !r.IsHistory
                             && !r.IsDeleted),
                 BinaryOperator.LessThan =>
                     _context.Resources
-                        .Where(r => r.ResourceTypeId == resourceTypeId
+                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                             && r.ResourceSurrogateId < targetId
                             && !r.IsHistory
                             && !r.IsDeleted),
                 BinaryOperator.LessThanOrEqual =>
                     _context.Resources
-                        .Where(r => r.ResourceTypeId == resourceTypeId
+                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                             && r.ResourceSurrogateId <= targetId
                             && !r.IsHistory
                             && !r.IsDeleted),
                 BinaryOperator.NotEqual =>
                     _context.Resources
-                        .Where(r => r.ResourceTypeId == resourceTypeId
+                        .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                             && r.ResourceSurrogateId != targetId
                             && !r.IsHistory
                             && !r.IsDeleted),
@@ -231,7 +246,7 @@ public class SearchParameterQueryGenerator
     /// Processes multiary expressions (e.g., multiple _lastUpdated constraints) for resource-level parameters.
     /// </summary>
     private Task<IQueryable<long>> ProcessResourceLastUpdatedMultiaryExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         MultiaryExpression multiaryExpr,
         CancellationToken ct)
     {
@@ -247,41 +262,42 @@ public class SearchParameterQueryGenerator
             {
                 var targetId = dateTimeValue.ToId();
 
+                // When resourceTypeId is null (system-wide search), don't filter by resource type
                 var query = binaryExpr.BinaryOperator switch
                 {
                     BinaryOperator.Equal =>
                         _context.Resources
-                            .Where(r => r.ResourceTypeId == resourceTypeId
+                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                                 && r.ResourceSurrogateId == targetId
                                 && !r.IsHistory
                                 && !r.IsDeleted),
                     BinaryOperator.GreaterThan =>
                         _context.Resources
-                            .Where(r => r.ResourceTypeId == resourceTypeId
+                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                                 && r.ResourceSurrogateId > targetId
                                 && !r.IsHistory
                                 && !r.IsDeleted),
                     BinaryOperator.GreaterThanOrEqual =>
                         _context.Resources
-                            .Where(r => r.ResourceTypeId == resourceTypeId
+                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                                 && r.ResourceSurrogateId >= targetId
                                 && !r.IsHistory
                                 && !r.IsDeleted),
                     BinaryOperator.LessThan =>
                         _context.Resources
-                            .Where(r => r.ResourceTypeId == resourceTypeId
+                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                                 && r.ResourceSurrogateId < targetId
                                 && !r.IsHistory
                                 && !r.IsDeleted),
                     BinaryOperator.LessThanOrEqual =>
                         _context.Resources
-                            .Where(r => r.ResourceTypeId == resourceTypeId
+                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                                 && r.ResourceSurrogateId <= targetId
                                 && !r.IsHistory
                                 && !r.IsDeleted),
                     BinaryOperator.NotEqual =>
                         _context.Resources
-                            .Where(r => r.ResourceTypeId == resourceTypeId
+                            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
                                 && r.ResourceSurrogateId != targetId
                                 && !r.IsHistory
                                 && !r.IsDeleted),
@@ -315,7 +331,7 @@ public class SearchParameterQueryGenerator
     /// Uses the SearchIndexReferenceDataCache to look up resource type IDs.
     /// </summary>
     private async Task<IQueryable<long>> ProcessResourceTypeExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         Expression expr,
         CancellationToken ct)
     {
@@ -394,28 +410,29 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> ProcessExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         Expression expr,
         CancellationToken ct)
     {
         if (expr is MultiaryExpression multiaryExpr)
         {
-            return await ProcessMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
+            return await ProcessMultiaryExpressionAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
         }
 
         if (expr is StringExpression stringExpr)
         {
-            return await ProcessStringExpressionAsync(resourceTypeId, stringExpr, ct);
+            return await ProcessStringExpressionAsync(resourceTypeId, searchParamId, stringExpr, ct);
         }
 
         if (expr is BinaryExpression binaryExpr)
         {
-            return await ProcessBinaryExpressionAsync(resourceTypeId, binaryExpr, ct);
+            return await ProcessBinaryExpressionAsync(resourceTypeId, searchParamId, binaryExpr, ct);
         }
 
         if (expr is NotExpression notExpr)
         {
-            return await ProcessNotExpressionAsync(resourceTypeId, notExpr, ct);
+            return await ProcessNotExpressionAsync(resourceTypeId, searchParamId, notExpr, ct);
         }
 
         // Handle InExpression<T> using reflection to get the generic type parameter
@@ -436,7 +453,7 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> ProcessInTokenCodeExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
         InExpression<string> expression,
         CancellationToken ct)
     {
@@ -466,7 +483,8 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> ProcessMultiaryExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         MultiaryExpression multiaryExpr,
         CancellationToken ct)
     {
@@ -479,7 +497,7 @@ public class SearchParameterQueryGenerator
         var queries = new List<IQueryable<long>>();
         foreach (var subExpr in multiaryExpr.Expressions)
         {
-            var query = await ProcessExpressionAsync(resourceTypeId, subExpr, ct);
+            var query = await ProcessExpressionAsync(resourceTypeId, searchParamId, subExpr, ct);
             queries.Add(query);
         }
 
@@ -496,51 +514,55 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         StringExpression stringExpr,
         CancellationToken ct)
     {
         // Determine which table to query based on FieldName
         return stringExpr.FieldName switch
         {
-            FieldName.String => await GenerateStringQueryAsync(resourceTypeId, stringExpr.Value, stringExpr.StringOperator, ct),
-            FieldName.Uri => GenerateUriQuery(resourceTypeId, stringExpr.Value),
-            FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, null, stringExpr.Value, ct),
-            FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, stringExpr.Value, null, ct),
-            FieldName.ReferenceResourceId => await GenerateReferenceQueryByIdAsync(resourceTypeId, stringExpr.Value, ct),
-            FieldName.ReferenceResourceType => await GenerateReferenceQueryByTypeAsync(resourceTypeId, stringExpr.Value, ct),
+            FieldName.String => await GenerateStringQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator, ct),
+            FieldName.Uri => GenerateUriQuery(resourceTypeId, searchParamId, stringExpr.Value),
+            FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, null, stringExpr.Value, ct),
+            FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, null, ct),
+            FieldName.ReferenceResourceId => await GenerateReferenceQueryByIdAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
+            FieldName.ReferenceResourceType => await GenerateReferenceQueryByTypeAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
             _ => throw new NotSupportedException($"StringExpression with FieldName {stringExpr.FieldName} is not supported")
         };
     }
 
     private async Task<IQueryable<long>> ProcessBinaryExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         BinaryExpression binaryExpr,
         CancellationToken ct)
     {
         // Determine which table to query based on FieldName
         return binaryExpr.FieldName switch
         {
-            FieldName.Number => GenerateNumberQuery(resourceTypeId, binaryExpr),
-            FieldName.DateTimeStart or FieldName.DateTimeEnd => GenerateDateTimeQuery(resourceTypeId, binaryExpr),
-            FieldName.Quantity => await GenerateQuantityQueryAsync(resourceTypeId, binaryExpr, ct),
+            FieldName.Number => GenerateNumberQuery(resourceTypeId, searchParamId, binaryExpr),
+            FieldName.DateTimeStart or FieldName.DateTimeEnd => GenerateDateTimeQuery(resourceTypeId, searchParamId, binaryExpr),
+            FieldName.Quantity => await GenerateQuantityQueryAsync(resourceTypeId, searchParamId, binaryExpr, ct),
             _ => throw new NotSupportedException($"BinaryExpression with FieldName {binaryExpr.FieldName} is not supported")
         };
     }
 
     private async Task<IQueryable<long>> ProcessNotExpressionAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         NotExpression notExpr,
         CancellationToken ct)
     {
         _logger.LogDebug("Processing NOT expression");
 
         // Process the inner expression to get matching resource IDs
-        var innerMatchingIds = await ProcessExpressionAsync(resourceTypeId, notExpr.Expression, ct);
+        var innerMatchingIds = await ProcessExpressionAsync(resourceTypeId, searchParamId, notExpr.Expression, ct);
 
         // Get all resources of this type (non-history, non-deleted)
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
         var allResourceIds = _context.Resources
-            .Where(r => r.ResourceTypeId == resourceTypeId && !r.IsHistory && !r.IsDeleted)
+            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value) && !r.IsHistory && !r.IsDeleted)
             .Select(r => r.ResourceSurrogateId);
 
         // Return resources NOT in the inner matching set
@@ -548,7 +570,8 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> GenerateStringQueryAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         string searchText,
         StringOperator stringOperator,
         CancellationToken ct)
@@ -566,8 +589,11 @@ public class SearchParameterQueryGenerator
             _ => throw new NotSupportedException($"StringOperator {stringOperator} is not supported")
         };
 
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.StringSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
                 && EF.Functions.Like(sp.Text, pattern))
             .Select(sp => sp.ResourceSurrogateId);
 
@@ -575,7 +601,8 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> GenerateTokenQueryAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         string? system,
         string? code,
         CancellationToken ct)
@@ -587,8 +614,11 @@ public class SearchParameterQueryGenerator
             systemId = await _cache.GetOrCreateSystemIdAsync(system);
         }
 
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter (e.g., _tag, identifier, etc.)
         var query = _context.TokenSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
                 && (code == null || sp.Code == code)
                 && (systemId == null || sp.SystemId == systemId))
             .Select(sp => sp.ResourceSurrogateId);
@@ -596,12 +626,15 @@ public class SearchParameterQueryGenerator
         return query;
     }
 
-    private IQueryable<long> GenerateNumberQuery(short resourceTypeId, BinaryExpression binaryExpr)
+    private IQueryable<long> GenerateNumberQuery(short? resourceTypeId, short? searchParamId, BinaryExpression binaryExpr)
     {
         var value = Convert.ToDecimal(binaryExpr.Value);
 
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.NumberSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId);
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
         // Apply comparison based on operator
         query = binaryExpr.BinaryOperator switch
@@ -618,7 +651,7 @@ public class SearchParameterQueryGenerator
         return query.Select(sp => sp.ResourceSurrogateId);
     }
 
-    private IQueryable<long> GenerateDateTimeQuery(short resourceTypeId, BinaryExpression binaryExpr)
+    private IQueryable<long> GenerateDateTimeQuery(short? resourceTypeId, short? searchParamId, BinaryExpression binaryExpr)
     {
         // Handle both DateTime and DateTimeOffset
         DateTime value = binaryExpr.Value switch
@@ -628,8 +661,11 @@ public class SearchParameterQueryGenerator
             _ => Convert.ToDateTime(binaryExpr.Value)
         };
 
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.DateTimeSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId);
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
         // Apply comparison based on operator (range overlap logic for DateTime)
         query = binaryExpr.BinaryOperator switch
@@ -647,7 +683,8 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> GenerateQuantityQueryAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         BinaryExpression binaryExpr,
         CancellationToken ct)
     {
@@ -655,8 +692,11 @@ public class SearchParameterQueryGenerator
 
         // Note: System and Code would need to come from additional expressions in a MultiaryExpression
         // For now, we'll just handle the numeric comparison
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.QuantitySearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId);
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
         // Apply comparison based on operator
         query = binaryExpr.BinaryOperator switch
@@ -674,12 +714,16 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> GenerateReferenceQueryByIdAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         string referenceResourceId,
         CancellationToken ct)
     {
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.ReferenceSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
                 && sp.ReferenceResourceId == referenceResourceId)
             .Select(sp => sp.ResourceSurrogateId);
 
@@ -687,7 +731,8 @@ public class SearchParameterQueryGenerator
     }
 
     private async Task<IQueryable<long>> GenerateReferenceQueryByTypeAsync(
-        short resourceTypeId,
+        short? resourceTypeId,
+        short? searchParamId,
         string referenceResourceType,
         CancellationToken ct)
     {
@@ -701,18 +746,24 @@ public class SearchParameterQueryGenerator
             return Enumerable.Empty<long>().AsQueryable();
         }
 
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.ReferenceSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
                 && sp.ReferenceResourceTypeId == referenceResourceTypeEntity.ResourceTypeId)
             .Select(sp => sp.ResourceSurrogateId);
 
         return query;
     }
 
-    private IQueryable<long> GenerateUriQuery(short resourceTypeId, string uri)
+    private IQueryable<long> GenerateUriQuery(short? resourceTypeId, short? searchParamId, string uri)
     {
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.UriSearchParams
-            .Where(sp => sp.ResourceTypeId == resourceTypeId
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
                 && sp.Uri == uri)
             .Select(sp => sp.ResourceSurrogateId);
 

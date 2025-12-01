@@ -50,7 +50,7 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
 
-        _logger.LogInformation("Searching for {ResourceType} resources (streaming)", request.ResourceType);
+        _logger.LogInformation("Searching for {ResourceType} resources (streaming)", request.ResourceType ?? "all resource types");
 
         // Create partition resolution context from FHIR request context
         var partitionContext = new PartitionResolutionContext

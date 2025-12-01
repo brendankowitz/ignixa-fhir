@@ -54,13 +54,13 @@ public class SearchExpressionQueryBuilder
     /// Applies a search expression to a base query, returning filtered results.
     /// </summary>
     /// <param name="baseQuery">The base query for resources.</param>
-    /// <param name="resourceTypeId">The resource type identifier.</param>
+    /// <param name="resourceTypeId">The resource type identifier, or null for system-wide search across all types.</param>
     /// <param name="expression">The search expression to apply.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A filtered query.</returns>
     public async Task<IQueryable<ResourceEntity>> ApplySearchExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         Expression expression,
         CancellationToken ct)
     {
@@ -82,7 +82,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplyMultiaryExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         MultiaryExpression expression,
         CancellationToken ct)
     {
@@ -113,7 +113,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplySearchParameterExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         SearchParameterExpression expression,
         CancellationToken ct)
     {
@@ -129,7 +129,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplyChainedExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         ChainedExpression expression,
         CancellationToken ct)
     {
@@ -145,7 +145,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplyCompartmentSearchExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         CompartmentSearchExpression expression,
         CancellationToken ct)
     {
@@ -174,7 +174,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplyPatientEverythingExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         PatientEverythingExpression expression,
         CancellationToken ct)
     {
@@ -193,7 +193,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplyUnionExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         UnionExpression expression,
         CancellationToken ct)
     {
@@ -220,7 +220,7 @@ public class SearchExpressionQueryBuilder
 
     private async Task<IQueryable<ResourceEntity>> ApplyNotExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         NotExpression expression,
         CancellationToken ct)
     {
@@ -236,7 +236,7 @@ public class SearchExpressionQueryBuilder
 
     private Task<IQueryable<ResourceEntity>> ApplyMissingSearchParameterExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
-        short resourceTypeId,
+        short? resourceTypeId,
         MissingSearchParameterExpression expression,
         CancellationToken ct)
     {
@@ -253,55 +253,56 @@ public class SearchExpressionQueryBuilder
         }
 
         // Query the appropriate search parameter table based on parameter type
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
         IQueryable<long> resourcesWithParameter;
 
         switch (searchParamInfo.Type)
         {
             case SearchParamType.String:
                 resourcesWithParameter = _context.StringSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Token:
                 resourcesWithParameter = _context.TokenSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Reference:
                 resourcesWithParameter = _context.ReferenceSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Number:
                 resourcesWithParameter = _context.NumberSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Date:
                 resourcesWithParameter = _context.DateTimeSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Quantity:
                 resourcesWithParameter = _context.QuantitySearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Uri:
                 resourcesWithParameter = _context.UriSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;

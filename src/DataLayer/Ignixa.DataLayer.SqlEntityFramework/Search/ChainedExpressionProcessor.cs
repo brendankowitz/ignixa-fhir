@@ -43,12 +43,12 @@ public class ChainedExpressionProcessor
     /// <summary>
     /// Processes a chained expression and returns resource IDs matching the chain criteria.
     /// </summary>
-    /// <param name="sourceResourceTypeId">The source resource type ID (e.g., Patient).</param>
+    /// <param name="sourceResourceTypeId">The source resource type ID (e.g., Patient), or null for system-wide search.</param>
     /// <param name="chainedExpression">The chained expression to process.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A queryable of source resource surrogate IDs that match the chain.</returns>
     public async Task<IQueryable<long>> ProcessChainAsync(
-        short sourceResourceTypeId,
+        short? sourceResourceTypeId,
         ChainedExpression chainedExpression,
         CancellationToken ct)
     {
@@ -76,7 +76,7 @@ public class ChainedExpressionProcessor
     /// Query flow: Source → Reference → Target (filter on target)
     /// </summary>
     private async Task<IQueryable<long>> ProcessForwardChainAsync(
-        short sourceResourceTypeId,
+        short? sourceResourceTypeId,
         ChainedExpression chainedExpression,
         CancellationToken ct)
     {
@@ -127,13 +127,13 @@ public class ChainedExpressionProcessor
 
         // Step 3: Find references from source to matching targets
         // Query: Find ReferenceSearchParams where:
-        //   - ResourceTypeId = source type (e.g., Patient)
+        //   - ResourceTypeId = source type (e.g., Patient), or null for system-wide search
         //   - ReferenceResourceTypeId IN target types (e.g., Organization)
         //   - SearchParamId = reference parameter (e.g., organization) - the specific reference parameter
         //   - Join with Resource table to get surrogate ID of referenced resource
         //   - Filter by matching target surrogate IDs
         var referenceQuery = _context.ReferenceSearchParams
-            .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId
+            .Where(rsp => (!sourceResourceTypeId.HasValue || rsp.ResourceTypeId == sourceResourceTypeId.Value)
                 && EF.Constant(targetResourceTypeIds).Contains(rsp.ReferenceResourceTypeId ?? 0)
                 && rsp.SearchParamId == refSearchParamId.Value)
             .Join(_context.Resources,
@@ -151,7 +151,7 @@ public class ChainedExpressionProcessor
     /// Query flow: Target → Reference → Source (filter on source)
     /// </summary>
     private async Task<IQueryable<long>> ProcessReverseChainAsync(
-        short sourceResourceTypeId,
+        short? sourceResourceTypeId,
         ChainedExpression chainedExpression,
         CancellationToken ct)
     {
@@ -215,7 +215,7 @@ public class ChainedExpressionProcessor
         var reverseReferenceQuery = _context.ReferenceSearchParams
             .Where(rsp => EF.Constant(referencingResourceTypeIds).Contains(rsp.ResourceTypeId)
                 && referencingResourceIds.Contains(rsp.ResourceSurrogateId)
-                && rsp.ReferenceResourceTypeId == sourceResourceTypeId
+                && (!sourceResourceTypeId.HasValue || rsp.ReferenceResourceTypeId == sourceResourceTypeId.Value)
                 && rsp.SearchParamId == refSearchParamId.Value)
             .Join(_context.Resources,
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },

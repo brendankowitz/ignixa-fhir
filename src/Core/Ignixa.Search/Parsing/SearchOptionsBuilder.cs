@@ -44,16 +44,15 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
     /// <summary>
     /// Builds SearchOptions from parsed query parameters.
     /// </summary>
-    /// <param name="resourceType">The resource type being searched (e.g., "Patient").</param>
+    /// <param name="resourceType">The resource type being searched (e.g., "Patient"), or null for system-wide search.</param>
     /// <param name="parameters">The parsed query parameters.</param>
     /// <param name="schemaProvider">Optional schema provider for validating _elements parameter.</param>
     /// <returns>A SearchOptions instance configured according to the parameters.</returns>
     public SearchOptions Build(
-        string resourceType,
+        string? resourceType,
         IReadOnlyList<QueryParameter> parameters,
         ISchema? schemaProvider = null)
     {
-        EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
         EnsureArg.IsNotNull(parameters, nameof(parameters));
 
         var options = new SearchOptions
@@ -70,7 +69,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var elementsParameters = new List<string>();
         var unsupportedParameters = new List<string>();
 
-        string[] resourceTypes = new[] { resourceType };
+        // For system-wide search (resourceType is null), use "Resource" as base type
+        // This allows searching with common parameters like _tag, _profile, _security, _id, _lastUpdated
+        // which are defined on the base Resource type and inherited by all resource types.
+        string[] resourceTypes = resourceType != null ? new[] { resourceType } : new[] { "Resource" };
 
         foreach (var param in parameters)
         {
@@ -174,20 +176,31 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         if (elementsParameters.Count > 0)
         {
             var parsedElements = ParseElementsParameters(elementsParameters);
-            var (validElements, invalidElements) = ValidateElementsAgainstSchema(
-                resourceType,
-                parsedElements,
-                schemaProvider);
 
-            options.Elements = validElements;
-
-            // Add bundle issues for invalid elements
-            foreach (var invalidElement in invalidElements)
+            // Only validate elements if we have a specific resource type
+            // For system-wide search (null resourceType), we can't validate elements against a schema
+            if (resourceType != null)
             {
-                bundleIssues.Add(new IssueComponent(
-                    Severity: "warning",
-                    Code: "not-found",
-                    Diagnostics: $"Element '{invalidElement}' is not a valid property for resource type '{resourceType}'"));
+                var (validElements, invalidElements) = ValidateElementsAgainstSchema(
+                    resourceType,
+                    parsedElements,
+                    schemaProvider);
+
+                options.Elements = validElements;
+
+                // Add bundle issues for invalid elements
+                foreach (var invalidElement in invalidElements)
+                {
+                    bundleIssues.Add(new IssueComponent(
+                        Severity: "warning",
+                        Code: "not-found",
+                        Diagnostics: $"Element '{invalidElement}' is not a valid property for resource type '{resourceType}'"));
+                }
+            }
+            else
+            {
+                // For system-wide search, accept all elements without validation
+                options.Elements = parsedElements;
             }
         }
 

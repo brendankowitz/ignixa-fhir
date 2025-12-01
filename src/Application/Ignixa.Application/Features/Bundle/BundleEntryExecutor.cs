@@ -336,16 +336,46 @@ public class BundleEntryExecutor
 
         // Read response body
         string? resourceJson = null;
-        if (response.Body != null && response.Body.CanSeek && response.Body.Length > 0)
+        if (response.Body != null)
         {
-            response.Body.Position = 0;
-            using var reader = new StreamReader(response.Body, Encoding.UTF8, leaveOpen: true);
-            resourceJson = await reader.ReadToEndAsync(cancellationToken);
+            try
+            {
+                // Try to seek if the stream supports it
+                if (response.Body.CanSeek)
+                {
+                    // Only read if there's content
+                    if (response.Body.Length > 0)
+                    {
+                        response.Body.Position = 0;
+                        using var reader = new StreamReader(response.Body, Encoding.UTF8, leaveOpen: true);
+                        resourceJson = await reader.ReadToEndAsync(cancellationToken);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Response body is empty (Length = 0) for bundle entry");
+                    }
+                }
+                else
+                {
+                    // Non-seekable stream - try to read anyway
+                    _logger.LogDebug("Response body is not seekable for bundle entry, attempting to read");
+                    using var reader = new StreamReader(response.Body, Encoding.UTF8, leaveOpen: true);
+                    resourceJson = await reader.ReadToEndAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to read response body for bundle entry with status {StatusCode}",
+                    response.StatusCode);
+            }
         }
-        else if (response.Body == null)
+        else
         {
             _logger.LogWarning(
-                "Response body is null for bundle entry, this may indicate the pipeline replaced the response stream");
+                "Response body is null for bundle entry with status {StatusCode}, this may indicate the pipeline replaced the response stream",
+                response.StatusCode);
         }
 
         // Extract headers using string-based access

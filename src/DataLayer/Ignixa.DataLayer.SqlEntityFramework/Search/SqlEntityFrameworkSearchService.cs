@@ -213,9 +213,33 @@ public class SqlEntityFrameworkSearchService : ISearchService
             throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
         }
 
-        _logger.LogDebug("Counting resources for {ResourceType}", options.ResourceType);
+        _logger.LogDebug("Counting resources for {ResourceType}", options.ResourceType ?? "all resource types");
 
-        // Get ResourceTypeId
+        // For system-wide search (ResourceType is null), skip type lookup and query all resources
+        if (string.IsNullOrEmpty(options.ResourceType))
+        {
+            _logger.LogDebug("System-wide count query - no resource type filter");
+
+            // Base query without resource type filter
+            var multiTypeBaseQuery = _context.Resources
+                .Where(r => !r.IsHistory && !r.IsDeleted);
+
+            // Apply search expression filters
+            if (options.Expression != null)
+            {
+                // Pass null for resourceTypeId to indicate system-wide search across all types
+                var filteredQuery = await _queryBuilder.ApplySearchExpressionAsync(
+                    multiTypeBaseQuery,
+                    null, // null means system-wide search - query all resource types
+                    options.Expression,
+                    ct);
+                return await filteredQuery.CountAsync(ct);
+            }
+
+            return await multiTypeBaseQuery.CountAsync(ct);
+        }
+
+        // Get ResourceTypeId for single-type searches
         var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, ct);
         if (!resourceTypeId.HasValue)
         {

@@ -31,13 +31,13 @@ public class IsolatedModePartitionStrategy : IPartitionStrategy
 
     public RequestPartition DetermineReadPartition(
         PartitionResolutionContext context,
-        string resourceType,
+        string? resourceType,
         IReadOnlyDictionary<string, string> queryParams)
     {
         _logger.LogDebug(
             "Determined read partition for tenant {TenantId}, resourceType {ResourceType}",
             context.TenantId,
-            resourceType);
+            resourceType ?? "all types");
 
         return new RequestPartition
         {

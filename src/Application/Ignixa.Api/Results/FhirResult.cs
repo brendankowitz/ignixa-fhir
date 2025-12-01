@@ -19,7 +19,7 @@ public sealed class FhirResult : IResult
     private readonly DateTimeOffset? _lastModified;
     private readonly object? _minimalBody;
 
-    internal FhirResult(
+    public FhirResult(
         int statusCode,
         ReadOnlyMemory<byte>? bytes = null,
         string? location = null,
