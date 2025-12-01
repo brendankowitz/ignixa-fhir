@@ -605,6 +605,12 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // PHASE 1.2: Segmented CapabilityStatement with Smart Caching
 
+    // Register IApplicationVersionInfo (provides assembly version for CapabilityStatement)
+    // Retrieves version from GitVersion assembly attributes, falls back to "0.0.0-dev" if unavailable
+    containerBuilder.RegisterType<Ignixa.Application.Infrastructure.ApplicationVersionInfo>()
+        .As<IApplicationVersionInfo>()
+        .SingleInstance();
+
     // Register capability cache (Phase 1.2: in-memory, Phase 7: Redis)
     containerBuilder.RegisterType<Ignixa.Application.Infrastructure.Caching.MemoryCapabilityCache>()
         .As<Ignixa.Application.Infrastructure.Caching.ICapabilityCache>()

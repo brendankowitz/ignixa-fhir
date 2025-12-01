@@ -24,6 +24,7 @@ public class CapabilityStatementService
     private readonly ICapabilityCache _cache;
     private readonly ITenantConfigurationStore _tenantConfigStore;
     private readonly IFhirVersionContext _versionContext;
+    private readonly IApplicationVersionInfo _versionInfo;
     private readonly ILogger<CapabilityStatementService> _logger;
 
     // In-memory cache for version hashes to avoid recomputing on every request
@@ -35,12 +36,14 @@ public class CapabilityStatementService
         ICapabilityCache cache,
         ITenantConfigurationStore tenantConfigStore,
         IFhirVersionContext versionContext,
+        IApplicationVersionInfo versionInfo,
         ILogger<CapabilityStatementService> logger)
     {
         _segments = segments ?? throw new ArgumentNullException(nameof(segments));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _tenantConfigStore = tenantConfigStore ?? throw new ArgumentNullException(nameof(tenantConfigStore));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
+        _versionInfo = versionInfo ?? throw new ArgumentNullException(nameof(versionInfo));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -160,7 +163,7 @@ public class CapabilityStatementService
 
         // Set basic properties that change per request
         statement.Url = "http://Ignixa.example.com/fhir/CapabilityStatement";
-        statement.Version = "0.1.0";
+        statement.Version = _versionInfo.Version;
         statement.Date = DateTimeOffset.UtcNow.ToString("O");
 
         // Use FullVersion from schema provider to include ballot/patch versions (e.g., "6.0.0-ballot2" for R6)

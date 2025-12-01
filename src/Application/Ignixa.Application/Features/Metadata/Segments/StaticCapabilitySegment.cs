@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 
@@ -12,19 +13,12 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// Static capability segment that never changes after startup.
 /// Provides software information, basic settings, and supported formats.
 /// </summary>
-public class StaticCapabilitySegment : ICapabilitySegment
+public class StaticCapabilitySegment(
+    IApplicationVersionInfo versionInfo,
+    ILogger<StaticCapabilitySegment> logger) : ICapabilitySegment
 {
-    private readonly ILogger<StaticCapabilitySegment> _logger;
-
-    // Software version - could be injected from ProductVersionInfo in future
-    private const string SoftwareVersion = "0.1.0";
-    private const string SoftwareName = "Ignixa FHIR Server";
-    private const string ReleaseDate = "2025-10-16";
-
-    public StaticCapabilitySegment(ILogger<StaticCapabilitySegment> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+    private readonly IApplicationVersionInfo _versionInfo = versionInfo ?? throw new ArgumentNullException(nameof(versionInfo));
+    private readonly ILogger<StaticCapabilitySegment> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public string SegmentKey => "static";
 
@@ -50,9 +44,9 @@ public class StaticCapabilitySegment : ICapabilitySegment
         // Software component
         statement.Software = new SoftwareComponentJsonNode
         {
-            Name = SoftwareName,
-            Version = SoftwareVersion,
-            ReleaseDate = ReleaseDate,
+            Name = _versionInfo.Name,
+            Version = _versionInfo.Version,
+            ReleaseDate = _versionInfo.ReleaseDate,
         };
 
         return ValueTask.CompletedTask;
@@ -64,6 +58,6 @@ public class StaticCapabilitySegment : ICapabilitySegment
     {
         // Static segment: hash is just the software version
         // Changes only when software version changes (deployment)
-        return ValueTask.FromResult(SoftwareVersion);
+        return ValueTask.FromResult(_versionInfo.Version);
     }
 }
