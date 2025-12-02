@@ -523,11 +523,13 @@ public class SearchParameterQueryGenerator
         return stringExpr.FieldName switch
         {
             FieldName.String => await GenerateStringQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator, ct),
-            FieldName.Uri => GenerateUriQuery(resourceTypeId, searchParamId, stringExpr.Value),
+            FieldName.Uri => GenerateUriQuery(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator),
             FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, null, stringExpr.Value, ct),
             FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, null, ct),
             FieldName.ReferenceResourceId => await GenerateReferenceQueryByIdAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
             FieldName.ReferenceResourceType => await GenerateReferenceQueryByTypeAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
+            FieldName.QuantitySystem => await GenerateQuantitySystemQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
+            FieldName.QuantityCode => await GenerateQuantityCodeQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
             _ => throw new NotSupportedException($"StringExpression with FieldName {stringExpr.FieldName} is not supported")
         };
     }
@@ -667,16 +669,27 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        // Apply comparison based on operator (range overlap logic for DateTime)
-        query = binaryExpr.BinaryOperator switch
+        // Apply comparison based on FieldName (Start vs End) and operator
+        // The expression parser creates expressions targeting specific fields:
+        // - DateTimeStart comparisons filter on sp.StartDateTime
+        // - DateTimeEnd comparisons filter on sp.EndDateTime
+        query = (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
         {
-            BinaryOperator.Equal => query.Where(sp => sp.StartDateTime <= value && sp.EndDateTime >= value),
-            BinaryOperator.GreaterThan => query.Where(sp => sp.StartDateTime > value),
-            BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.StartDateTime >= value),
-            BinaryOperator.LessThan => query.Where(sp => sp.EndDateTime < value),
-            BinaryOperator.LessThanOrEqual => query.Where(sp => sp.EndDateTime <= value),
-            BinaryOperator.NotEqual => query.Where(sp => sp.EndDateTime < value || sp.StartDateTime > value),
-            _ => throw new NotSupportedException($"BinaryOperator {binaryExpr.BinaryOperator} is not supported for DateTime")
+            (FieldName.DateTimeStart, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.StartDateTime >= value),
+            (FieldName.DateTimeStart, BinaryOperator.GreaterThan) => query.Where(sp => sp.StartDateTime > value),
+            (FieldName.DateTimeStart, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.StartDateTime <= value),
+            (FieldName.DateTimeStart, BinaryOperator.LessThan) => query.Where(sp => sp.StartDateTime < value),
+            (FieldName.DateTimeStart, BinaryOperator.Equal) => query.Where(sp => sp.StartDateTime == value),
+            (FieldName.DateTimeStart, BinaryOperator.NotEqual) => query.Where(sp => sp.StartDateTime != value),
+
+            (FieldName.DateTimeEnd, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.EndDateTime >= value),
+            (FieldName.DateTimeEnd, BinaryOperator.GreaterThan) => query.Where(sp => sp.EndDateTime > value),
+            (FieldName.DateTimeEnd, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.EndDateTime <= value),
+            (FieldName.DateTimeEnd, BinaryOperator.LessThan) => query.Where(sp => sp.EndDateTime < value),
+            (FieldName.DateTimeEnd, BinaryOperator.Equal) => query.Where(sp => sp.EndDateTime == value),
+            (FieldName.DateTimeEnd, BinaryOperator.NotEqual) => query.Where(sp => sp.EndDateTime != value),
+
+            _ => throw new NotSupportedException($"DateTime search with FieldName {binaryExpr.FieldName} and BinaryOperator {binaryExpr.BinaryOperator} is not supported")
         };
 
         return query.Select(sp => sp.ResourceSurrogateId);
@@ -711,6 +724,82 @@ public class SearchParameterQueryGenerator
         };
 
         return await Task.FromResult(query.Select(sp => sp.ResourceSurrogateId));
+    }
+
+    /// <summary>
+    /// Generates a query for quantity system (unit system URI) filtering.
+    /// Looks up the SystemId from the System table and filters QuantitySearchParams by SystemId.
+    /// </summary>
+    /// <param name="resourceTypeId">The resource type identifier, or null for system-wide search.</param>
+    /// <param name="searchParamId">The search parameter identifier.</param>
+    /// <param name="systemUri">The system URI to filter by (e.g., "http://unitsofmeasure.org").</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A queryable of matching resource surrogate IDs.</returns>
+    private async Task<IQueryable<long>> GenerateQuantitySystemQueryAsync(
+        short? resourceTypeId,
+        short? searchParamId,
+        string systemUri,
+        CancellationToken ct)
+    {
+        // Look up SystemId from System table via cache
+        // Note: GetOrCreateSystemIdAsync will find existing systems first (won't create during search)
+        var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri);
+
+        if (!systemId.HasValue)
+        {
+            // System not found - return empty result (no matches possible)
+            _logger.LogDebug("Quantity system not found: {SystemUri}", systemUri);
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Query QuantitySearchParams filtered by SystemId
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
+        var query = _context.QuantitySearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
+                && sp.SystemId == systemId.Value)
+            .Select(sp => sp.ResourceSurrogateId);
+
+        return query;
+    }
+
+    /// <summary>
+    /// Generates a query for quantity code (unit code) filtering.
+    /// Looks up the QuantityCodeId from the QuantityCode table and filters QuantitySearchParams by QuantityCodeId.
+    /// </summary>
+    /// <param name="resourceTypeId">The resource type identifier, or null for system-wide search.</param>
+    /// <param name="searchParamId">The search parameter identifier.</param>
+    /// <param name="code">The unit code to filter by (e.g., "mg", "kg").</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A queryable of matching resource surrogate IDs.</returns>
+    private async Task<IQueryable<long>> GenerateQuantityCodeQueryAsync(
+        short? resourceTypeId,
+        short? searchParamId,
+        string code,
+        CancellationToken ct)
+    {
+        // Look up QuantityCodeId from QuantityCode table via cache
+        // Note: GetOrCreateQuantityCodeIdAsync will find existing codes first (won't create during search)
+        var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code);
+
+        if (!quantityCodeId.HasValue)
+        {
+            // Code not found - return empty result (no matches possible)
+            _logger.LogDebug("Quantity code not found: {Code}", code);
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Query QuantitySearchParams filtered by QuantityCodeId
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
+        var query = _context.QuantitySearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
+                && sp.QuantityCodeId == quantityCodeId.Value)
+            .Select(sp => sp.ResourceSurrogateId);
+
+        return query;
     }
 
     private async Task<IQueryable<long>> GenerateReferenceQueryByIdAsync(
@@ -757,16 +846,33 @@ public class SearchParameterQueryGenerator
         return query;
     }
 
-    private IQueryable<long> GenerateUriQuery(short? resourceTypeId, short? searchParamId, string uri)
+    private IQueryable<long> GenerateUriQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        string uri,
+        StringOperator stringOperator)
     {
         // When resourceTypeId is null (system-wide search), don't filter by resource type
         // Filter by SearchParamId to only match values indexed for this specific parameter
         var query = _context.UriSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
-                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
-                && sp.Uri == uri)
-            .Select(sp => sp.ResourceSurrogateId);
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        return query;
+        // Apply the appropriate URI matching based on the StringOperator
+        // FHIR URI search modifiers:
+        //   - No modifier (Equals): Exact match
+        //   - :above (LeftSideStartsWith): The search value starts with the indexed URI (indexed URI is ancestor)
+        //   - :below (StartsWith): The indexed URI starts with the search value (search value is ancestor)
+        //   - NotStartsWith: Used in combination expressions to exclude certain URI schemes (e.g., urn:)
+        query = stringOperator switch
+        {
+            StringOperator.Equals => query.Where(sp => sp.Uri == uri),
+            StringOperator.LeftSideStartsWith => query.Where(sp => uri.StartsWith(sp.Uri)),
+            StringOperator.StartsWith => query.Where(sp => sp.Uri.StartsWith(uri)),
+            StringOperator.NotStartsWith => query.Where(sp => !sp.Uri.StartsWith(uri)),
+            _ => throw new NotSupportedException($"StringOperator {stringOperator} is not supported for URI search")
+        };
+
+        return query.Select(sp => sp.ResourceSurrogateId);
     }
 }
