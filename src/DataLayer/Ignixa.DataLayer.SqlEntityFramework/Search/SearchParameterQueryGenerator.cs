@@ -9,6 +9,8 @@ using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 
@@ -21,6 +23,7 @@ public class SearchParameterQueryGenerator
     private readonly FhirDbContext _context;
     private readonly SearchIndexReferenceDataCache _cache;
     private readonly ILogger<SearchParameterQueryGenerator> _logger;
+    private readonly CompositeSearchParameterQueryGenerator _compositeQueryGenerator;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SearchParameterQueryGenerator"/> class.
@@ -28,14 +31,17 @@ public class SearchParameterQueryGenerator
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="cache">The reference data cache.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="compositeQueryGenerator">The composite search parameter query generator.</param>
     public SearchParameterQueryGenerator(
         FhirDbContext context,
         SearchIndexReferenceDataCache cache,
-        ILogger<SearchParameterQueryGenerator> logger)
+        ILogger<SearchParameterQueryGenerator> logger,
+        CompositeSearchParameterQueryGenerator compositeQueryGenerator)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _compositeQueryGenerator = compositeQueryGenerator ?? throw new ArgumentNullException(nameof(compositeQueryGenerator));
     }
 
     /// <summary>
@@ -85,8 +91,155 @@ public class SearchParameterQueryGenerator
             }
         }
 
+        // Handle composite search parameters
+        // TEMPORARILY DISABLED: Testing if this causes stack overflow
+        //if (expression.Parameter?.Type == SearchParamType.Composite && searchParamId.HasValue)
+        //{
+        //    return await ProcessCompositeExpressionAsync(resourceTypeId, searchParamId.Value, expression.Parameter, expression.Expression, ct);
+        //}
+
         // Process the inner expression based on its type, with SearchParamId for proper filtering
         return await ProcessExpressionAsync(resourceTypeId, searchParamId, expression.Expression, ct);
+    }
+
+    /// <summary>
+    /// Processes composite search parameter expressions by routing to the appropriate composite table.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessCompositeExpressionAsync(
+        short? resourceTypeId,
+        short searchParamId,
+        SearchParameterInfo searchParameter,
+        Expression expr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing composite search parameter: {Code}", searchParameter.Code);
+
+        // Determine the composite type based on component types
+        var compositeType = _compositeQueryGenerator.DetermineCompositeType(searchParameter);
+
+        if (compositeType == CompositeType.Unknown)
+        {
+            _logger.LogWarning(
+                "Unknown composite type for parameter {Code}, falling back to non-composite search",
+                searchParameter.Code);
+            return await ProcessExpressionAsync(resourceTypeId, searchParamId, expr, ct);
+        }
+
+        // Extract component expressions from the outer expression
+        // Composite expressions are typically MultiaryExpression (AND) containing component expressions
+        var componentExpressions = ExtractComponentExpressions(expr);
+
+        if (componentExpressions.Count < 2)
+        {
+            _logger.LogWarning(
+                "Composite parameter {Code} requires at least 2 components, found {Count}",
+                searchParameter.Code,
+                componentExpressions.Count);
+            return Enumerable.Empty<long>().AsQueryable();
+        }
+
+        // Route to appropriate composite query generator method based on type
+        return compositeType switch
+        {
+            CompositeType.TokenToken => await _compositeQueryGenerator.GenerateTokenTokenQueryAsync(
+                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+
+            CompositeType.TokenQuantity => await _compositeQueryGenerator.GenerateTokenQuantityQueryAsync(
+                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+
+            CompositeType.TokenString => await _compositeQueryGenerator.GenerateTokenStringQueryAsync(
+                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+
+            CompositeType.ReferenceToken => await _compositeQueryGenerator.GenerateReferenceTokenQueryAsync(
+                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+
+            CompositeType.TokenDateTime => await _compositeQueryGenerator.GenerateTokenDateTimeQueryAsync(
+                resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
+
+            _ => Enumerable.Empty<long>().AsQueryable()
+        };
+    }
+
+    /// <summary>
+    /// Extracts component expressions from a composite search expression.
+    /// Component expressions are identified by their ComponentIndex property.
+    /// </summary>
+    private List<Expression> ExtractComponentExpressions(Expression expr)
+    {
+        var componentsByIndex = new Dictionary<int, List<Expression>>();
+
+        void CollectByComponentIndex(Expression e)
+        {
+            if (e is IFieldExpression fieldExpr && fieldExpr.ComponentIndex.HasValue)
+            {
+                int index = fieldExpr.ComponentIndex.Value;
+                if (!componentsByIndex.ContainsKey(index))
+                {
+                    componentsByIndex[index] = [];
+                }
+
+                componentsByIndex[index].Add(e);
+            }
+            else if (e is MultiaryExpression multiary)
+            {
+                // Check if all child expressions have the same ComponentIndex
+                // If so, this is a composite component expression
+                var childComponentIndices = new HashSet<int?>();
+                foreach (var child in multiary.Expressions)
+                {
+                    if (child is IFieldExpression childField && childField.ComponentIndex.HasValue)
+                    {
+                        childComponentIndices.Add(childField.ComponentIndex);
+                    }
+                }
+
+                if (childComponentIndices.Count == 1 && childComponentIndices.First().HasValue)
+                {
+                    // All children have the same ComponentIndex - this is a complete component expression
+                    int index = childComponentIndices.First()!.Value;
+                    if (!componentsByIndex.ContainsKey(index))
+                    {
+                        componentsByIndex[index] = [];
+                    }
+
+                    componentsByIndex[index].Add(e);
+                }
+                else
+                {
+                    // Mixed or no component indices - recurse into children
+                    foreach (var child in multiary.Expressions)
+                    {
+                        CollectByComponentIndex(child);
+                    }
+                }
+            }
+            else if (e is NotExpression notExpr)
+            {
+                CollectByComponentIndex(notExpr.Expression);
+            }
+        }
+
+        CollectByComponentIndex(expr);
+
+        // Build result list ordered by component index
+        var result = new List<Expression>();
+        var sortedIndices = componentsByIndex.Keys.OrderBy(k => k).ToList();
+
+        foreach (var index in sortedIndices)
+        {
+            var expressions = componentsByIndex[index];
+            if (expressions.Count == 1)
+            {
+                result.Add(expressions[0]);
+            }
+            else
+            {
+                // Combine multiple expressions for the same component with AND
+                result.Add(Expression.And(expressions.ToArray()));
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -493,10 +646,36 @@ public class SearchParameterQueryGenerator
             return Enumerable.Empty<long>().AsQueryable();
         }
 
+        _logger.LogDebug(
+            "Processing MultiaryExpression: Operation={Operation}, ExpressionCount={Count}, ResourceTypeId={ResourceTypeId}, SearchParamId={SearchParamId}",
+            multiaryExpr.MultiaryOperation,
+            multiaryExpr.Expressions.Count,
+            resourceTypeId,
+            searchParamId);
+
+        // Special handling for DateTime OR expressions - generate single query with compound WHERE
+        // instead of using UNION which can have performance and correctness issues in EF Core
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.Or &&
+            multiaryExpr.Expressions.All(e => e is BinaryExpression be &&
+                (be.FieldName == FieldName.DateTimeStart || be.FieldName == FieldName.DateTimeEnd)))
+        {
+            return GenerateDateTimeOrQuery(resourceTypeId, searchParamId, multiaryExpr);
+        }
+
+        // Special handling for Quantity AND expressions - all filters must apply to the SAME row
+        // Without this, each condition (system, code, value) would match independently and incorrectly combine
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
+            IsQuantityAndExpression(multiaryExpr))
+        {
+            return await GenerateQuantityAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
+        }
+
         // Process each sub-expression
         var queries = new List<IQueryable<long>>();
-        foreach (var subExpr in multiaryExpr.Expressions)
+        for (int idx = 0; idx < multiaryExpr.Expressions.Count; idx++)
         {
+            var subExpr = multiaryExpr.Expressions[idx];
+            _logger.LogDebug("Processing sub-expression {Index}: {ExprType}", idx, subExpr.GetType().Name);
             var query = await ProcessExpressionAsync(resourceTypeId, searchParamId, subExpr, ct);
             queries.Add(query);
         }
@@ -511,6 +690,264 @@ public class SearchParameterQueryGenerator
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Generates a single DateTime query with compound OR conditions in the WHERE clause.
+    /// This is more efficient than UNION and avoids potential EF Core UNION issues.
+    /// Uses explicit inline comparisons that EF Core can translate to SQL.
+    /// </summary>
+    private IQueryable<long> GenerateDateTimeOrQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr)
+    {
+        _logger.LogDebug("Using optimized DateTime OR query generation");
+
+        // Start with base query
+        var query = _context.DateTimeSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        // Extract conditions from binary expressions
+        var conditions = new List<(FieldName Field, BinaryOperator Op, DateTime Value)>();
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            if (expr is BinaryExpression binaryExpr)
+            {
+                DateTime value = binaryExpr.Value switch
+                {
+                    DateTime dt => dt,
+                    DateTimeOffset dto => dto.UtcDateTime,
+                    _ => Convert.ToDateTime(binaryExpr.Value)
+                };
+
+                conditions.Add((binaryExpr.FieldName, binaryExpr.BinaryOperator, value));
+
+                _logger.LogDebug(
+                    "DateTime OR condition: Field={Field}, Op={Op}, Value={Value}",
+                    binaryExpr.FieldName,
+                    binaryExpr.BinaryOperator,
+                    value.ToString("o"));
+            }
+        }
+
+        // Handle the common case of 2 conditions (e.g., ne search: StartDateTime < X OR EndDateTime > Y)
+        if (conditions.Count == 2)
+        {
+            var c1 = conditions[0];
+            var c2 = conditions[1];
+
+            // Must use explicit comparisons for EF Core to translate to SQL
+            // Build the WHERE clause based on the specific conditions
+            return BuildTwoConditionDateTimeOrQuery(query, c1, c2);
+        }
+
+        // For single condition
+        if (conditions.Count == 1)
+        {
+            var c = conditions[0];
+            return BuildSingleConditionDateTimeQuery(query, c);
+        }
+
+        // For 3+ conditions, fall back to UNION (less common case)
+        _logger.LogWarning("DateTime OR with {Count} conditions - using UNION fallback", conditions.Count);
+        IQueryable<long>? result = null;
+        foreach (var c in conditions)
+        {
+            var conditionQuery = BuildSingleConditionDateTimeQuery(query, c);
+            result = result == null ? conditionQuery : result.Union(conditionQuery);
+        }
+        return result ?? Enumerable.Empty<long>().AsQueryable();
+    }
+
+    /// <summary>
+    /// Builds a DateTime query with a single condition that EF Core can translate to SQL.
+    /// </summary>
+    private static IQueryable<long> BuildSingleConditionDateTimeQuery(
+        IQueryable<Entities.DateTimeSearchParamEntity> baseQuery,
+        (FieldName Field, BinaryOperator Op, DateTime Value) condition)
+    {
+        var (field, op, value) = condition;
+
+        // Use explicit conditions based on field and operator to ensure EF Core translation
+        if (field == FieldName.DateTimeStart)
+        {
+            return op switch
+            {
+                BinaryOperator.Equal => baseQuery.Where(sp => sp.StartDateTime == value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.NotEqual => baseQuery.Where(sp => sp.StartDateTime != value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.GreaterThan => baseQuery.Where(sp => sp.StartDateTime > value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.GreaterThanOrEqual => baseQuery.Where(sp => sp.StartDateTime >= value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.LessThan => baseQuery.Where(sp => sp.StartDateTime < value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.LessThanOrEqual => baseQuery.Where(sp => sp.StartDateTime <= value).Select(sp => sp.ResourceSurrogateId),
+                _ => Enumerable.Empty<long>().AsQueryable()
+            };
+        }
+        else // DateTimeEnd
+        {
+            return op switch
+            {
+                BinaryOperator.Equal => baseQuery.Where(sp => sp.EndDateTime == value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.NotEqual => baseQuery.Where(sp => sp.EndDateTime != value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.GreaterThan => baseQuery.Where(sp => sp.EndDateTime > value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.GreaterThanOrEqual => baseQuery.Where(sp => sp.EndDateTime >= value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.LessThan => baseQuery.Where(sp => sp.EndDateTime < value).Select(sp => sp.ResourceSurrogateId),
+                BinaryOperator.LessThanOrEqual => baseQuery.Where(sp => sp.EndDateTime <= value).Select(sp => sp.ResourceSurrogateId),
+                _ => Enumerable.Empty<long>().AsQueryable()
+            };
+        }
+    }
+
+    /// <summary>
+    /// Builds a DateTime query with two OR conditions that EF Core can translate to SQL.
+    /// Handles all common cases like ne (not equal) search which uses StartDateTime &lt; X OR EndDateTime > Y.
+    /// </summary>
+    private static IQueryable<long> BuildTwoConditionDateTimeOrQuery(
+        IQueryable<Entities.DateTimeSearchParamEntity> baseQuery,
+        (FieldName Field, BinaryOperator Op, DateTime Value) c1,
+        (FieldName Field, BinaryOperator Op, DateTime Value) c2)
+    {
+        // Generate the specific WHERE clause based on the conditions
+        // This covers the common cases for date search comparators
+
+        // Case: StartDateTime LessThan AND EndDateTime GreaterThan (ne search)
+        if (c1.Field == FieldName.DateTimeStart && c1.Op == BinaryOperator.LessThan &&
+            c2.Field == FieldName.DateTimeEnd && c2.Op == BinaryOperator.GreaterThan)
+        {
+            return baseQuery.Where(sp => sp.StartDateTime < c1.Value || sp.EndDateTime > c2.Value)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+
+        // Case: EndDateTime GreaterThan AND StartDateTime LessThan (ne search, reversed order)
+        if (c1.Field == FieldName.DateTimeEnd && c1.Op == BinaryOperator.GreaterThan &&
+            c2.Field == FieldName.DateTimeStart && c2.Op == BinaryOperator.LessThan)
+        {
+            return baseQuery.Where(sp => sp.EndDateTime > c1.Value || sp.StartDateTime < c2.Value)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+
+        // Case: StartDateTime GreaterThanOrEqual AND EndDateTime LessThanOrEqual (eq search - though this is AND, not OR)
+        // This shouldn't happen for OR, but handle it just in case
+        if (c1.Field == FieldName.DateTimeStart && c1.Op == BinaryOperator.GreaterThanOrEqual &&
+            c2.Field == FieldName.DateTimeEnd && c2.Op == BinaryOperator.LessThanOrEqual)
+        {
+            return baseQuery.Where(sp => sp.StartDateTime >= c1.Value || sp.EndDateTime <= c2.Value)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+
+        // Generic fallback: use UNION for any other combination
+        var q1 = BuildSingleConditionDateTimeQuery(baseQuery, c1);
+        var q2 = BuildSingleConditionDateTimeQuery(baseQuery, c2);
+        return q1.Union(q2);
+    }
+
+    /// <summary>
+    /// Checks if a MultiaryExpression contains Quantity field expressions (system, code, value).
+    /// </summary>
+    private static bool IsQuantityAndExpression(MultiaryExpression multiaryExpr)
+    {
+        // A Quantity AND expression will contain some combination of:
+        // - StringExpression with FieldName.QuantitySystem
+        // - StringExpression with FieldName.QuantityCode
+        // - BinaryExpression with FieldName.Quantity
+        return multiaryExpr.Expressions.Any(e =>
+            (e is StringExpression se && (se.FieldName == FieldName.QuantitySystem || se.FieldName == FieldName.QuantityCode)) ||
+            (e is BinaryExpression be && be.FieldName == FieldName.Quantity));
+    }
+
+    /// <summary>
+    /// Generates a single Quantity query with all filters (system, code, value) applied to the SAME row.
+    /// This is essential for correctness - each condition must match the same indexed quantity value.
+    /// </summary>
+    private async Task<IQueryable<long>> GenerateQuantityAndQueryAsync(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Using optimized Quantity AND query generation");
+
+        // Extract the components from the AND expression
+        string? systemUri = null;
+        string? code = null;
+        BinaryExpression? valueExpr = null;
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            if (expr is StringExpression stringExpr)
+            {
+                switch (stringExpr.FieldName)
+                {
+                    case FieldName.QuantitySystem:
+                        systemUri = stringExpr.Value;
+                        break;
+                    case FieldName.QuantityCode:
+                        code = stringExpr.Value;
+                        break;
+                }
+            }
+            else if (expr is BinaryExpression binaryExpr && binaryExpr.FieldName == FieldName.Quantity)
+            {
+                valueExpr = binaryExpr;
+            }
+        }
+
+        // Build base query with resource type and search param filters
+        var query = _context.QuantitySearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        // Add system filter if specified
+        if (!string.IsNullOrEmpty(systemUri))
+        {
+            var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri);
+            if (!systemId.HasValue)
+            {
+                _logger.LogDebug("Quantity system not found: {SystemUri}", systemUri);
+                return Enumerable.Empty<long>().AsQueryable();
+            }
+            query = query.Where(sp => sp.SystemId == systemId.Value);
+        }
+
+        // Add code filter if specified
+        if (!string.IsNullOrEmpty(code))
+        {
+            var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code);
+            if (!quantityCodeId.HasValue)
+            {
+                _logger.LogDebug("Quantity code not found: {Code}", code);
+                return Enumerable.Empty<long>().AsQueryable();
+            }
+            query = query.Where(sp => sp.QuantityCodeId == quantityCodeId.Value);
+        }
+
+        // Add value comparison if specified
+        if (valueExpr != null)
+        {
+            var value = Convert.ToDecimal(valueExpr.Value);
+
+            _logger.LogDebug(
+                "Quantity AND query: System={System}, Code={Code}, Value={Value}, Op={Op}",
+                systemUri,
+                code,
+                value,
+                valueExpr.BinaryOperator);
+
+            query = valueExpr.BinaryOperator switch
+            {
+                BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
+                BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
+                BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
+                BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
+                BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
+                BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
+                _ => throw new NotSupportedException($"BinaryOperator {valueExpr.BinaryOperator} is not supported for Quantity")
+            };
+        }
+
+        return query.Select(sp => sp.ResourceSurrogateId);
     }
 
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
@@ -567,8 +1004,11 @@ public class SearchParameterQueryGenerator
             .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value) && !r.IsHistory && !r.IsDeleted)
             .Select(r => r.ResourceSurrogateId);
 
-        // Return resources NOT in the inner matching set
-        return allResourceIds.Where(id => !innerMatchingIds.Contains(id));
+        // Use EXCEPT instead of WHERE NOT IN to avoid deeply nested expression trees
+        // that can cause stack overflow in EF Core's ExpressionTreeFuncletizer.
+        // EXCEPT generates cleaner SQL: SELECT ... EXCEPT SELECT ...
+        // instead of WHERE NOT EXISTS (complex nested subquery)
+        return allResourceIds.Except(innerMatchingIds);
     }
 
     private async Task<IQueryable<long>> GenerateStringQueryAsync(
@@ -662,6 +1102,14 @@ public class SearchParameterQueryGenerator
             DateTimeOffset dto => dto.UtcDateTime,
             _ => Convert.ToDateTime(binaryExpr.Value)
         };
+
+        _logger.LogDebug(
+            "GenerateDateTimeQuery: FieldName={FieldName}, Operator={Operator}, Value={Value}, ResourceTypeId={ResourceTypeId}, SearchParamId={SearchParamId}",
+            binaryExpr.FieldName,
+            binaryExpr.BinaryOperator,
+            value.ToString("o"),
+            resourceTypeId,
+            searchParamId);
 
         // When resourceTypeId is null (system-wide search), don't filter by resource type
         // Filter by SearchParamId to only match values indexed for this specific parameter

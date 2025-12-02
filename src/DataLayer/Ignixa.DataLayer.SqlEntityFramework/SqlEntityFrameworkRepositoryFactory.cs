@@ -339,10 +339,16 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             // Get tenant-specific cache instance (same instance as used by repository)
             var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
 
+            var compositeQueryGenerator = new Search.CompositeSearchParameterQueryGenerator(
+                dbContext,
+                searchIndexCache,
+                _loggerFactory.CreateLogger<Search.CompositeSearchParameterQueryGenerator>());
+
             var parameterQueryGenerator = new Search.SearchParameterQueryGenerator(
                 dbContext,
                 searchIndexCache,
-                _loggerFactory.CreateLogger<Search.SearchParameterQueryGenerator>());
+                _loggerFactory.CreateLogger<Search.SearchParameterQueryGenerator>(),
+                compositeQueryGenerator);
 
             var chainedExpressionProcessor = new Search.ChainedExpressionProcessor(
                 dbContext,

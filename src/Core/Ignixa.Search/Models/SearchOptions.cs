@@ -56,7 +56,7 @@ public class SearchOptions
     /// <summary>
     /// Gets or sets the summary mode.
     /// </summary>
-    public SummaryType Summary { get; set; } = SummaryType.False;
+    public SummaryType Summary { get; set; } = SummaryType.None;
 
     /// <summary>
     /// Gets or sets any unsupported search parameters encountered.
@@ -116,7 +116,13 @@ public enum TotalType
 public enum SummaryType
 {
     /// <summary>
-    /// Return full resources.
+    /// No _summary parameter was specified (return full resources).
+    /// This is distinct from False, which means _summary=false was explicitly specified.
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// Return full resources (_summary=false explicitly specified).
     /// </summary>
     False,
 
@@ -126,7 +132,7 @@ public enum SummaryType
     Count,
 
     /// <summary>
-    /// Return only the id, versionId, and lastModified.
+    /// Return only the id, versionId, and lastUpdated.
     /// </summary>
     True,
 

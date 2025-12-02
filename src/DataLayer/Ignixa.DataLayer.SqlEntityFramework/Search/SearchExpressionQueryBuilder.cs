@@ -253,56 +253,55 @@ public class SearchExpressionQueryBuilder
         }
 
         // Query the appropriate search parameter table based on parameter type
-        // When resourceTypeId is null (system-wide search), don't filter by resource type
         IQueryable<long> resourcesWithParameter;
 
         switch (searchParamInfo.Type)
         {
             case SearchParamType.String:
                 resourcesWithParameter = _context.StringSearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Token:
                 resourcesWithParameter = _context.TokenSearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Reference:
                 resourcesWithParameter = _context.ReferenceSearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Number:
                 resourcesWithParameter = _context.NumberSearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Date:
                 resourcesWithParameter = _context.DateTimeSearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Quantity:
                 resourcesWithParameter = _context.QuantitySearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Uri:
                 resourcesWithParameter = _context.UriSearchParams
-                    .Where(sp => !resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;

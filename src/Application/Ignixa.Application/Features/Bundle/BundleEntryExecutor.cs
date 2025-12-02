@@ -184,6 +184,33 @@ public class BundleEntryExecutor
             // Extract response from HttpContext
             return await ExtractResponseAsync(httpContext, cancellationToken);
         }
+        catch (ResourceVersionConflictException conflictEx)
+        {
+            // Resource version conflict: concurrent bundle modified the same resource
+            _logger.LogWarning(
+                "Resource conflict in bundle entry {Index} {Verb} {Url}: {ResourceType}/{ResourceId} " +
+                "(Attempted SurrogateId: {AttemptedId}, Existing SurrogateId: {ExistingId})",
+                entry.Index,
+                entry.HttpVerb,
+                entry.RequestUrl,
+                conflictEx.ResourceType,
+                conflictEx.ResourceId,
+                conflictEx.AttemptedSurrogateId,
+                conflictEx.ExistingSurrogateId);
+
+            var operationOutcome = conflictEx.OperationOutcome;
+            var resourceJson = operationOutcome.SerializeToString();
+
+            return new BundleEntryResponse
+            {
+                StatusCode = 409,
+                Status = "409 Conflict",
+                Location = null,
+                ETag = null,
+                ResourceJson = resourceJson,
+                LastModified = null
+            };
+        }
         catch (FhirException fhirEx)
         {
             // FHIR exceptions have proper HTTP status codes and OperationOutcomes

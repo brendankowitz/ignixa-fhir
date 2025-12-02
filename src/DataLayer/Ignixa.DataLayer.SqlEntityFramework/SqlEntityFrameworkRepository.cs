@@ -10,6 +10,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -48,6 +49,18 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         _sqlMergeRepository = sqlMergeRepository ?? throw new ArgumentNullException(nameof(sqlMergeRepository));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Internal record for batched existing resource lookup to avoid dynamic types.
+    /// Used by BatchWriteAsync to batch queries and prevent stack overflow in EF Core expression compilation.
+    /// </summary>
+    private sealed record ExistingResourceInfo
+    {
+        public required short ResourceTypeId { get; init; }
+        public required string ResourceId { get; init; }
+        public required int Version { get; init; }
+        public required long ResourceSurrogateId { get; init; }
     }
 
     /// <inheritdoc/>
@@ -396,18 +409,30 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         var typeIds = resourceLookupKeys.Select(k => k.TypeId).Distinct().ToList();
         var resourceIds = resourceLookupKeys.Select(k => k.resourceId).Distinct().ToList();
 
-        var existingResources = await _context.Resources
-            .Where(r => !r.IsHistory &&
-                        typeIds.Contains(r.ResourceTypeId) &&
-                        resourceIds.Contains(r.ResourceId))
-            .Select(r => new
-            {
-                r.ResourceTypeId,
-                r.ResourceId,
-                r.Version,
-                r.ResourceSurrogateId
-            })
-            .ToListAsync(ct);
+        // IMPORTANT: Batch the query to avoid stack overflow in EF Core's expression tree compilation.
+        // Large Contains() operations (1000+ items) cause EF Core to build deeply nested expression trees
+        // that overflow the stack during QueryableMethodNormalizingExpressionVisitor.VisitMethodCall.
+        // Batching into smaller chunks (100 items) keeps expression trees manageable.
+        const int batchSize = 100;
+        var existingResources = new List<ExistingResourceInfo>();
+
+        foreach (var resourceIdBatch in resourceIds.Chunk(batchSize))
+        {
+            var batchList = resourceIdBatch.ToList();
+            var batchResults = await _context.Resources
+                .Where(r => !r.IsHistory &&
+                            typeIds.Contains(r.ResourceTypeId) &&
+                            batchList.Contains(r.ResourceId))
+                .Select(r => new ExistingResourceInfo
+                {
+                    ResourceTypeId = r.ResourceTypeId,
+                    ResourceId = r.ResourceId,
+                    Version = r.Version,
+                    ResourceSurrogateId = r.ResourceSurrogateId
+                })
+                .ToListAsync(ct);
+            existingResources.AddRange(batchResults);
+        }
 
         // Client-side: Group and get max versions AND surrogate IDs for exact (typeId, resourceId) matches
         var currentVersions = existingResources
@@ -515,10 +540,11 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                         newSurrogateId, existing.MaxSurrogateId,
                         diff, transactionId.Value, i);
 
-                    throw new InvalidOperationException(
-                        $"Surrogate ID constraint violation for {wrapper.ResourceType}/{wrapper.ResourceId}: " +
-                        $"NewSurrogateId={newSurrogateId} <= PreviousSurrogateId={existing.MaxSurrogateId}, " +
-                        $"Diff={diff}, TransactionId={transactionId.Value}, Index={i}");
+                    throw new ResourceVersionConflictException(
+                        wrapper.ResourceType,
+                        wrapper.ResourceId,
+                        newSurrogateId,
+                        existing.MaxSurrogateId);
                 }
 
                 _logger.LogTrace(

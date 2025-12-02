@@ -161,6 +161,15 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
+        // POST /_search - Base-level search with form-urlencoded (system-wide search)
+        tenantGroup.MapPost("/_search", (HttpContext context, int tenantId,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePostBaseSearchResource(context, tenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
+            .WithName("PostBaseSearchResource")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
+
         return endpoints;
     }
 
@@ -243,6 +252,15 @@ public static class FhirEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
+        // POST /{resourceType}/_search - Search with form-urlencoded (agnostic)
+        agnosticGroup.MapPost("/{resourceType}/_search", (HttpContext context, string resourceType,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePostSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
+            .WithName("PostSearchResourceAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
+
         // POST /{resourceType} - Create resource with server-assigned ID (agnostic)
         agnosticGroup.MapPost("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
@@ -269,6 +287,15 @@ public static class FhirEndpoints
             [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
             HandleBaseSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("BaseSearchResourceAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
+            .Produces(StatusCodes.Status400BadRequest);
+
+        // POST /_search - Base-level search with form-urlencoded (agnostic, system-wide search)
+        agnosticGroup.MapPost("/_search", (HttpContext context,
+            [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            HandlePostBaseSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
+            .WithName("PostBaseSearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -617,7 +644,16 @@ public static class FhirEndpoints
             .SelectMany(kvp => kvp.Value.Select(v => new QueryParameter(kvp.Key, v ?? string.Empty)))
             .ToList();
 
-        logger.LogDebug("Converted {Count} form parameters to query parameters", queryParameters.Count);
+        // FHIR Spec: Query string parameters can be combined with form body parameters
+        // Query string parameters take precedence over form body parameters for duplicates
+        var urlParameters = queryParser.Parse(context.Request.Query);
+        var urlParamKeys = urlParameters.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Remove form parameters that would be overridden by URL parameters
+        queryParameters.RemoveAll(p => urlParamKeys.Contains(p.Name));
+        queryParameters.AddRange(urlParameters);
+
+        logger.LogDebug("Converted {Count} total parameters (form + URL) for search", queryParameters.Count);
 
         // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
         var fhirContext = fhirContextAccessor.RequestContext;
@@ -639,7 +675,13 @@ public static class FhirEndpoints
 
         // Build base URL for link generation
         // FHIR Spec: Pagination links must be GET requests, so use the GET search endpoint (without /_search)
-        string baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}";
+        // Detect if this is an agnostic route (single-tenant mode) or tenant-explicit route
+        // For agnostic: POST /Patient/_search -> GET /Patient?...
+        // For tenant-explicit: POST /tenant/1/Patient/_search -> GET /tenant/1/Patient?...
+        bool isAgnosticRoute = !context.Request.Path.Value!.StartsWith("/tenant/", StringComparison.OrdinalIgnoreCase);
+        string baseUrl = isAgnosticRoute
+            ? $"{context.Request.Scheme}://{context.Request.Host}/{resourceType}"
+            : $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}";
 
         // FHIR Spec: All pagination links SHALL preserve search parameters as query parameters
         // Convert form parameters back to query string for inclusion in pagination links
@@ -1415,6 +1457,93 @@ public static class FhirEndpoints
             searchOptions: result.SearchOptions!,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
+            schemaProvider: schemaProvider,
+            pretty: false,
+            cancellationToken: ct);
+
+        return Results.Empty;
+    }
+
+    /// <summary>
+    /// POST /_search - Base-level search with form-urlencoded body (system-wide search)
+    /// Supports searching across all resources using common search parameters.
+    /// FHIR Spec Requirement: All pagination links SHALL be expressed as HTTP GET requests.
+    /// </summary>
+    private static async Task<IResult> HandlePostBaseSearchResource(
+        HttpContext context,
+        int tenantId,
+        IMediator mediator,
+        IQueryParameterParser queryParser,
+        ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        IFhirVersionContext versionContext,
+        IFhirRequestContextAccessor fhirContextAccessor,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        logger.LogInformation("POST /_search (base-level search)");
+
+        // Read form data from request body
+        var form = await context.Request.ReadFormAsync(ct);
+
+        // Convert form data to query parameters
+        var queryParameters = form
+            .SelectMany(kvp => kvp.Value.Select(v => new QueryParameter(kvp.Key, v ?? string.Empty)))
+            .ToList();
+
+        // FHIR Spec: Query string parameters can be combined with form body parameters
+        // Query string parameters take precedence over form body parameters for duplicates
+        var urlParameters = queryParser.Parse(context.Request.Query);
+        var urlParamKeys = urlParameters.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Remove form parameters that would be overridden by URL parameters
+        queryParameters.RemoveAll(p => urlParamKeys.Contains(p.Name));
+        queryParameters.AddRange(urlParameters);
+
+        logger.LogDebug("Converted {Count} total parameters for base-level search", queryParameters.Count);
+
+        // Get tenant configuration from FHIR request context
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for base-level search");
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
+        var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
+
+        // Send search query for base-level search (null resourceType means search all types)
+        var searchQuery = new SearchResourcesQuery(null, searchOptions);
+        SearchResourcesResult result = await mediator.SendAsync(searchQuery, ct);
+
+        // Build base URL for link generation
+        // FHIR Spec: Pagination links must be GET requests, so use the base URL (without /_search)
+        // Detect if this is an agnostic route (single-tenant mode) or tenant-explicit route
+        // For agnostic: POST /_search -> GET /?...
+        // For tenant-explicit: POST /tenant/1/_search -> GET /tenant/1?...
+        bool isAgnosticRoute = !context.Request.Path.Value!.StartsWith("/tenant/", StringComparison.OrdinalIgnoreCase);
+        string baseUrl = isAgnosticRoute
+            ? $"{context.Request.Scheme}://{context.Request.Host}"
+            : $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}";
+
+        // FHIR Spec: All pagination links SHALL preserve search parameters as query parameters
+        string queryString = BuildQueryStringFromParameters(queryParameters);
+
+        // Set response headers
+        context.Response.ContentType = "application/fhir+json; charset=utf-8";
+
+        // Stream Bundle response with count-as-render pagination
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream: context.Response.Body,
+            bundleType: "searchset",
+            total: result.Total,
+            entries: result.Resources,
+            searchOptions: result.SearchOptions!,
+            baseUrl: baseUrl,
+            queryString: queryString,
             schemaProvider: schemaProvider,
             pretty: false,
             cancellationToken: ct);

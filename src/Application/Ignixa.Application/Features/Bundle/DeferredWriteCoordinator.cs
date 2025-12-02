@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.Features.Bundle;
@@ -320,6 +321,25 @@ public class DeferredWriteCoordinator
                     "Batch write to Partition {PartitionId} complete: {Count} resources written",
                     partitionId,
                     operations.Count);
+            }
+            catch (ResourceVersionConflictException conflictEx)
+            {
+                _logger.LogWarning(
+                    "Resource conflict in batch write for Partition {PartitionId}: {ResourceType}/{ResourceId} " +
+                    "(Attempted SurrogateId: {AttemptedId}, Existing SurrogateId: {ExistingId})",
+                    partitionId,
+                    conflictEx.ResourceType,
+                    conflictEx.ResourceId,
+                    conflictEx.AttemptedSurrogateId,
+                    conflictEx.ExistingSurrogateId);
+
+                // Fail all operations in this partition with the conflict exception
+                foreach (var (operation, _) in operations)
+                {
+                    operation.CompletionSource.TrySetException(conflictEx);
+                }
+
+                errors.Add(conflictEx);
             }
             catch (Exception ex)
             {

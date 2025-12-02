@@ -93,6 +93,43 @@ public class FhirDbContext : DbContext
     /// </summary>
     public DbSet<UriSearchParamEntity> UriSearchParams { get; set; } = null!;
 
+    // Composite search parameter tables
+
+    /// <summary>
+    /// Gets or sets the TokenTokenCompositeSearchParams table (Token|Token composite search parameters).
+    /// Used for composite search parameters like combo-code-value-concept.
+    /// </summary>
+    public DbSet<TokenTokenCompositeSearchParamEntity> TokenTokenCompositeSearchParams { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TokenQuantityCompositeSearchParams table (Token|Quantity composite search parameters).
+    /// Used for composite search parameters like code-value-quantity, combo-code-value-quantity.
+    /// </summary>
+    public DbSet<TokenQuantityCompositeSearchParamEntity> TokenQuantityCompositeSearchParams { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TokenDateTimeCompositeSearchParams table (Token|DateTime composite search parameters).
+    /// </summary>
+    public DbSet<TokenDateTimeCompositeSearchParamEntity> TokenDateTimeCompositeSearchParams { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TokenStringCompositeSearchParams table (Token|String composite search parameters).
+    /// Used for composite search parameters like code-value-string.
+    /// </summary>
+    public DbSet<TokenStringCompositeSearchParamEntity> TokenStringCompositeSearchParams { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the ReferenceTokenCompositeSearchParams table (Reference|Token composite search parameters).
+    /// Used for composite search parameters like relationship on DocumentReference.
+    /// </summary>
+    public DbSet<ReferenceTokenCompositeSearchParamEntity> ReferenceTokenCompositeSearchParams { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the TokenNumberNumberCompositeSearchParams table (Token|Number|Number composite search parameters).
+    /// Used for composite search parameters on MolecularSequence.
+    /// </summary>
+    public DbSet<TokenNumberNumberCompositeSearchParamEntity> TokenNumberNumberCompositeSearchParams { get; set; } = null!;
+
     // Background job tables
 
     /// <summary>
@@ -383,6 +420,56 @@ public class FhirDbContext : DbContext
         // UriSearchParam
         var uriEntity = modelBuilder.Entity<UriSearchParamEntity>();
         uriEntity.HasKey(u => new { u.ResourceTypeId, u.ResourceSurrogateId, u.SearchParamId, u.Uri });
+
+        // Composite search parameter tables
+        ConfigureCompositeSearchParamEntities(modelBuilder);
+    }
+
+    private static void ConfigureCompositeSearchParamEntities(ModelBuilder modelBuilder)
+    {
+        // TokenTokenCompositeSearchParam
+        var tokenTokenEntity = modelBuilder.Entity<TokenTokenCompositeSearchParamEntity>();
+        tokenTokenEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Code1, t.Code2 });
+        tokenTokenEntity.HasIndex(t => new { t.SearchParamId, t.Code1, t.Code2 })
+            .IncludeProperties(t => new { t.SystemId1, t.SystemId2 })
+            .HasDatabaseName("IX_TokenTokenCompositeSearchParam_SearchParamId_Code1_Code2");
+
+        // TokenQuantityCompositeSearchParam
+        var tokenQuantityEntity = modelBuilder.Entity<TokenQuantityCompositeSearchParamEntity>();
+        tokenQuantityEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Code1 });
+        tokenQuantityEntity.HasIndex(t => new { t.SearchParamId, t.Code1 })
+            .IncludeProperties(t => new { t.SystemId1, t.SystemId2, t.QuantityCodeId, t.SingleValue, t.LowValue, t.HighValue })
+            .HasDatabaseName("IX_TokenQuantityCompositeSearchParam_SearchParamId_Code1");
+
+        // TokenDateTimeCompositeSearchParam
+        var tokenDateTimeEntity = modelBuilder.Entity<TokenDateTimeCompositeSearchParamEntity>();
+        tokenDateTimeEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Code1, t.StartDateTime2 });
+        tokenDateTimeEntity.Property(t => t.IsMin).HasDefaultValue(false);
+        tokenDateTimeEntity.Property(t => t.IsMax).HasDefaultValue(false);
+        tokenDateTimeEntity.HasIndex(t => new { t.SearchParamId, t.Code1 })
+            .IncludeProperties(t => new { t.SystemId1, t.StartDateTime2, t.EndDateTime2 })
+            .HasDatabaseName("IX_TokenDateTimeCompositeSearchParam_SearchParamId_Code1");
+
+        // TokenStringCompositeSearchParam
+        var tokenStringEntity = modelBuilder.Entity<TokenStringCompositeSearchParamEntity>();
+        tokenStringEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Code1, t.Text2 });
+        tokenStringEntity.HasIndex(t => new { t.SearchParamId, t.Code1, t.Text2 })
+            .IncludeProperties(t => new { t.SystemId1 })
+            .HasDatabaseName("IX_TokenStringCompositeSearchParam_SearchParamId_Code1_Text2");
+
+        // ReferenceTokenCompositeSearchParam
+        var refTokenEntity = modelBuilder.Entity<ReferenceTokenCompositeSearchParamEntity>();
+        refTokenEntity.HasKey(r => new { r.ResourceTypeId, r.ResourceSurrogateId, r.SearchParamId, r.ReferenceResourceId1, r.Code2 });
+        refTokenEntity.HasIndex(r => new { r.SearchParamId, r.ReferenceResourceId1, r.Code2 })
+            .IncludeProperties(r => new { r.BaseUri1, r.ReferenceResourceTypeId1, r.SystemId2 })
+            .HasDatabaseName("IX_ReferenceTokenCompositeSearchParam_SearchParamId_RefId_Code");
+
+        // TokenNumberNumberCompositeSearchParam
+        var tokenNumNumEntity = modelBuilder.Entity<TokenNumberNumberCompositeSearchParamEntity>();
+        tokenNumNumEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Code1 });
+        tokenNumNumEntity.HasIndex(t => new { t.SearchParamId, t.Code1 })
+            .IncludeProperties(t => new { t.SystemId1, t.SingleValue2, t.SingleValue3 })
+            .HasDatabaseName("IX_TokenNumberNumberCompositeSearchParam_SearchParamId_Code1");
     }
 
     private static void ConfigureBackgroundJobEntity(ModelBuilder modelBuilder)

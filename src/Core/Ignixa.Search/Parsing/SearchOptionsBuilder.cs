@@ -7,6 +7,7 @@
 
 using EnsureThat;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
@@ -85,10 +86,19 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.Count:
-                        if (int.TryParse(param.Value, out int count))
+                        if (!int.TryParse(param.Value, out int count))
                         {
-                            options.MaxItemCount = Math.Min(Math.Max(1, count), MaxAllowedItemCount);
+                            throw new BadSearchRequestException(
+                                $"The '_count' parameter value '{param.Value}' is not a valid integer.");
                         }
+
+                        if (count < 0)
+                        {
+                            throw new BadSearchRequestException(
+                                $"The '_count' parameter value must be a non-negative integer.");
+                        }
+
+                        options.MaxItemCount = Math.Min(Math.Max(1, count), MaxAllowedItemCount);
                         break;
 
                     case ParameterCategory.Total:
@@ -146,11 +156,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 2: Combine search expressions with AND
         if (searchExpressions.Count == 1)
         {
-            options.Expression = searchExpressions[0];
+            options.Expression = searchExpressions[0]
+                .AcceptVisitor(DateTimeEqualityRewriter.Instance, null);
         }
         else if (searchExpressions.Count > 1)
         {
-            options.Expression = Expression.And(searchExpressions.ToArray());
+            options.Expression = Expression.And(searchExpressions.ToArray())
+                .AcceptVisitor(DateTimeEqualityRewriter.Instance, null);
         }
 
         // STEP 3: Parse sorting
@@ -175,7 +187,29 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var bundleIssues = new List<IssueComponent>();
         if (elementsParameters.Count > 0)
         {
+            // Validate that _elements is not empty (FHIR spec: empty _elements is invalid)
+            bool hasEmptyElements = elementsParameters.Any(p => string.IsNullOrWhiteSpace(p));
+            if (hasEmptyElements)
+            {
+                throw new BadSearchRequestException(
+                    "The '_elements' parameter value cannot be empty.");
+            }
+
             var parsedElements = ParseElementsParameters(elementsParameters);
+
+            // Validate that _elements resulted in at least one valid element name
+            if (parsedElements.Count == 0)
+            {
+                throw new BadSearchRequestException(
+                    "The '_elements' parameter value cannot be empty.");
+            }
+
+            // Validate _elements + _summary conflict
+            // FHIR spec: _elements can only be used with _summary=false or without _summary
+            if (options.Summary != SummaryType.None && options.Summary != SummaryType.False)
+            {
+                throw new BadSearchRequestException(Resources.ElementsAndSummaryParametersAreIncompatible);
+            }
 
             // Only validate elements if we have a specific resource type
             // For system-wide search (null resourceType), we can't validate elements against a schema
@@ -226,8 +260,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         {
             "NONE" => TotalType.None,
             "ACCURATE" => TotalType.Accurate,
-            "ESTIMATE" => TotalType.Estimate,
-            _ => TotalType.None,
+            "ESTIMATE" => throw new ForbiddenSearchException(
+                string.Format(Resources.UnsupportedTotalParameter, value, "'accurate', 'none'")),
+            _ => throw new BadSearchRequestException(
+                string.Format(Resources.InvalidTotalParameter, value, "'accurate', 'none'")),
         };
     }
 
