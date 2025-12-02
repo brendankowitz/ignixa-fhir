@@ -1,0 +1,696 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
+using Bogus;
+using Ignixa.Abstractions;
+using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
+
+namespace Ignixa.FhirFakes;
+
+/// <summary>
+/// Schema-driven fake FHIR resource generator.
+/// Uses ISchema metadata to intelligently generate realistic test data.
+/// </summary>
+/// <remarks>
+/// APPROACH:
+/// 1. Get IType from schema for the resource type
+/// 2. Iterate through Children to find required vs optional elements
+/// 3. Use BINDING INFORMATION from ITypeExtended to select appropriate codes (preferred)
+/// 4. Fall back to element name + datatype heuristics when bindings unavailable
+/// 5. Generate JSON structure respecting cardinality (IsCollection, IsRequired)
+///
+/// BINDING-AWARE GENERATION (New - preferred approach):
+/// - Elements with bindings are matched to predefined code constants via BindingCodeMapper
+/// - Binding strength is respected: required bindings use only value set codes
+/// - Falls back to heuristics when no binding or no matching codes available
+///
+/// MATCHING STRATEGY (fallback):
+/// - Element name contains "name" -> Faker.Name methods
+/// - Element name contains "address" -> Faker.Address methods
+/// - Element name contains "phone" or "telecom" -> Faker.Phone methods
+/// - Element name contains "email" -> Faker.Internet.Email()
+/// - Element name contains "date" or "birth" -> Faker.Date methods
+/// - Element name contains "id" -> Faker.Random.Guid()
+/// - Datatype "code" + binding -> Pick from binding value set
+/// - Datatype "Reference" + referenceTargets -> Generate valid reference
+/// </remarks>
+[SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
+public class SchemaBasedFhirResourceFaker
+{
+    private readonly IFhirSchemaProvider _schemaProvider;
+    private readonly Faker _faker;
+    private readonly Random _random;
+
+    /// <summary>
+    /// Gets the FHIR schema provider used by this faker.
+    /// Exposed to allow states to access version information for version-specific logic.
+    /// </summary>
+    public IFhirSchemaProvider SchemaProvider => _schemaProvider;
+
+    public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider)
+    {
+        _schemaProvider = schemaProvider;
+        _faker = new Faker();
+        _random = new Random();
+    }
+
+    /// <summary>
+    /// Generates a fake FHIR resource by resource type name.
+    /// Fills required elements and randomly includes some optional elements.
+    /// </summary>
+    public ResourceJsonNode Generate(string resourceType)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+
+        if (!_schemaProvider.ResourceTypeNames.Contains(resourceType))
+        {
+            throw new ArgumentException($"Resource type '{resourceType}' is not valid for FHIR version {_schemaProvider.Version}", nameof(resourceType));
+        }
+
+        var typeDefinition = _schemaProvider.GetTypeDefinition(resourceType);
+        if (typeDefinition is null)
+        {
+            throw new InvalidOperationException($"Could not retrieve type definition for '{resourceType}'");
+        }
+
+        var root = new JsonObject
+        {
+            ["resourceType"] = resourceType,
+            ["id"] = _faker.Random.Guid().ToString()
+        };
+
+        // Add meta
+        root["meta"] = new JsonObject
+        {
+            ["versionId"] = "1",
+            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
+        };
+
+        // Iterate through children and fill elements
+        foreach (var child in typeDefinition.Children)
+        {
+            var elementName = child.Info.Name;
+
+            // Skip meta elements (already added), text, contained, extension, modifierExtension (complex)
+            if (IsSkippableElement(elementName))
+            {
+                continue;
+            }
+
+            // Required elements: always add
+            if (child.IsRequired)
+            {
+                var value = GenerateElementValue(child, resourceType);
+                if (value is not null)
+                {
+                    root[elementName] = value;
+                }
+            }
+
+            // Optional elements: add 30% of the time if in summary or important
+            else if (child.InSummary || _random.NextDouble() < 0.3)
+            {
+                var value = GenerateElementValue(child, resourceType);
+                if (value is not null)
+                {
+                    root[elementName] = value;
+                }
+            }
+        }
+
+        var json = root.ToJsonString();
+        return JsonSourceNodeFactory.Parse(json);
+    }
+
+    /// <summary>
+    /// Generates a value for a specific element based on its type and cardinality.
+    /// </summary>
+    private JsonNode? GenerateElementValue(IType element, string parentResourceType)
+    {
+        var elementName = element.Info.Name;
+
+        // Handle collections
+        if (element.IsCollection)
+        {
+            var arraySize = _random.Next(1, 3); // Generate 1-2 items
+            var array = new JsonArray();
+            for (int i = 0; i < arraySize; i++)
+            {
+                var item = GenerateSingleValue(element, elementName, parentResourceType);
+                if (item is not null)
+                {
+                    array.Add(item);
+                }
+            }
+            return array.Count > 0 ? array : null;
+        }
+
+        return GenerateSingleValue(element, elementName, parentResourceType);
+    }
+
+    /// <summary>
+    /// Generates a single value based on element name and type heuristics.
+    /// Uses binding information when available (ITypeExtended) to generate terminology-correct codes.
+    /// </summary>
+    [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
+    private JsonNode? GenerateSingleValue(IType element, string elementName, string parentResourceType)
+    {
+        var info = element.Info;
+        var lowerName = elementName.ToLowerInvariant();
+
+        // Try binding-aware generation first for code elements
+        if (TryGenerateFromBinding(element, out var bindingValue))
+        {
+            return bindingValue;
+        }
+
+        // Primitive types
+        if (info.IsPrimitive)
+        {
+            return info.Primitive switch
+            {
+                FhirPrimitive.String => GenerateStringValue(lowerName),
+                FhirPrimitive.Boolean => JsonValue.Create(_faker.Random.Bool()),
+                FhirPrimitive.Integer => JsonValue.Create(_faker.Random.Int(0, 1000)),
+                FhirPrimitive.Decimal => JsonValue.Create(_faker.Random.Decimal(0, 1000)),
+                FhirPrimitive.Uri => JsonValue.Create($"http://example.org/{_faker.Random.Word()}"),
+                FhirPrimitive.Url => JsonValue.Create($"http://example.org/{_faker.Random.Word()}"),
+                FhirPrimitive.Canonical => JsonValue.Create($"http://example.org/{_faker.Random.Word()}"),
+                FhirPrimitive.Date => JsonValue.Create(_faker.Date.Past(10).ToString("yyyy-MM-dd")),
+                FhirPrimitive.DateTime => JsonValue.Create(_faker.Date.Past(5).ToString("o")),
+                FhirPrimitive.Instant => JsonValue.Create(_faker.Date.Recent().ToString("o")),
+                FhirPrimitive.Time => JsonValue.Create($"{_faker.Random.Int(0, 23):D2}:{_faker.Random.Int(0, 59):D2}:{_faker.Random.Int(0, 59):D2}"),
+                FhirPrimitive.Code => GenerateCodeValue(lowerName, element),
+                FhirPrimitive.Id => JsonValue.Create(_faker.Random.AlphaNumeric(8)),
+                FhirPrimitive.Markdown => JsonValue.Create(_faker.Lorem.Sentence()),
+                FhirPrimitive.Base64Binary => JsonValue.Create(Convert.ToBase64String(_faker.Random.Bytes(16))),
+                FhirPrimitive.Oid => JsonValue.Create($"urn:oid:2.16.840.1.{_faker.Random.Int(100000, 999999)}"),
+                FhirPrimitive.Uuid => JsonValue.Create($"urn:uuid:{_faker.Random.Guid()}"),
+                FhirPrimitive.UnsignedInt => JsonValue.Create(_faker.Random.UInt(0, 1000)),
+                FhirPrimitive.PositiveInt => JsonValue.Create(_faker.Random.Int(1, 1000)),
+                _ => JsonValue.Create(_faker.Lorem.Word())
+            };
+        }
+
+        // Complex types - use specialized generators with binding awareness
+        var childTypeName = element.Info.Name;
+        return childTypeName switch
+        {
+            "HumanName" => GenerateHumanName(element),
+            "Address" => GenerateAddress(element),
+            "ContactPoint" => GenerateContactPoint(element),
+            "Identifier" => GenerateIdentifier(element),
+            "CodeableConcept" => GenerateCodeableConcept(lowerName, element),
+            "Coding" => GenerateCoding(lowerName, element),
+            "Reference" => GenerateReference(element, parentResourceType),
+            "Period" => GeneratePeriod(),
+            "Quantity" => GenerateQuantity(),
+            "Range" => GenerateRange(),
+            "Ratio" => GenerateRatio(),
+            "Attachment" => GenerateAttachment(),
+            _ => null // Unknown complex type - skip
+        };
+    }
+
+    /// <summary>
+    /// Attempts to generate a value using binding information from ITypeExtended.
+    /// This is the preferred method for generating codes as it produces terminology-correct values.
+    /// </summary>
+    /// <param name="element">The element to generate a value for.</param>
+    /// <param name="value">The generated value if successful.</param>
+    /// <returns>True if a binding-based value was generated, false otherwise.</returns>
+    private bool TryGenerateFromBinding(IType element, out JsonNode? value)
+    {
+        value = null;
+
+        // Check if element has extended metadata with binding information
+        if (element is not ITypeExtended extendedType)
+        {
+            return false;
+        }
+
+        var binding = extendedType.Binding;
+        if (binding is null || string.IsNullOrEmpty(binding.ValueSet))
+        {
+            return false;
+        }
+
+        // Try to get codes from our predefined constants
+        if (!BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) || codes.Length == 0)
+        {
+            return false;
+        }
+
+        // Pick a random code from the available codes
+        var selectedCode = _faker.PickRandom(codes);
+
+        // Determine output format based on element type
+        var info = element.Info;
+
+        // For primitive 'code' type, just return the code string
+        if (info.IsPrimitive && info.Primitive == FhirPrimitive.Code)
+        {
+            value = JsonValue.Create(selectedCode.Code);
+            return true;
+        }
+
+        // For CodeableConcept, return full structure
+        if (info.Name == "CodeableConcept")
+        {
+            value = CreateCodeableConcept(selectedCode);
+            return true;
+        }
+
+        // For Coding, return coding structure
+        if (info.Name == "Coding")
+        {
+            value = CreateCoding(selectedCode);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Creates a CodeableConcept JSON structure from a FhirCode.
+    /// </summary>
+    private static JsonObject CreateCodeableConcept(FhirCode code)
+    {
+        return new JsonObject
+        {
+            ["coding"] = new JsonArray(CreateCoding(code)),
+            ["text"] = code.Display
+        };
+    }
+
+    /// <summary>
+    /// Creates a Coding JSON structure from a FhirCode.
+    /// </summary>
+    private static JsonObject CreateCoding(FhirCode code)
+    {
+        return new JsonObject
+        {
+            ["system"] = code.System,
+            ["code"] = code.Code,
+            ["display"] = code.Display
+        };
+    }
+
+    /// <summary>
+    /// Generates string values using element name heuristics.
+    /// </summary>
+    private JsonValue GenerateStringValue(string lowerName)
+    {
+        if (lowerName.Contains("name", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Name.FullName());
+        }
+        if (lowerName.Contains("family", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Name.LastName());
+        }
+        if (lowerName.Contains("given", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Name.FirstName());
+        }
+        if (lowerName.Contains("email", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Internet.Email());
+        }
+        if (lowerName.Contains("url", StringComparison.OrdinalIgnoreCase) || lowerName.Contains("uri", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create($"http://example.org/{_faker.Random.Word()}");
+        }
+        if (lowerName.Contains("city", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Address.City());
+        }
+        if (lowerName.Contains("state", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Address.State());
+        }
+        if (lowerName.Contains("country", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Address.Country());
+        }
+        if (lowerName.Contains("postal", StringComparison.OrdinalIgnoreCase) || lowerName.Contains("zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Address.ZipCode());
+        }
+        if (lowerName.Contains("phone", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.Phone.PhoneNumber());
+        }
+
+        // Default: random word or sentence
+        return JsonValue.Create(_faker.Lorem.Word());
+    }
+
+    /// <summary>
+    /// Generates code values using binding information (preferred) or element name heuristics (fallback).
+    /// </summary>
+    [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "FHIR codes are lowercase by convention")]
+    private JsonValue GenerateCodeValue(string lowerName, IType element)
+    {
+        // Try binding-aware generation first
+        if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
+        {
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            {
+                var selectedCode = _faker.PickRandom(codes);
+                return JsonValue.Create(selectedCode.Code)!;
+            }
+        }
+
+        // Fall back to heuristics
+        if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("male", "female"));
+        }
+        if (lowerName.Contains("status", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("active", "inactive", "entered-in-error"));
+        }
+        if (lowerName.Contains("use", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("official", "usual", "temp", "old"));
+        }
+        if (lowerName.Contains("system", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("phone", "fax", "email", "pager", "url", "sms", "other"));
+        }
+
+        // Default: random alphanumeric code
+        return JsonValue.Create(_faker.Random.AlphaNumeric(6).ToLowerInvariant());
+    }
+
+    #region Complex Type Generators
+
+    /// <summary>
+    /// Generates a HumanName with binding-aware 'use' code if available.
+    /// </summary>
+    private JsonObject GenerateHumanName(IType element)
+    {
+        // Try to get binding-aware 'use' code
+        var useCode = TryGetChildBindingCode(element, "use") ?? _faker.PickRandom("official", "usual", "nickname");
+
+        return new JsonObject
+        {
+            ["use"] = useCode,
+            ["family"] = _faker.Name.LastName(),
+            ["given"] = new JsonArray(JsonValue.Create(_faker.Name.FirstName()))
+        };
+    }
+
+    /// <summary>
+    /// Generates an Address with binding-aware 'use' and 'type' codes if available.
+    /// </summary>
+    private JsonObject GenerateAddress(IType element)
+    {
+        var useCode = TryGetChildBindingCode(element, "use") ?? _faker.PickRandom("home", "work", "temp");
+        var typeCode = TryGetChildBindingCode(element, "type") ?? _faker.PickRandom("postal", "physical", "both");
+
+        return new JsonObject
+        {
+            ["use"] = useCode,
+            ["type"] = typeCode,
+            ["line"] = new JsonArray(JsonValue.Create(_faker.Address.StreetAddress())),
+            ["city"] = _faker.Address.City(),
+            ["state"] = _faker.Address.State(),
+            ["postalCode"] = _faker.Address.ZipCode(),
+            ["country"] = _faker.Address.Country()
+        };
+    }
+
+    /// <summary>
+    /// Generates a ContactPoint with binding-aware 'system' and 'use' codes.
+    /// </summary>
+    private JsonObject GenerateContactPoint(IType element)
+    {
+        var systemCode = TryGetChildBindingCode(element, "system") ?? _faker.PickRandom("phone", "email", "fax");
+        var useCode = TryGetChildBindingCode(element, "use") ?? _faker.PickRandom("home", "work", "mobile");
+
+        var value = systemCode == "email" ? _faker.Internet.Email() : _faker.Phone.PhoneNumber();
+
+        return new JsonObject
+        {
+            ["system"] = systemCode,
+            ["value"] = value,
+            ["use"] = useCode
+        };
+    }
+
+    /// <summary>
+    /// Generates an Identifier with binding-aware 'use' code if available.
+    /// </summary>
+    private JsonObject GenerateIdentifier(IType element)
+    {
+        var useCode = TryGetChildBindingCode(element, "use") ?? _faker.PickRandom("usual", "official", "temp");
+
+        return new JsonObject
+        {
+            ["use"] = useCode,
+            ["system"] = $"http://example.org/{_faker.Random.Word()}",
+            ["value"] = _faker.Random.AlphaNumeric(10)
+        };
+    }
+
+    /// <summary>
+    /// Generates a CodeableConcept using binding information (preferred) or context heuristics (fallback).
+    /// </summary>
+    private JsonObject GenerateCodeableConcept(string context, IType element)
+    {
+        // Try binding-aware generation first
+        if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
+        {
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            {
+                var selectedCode = _faker.PickRandom(codes);
+                return CreateCodeableConcept(selectedCode);
+            }
+        }
+
+        // Fall back to heuristic-based generation
+        return new JsonObject
+        {
+            ["coding"] = new JsonArray(GenerateCoding(context, element)),
+            ["text"] = _faker.Lorem.Sentence(3)
+        };
+    }
+
+    /// <summary>
+    /// Generates a Coding using binding information (preferred) or context heuristics (fallback).
+    /// </summary>
+    [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
+    private JsonObject GenerateCoding(string context, IType element)
+    {
+        // Try binding-aware generation first
+        if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
+        {
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            {
+                var selectedCode = _faker.PickRandom(codes);
+                return CreateCoding(selectedCode);
+            }
+        }
+
+        // Fall back to heuristic-based FhirCode selection
+        if (TryGetCodeFromHeuristic(context, out var fhirCode))
+        {
+            return CreateCoding(fhirCode);
+        }
+
+        // Ultimate fallback: generic SNOMED code
+        return CreateGenericCoding();
+    }
+
+    /// <summary>
+    /// Attempts to get a FhirCode based on context heuristics.
+    /// </summary>
+    [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
+    private bool TryGetCodeFromHeuristic(string context, out FhirCode fhirCode)
+    {
+        var lowerContext = context.ToLowerInvariant();
+
+        // Match context to appropriate FhirCode constants
+        if (lowerContext.Contains("condition", StringComparison.OrdinalIgnoreCase) ||
+            lowerContext.Contains("diagnosis", StringComparison.OrdinalIgnoreCase))
+        {
+            fhirCode = FhirCode.Conditions.Hypertension;
+            return true;
+        }
+
+        if (lowerContext.Contains("medication", StringComparison.OrdinalIgnoreCase))
+        {
+            fhirCode = FhirCode.Medications.Ibuprofen400mg;
+            return true;
+        }
+
+        if (lowerContext.Contains("observation", StringComparison.OrdinalIgnoreCase) ||
+            lowerContext.Contains("loinc", StringComparison.OrdinalIgnoreCase))
+        {
+            fhirCode = FhirCode.Observations.BodyWeight;
+            return true;
+        }
+
+        if (lowerContext.Contains("procedure", StringComparison.OrdinalIgnoreCase))
+        {
+            // Use a generic procedure code (we don't have Appendectomy in our constants)
+            var procedureCodes = BindingCodeMapper.GetAllProcedureCodes();
+            if (procedureCodes.Length > 0)
+            {
+                fhirCode = _faker.PickRandom(procedureCodes);
+                return true;
+            }
+        }
+
+        if (lowerContext.Contains("allergy", StringComparison.OrdinalIgnoreCase))
+        {
+            var allergenCodes = BindingCodeMapper.GetAllAllergenCodes();
+            if (allergenCodes.Length > 0)
+            {
+                fhirCode = _faker.PickRandom(allergenCodes);
+                return true;
+            }
+        }
+
+        if (lowerContext.Contains("vaccine", StringComparison.OrdinalIgnoreCase) ||
+            lowerContext.Contains("immunization", StringComparison.OrdinalIgnoreCase))
+        {
+            var vaccineCodes = BindingCodeMapper.GetAllImmunizationCodes();
+            if (vaccineCodes.Length > 0)
+            {
+                fhirCode = _faker.PickRandom(vaccineCodes);
+                return true;
+            }
+        }
+
+        fhirCode = default!;
+        return false;
+    }
+
+    /// <summary>
+    /// Creates a generic SNOMED coding as ultimate fallback.
+    /// </summary>
+    private JsonObject CreateGenericCoding()
+    {
+        return new JsonObject
+        {
+            ["system"] = FhirCode.Systems.SnomedCt,
+            ["code"] = _faker.Random.Int(10000, 99999).ToString(),
+            ["display"] = _faker.Lorem.Word()
+        };
+    }
+
+    /// <summary>
+    /// Tries to get a binding-aware code for a child element of a complex type.
+    /// </summary>
+    /// <param name="parentElement">The parent complex type element.</param>
+    /// <param name="childName">The name of the child element (e.g., "use", "system").</param>
+    /// <returns>A code string if binding found, null otherwise.</returns>
+    private string? TryGetChildBindingCode(IType parentElement, string childName)
+    {
+        // Find the child element
+        var childElement = parentElement.Children.FirstOrDefault(c =>
+            string.Equals(c.Info.Name, childName, StringComparison.OrdinalIgnoreCase));
+
+        if (childElement is ITypeExtended extendedChild && extendedChild.Binding is { } binding)
+        {
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            {
+                return _faker.PickRandom(codes).Code;
+            }
+        }
+
+        return null;
+    }
+
+    private JsonObject GenerateReference(IType element, string parentResourceType)
+    {
+        // Try to get reference targets from element (if ITypeExtended)
+        var referenceType = element is ITypeExtended extended && extended.ReferenceTargets.Count > 0
+            ? _faker.PickRandom(extended.ReferenceTargets.ToArray())
+            : "Patient"; // Default to Patient
+
+        return new JsonObject
+        {
+            ["reference"] = $"{referenceType}/{_faker.Random.Guid()}"
+        };
+    }
+
+    private JsonObject GeneratePeriod()
+    {
+        var start = _faker.Date.Past(2);
+        var end = _faker.Date.Between(start, DateTime.Now);
+
+        return new JsonObject
+        {
+            ["start"] = start.ToString("yyyy-MM-dd"),
+            ["end"] = end.ToString("yyyy-MM-dd")
+        };
+    }
+
+    private JsonObject GenerateQuantity()
+    {
+        return new JsonObject
+        {
+            ["value"] = _faker.Random.Decimal(0, 1000),
+            ["unit"] = _faker.PickRandom("kg", "g", "mg", "L", "mL", "cm", "m"),
+            ["system"] = "http://unitsofmeasure.org"
+        };
+    }
+
+    private JsonObject GenerateRange()
+    {
+        var low = _faker.Random.Decimal(0, 100);
+        var high = _faker.Random.Decimal(low, 200);
+
+        return new JsonObject
+        {
+            ["low"] = new JsonObject { ["value"] = low },
+            ["high"] = new JsonObject { ["value"] = high }
+        };
+    }
+
+    private JsonObject GenerateRatio()
+    {
+        return new JsonObject
+        {
+            ["numerator"] = new JsonObject { ["value"] = _faker.Random.Decimal(1, 10) },
+            ["denominator"] = new JsonObject { ["value"] = _faker.Random.Decimal(1, 10) }
+        };
+    }
+
+    private JsonObject GenerateAttachment()
+    {
+        return new JsonObject
+        {
+            ["contentType"] = _faker.PickRandom("image/png", "application/pdf", "text/plain"),
+            ["data"] = Convert.ToBase64String(_faker.Random.Bytes(64)),
+            ["title"] = _faker.Lorem.Sentence(3)
+        };
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Elements to skip during automatic generation.
+    /// </summary>
+    private static bool IsSkippableElement(string elementName)
+    {
+        return elementName is "meta" or "id" or "implicitRules" or "language"
+            or "text" or "contained" or "extension" or "modifierExtension";
+    }
+
+    #endregion
+}

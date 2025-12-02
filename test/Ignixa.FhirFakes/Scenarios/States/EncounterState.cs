@@ -1,0 +1,160 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Text.Json.Nodes;
+using Ignixa.FhirFakes.Scenarios.Codes;
+
+namespace Ignixa.FhirFakes.Scenarios.States;
+
+/// <summary>
+/// State that creates an Encounter resource.
+/// Encounters represent clinical visits and provide context for other resources.
+/// </summary>
+public sealed class EncounterState : ScenarioState
+{
+    /// <summary>
+    /// Gets or sets the encounter type code.
+    /// </summary>
+    public FhirCode EncounterType { get; init; } = FhirCode.EncounterTypes.Ambulatory;
+
+    /// <summary>
+    /// Gets or sets the encounter status ("planned", "arrived", "triaged", "in-progress", "onleave", "finished", "cancelled").
+    /// </summary>
+    public string Status { get; init; } = "finished";
+
+    /// <summary>
+    /// Gets or sets the encounter class ("AMB", "EMER", "IMP", etc.).
+    /// </summary>
+    public string EncounterClass { get; init; } = "AMB";
+
+    /// <summary>
+    /// Gets or sets the reason for the encounter (human-readable description).
+    /// </summary>
+    public string? Reason { get; init; }
+
+    /// <summary>
+    /// Gets or sets the encounter duration in minutes.
+    /// </summary>
+    public int DurationMinutes { get; init; } = 30;
+
+    /// <summary>
+    /// Creates an Encounter resource linked to the patient.
+    /// </summary>
+    public override void Execute(ScenarioContext context, SchemaBasedFhirResourceFaker faker)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(faker);
+
+        if (context.Patient is null)
+        {
+            throw new InvalidOperationException("Cannot create Encounter without a Patient. Ensure InitialState runs first.");
+        }
+
+        var encounter = faker.Generate("Encounter");
+        var node = encounter.MutableNode;
+
+        // Set required fields
+        node["id"] = Guid.NewGuid().ToString();
+        node["status"] = Status;
+
+        // Set class
+        node["class"] = new JsonObject
+        {
+            ["system"] = FhirCode.Systems.EncounterType,
+            ["code"] = EncounterClass,
+            ["display"] = EncounterType.Display
+        };
+
+        // Set type
+        node["type"] = new JsonArray
+        {
+            new JsonObject
+            {
+                ["coding"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["system"] = EncounterType.System,
+                        ["code"] = EncounterType.Code,
+                        ["display"] = EncounterType.Display
+                    }
+                },
+                ["text"] = EncounterType.Display
+            }
+        };
+
+        // Set patient reference
+        node["subject"] = new JsonObject
+        {
+            ["reference"] = $"Patient/{context.Patient.Id}"
+        };
+
+        // Set period
+        var startTime = context.CurrentTime;
+        var endTime = startTime.AddMinutes(DurationMinutes);
+        node["period"] = new JsonObject
+        {
+            ["start"] = startTime.ToString("o"),
+            ["end"] = endTime.ToString("o")
+        };
+
+        // Set reason if provided
+        if (!string.IsNullOrEmpty(Reason))
+        {
+            node["reasonCode"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["text"] = Reason
+                }
+            };
+        }
+
+        // Add to context
+        var description = Reason ?? EncounterType.Display;
+        context.AddEncounter(encounter, description);
+    }
+
+    /// <summary>
+    /// Creates an ambulatory encounter state.
+    /// </summary>
+    public static EncounterState Ambulatory(string? reason = null) => new()
+    {
+        EncounterType = FhirCode.EncounterTypes.Ambulatory,
+        EncounterClass = "AMB",
+        Reason = reason
+    };
+
+    /// <summary>
+    /// Creates an emergency encounter state.
+    /// </summary>
+    public static EncounterState Emergency(string? reason = null) => new()
+    {
+        EncounterType = FhirCode.EncounterTypes.Emergency,
+        EncounterClass = "EMER",
+        Reason = reason
+    };
+
+    /// <summary>
+    /// Creates an inpatient encounter state.
+    /// </summary>
+    public static EncounterState Inpatient(string? reason = null, int durationMinutes = 1440) => new()
+    {
+        EncounterType = FhirCode.EncounterTypes.Inpatient,
+        EncounterClass = "IMP",
+        Reason = reason,
+        DurationMinutes = durationMinutes
+    };
+
+    /// <summary>
+    /// Creates a wellness visit encounter state.
+    /// </summary>
+    public static EncounterState Wellness(string? reason = null) => new()
+    {
+        EncounterType = FhirCode.EncounterTypes.Wellness,
+        EncounterClass = "AMB",
+        Reason = reason ?? "Routine wellness visit"
+    };
+}

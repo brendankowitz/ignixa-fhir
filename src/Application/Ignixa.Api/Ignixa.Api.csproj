@@ -10,6 +10,7 @@
   <ItemGroup>
     <!-- Expose internal types (including implicit Program class) to compatibility tests -->
     <InternalsVisibleTo Include="Ignixa.Tests.Compatibility.E2E" />
+    <InternalsVisibleTo Include="Ignixa.Api.E2ETests" />
   </ItemGroup>
 
   <ItemGroup>
