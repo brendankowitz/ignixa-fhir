@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Ignixa.FhirFakes</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Description>A 4-layer FHIR test data generation library for realistic patient populations with demographics, lifecycles, and clinical scenarios. Supports 11 US cities with real Census 2020 data, Bogus locales for culturally appropriate names, and evidence-based disease risk modeling.</Description>
+    <PackageTags>$(PackageTags);test-data;test-generation;fake-data;bogus;demographics</PackageTags>
+    <!-- TODO: Enable after fixing XML documentation errors (CS1570) -->
+    <!-- <GenerateDocumentationFile>true</GenerateDocumentationFile> -->
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.FhirFakes.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Bogus" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
+</Project>

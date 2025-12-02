@@ -342,4 +342,45 @@ public sealed class MedicationOrderState : ScenarioState
         DoseUnit = "tablet",
         ReasonCode = FhirCode.Conditions.Pregnancy
     };
+
+    /// <summary>
+    /// Creates an Atorvastatin 20mg prescription for hyperlipidemia.
+    /// </summary>
+    public static MedicationOrderState Atorvastatin20mg() => new()
+    {
+        Code = FhirCode.Medications.Atorvastatin20mg,
+        IsChronic = true,
+        Frequency = "daily",
+        DoseQuantity = 1,
+        DoseUnit = "tablet",
+        ReasonCode = FhirCode.Conditions.Hyperlipidemia
+    };
+
+    /// <summary>
+    /// Creates a Fluticasone Propionate inhaler prescription for asthma (controller medication).
+    /// </summary>
+    public static MedicationOrderState FlucticasonePropionate() => new()
+    {
+        Code = FhirCode.Medications.FlucticasonePropionate,
+        IsChronic = true,
+        Frequency = "twice-daily",
+        DoseQuantity = 2,
+        DoseUnit = "puffs",
+        DosageInstructions = "Inhale 2 puffs twice daily for asthma control",
+        ReasonCode = FhirCode.Conditions.Asthma
+    };
+
+    /// <summary>
+    /// Creates a Vitamin D 50,000 IU prescription for vitamin D deficiency.
+    /// </summary>
+    public static MedicationOrderState VitaminD50000IU() => new()
+    {
+        Code = FhirCode.Medications.VitaminD50000IU,
+        IsChronic = false,
+        Frequency = "weekly",
+        DoseQuantity = 1,
+        DoseUnit = "capsule",
+        DurationDays = 56,  // 8 weeks
+        ReasonCode = FhirCode.Conditions.VitaminDDeficiency
+    };
 }

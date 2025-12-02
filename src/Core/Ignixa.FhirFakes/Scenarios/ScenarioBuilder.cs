@@ -89,6 +89,31 @@ public sealed class ScenarioBuilder
     }
 
     /// <summary>
+    /// Adds a reusable sub-scenario fragment.
+    /// Enables composition of scenarios from common clinical patterns.
+    /// </summary>
+    /// <param name="subScenario">The sub-scenario builder function to execute.</param>
+    /// <param name="name">Optional name for the sub-scenario state (for debugging/logging).</param>
+    /// <returns>The current builder for fluent chaining.</returns>
+    /// <remarks>
+    /// Example usage:
+    /// <code>
+    /// .AddSubScenario(CommonScenarios.RecordVitalSigns(), "Record Vitals")
+    /// .AddSubScenario(CommonScenarios.BasicMetabolicPanel(), "Order Labs")
+    /// </code>
+    /// </remarks>
+    public ScenarioBuilder AddSubScenario(Func<ScenarioBuilder, ScenarioBuilder> subScenario, string? name = null)
+    {
+        ArgumentNullException.ThrowIfNull(subScenario);
+        _states.Add(new CallSubScenarioState
+        {
+            Name = name ?? "SubScenario",
+            SubScenario = subScenario
+        });
+        return this;
+    }
+
+    /// <summary>
     /// Adds a delay to advance the simulation time.
     /// </summary>
     public ScenarioBuilder Delay(TimeSpan duration)
@@ -593,6 +618,72 @@ public sealed class ScenarioBuilder
     }
 
     #endregion
+
+    #region Probabilistic Branching Methods
+
+    /// <summary>
+    /// Adds a probabilistic branch with multiple weighted options.
+    /// Used to model realistic disease onset rates, condition prevalence, and epidemiological data.
+    /// </summary>
+    /// <param name="branches">
+    /// Variable arguments of tuples containing probability and state.
+    /// Each probability must be between 0.0 and 1.0, and the sum should equal 1.0 (within tolerance).
+    /// </param>
+    /// <returns>The current builder for fluent chaining.</returns>
+    /// <remarks>
+    /// Example usage:
+    /// <code>
+    /// // Model appendicitis prevalence: 8.6% develop condition, 91.4% remain healthy
+    /// .AddProbabilisticBranch(
+    ///     (0.086, new ConditionOnsetState { Code = SnoCodes.Appendicitis }),
+    ///     (0.914, new DelayState { Duration = TimeSpan.Zero }) // No-op for healthy path
+    /// )
+    /// </code>
+    /// </remarks>
+    public ScenarioBuilder AddProbabilisticBranch(params (double probability, ScenarioState state)[] branches)
+    {
+        _states.Add(ProbabilisticBranchState.Create(branches));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a binary probabilistic branch (e.g., disease occurs vs. stays healthy).
+    /// Automatically calculates the complement probability for the second state.
+    /// </summary>
+    /// <param name="probability">Probability of executing the first state (0.0-1.0).</param>
+    /// <param name="trueState">State to execute with the specified probability.</param>
+    /// <param name="falseState">State to execute with probability (1.0 - probability).</param>
+    /// <returns>The current builder for fluent chaining.</returns>
+    /// <remarks>
+    /// Example usage:
+    /// <code>
+    /// // 15% chance of developing hypertension
+    /// .AddProbabilisticBranch(
+    ///     0.15,
+    ///     new ConditionOnsetState { Code = SnoCodes.Hypertension },
+    ///     new DelayState { Duration = TimeSpan.Zero } // Healthy path
+    /// )
+    /// </code>
+    /// </remarks>
+    public ScenarioBuilder AddProbabilisticBranch(double probability, ScenarioState trueState, ScenarioState falseState)
+    {
+        _states.Add(ProbabilisticBranchState.Binary(probability, trueState, falseState));
+        return this;
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Gets the internal FHIR schema provider.
+    /// Used internally for sub-scenario composition.
+    /// </summary>
+    internal IFhirSchemaProvider SchemaProvider => _schemaProvider;
+
+    /// <summary>
+    /// Gets the list of states currently in the builder.
+    /// Used internally for sub-scenario composition.
+    /// </summary>
+    internal IReadOnlyList<ScenarioState> GetStates() => _states;
 
     /// <summary>
     /// Builds and returns the completed scenario context.

@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'src/Core/Ignixa.Abstractions/**'
+      - 'src/Core/Ignixa.FhirFakes/**'
       - 'src/Core/Ignixa.FhirPath/**'
       - 'src/Core/Ignixa.FhirMappingLanguage/**'
       - 'src/Core/Ignixa.PackageManagement/**'
@@ -68,6 +69,7 @@ jobs:
       - name: Pack Core projects
         run: |
           dotnet pack src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}

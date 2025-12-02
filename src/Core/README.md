@@ -21,6 +21,12 @@ This folder contains the **Core** libraries that are published as NuGet packages
 | **Ignixa.Search** | Search parameter definitions, indexing, and search value extraction | [README](Ignixa.Search/README.md) |
 | **Ignixa.Validation** | Three-tier validation system (Fast/Spec/Profile) with OperationOutcome support | [README](Ignixa.Validation/README.md) |
 
+### Testing & Development
+
+| Package | Description | Documentation |
+|---------|-------------|---------------|
+| **Ignixa.FhirFakes** | 4-layer FHIR test data generation library with realistic patient populations, demographics, and clinical scenarios | [README](Ignixa.FhirFakes/README.md) |
+
 ### Advanced Features
 
 | Package | Description | Documentation |
@@ -46,8 +52,9 @@ dotnet add package Ignixa.Abstractions
 dotnet add package Ignixa.Serialization
 dotnet add package Ignixa.FhirPath
 dotnet add package Ignixa.Validation
+dotnet add package Ignixa.FhirFakes
 # ... etc
-````
+```
 
 ## Package Dependencies
 

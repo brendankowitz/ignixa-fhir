@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Scenarios;
@@ -253,5 +255,56 @@ public sealed class ScenarioContext
     private void AddTimelineEvent(string eventType, string resourceId, string resourceType, string description)
     {
         _timeline.Add(new ScenarioEvent(CurrentTime, eventType, resourceId, resourceType, description));
+    }
+
+    /// <summary>
+    /// Creates a transaction Bundle containing all resources from this scenario.
+    /// The Patient resource is added first, followed by all other resources in generation order.
+    /// Each entry uses urn:uuid references for client-assigned IDs.
+    /// </summary>
+    /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
+    public BundleJsonNode ToBundle()
+    {
+        var entries = new JsonArray();
+
+        // Add Patient first (if present)
+        if (Patient is not null)
+        {
+            entries.Add(CreateBundleEntry(Patient));
+        }
+
+        // Add all other resources in generation order
+        foreach (var resource in _allResources.Where(r => r.ResourceType != "Patient"))
+        {
+            entries.Add(CreateBundleEntry(resource));
+        }
+
+        // Create the bundle
+        var bundleNode = new JsonObject
+        {
+            ["resourceType"] = "Bundle",
+            ["id"] = Guid.NewGuid().ToString(),
+            ["type"] = "transaction",
+            ["entry"] = entries
+        };
+
+        return new BundleJsonNode(bundleNode);
+    }
+
+    /// <summary>
+    /// Creates a bundle entry for a resource with POST request.
+    /// </summary>
+    private static JsonObject CreateBundleEntry(ResourceJsonNode resource)
+    {
+        return new JsonObject
+        {
+            ["fullUrl"] = $"urn:uuid:{resource.Id}",
+            ["resource"] = resource.MutableNode.DeepClone(),
+            ["request"] = new JsonObject
+            {
+                ["method"] = "POST",
+                ["url"] = resource.ResourceType
+            }
+        };
     }
 }

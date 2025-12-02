@@ -107,6 +107,9 @@ public static class Allergens
         Code: "418689008",
         Display: "Allergy to grass pollen (finding)");
 
+    /// <summary>Allergy to pollen (general - alias for GrassPollen)</summary>
+    public static FhirCode Pollen => GrassPollen;
+
     /// <summary>Allergy to mold (finding)</summary>
     public static FhirCode Mold { get; } = new(
         System: FhirCode.Systems.SnomedCt,
@@ -118,6 +121,9 @@ public static class Allergens
         System: FhirCode.Systems.SnomedCt,
         Code: "232347008",
         Display: "House dust mite allergy (finding)");
+
+    /// <summary>Allergy to house dust mites (alias for DustMite)</summary>
+    public static FhirCode DustMites => DustMite;
 
     /// <summary>Allergy to animal dander (finding)</summary>
     public static FhirCode AnimalDander { get; } = new(

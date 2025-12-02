@@ -34,12 +34,19 @@ public record FhirCode(string System, string Code, string Display)
     public static class Conditions
     {
         public static readonly FhirCode DiabetesType2 = new(Systems.SnomedCt, "44054006", "Diabetes mellitus type 2");
+        public static readonly FhirCode Prediabetes = new(Systems.SnomedCt, "714628002", "Prediabetes");
         public static readonly FhirCode Hypertension = new(Systems.SnomedCt, "38341003", "Hypertensive disorder");
+        public static readonly FhirCode HypertensionEssential = new(Systems.SnomedCt, "59621000", "Essential hypertension");
+        public static readonly FhirCode Hyperlipidemia = new(Systems.SnomedCt, "55822004", "Hyperlipidemia");
+        public static readonly FhirCode Obesity = new(Systems.SnomedCt, "414915002", "Obesity");
         public static readonly FhirCode Pregnancy = new(Systems.SnomedCt, "77386006", "Pregnancy");
         public static readonly FhirCode Asthma = new(Systems.SnomedCt, "195967001", "Asthma");
+        public static readonly FhirCode AllergicRhinitis = new(Systems.SnomedCt, "61582004", "Allergic rhinitis");
         public static readonly FhirCode PregnancyNormal = new(Systems.SnomedCt, "72892002", "Normal pregnancy");
         public static readonly FhirCode UrinaryTractInfection = new(Systems.SnomedCt, "68566005", "Urinary tract infectious disease");
+        public static readonly FhirCode AcuteUpperRespiratoryInfection = new(Systems.SnomedCt, "54150009", "Upper respiratory infection");
         public static readonly FhirCode Appendicitis = new(Systems.SnomedCt, "74400008", "Appendicitis");
+        public static readonly FhirCode VitaminDDeficiency = new(Systems.SnomedCt, "34713006", "Vitamin D deficiency");
     }
 
     /// <summary>
@@ -193,6 +200,15 @@ public record FhirCode(string System, string Code, string Display)
 
         /// <summary>Vitamin D3 1000 IU tablet - Cholecalciferol supplement</summary>
         public static readonly FhirCode VitaminD31000IU = new(Systems.RxNorm, "317127", "Cholecalciferol 1000 UNT Oral Tablet");
+
+        /// <summary>Vitamin D 50,000 IU capsule - High-dose cholecalciferol for deficiency</summary>
+        public static readonly FhirCode VitaminD50000IU = new(Systems.RxNorm, "316879", "Cholecalciferol 50000 UNT Oral Capsule");
+
+        /// <summary>Cetirizine 10mg tablet - Antihistamine for allergic rhinitis</summary>
+        public static readonly FhirCode Cetirizine = new(Systems.RxNorm, "1014678", "Cetirizine hydrochloride 10 MG Oral Tablet");
+
+        /// <summary>Fluticasone propionate 110 mcg inhaler - Inhaled corticosteroid for asthma control</summary>
+        public static readonly FhirCode FlucticasonePropionate = new(Systems.RxNorm, "745678", "Fluticasone propionate 0.11 MG/ACTUAT Metered Dose Inhaler");
 
         // Other Common Medications
 
