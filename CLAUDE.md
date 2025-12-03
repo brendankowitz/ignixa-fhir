@@ -387,6 +387,130 @@ if (resource.MutableNode.TryGetPropertyValue("active", out var node)) {
 
 **Never use** ExtensionData + JsonElement (deprecated pattern)
 
+### Working with StructureMap (Version-Aware Models)
+
+**CRITICAL**: StructureMap has breaking changes between FHIR R4 and R5. Always set `FhirVersion` **FIRST** before accessing version-specific properties.
+
+#### Version-Specific Properties
+
+| Property/Method | R4/R4B | R5+ | Behavior |
+|-----------------|--------|-----|----------|
+| `Const` | ❌ Throws | ✅ Works | R5 introduced constants |
+| `VersionAlgorithmString` | ❌ Throws | ✅ Works | R5 metadata field |
+| `CopyrightLabel` | ❌ Throws | ✅ Works | R5 metadata field |
+| `Dependent.Variable` | ✅ Works | ❌ Throws | R4 uses simple strings |
+| `Dependent.Parameter` | ❌ Throws | ✅ Works | R5 uses structured params |
+| `Source.DefaultValue` (property) | ❌ Throws | ✅ Works | R5 simplified to string |
+| `Source.SetDefaultValue(suffix, value)` | ✅ Works | ❌ Throws | R4 supports 23 types |
+| `Parameter.SetValueDate/Time/DateTime` | ❌ Throws | ✅ Works | R5 added temporal types |
+| `Group.TypeMode = null` | ❌ Throws | ✅ Works | R4: required, R5: optional |
+| `Rule.Name = null` | ❌ Throws | ✅ Works | R4: required, R5: optional |
+
+#### Correct Usage Pattern
+
+```csharp
+// ❌ WRONG: Accessing properties before setting FhirVersion
+var map = new StructureMapJsonNode();
+map.Const.Add(...); // Will throw NotSupportedException!
+
+// ✅ CORRECT: Set FhirVersion FIRST
+var map = new StructureMapJsonNode();
+map.FhirVersion = FhirSpecification.R5; // Set this FIRST
+map.Const.Add(new StructureMapConstJsonNode { Name = "myConst", Value = "'value'" });
+```
+
+#### Version-Agnostic Helpers (Recommended)
+
+Use extension methods from `Ignixa.Serialization.Extensions` for version-agnostic operations:
+
+```csharp
+using Ignixa.Serialization.Extensions;
+
+// Get dependent variables (works for both R4 and R5)
+var variables = dependent.GetDependentVariables(); // Returns IEnumerable<string>
+
+// Add dependent variable (version-aware)
+dependent.FhirVersion = FhirSpecification.R4; // or R5
+dependent.AddDependentVariable("myVar");
+
+// Get default value as string (cross-version)
+var defaultValue = source.GetDefaultValueString();
+
+// Set default value (version-appropriate)
+source.FhirVersion = FhirSpecification.R5;
+source.SetDefaultValueString("'my value'");
+
+// Safely check for constants support
+if (map.SupportsConstants())
+{
+    map.Const.Add(...);
+}
+
+// Get constants or empty (no exceptions)
+var constants = map.GetConstantsOrEmpty(); // Returns empty for R4
+```
+
+#### FhirMappingLanguage Integration
+
+When building StructureMaps from FHIR Mapping Language (FML):
+
+```csharp
+using Ignixa.FhirMappingLanguage.Parser;
+using Ignixa.FhirMappingLanguage.Serialization;
+
+var parser = new MappingParser();
+var fml = """
+    map 'http://example.org/test' = 'TestMap'
+    group Main(source src : Patient, target tgt : Bundle) {
+        src -> tgt then Helper(src);
+    }
+    """;
+
+// Specify target FHIR version when building
+var builder = new StructureMapBuilder(FhirSpecification.R5); // or R4
+var structureMap = builder.Build(parser.Parse(fml));
+
+// FhirVersion is automatically set on all nodes
+structureMap.FhirVersion.Should().Be(FhirSpecification.R5);
+```
+
+#### Migration R4 → R5
+
+When migrating StructureMaps from R4 to R5:
+
+1. **Update `Dependent` calls**: Convert `Variable` to `Parameter`
+   ```csharp
+   // R4
+   dependent.Variable.Add("var1");
+
+   // R5
+   var param = new StructureMapParameterJsonNode { FhirVersion = FhirSpecification.R5 };
+   param.SetValue("String", JsonValue.Create("var1"));
+   dependent.Parameter.Add(param);
+
+   // Or use extension method (recommended)
+   dependent.FhirVersion = FhirSpecification.R5;
+   dependent.AddDependentVariable("var1");
+   ```
+
+2. **Update `defaultValue`**: Convert typed to string
+   ```csharp
+   // R4
+   source.SetDefaultValue("Integer", JsonValue.Create(42));
+
+   // R5
+   source.DefaultValue = "42"; // String expression
+
+   // Or use extension method (cross-version)
+   source.SetDefaultValueString("42");
+   ```
+
+3. **Optional fields**: Remove required validations
+   - `Group.TypeMode` can now be null
+   - `Rule.Name` can now be null
+
+**Testing**: Use `StructureMapVersionTests.cs` and `StructureMapBuilderVersionTests.cs` as examples.
+
 ---
 
 ## Project Structure

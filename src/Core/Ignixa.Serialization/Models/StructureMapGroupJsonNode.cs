@@ -50,7 +50,9 @@ public class StructureMapGroupJsonNode : BaseJsonNode
 
     /// <summary>
     /// If this is the default rule set to apply for the source type or target type.
+    /// Required in R4/R4B, optional in R5+.
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when set to null in FHIR R4/R4B.</exception>
     [JsonIgnore]
     public StructureMapGroupTypeMode? TypeMode
     {
@@ -59,7 +61,15 @@ public class StructureMapGroupJsonNode : BaseJsonNode
             var typeModeStr = GetProperty<string>("typeMode");
             return typeModeStr != null ? EnumUtility.ParseLiteral<StructureMapGroupTypeMode>(typeModeStr) : null;
         }
-        set => SetProperty("typeMode", value?.GetLiteral());
+        set
+        {
+            if (value == null && FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new ArgumentNullException(nameof(value),
+                    $"TypeMode is required in {FhirVersion} and cannot be null. In R5+, this field became optional.");
+            }
+            SetProperty("typeMode", value?.GetLiteral());
+        }
     }
 
     /// <summary>

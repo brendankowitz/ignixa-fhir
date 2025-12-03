@@ -7,6 +7,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Extensions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -18,6 +19,17 @@ namespace Ignixa.FhirMappingLanguage.Serialization;
 /// </summary>
 public class StructureMapBuilder
 {
+    private readonly FhirSpecification _targetVersion;
+
+    /// <summary>
+    /// Initializes a new instance of the StructureMapBuilder.
+    /// </summary>
+    /// <param name="targetVersion">The target FHIR version for the generated StructureMap (defaults to R5).</param>
+    public StructureMapBuilder(FhirSpecification targetVersion = FhirSpecification.R5)
+    {
+        _targetVersion = targetVersion;
+    }
+
     /// <summary>
     /// Builds a FHIR StructureMap resource from a MapExpression AST.
     /// </summary>
@@ -33,6 +45,10 @@ public class StructureMapBuilder
             Name = map.Identifier,
             Status = PublicationStatus.Active
         };
+
+        // CRITICAL: Set FHIR version FIRST before accessing any child properties
+        // This enables version-specific validation and prevents NotSupportedException
+        structureMap.FhirVersion = _targetVersion;
 
         // Add structures (uses declarations)
         foreach (var uses in map.Uses)
@@ -64,27 +80,35 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a structure element from a UsesExpression.
     /// </summary>
-    private static StructureMapStructureJsonNode BuildStructure(UsesExpression uses)
+    private StructureMapStructureJsonNode BuildStructure(UsesExpression uses)
     {
-        return new StructureMapStructureJsonNode
+        var structure = new StructureMapStructureJsonNode
         {
             Url = uses.Url,
             Alias = uses.Alias,
             Mode = ConvertToStructureMapModelMode(uses.Mode)
         };
+        structure.FhirVersion = _targetVersion;
+        return structure;
     }
 
     /// <summary>
     /// Builds a group element from a GroupExpression.
     /// </summary>
-    private static StructureMapGroupJsonNode BuildGroup(GroupExpression group)
+    private StructureMapGroupJsonNode BuildGroup(GroupExpression group)
     {
         var groupNode = new StructureMapGroupJsonNode
         {
             Name = group.Name,
-            Extends = group.Extends,
-            TypeMode = StructureMapGroupTypeMode.None
+            Extends = group.Extends
         };
+
+        // Inherit FhirVersion from builder
+        groupNode.FhirVersion = _targetVersion;
+
+        // TypeMode is required in R4, optional in R5+
+        // Set to None for both versions (valid default)
+        groupNode.TypeMode = StructureMapGroupTypeMode.None;
 
         // Add input parameters
         foreach (var param in group.Parameters)
@@ -104,25 +128,30 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds an input element from a ParameterExpression.
     /// </summary>
-    private static StructureMapInputJsonNode BuildInput(ParameterExpression parameter)
+    private StructureMapInputJsonNode BuildInput(ParameterExpression parameter)
     {
-        return new StructureMapInputJsonNode
+        var input = new StructureMapInputJsonNode
         {
             Name = parameter.Name,
             Type = parameter.Type,
             Mode = ConvertToStructureMapInputMode(parameter.Mode)
         };
+        input.FhirVersion = _targetVersion;
+        return input;
     }
 
     /// <summary>
     /// Builds a rule element from a RuleExpression.
     /// </summary>
-    private static StructureMapRuleJsonNode BuildRule(RuleExpression rule)
+    private StructureMapRuleJsonNode BuildRule(RuleExpression rule)
     {
         var ruleNode = new StructureMapRuleJsonNode
         {
             Name = rule.Name
         };
+
+        // Inherit FhirVersion from builder
+        ruleNode.FhirVersion = _targetVersion;
 
         // Add sources
         foreach (var source in rule.Sources)
@@ -162,7 +191,7 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a source element from a SourceExpression.
     /// </summary>
-    private static StructureMapSourceJsonNode BuildSource(SourceExpression source)
+    private StructureMapSourceJsonNode BuildSource(SourceExpression source)
     {
         var (context, element) = ExtractContextAndElement(source.Context);
 
@@ -173,6 +202,9 @@ public class StructureMapBuilder
             Variable = source.Variable,
             Type = source.Type
         };
+
+        // Inherit FhirVersion from builder
+        sourceNode.FhirVersion = _targetVersion;
 
         // Add cardinality
         if (source.Cardinality is not null)
@@ -201,10 +233,10 @@ public class StructureMapBuilder
             sourceNode.LogMessage = ExpressionToString(source.Log);
         }
 
-        // Add default value
+        // Add default value using version-aware extension method
         if (source.Default is not null)
         {
-            sourceNode.SetDefaultValue("String", JsonValue.Create(ExpressionToString(source.Default)));
+            sourceNode.SetDefaultValueString(ExpressionToString(source.Default));
         }
 
         return sourceNode;
@@ -213,12 +245,15 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a target element from a TargetExpression.
     /// </summary>
-    private static StructureMapTargetJsonNode BuildTarget(TargetExpression target)
+    private StructureMapTargetJsonNode BuildTarget(TargetExpression target)
     {
         var targetNode = new StructureMapTargetJsonNode
         {
             Variable = target.Variable
         };
+
+        // Inherit FhirVersion from builder
+        targetNode.FhirVersion = _targetVersion;
 
         // Extract context and element
         if (target.Context is not null)
@@ -241,20 +276,25 @@ public class StructureMapBuilder
 
                     foreach (var arg in transform.Arguments)
                     {
-                        targetNode.Parameter.Add(BuildParameter(arg));
+                        var param = BuildParameter(arg);
+                        param.FhirVersion = _targetVersion;
+                        targetNode.Parameter.Add(param);
                     }
                     break;
 
                 case LiteralExpression literal:
                     // Direct assignment - use 'copy' transform with the value
                     targetNode.Transform = StructureMapTransform.Copy;
-                    targetNode.Parameter.Add(BuildParameter(literal));
+                    var literalParam = BuildParameter(literal);
+                    literalParam.FhirVersion = _targetVersion;
+                    targetNode.Parameter.Add(literalParam);
                     break;
 
                 case IdentifierExpression identifier:
                     // Variable reference - use 'copy' transform
                     targetNode.Transform = StructureMapTransform.Copy;
                     var param = new StructureMapParameterJsonNode();
+                    param.FhirVersion = _targetVersion;
                     param.SetValue("Id", JsonValue.Create(identifier.Name));
                     targetNode.Parameter.Add(param);
                     break;
@@ -263,6 +303,7 @@ public class StructureMapBuilder
                     // Qualified reference - use 'copy' transform
                     targetNode.Transform = StructureMapTransform.Copy;
                     var qualParam = new StructureMapParameterJsonNode();
+                    qualParam.FhirVersion = _targetVersion;
                     qualParam.SetValue("String", JsonValue.Create(ExpressionToString(qualifiedId)));
                     targetNode.Parameter.Add(qualParam);
                     break;
@@ -281,16 +322,36 @@ public class StructureMapBuilder
     /// <summary>
     /// Builds a dependent element from a GroupInvocationExpression.
     /// </summary>
-    private static StructureMapDependentJsonNode BuildDependent(GroupInvocationExpression invocation)
+    private StructureMapDependentJsonNode BuildDependent(GroupInvocationExpression invocation)
     {
         var dependent = new StructureMapDependentJsonNode
         {
             Name = invocation.GroupName
         };
 
-        foreach (var arg in invocation.Arguments)
+        // Inherit FhirVersion from builder
+        dependent.FhirVersion = _targetVersion;
+
+        // Add arguments using version-appropriate method
+        if (_targetVersion >= FhirSpecification.R5)
         {
-            dependent.Parameter.Add(BuildParameter(arg));
+            // R5+: Use structured parameters
+            foreach (var arg in invocation.Arguments)
+            {
+                var param = BuildParameter(arg);
+                param.FhirVersion = _targetVersion;
+                dependent.Parameter.Add(param);
+            }
+        }
+        else
+        {
+            // R4/R4B: Use simple string variables
+            // Extract string representations from arguments
+            foreach (var arg in invocation.Arguments)
+            {
+                var variable = ExpressionToString(arg);
+                dependent.Variable.Add(variable);
+            }
         }
 
         return dependent;

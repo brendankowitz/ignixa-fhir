@@ -103,6 +103,81 @@ public class StructureMapJsonNode : ResourceJsonNode
     }
 
     /// <summary>
+    /// Version algorithm indicator (R5+ only).
+    /// Can be a string or Coding indicating how to compare versions.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Thrown when accessed in FHIR versions prior to R5.</exception>
+    [JsonIgnore]
+    public string? VersionAlgorithmString
+    {
+        get
+        {
+            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new NotSupportedException(
+                    $"VersionAlgorithmString is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
+            }
+            return GetProperty<string>("versionAlgorithmString");
+        }
+        set
+        {
+            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new NotSupportedException(
+                    $"VersionAlgorithmString is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
+            }
+            SetProperty("versionAlgorithmString", value);
+        }
+    }
+
+    /// <summary>
+    /// Copyright label for the structure map (R5+ only).
+    /// Short statement of copyright/IP ownership.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Thrown when accessed in FHIR versions prior to R5.</exception>
+    [JsonIgnore]
+    public string? CopyrightLabel
+    {
+        get
+        {
+            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new NotSupportedException(
+                    $"CopyrightLabel is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
+            }
+            return GetProperty<string>("copyrightLabel");
+        }
+        set
+        {
+            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new NotSupportedException(
+                    $"CopyrightLabel is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
+            }
+            SetProperty("copyrightLabel", value);
+        }
+    }
+
+    /// <summary>
+    /// Constants in this structure map (R5+ only).
+    /// Defines named FHIRPath expressions that can be referenced throughout the map.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Thrown when accessed in FHIR versions prior to R5.</exception>
+    [JsonIgnore]
+    public MutableJsonList<StructureMapConstJsonNode> Const
+    {
+        get
+        {
+            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new NotSupportedException(
+                    $"Const is not supported in {FhirVersion}. Constants were introduced in FHIR R5.");
+            }
+            return GetListProperty<StructureMapConstJsonNode>("const");
+        }
+    }
+
+    /// <summary>
     /// Structure definition used by this map.
     /// </summary>
     [JsonIgnore]

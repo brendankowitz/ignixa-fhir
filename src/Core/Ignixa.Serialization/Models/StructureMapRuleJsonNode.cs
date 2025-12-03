@@ -30,12 +30,22 @@ public class StructureMapRuleJsonNode : BaseJsonNode
 
     /// <summary>
     /// Name of the rule for internal references.
+    /// Required in R4/R4B, optional in R5+.
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when set to null in FHIR R4/R4B.</exception>
     [JsonIgnore]
     public string? Name
     {
         get => GetProperty<string>("name");
-        set => SetProperty("name", value);
+        set
+        {
+            if (string.IsNullOrEmpty(value) && FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            {
+                throw new ArgumentNullException(nameof(value),
+                    $"Name is required in {FhirVersion} and cannot be null or empty. In R5+, this field became optional.");
+            }
+            SetProperty("name", value);
+        }
     }
 
     /// <summary>
