@@ -401,15 +401,23 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         .AsSelf()
         .SingleInstance();
 
-    containerBuilder.RegisterType<StructureMapParser>()
+    // StructureMapParser - scoped per-request, receives tenant FHIR version from request context
+    containerBuilder.Register(c =>
+        {
+            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext;
+            var fhirVersion = requestContext?.FhirVersion;
+            return new StructureMapParser(fhirVersion);
+        })
         .AsSelf()
-        .SingleInstance();
+        .InstancePerLifetimeScope();
 
-    // MapRegistryCache - enhanced map registry with caching, metadata tracking, and invalidation (Phase 2.3)
+    // MapRegistryCache - scoped per-request to match StructureMapParser lifecycle (Phase 2.3)
+    // Note: Cache is now per-request. If cross-request caching becomes necessary for performance,
+    // consider implementing a factory pattern for StructureMapParser instead.
     containerBuilder.RegisterType<Ignixa.Application.Operations.Features.Transform.MapRegistryCache>()
         .AsSelf()
         .As<IMapRegistry>()
-        .SingleInstance();
+        .InstancePerLifetimeScope();
 
     // Package loaded event handler for map cache invalidation (Phase 2.3)
     containerBuilder.RegisterType<Ignixa.Application.Operations.Events.PackageLoadedMapCacheInvalidationHandler>()

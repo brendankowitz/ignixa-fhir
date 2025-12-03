@@ -26,8 +26,7 @@ public static class FhirSpecificationExtensions
             FhirVersion.R4B => "4.3",
             FhirVersion.R5 => "5.0",
             FhirVersion.R6 => "6.0",
-            FhirVersion.Unspecified => "6.0", // Unspecified defaults to latest (R6)
-            _ => "6.0" // Unknown values default to latest
+            _ => "Unspecified"
         };
     }
 
@@ -55,7 +54,7 @@ public static class FhirSpecificationExtensions
             "4.3" => FhirVersion.R4B,
             "5.0" => FhirVersion.R5,
             "6.0" => FhirVersion.R6,
-            _ => FhirVersion.R6 // Default to latest (R6)
+            _ => FhirVersion.Unspecified
         };
     }
 }

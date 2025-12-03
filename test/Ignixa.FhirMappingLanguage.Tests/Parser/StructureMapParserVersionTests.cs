@@ -466,6 +466,111 @@ public class StructureMapParserVersionTests
 
     #endregion
 
+    #region Parser Constructor Version Tests
+
+    [Fact]
+    public void GivenParserWithExpectedVersion_WhenParsingUnversionedMap_ThenAppliesVersion()
+    {
+        // Arrange
+        var json = new JsonObject
+        {
+            ["resourceType"] = "StructureMap",
+            ["url"] = "http://example.org/test",
+            ["name"] = "TestMap",
+            ["status"] = "draft",
+            ["group"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["name"] = "Main",
+                    ["typeMode"] = "none",
+                    ["input"] = new JsonArray()
+                }
+            }
+        };
+
+        var structureMap = new StructureMapJsonNode(json);
+        // Don't set FhirVersion on the node
+
+        var parser = new StructureMapParser(FhirVersion.R4);
+
+        // Act
+        var ast = parser.Parse(structureMap);
+
+        // Assert
+        ast.Url.Should().Be("http://example.org/test");
+        structureMap.FhirVersion.Should().Be(FhirVersion.R4); // Version was applied
+    }
+
+    [Fact]
+    public void GivenParserWithExpectedVersion_WhenParsingVersionedMap_ThenKeepsOriginalVersion()
+    {
+        // Arrange
+        var json = new JsonObject
+        {
+            ["resourceType"] = "StructureMap",
+            ["url"] = "http://example.org/test",
+            ["name"] = "TestMap",
+            ["status"] = "draft",
+            ["group"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["name"] = "Main",
+                    ["typeMode"] = "none",
+                    ["input"] = new JsonArray()
+                }
+            }
+        };
+
+        var structureMap = new StructureMapJsonNode(json);
+        structureMap.FhirVersion = FhirVersion.R5; // Already set
+
+        var parser = new StructureMapParser(FhirVersion.R4); // Different expected version
+
+        // Act
+        var ast = parser.Parse(structureMap);
+
+        // Assert
+        structureMap.FhirVersion.Should().Be(FhirVersion.R5); // Original version preserved
+    }
+
+    [Fact]
+    public void GivenParserWithoutExpectedVersion_WhenParsingUnversionedMap_ThenLeavesVersionUnset()
+    {
+        // Arrange
+        var json = new JsonObject
+        {
+            ["resourceType"] = "StructureMap",
+            ["url"] = "http://example.org/test",
+            ["name"] = "TestMap",
+            ["status"] = "draft",
+            ["group"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["name"] = "Main",
+                    ["typeMode"] = "none",
+                    ["input"] = new JsonArray()
+                }
+            }
+        };
+
+        var structureMap = new StructureMapJsonNode(json);
+        // Don't set FhirVersion on the node
+
+        var parser = new StructureMapParser(); // No expected version
+
+        // Act
+        var ast = parser.Parse(structureMap);
+
+        // Assert
+        ast.Url.Should().Be("http://example.org/test");
+        structureMap.FhirVersion.Should().BeNull(); // Version remains unset
+    }
+
+    #endregion
+
     #region Edge Cases
 
     [Fact]

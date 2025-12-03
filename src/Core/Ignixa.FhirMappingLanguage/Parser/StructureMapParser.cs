@@ -6,6 +6,7 @@
  */
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
@@ -20,6 +21,18 @@ namespace Ignixa.FhirMappingLanguage.Parser;
 /// </summary>
 public class StructureMapParser
 {
+    private readonly FhirVersion? _expectedVersion;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StructureMapParser"/> class.
+    /// </summary>
+    /// <param name="expectedVersion">Optional expected FHIR version. If provided and the input StructureMap
+    /// does not have a FhirVersion set, this version will be applied to enable version-specific property access.</param>
+    public StructureMapParser(FhirVersion? expectedVersion = null)
+    {
+        _expectedVersion = expectedVersion;
+    }
+
     /// <summary>
     /// Parses a FHIR StructureMap resource into a MapExpression AST.
     /// </summary>
@@ -30,6 +43,12 @@ public class StructureMapParser
     public MapExpression Parse(StructureMapJsonNode structureMap)
     {
         ArgumentNullException.ThrowIfNull(structureMap);
+
+        // If expectedVersion is provided and node doesn't have version set, apply it
+        if (_expectedVersion.HasValue && !structureMap.FhirVersion.HasValue)
+        {
+            structureMap.FhirVersion = _expectedVersion.Value;
+        }
 
         // Required fields
         var url = structureMap.Url ?? throw new InvalidOperationException("StructureMap.url is required");
