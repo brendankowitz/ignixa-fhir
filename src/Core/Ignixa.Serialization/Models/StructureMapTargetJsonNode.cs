@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -23,7 +24,7 @@ public class StructureMapTargetJsonNode : BaseJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public StructureMapTargetJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public StructureMapTargetJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }

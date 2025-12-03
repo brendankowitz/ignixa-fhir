@@ -22,7 +22,7 @@ public sealed partial class R4BCoreSchemaProvider : Ignixa.Specification.IFhirSc
 {
     Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.R4B;
 
-    public FhirSpecification Version => FhirSpecification.R4B;
+    public FhirVersion Version => FhirVersion.R4B;
 
     public string FullVersion => "4.3.0";
 

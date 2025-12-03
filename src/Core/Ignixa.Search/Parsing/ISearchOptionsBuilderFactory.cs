@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 
 namespace Ignixa.Search.Parsing;
@@ -17,5 +18,5 @@ public interface ISearchOptionsBuilderFactory
     /// </summary>
     /// <param name="fhirVersion">The FHIR version specification.</param>
     /// <returns>A SearchOptionsBuilder configured for the specified version.</returns>
-    ISearchOptionsBuilder Create(FhirSpecification fhirVersion);
+    ISearchOptionsBuilder Create(FhirVersion fhirVersion);
 }

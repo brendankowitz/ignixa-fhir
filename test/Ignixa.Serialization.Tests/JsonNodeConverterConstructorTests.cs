@@ -18,13 +18,13 @@ namespace Ignixa.Serialization.Tests;
 /// for JsonNodeConverter to work correctly.
 ///
 /// JsonNodeConverter.Read() uses Activator.CreateInstance with [JsonObject, null] parameters,
-/// so all types must have a constructor with signature (JsonObject, FhirSpecification?).
+/// so all types must have a constructor with signature (JsonObject, FhirVersion?).
 /// </summary>
 public class JsonNodeConverterConstructorTests
 {
     /// <summary>
     /// All BaseJsonNode-derived types in Ignixa.Serialization.Models must have a constructor
-    /// that accepts (JsonObject, FhirSpecification?) for JsonNodeConverter to work.
+    /// that accepts (JsonObject, FhirVersion?) for JsonNodeConverter to work.
     /// </summary>
     [Fact]
     public void AllBaseJsonNodeTypes_ShouldHaveRequiredConstructor()
@@ -52,8 +52,8 @@ public class JsonNodeConverterConstructorTests
 
         // Assert
         missingConstructors.Should().BeEmpty(
-            $"The following types are missing the (JsonObject, FhirSpecification?) constructor required by JsonNodeConverter: {string.Join(", ", missingConstructors)}. " +
-            "Add: public TypeName(JsonObject jsonObject, FhirSpecification? fhirVersion = null) : base(jsonObject, fhirVersion) {{ }}");
+            $"The following types are missing the (JsonObject, FhirVersion?) constructor required by JsonNodeConverter: {string.Join(", ", missingConstructors)}. " +
+            "Add: public TypeName(JsonObject jsonObject, FhirVersion? fhirVersion = null) : base(jsonObject, fhirVersion) {{ }}");
     }
 
     /// <summary>

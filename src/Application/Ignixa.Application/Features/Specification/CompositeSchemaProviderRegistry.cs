@@ -8,7 +8,6 @@
 using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.Application.Utilities;
-using Ignixa.Serialization;
 using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
 
@@ -20,7 +19,7 @@ namespace Ignixa.Application.Features.Specification;
 /// </summary>
 public sealed class CompositeSchemaProviderRegistry : ICompositeSchemaProviderRegistry, IDisposable
 {
-    private readonly ConcurrentDictionary<(int tenantId, FhirSpecification version), CompositeStructureDefinitionSummaryProvider> _providers;
+    private readonly ConcurrentDictionary<(int tenantId, FhirVersion version), CompositeStructureDefinitionSummaryProvider> _providers;
     private readonly DebounceInvalidationStrategy _debounceStrategy;
     private readonly ILogger<CompositeSchemaProviderRegistry> _logger;
 
@@ -39,7 +38,7 @@ public sealed class CompositeSchemaProviderRegistry : ICompositeSchemaProviderRe
         TimeSpan? debounceDelay = null)
     {
         _logger = logger;
-        _providers = new ConcurrentDictionary<(int, FhirSpecification), CompositeStructureDefinitionSummaryProvider>();
+        _providers = new ConcurrentDictionary<(int, FhirVersion), CompositeStructureDefinitionSummaryProvider>();
         _debounceStrategy = new DebounceInvalidationStrategy(debounceDelay, _logger);
     }
 

@@ -41,11 +41,11 @@ public class SearchParameterDefinitionManager : ISearchParameterDefinitionManage
         // Load pre-generated search parameters for instant initialization (<5ms vs 50-200ms)
         SearchParameterInfo[] baseParameters = modelInfoProvider.Version switch
         {
-            FhirSpecification.R4 => R4SearchParameterDefinitions.GetBaseSearchParameters(),
-            FhirSpecification.R4B => R4BSearchParameterDefinitions.GetBaseSearchParameters(),
-            FhirSpecification.R5 => R5SearchParameterDefinitions.GetBaseSearchParameters(),
-            FhirSpecification.R6 => R6SearchParameterDefinitions.GetBaseSearchParameters(),
-            FhirSpecification.Stu3 => STU3SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R4 => R4SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R4B => R4BSearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R5 => R5SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R6 => R6SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.Stu3 => STU3SearchParameterDefinitions.GetBaseSearchParameters(),
             _ => throw new NotSupportedException($"FHIR version {modelInfoProvider.Version} is not supported")
         };
 

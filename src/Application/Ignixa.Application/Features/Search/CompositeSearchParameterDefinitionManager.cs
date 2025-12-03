@@ -887,7 +887,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         var majorMinor = _fhirVersion.Length >= 3 ? _fhirVersion.Substring(0, 3) : _fhirVersion;
         return majorMinor switch
         {
-            "3.0" => "3.0.2",  // STU3 official version
+            "3.0" => "3.0.2",  // Stu3 official version
             "4.0" => "4.0.1",  // R4 official version
             "4.3" => "4.3.0",  // R4B official version
             "5.0" => "5.0.0",  // R5 official version

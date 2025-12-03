@@ -14,12 +14,12 @@ namespace Ignixa.Search.Indexing.Converters;
 /// </summary>
 public class MoneyToQuantitySearchValueConverter : FhirElementToSearchValueConverter<QuantitySearchValue>
 {
-    private readonly FhirSpecification _fhirSpecification;
+    private readonly FhirVersion _fhirVersion;
 
-    public MoneyToQuantitySearchValueConverter(FhirSpecification fhirSpecification)
+    public MoneyToQuantitySearchValueConverter(FhirVersion fhirVersion)
         : base("Money")
     {
-        _fhirSpecification = fhirSpecification;
+        _fhirVersion = fhirVersion;
     }
 
     protected override IEnumerable<ISearchValue> Convert(IElement value)
@@ -28,7 +28,7 @@ public class MoneyToQuantitySearchValueConverter : FhirElementToSearchValueConve
 
         if (!decimalValue.HasValue) yield break;
 
-        if (_fhirSpecification == FhirSpecification.Stu3)
+        if (_fhirVersion == FhirVersion.Stu3)
         {
             string code = value.Scalar("code")?.ToString();
             string system = value.Scalar("system")?.ToString();

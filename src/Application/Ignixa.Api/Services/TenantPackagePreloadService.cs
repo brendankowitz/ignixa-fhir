@@ -6,6 +6,7 @@
 using System.Diagnostics;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Events.Startup;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;

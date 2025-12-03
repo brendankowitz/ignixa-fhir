@@ -168,10 +168,10 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
     /// <summary>
     /// Resolve the FHIR version from tenant configuration, with fallback to R4 default.
     /// </summary>
-    private async Task<FhirSpecification> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
+    private async Task<FhirVersion> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
         // Default to R4
-        var fhirVersion = FhirSpecification.R4;
+        var fhirVersion = FhirVersion.R4;
 
         try
         {

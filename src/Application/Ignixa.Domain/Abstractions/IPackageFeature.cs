@@ -31,7 +31,7 @@ public interface IPackageFeature
 
     /// <summary>
     /// Optional: FHIR versions this feature supports (null = all versions).
-    /// Format: "R4", "R4B", "R5", "STU3", etc.
+    /// Format: "R4", "R4B", "R5", "Stu3", etc.
     /// </summary>
     IReadOnlyList<string>? SupportedFhirVersions { get; }
 }

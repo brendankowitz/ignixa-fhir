@@ -17,6 +17,6 @@
     <PackageVersion Update="Hl7.Fhir.R4" Version="5.10.3" />
     <PackageVersion Update="Hl7.Fhir.R4B" Version="5.10.3" />
     <PackageVersion Update="Hl7.Fhir.R5" Version="5.10.3" />
-    <PackageVersion Update="Hl7.Fhir.STU3" Version="5.10.3" />
+    <PackageVersion Update="Hl7.Fhir.Stu3" Version="5.10.3" />
   </ItemGroup>
 </Project>

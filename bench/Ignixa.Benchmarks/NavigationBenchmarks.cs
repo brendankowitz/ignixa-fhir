@@ -5,6 +5,7 @@ using BenchmarkDotNet.Attributes;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain;
 using Ignixa.Serialization;
@@ -50,7 +51,7 @@ public class NavigationBenchmarks
         _ignixaObservation = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
-        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirVersion.R4);
         var sourceNode = _ignixaObservation.ToSourceNavigator();
         _ignixaTypedElement = (IElement)SchemaAwareElementExtensions.ToElement(sourceNode, _ignixaSchemaProvider);
 

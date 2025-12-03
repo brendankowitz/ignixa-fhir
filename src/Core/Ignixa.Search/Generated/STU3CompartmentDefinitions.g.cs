@@ -13,7 +13,7 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Generated;
 
 /// <summary>
-/// Pre-generated Compartment definitions for FHIR STU3.
+/// Pre-generated Compartment definitions for FHIR Stu3.
 /// Eliminates runtime JSON parsing overhead.
 /// Thread-safe lazy initialization with caching.
 /// </summary>
@@ -22,7 +22,7 @@ public static class STU3CompartmentDefinitions
     private static Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)>? _cached;
 
     /// <summary>
-    /// Gets all compartment definitions for FHIR STU3.
+    /// Gets all compartment definitions for FHIR Stu3.
     /// Thread-safe lazy initialization with caching.
     /// </summary>
     public static Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> GetCompartments()

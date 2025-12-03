@@ -1,22 +1,24 @@
 using System.Collections;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization;
-    public class MutableJsonList<T>(Func<JsonArray> arrayFactory, JsonArray? existingArray) : IList<T>
+    public class MutableJsonList<T>(Func<JsonArray> arrayFactory, JsonArray? existingArray, FhirVersion? fhirVersion = null) : IList<T>
         where T : BaseJsonNode
     {
         private JsonArray? _jsonArray = existingArray;
+        private readonly FhirVersion? _fhirVersion = fhirVersion;
 
-        private static readonly Func<JsonNode, FhirSpecification?, T> _factory = CreateFactory();
+        private static readonly Func<JsonNode, FhirVersion?, T> _factory = CreateFactory();
 
-        private static Func<JsonNode, FhirSpecification?, T> CreateFactory()
+        private static Func<JsonNode, FhirVersion?, T> CreateFactory()
         {
-            var ctor = typeof(T).GetConstructor(new[] { typeof(JsonObject), typeof(FhirSpecification) });
+            var ctor = typeof(T).GetConstructor(new[] { typeof(JsonObject), typeof(FhirVersion) });
             if (ctor == null)
             {
                 throw new InvalidOperationException(
-                    $"Type {typeof(T).Name} must have a constructor (JsonObject, FhirSpecification?)");
+                    $"Type {typeof(T).Name} must have a constructor (JsonObject, FhirVersion?)");
             }
             return (node, fhirVersion) => (T)ctor.Invoke([node, fhirVersion]);
         }
@@ -34,7 +36,7 @@ namespace Ignixa.Serialization;
                 {
                     return default!;
                 }
-                return _factory(node, null);
+                return _factory(node, _fhirVersion);
             }
             set
             {
@@ -94,7 +96,7 @@ namespace Ignixa.Serialization;
                 }
                 else
                 {
-                    array[arrayIndex + i] = _factory(node, null);
+                    array[arrayIndex + i] = _factory(node, _fhirVersion);
                 }
             }
         }
@@ -109,7 +111,7 @@ namespace Ignixa.Serialization;
                 }
                 else
                 {
-                    yield return _factory(node, null);
+                    yield return _factory(node, _fhirVersion);
                 }
             }
         }

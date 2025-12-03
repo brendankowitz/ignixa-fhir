@@ -22,7 +22,7 @@ public sealed partial class R6CoreSchemaProvider : Ignixa.Specification.IFhirSch
 {
     Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.R6;
 
-    public FhirSpecification Version => FhirSpecification.R6;
+    public FhirVersion Version => FhirVersion.R6;
 
     public string FullVersion => "6.0.0-ballot2";
 

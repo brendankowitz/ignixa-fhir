@@ -5,6 +5,7 @@
  */
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
@@ -19,13 +20,13 @@ namespace Ignixa.FhirMappingLanguage.Serialization;
 /// </summary>
 public class StructureMapBuilder
 {
-    private readonly FhirSpecification _targetVersion;
+    private readonly FhirVersion _targetVersion;
 
     /// <summary>
     /// Initializes a new instance of the StructureMapBuilder.
     /// </summary>
-    /// <param name="targetVersion">The target FHIR version for the generated StructureMap (defaults to Unspecified, which uses latest FHIR version behavior).</param>
-    public StructureMapBuilder(FhirSpecification targetVersion = FhirSpecification.Unspecified)
+    /// <param name="targetVersion">The target FHIR version for the generated StructureMap (defaults to R5).</param>
+    public StructureMapBuilder(FhirVersion targetVersion = FhirVersion.R5)
     {
         _targetVersion = targetVersion;
     }
@@ -293,10 +294,10 @@ public class StructureMapBuilder
                 case IdentifierExpression identifier:
                     // Variable reference - use 'copy' transform
                     targetNode.Transform = StructureMapTransform.Copy;
-                    var param = new StructureMapParameterJsonNode();
-                    param.FhirVersion = _targetVersion;
-                    param.SetValue("Id", JsonValue.Create(identifier.Name));
-                    targetNode.Parameter.Add(param);
+                    var identifierParam = new StructureMapParameterJsonNode();
+                    identifierParam.FhirVersion = _targetVersion;
+                    identifierParam.SetValue("Id", JsonValue.Create(identifier.Name));
+                    targetNode.Parameter.Add(identifierParam);
                     break;
 
                 case QualifiedIdentifierExpression qualifiedId:
@@ -333,7 +334,7 @@ public class StructureMapBuilder
         dependent.FhirVersion = _targetVersion;
 
         // Add arguments using version-appropriate method
-        if (_targetVersion >= FhirSpecification.R5)
+        if (_targetVersion >= FhirVersion.R5)
         {
             // R5+: Use structured parameters
             foreach (var arg in invocation.Arguments)

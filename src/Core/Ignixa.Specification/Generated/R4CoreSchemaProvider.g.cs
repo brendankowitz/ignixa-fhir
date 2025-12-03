@@ -22,7 +22,7 @@ public sealed partial class R4CoreSchemaProvider : Ignixa.Specification.IFhirSch
 {
     Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.R4;
 
-    public FhirSpecification Version => FhirSpecification.R4;
+    public FhirVersion Version => FhirVersion.R4;
 
     public string FullVersion => "4.0.1";
 

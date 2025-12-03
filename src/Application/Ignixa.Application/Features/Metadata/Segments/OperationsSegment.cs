@@ -5,9 +5,9 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
@@ -195,14 +195,14 @@ public class OperationsSegment : ICapabilitySegment
         return ValueTask.FromResult(hashString);
     }
 
-    private static string GetFhirVersionString(FhirSpecification fhirVersion)
+    private static string GetFhirVersionString(FhirVersion fhirVersion)
     {
         return fhirVersion switch
         {
-            FhirSpecification.R4 => "R4",
-            FhirSpecification.R4B => "R4B",
-            FhirSpecification.R5 => "R5",
-            FhirSpecification.Stu3 => "STU3",
+            FhirVersion.R4 => "R4",
+            FhirVersion.R4B => "R4B",
+            FhirVersion.R5 => "R5",
+            FhirVersion.Stu3 => "Stu3",
             _ => throw new ArgumentOutOfRangeException(nameof(fhirVersion), fhirVersion, "Unsupported FHIR version"),
         };
     }

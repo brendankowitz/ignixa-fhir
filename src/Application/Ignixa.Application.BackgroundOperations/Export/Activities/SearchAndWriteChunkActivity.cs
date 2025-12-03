@@ -1,12 +1,14 @@
 using System.Text;
 using DurableTask.Core;
 using Microsoft.Extensions.Logging;
+using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
+using Ignixa.Specification;
 
 namespace Ignixa.Application.BackgroundOperations.Export.Activities;
 

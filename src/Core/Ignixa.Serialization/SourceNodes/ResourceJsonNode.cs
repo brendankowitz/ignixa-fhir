@@ -45,7 +45,7 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     /// Protected internal constructor for JsonConverter and derived types (accepts pre-parsed JsonObject and optional FHIR version).
     /// Uses 'protected internal' to allow subclasses in other assemblies to use it.
     /// </summary>
-    protected internal ResourceJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion)
+    protected internal ResourceJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion)
         : base(jsonObject, fhirVersion)
     {
     }

@@ -6,6 +6,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
@@ -21,7 +22,7 @@ public class ResourceInteractionJsonNode : BaseJsonNode
     {
     }
 
-    public ResourceInteractionJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public ResourceInteractionJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }

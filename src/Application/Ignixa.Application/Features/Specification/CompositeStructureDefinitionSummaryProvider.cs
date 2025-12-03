@@ -8,7 +8,6 @@
 using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Serialization;
 using Ignixa.Specification;
 using Microsoft.Extensions.Logging;
 
@@ -267,23 +266,23 @@ public class CompositeStructureDefinitionSummaryProvider : IFhirSchemaProvider
     }
 
     /// <summary>
-    /// The FHIR specification version (e.g., R4, R5, STU3).
+    /// The FHIR specification version (e.g., R4, R5, Stu3).
     /// Inherited from base provider - all resources come from the same FHIR version.
     /// </summary>
-    public FhirSpecification Version => _baseProvider.Version;
+    public FhirVersion Version => _baseProvider.Version;
 
     /// <summary>
     /// FHIR version for this schema (ISchema.Version).
-    /// Converts FhirSpecification to FhirVersion enum.
+    /// Converts FhirVersion to FhirVersion enum.
     /// </summary>
-    FhirVersion ISchema.Version => Version switch
+    Abstractions.FhirVersion ISchema.Version => Version switch
     {
-        FhirSpecification.Stu3 => FhirVersion.STU3,
-        FhirSpecification.R4 => FhirVersion.R4,
-        FhirSpecification.R4B => FhirVersion.R4B,
-        FhirSpecification.R5 => FhirVersion.R5,
-        FhirSpecification.R6 => FhirVersion.R6,
-        _ => FhirVersion.R4 // Default fallback
+        FhirVersion.Stu3 => Abstractions.FhirVersion.Stu3,
+        FhirVersion.R4 => Abstractions.FhirVersion.R4,
+        FhirVersion.R4B => Abstractions.FhirVersion.R4B,
+        FhirVersion.R5 => Abstractions.FhirVersion.R5,
+        FhirVersion.R6 => Abstractions.FhirVersion.R6,
+        _ => Abstractions.FhirVersion.R4 // Default fallback
     };
 
     /// <summary>

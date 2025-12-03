@@ -41,7 +41,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
-    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
 
     public CreateOrUpdateResourceHandler(
@@ -49,7 +49,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRepositoryFactory repositoryFactory,
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext fhirVersionContext,
-        Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
+        Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
         ILogger<CreateOrUpdateResourceHandler> logger)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
@@ -211,7 +211,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// </summary>
     private ResourceWrapper CreateResourceWrapper(
         CreateOrUpdateResourceCommand command,
-        FhirSpecification fhirVersionEnum,
+        FhirVersion fhirVersionEnum,
         IFhirSchemaProvider schemaProvider,
         int? tenantId)
     {
@@ -286,7 +286,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private async Task ProcessProvenanceAsync(
         ProvenanceJsonNode provenanceTemplate,
         UpdateResult mainResourceResult,
-        FhirSpecification fhirVersion,
+        FhirVersion fhirVersion,
         IFhirSchemaProvider schemaProvider,
         int? tenantId,
         IFhirRepository repository,
@@ -375,7 +375,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     /// <param name="provenance">The Provenance resource to validate.</param>
     /// <param name="fhirVersion">The FHIR version to use for validation.</param>
     /// <exception cref="ValidationException">Thrown when validation fails.</exception>
-    private void ValidateProvenance(ProvenanceJsonNode provenance, FhirSpecification fhirVersion)
+    private void ValidateProvenance(ProvenanceJsonNode provenance, FhirVersion fhirVersion)
     {
         _logger.LogDebug("Validating Provenance resource from X-Provenance header");
 

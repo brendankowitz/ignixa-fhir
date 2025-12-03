@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
@@ -30,7 +31,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     {
     }
 
-    public ResourceComponentJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public ResourceComponentJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -74,11 +75,11 @@ public class ResourceComponentJsonNode : BaseJsonNode
             else
             {
                 // VERSION-AWARE: Use FhirVersion to determine storage format
-                // STU3: Store as Reference object (with reference and display)
+                // Stu3: Store as Reference object (with reference and display)
                 // R4/R4B/R5: Store as canonical string
-                if (FhirVersion == FhirSpecification.Stu3)
+                if (FhirVersion == Ignixa.Abstractions.FhirVersion.Stu3)
                 {
-                    // STU3: Always use object form
+                    // Stu3: Always use object form
                     value.FhirVersion = FhirVersion;
                     MutableNode["profile"] = value.MutableNode;
                 }
@@ -136,7 +137,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
         }
 
         // VERSION-AWARE: Use FhirVersion to determine storage format
-        if (FhirVersion == FhirSpecification.Stu3)
+        if (FhirVersion == Ignixa.Abstractions.FhirVersion.Stu3)
         {
             array.Add(supportedProfile.MutableNode);
         }
@@ -162,7 +163,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
             {
                 item.FhirVersion = FhirVersion;
                 // VERSION-AWARE: Use FhirVersion to determine storage format
-                if (FhirVersion == FhirSpecification.Stu3)
+                if (FhirVersion == Ignixa.Abstractions.FhirVersion.Stu3)
                 {
                     array.Add(item.MutableNode);
                 }

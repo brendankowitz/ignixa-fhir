@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
-using Ignixa.Serialization;
 
 namespace Ignixa.Specification;
 
@@ -15,9 +14,9 @@ namespace Ignixa.Specification;
 public interface IFhirSchemaProvider : ISchema
 {
     /// <summary>
-    /// Gets the FHIR specification version (e.g., STU3, R4, R4B, R5, R6).
+    /// Gets the FHIR specification version (e.g., Stu3, R4, R4B, R5, R6).
     /// </summary>
-    new FhirSpecification Version { get; }
+    new FhirVersion Version { get; }
 
     /// <summary>
     /// Gets the set of resource type names defined in this schema.

@@ -17,5 +17,5 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: SuppressMessage("Design", "CA1028:Enum Storage should be Int32", Justification = "Byte enum is intentional for performance (2ns type checks, minimal memory)", Scope = "type", Target = "~T:Ignixa.Abstractions.FhirPrimitive")]
 [assembly: SuppressMessage("Design", "CA1028:Enum Storage should be Int32", Justification = "Byte enum is intentional for minimal memory footprint", Scope = "type", Target = "~T:Ignixa.Abstractions.FhirVersion")]
 
-// CA1008: FhirVersion enum doesn't need None=0 - Justified: FHIR versions start at STU3=3, None is not a valid version
-[assembly: SuppressMessage("Design", "CA1008:Enums should have zero value", Justification = "FHIR versions start at STU3 (3), no None/Unknown value needed", Scope = "type", Target = "~T:Ignixa.Abstractions.FhirVersion")]
+// CA1008: FhirVersion enum doesn't need None=0 - Justified: FHIR versions start at Stu3=3, None is not a valid version
+[assembly: SuppressMessage("Design", "CA1008:Enums should have zero value", Justification = "FHIR versions start at Stu3 (3), no None/Unknown value needed", Scope = "type", Target = "~T:Ignixa.Abstractions.FhirVersion")]

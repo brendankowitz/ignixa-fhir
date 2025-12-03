@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -31,7 +32,7 @@ public class BundleJsonNode : ResourceJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public BundleJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public BundleJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }

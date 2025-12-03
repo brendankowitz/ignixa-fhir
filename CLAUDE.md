@@ -409,13 +409,15 @@ if (resource.MutableNode.TryGetPropertyValue("active", out var node)) {
 #### Correct Usage Pattern
 
 ```csharp
+using Ignixa.Abstractions;
+
 // ❌ WRONG: Accessing properties before setting FhirVersion
 var map = new StructureMapJsonNode();
 map.Const.Add(...); // Will throw NotSupportedException!
 
 // ✅ CORRECT: Set FhirVersion FIRST
 var map = new StructureMapJsonNode();
-map.FhirVersion = FhirSpecification.R5; // Set this FIRST
+map.FhirVersion = FhirVersion.R5; // Set this FIRST
 map.Const.Add(new StructureMapConstJsonNode { Name = "myConst", Value = "'value'" });
 ```
 
@@ -424,20 +426,21 @@ map.Const.Add(new StructureMapConstJsonNode { Name = "myConst", Value = "'value'
 Use extension methods from `Ignixa.Serialization.Extensions` for version-agnostic operations:
 
 ```csharp
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Extensions;
 
 // Get dependent variables (works for both R4 and R5)
 var variables = dependent.GetDependentVariables(); // Returns IEnumerable<string>
 
 // Add dependent variable (version-aware)
-dependent.FhirVersion = FhirSpecification.R4; // or R5
+dependent.FhirVersion = FhirVersion.R4; // or R5
 dependent.AddDependentVariable("myVar");
 
 // Get default value as string (cross-version)
 var defaultValue = source.GetDefaultValueString();
 
 // Set default value (version-appropriate)
-source.FhirVersion = FhirSpecification.R5;
+source.FhirVersion = FhirVersion.R5;
 source.SetDefaultValueString("'my value'");
 
 // Safely check for constants support
@@ -455,6 +458,7 @@ var constants = map.GetConstantsOrEmpty(); // Returns empty for R4
 When building StructureMaps from FHIR Mapping Language (FML):
 
 ```csharp
+using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.Serialization;
 
@@ -467,11 +471,11 @@ var fml = """
     """;
 
 // Specify target FHIR version when building
-var builder = new StructureMapBuilder(FhirSpecification.R5); // or R4
+var builder = new StructureMapBuilder(FhirVersion.R5); // or R4
 var structureMap = builder.Build(parser.Parse(fml));
 
 // FhirVersion is automatically set on all nodes
-structureMap.FhirVersion.Should().Be(FhirSpecification.R5);
+structureMap.FhirVersion.Should().Be(FhirVersion.R5);
 ```
 
 #### Migration R4 → R5
@@ -480,16 +484,18 @@ When migrating StructureMaps from R4 to R5:
 
 1. **Update `Dependent` calls**: Convert `Variable` to `Parameter`
    ```csharp
+   using Ignixa.Abstractions;
+
    // R4
    dependent.Variable.Add("var1");
 
    // R5
-   var param = new StructureMapParameterJsonNode { FhirVersion = FhirSpecification.R5 };
+   var param = new StructureMapParameterJsonNode { FhirVersion = FhirVersion.R5 };
    param.SetValue("String", JsonValue.Create("var1"));
    dependent.Parameter.Add(param);
 
    // Or use extension method (recommended)
-   dependent.FhirVersion = FhirSpecification.R5;
+   dependent.FhirVersion = FhirVersion.R5;
    dependent.AddDependentVariable("var1");
    ```
 

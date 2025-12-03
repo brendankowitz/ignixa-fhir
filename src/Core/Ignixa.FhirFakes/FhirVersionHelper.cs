@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 
@@ -22,7 +23,7 @@ internal static class FhirVersionHelper
     public static bool IsStu3(this IFhirSchemaProvider schemaProvider)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
-        return schemaProvider.Version == FhirSpecification.Stu3;
+        return schemaProvider.Version == FhirVersion.Stu3;
     }
 
     /// <summary>
@@ -33,7 +34,7 @@ internal static class FhirVersionHelper
     public static bool IsR4OrLater(this IFhirSchemaProvider schemaProvider)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
-        return schemaProvider.Version >= FhirSpecification.R4;
+        return schemaProvider.Version >= FhirVersion.R4;
     }
 
     /// <summary>

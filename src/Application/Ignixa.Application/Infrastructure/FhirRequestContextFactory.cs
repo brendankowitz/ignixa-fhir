@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -25,7 +25,7 @@ public static class FhirRequestContextFactory
     public static IFhirRequestContext CreateBackgroundContext(
         int tenantId,
         TenantConfiguration? tenantConfiguration = null,
-        FhirSpecification fhirVersion = FhirSpecification.R4,
+        FhirVersion fhirVersion = FhirVersion.R4,
         string? resourceType = null)
     {
         return new FhirRequestContext

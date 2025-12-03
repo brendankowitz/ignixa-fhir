@@ -51,7 +51,7 @@ public class OperationsSegmentTests
 
         var statement = new CapabilityStatementJsonNode();
         var context = new CapabilityContext(
-            FhirVersion: FhirSpecification.R4,
+            FhirVersion: FhirVersion.R4,
             TenantId: 1);
 
         // Setup repository to return a mock OperationDefinition for "transform"

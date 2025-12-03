@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -24,7 +25,7 @@ public class StructureMapDependentJsonNode : BaseJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public StructureMapDependentJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public StructureMapDependentJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -50,7 +51,7 @@ public class StructureMapDependentJsonNode : BaseJsonNode
     {
         get
         {
-            if (FhirVersion.HasValue && FhirVersion >= FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion >= Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"Variable is not supported in {FhirVersion}. In R5+, use the Parameter property instead for structured parameters.");
@@ -70,7 +71,7 @@ public class StructureMapDependentJsonNode : BaseJsonNode
     {
         get
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"Parameter is not supported in {FhirVersion}. In R4/R4B, use the Variable property instead for simple string variables.");

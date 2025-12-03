@@ -12,7 +12,7 @@ using System.Collections.Generic;
 namespace Ignixa.Search.Generated;
 
 /// <summary>
-/// Pre-generated code system mappings for FHIR STU3.
+/// Pre-generated code system mappings for FHIR Stu3.
 /// Maps resource paths to their canonical code system URLs.
 /// Eliminates runtime JSON parsing overhead.
 /// </summary>
@@ -21,7 +21,7 @@ public static class STU3CodeSystemMappings
     private static Dictionary<string, string>? _cached;
 
     /// <summary>
-    /// Gets all resource path → code system URL mappings for FHIR STU3.
+    /// Gets all resource path → code system URL mappings for FHIR Stu3.
     /// Thread-safe lazy initialization with caching.
     /// </summary>
     public static Dictionary<string, string> GetMappings()

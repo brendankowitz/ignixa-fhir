@@ -5,12 +5,12 @@
 
 using System.Collections.Concurrent;
 using EnsureThat;
+using Ignixa.Abstractions;
 using Ignixa.Domain;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Parsing;
-using Ignixa.Serialization;
 
 namespace Ignixa.Application.Features.Search;
 
@@ -23,7 +23,7 @@ namespace Ignixa.Application.Features.Search;
 public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, IDisposable
 {
     private readonly IFhirVersionContext _versionContext;
-    private readonly ConcurrentDictionary<(TenantContext Tenant, FhirSpecification Version), ISearchOptionsBuilder> _builderCache = new();
+    private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version), ISearchOptionsBuilder> _builderCache = new();
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
@@ -34,7 +34,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     }
 
     /// <inheritdoc/>
-    public ISearchOptionsBuilder Create(FhirSpecification fhirVersion)
+    public ISearchOptionsBuilder Create(FhirVersion fhirVersion)
     {
         // Phase 1: Single-tenant mode - always use default tenant
         // Phase 2+: Extract tenant from HttpContext and create tenant-specific builders
@@ -49,7 +49,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     /// <param name="fhirVersion">The FHIR version.</param>
     private ISearchOptionsBuilder CreateForTenant(
         TenantContext tenant,
-        FhirSpecification fhirVersion)
+        FhirVersion fhirVersion)
     {
         var cacheKey = (tenant, fhirVersion);
 

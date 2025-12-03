@@ -3,11 +3,11 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -52,7 +52,7 @@ public class FhirRequestContext : IFhirRequestContext
     /// FHIR version extracted from Content-Type/Accept headers.
     /// Defaults to R4.
     /// </summary>
-    public FhirSpecification FhirVersion { get; set; } = FhirSpecification.R4;
+    public FhirVersion FhirVersion { get; set; } = FhirVersion.R4;
 
     /// <summary>
     /// Resource type from route parameters or bundle entry.

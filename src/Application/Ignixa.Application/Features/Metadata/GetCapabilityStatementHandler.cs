@@ -5,6 +5,7 @@
 
 using Medino;
 using Microsoft.Extensions.Logging;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Domain.Abstractions;
@@ -43,7 +44,7 @@ public class GetCapabilityStatementHandler
             request.TenantId?.ToString() ?? "system-wide");
 
         // Determine FHIR version from tenant or default
-        FhirSpecification fhirVersion = FhirSpecification.R4; // Default
+        FhirVersion fhirVersion = FhirVersion.R4; // Default
 
         if (request.TenantId.HasValue)
         {

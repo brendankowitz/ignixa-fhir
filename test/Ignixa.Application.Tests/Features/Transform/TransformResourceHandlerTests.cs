@@ -49,7 +49,7 @@ public class TransformResourceHandlerTests
         // Use real R4 schema provider for Transform tests
         _versionContext = Substitute.For<IFhirVersionContext>();
         var r4Schema = new R4CoreSchemaProvider();
-        _versionContext.GetSchemaProvider(FhirSpecification.R4, Arg.Any<int?>())
+        _versionContext.GetSchemaProvider(FhirVersion.R4, Arg.Any<int?>())
             .Returns(r4Schema);
 
         // Mock IFhirRequestContextAccessor with test context
@@ -57,7 +57,7 @@ public class TransformResourceHandlerTests
         var mockContext = new FhirRequestContext
         {
             TenantId = 1,
-            FhirVersion = FhirSpecification.R4
+            FhirVersion = FhirVersion.R4
         };
         _contextAccessor.RequestContext.Returns(mockContext);
 

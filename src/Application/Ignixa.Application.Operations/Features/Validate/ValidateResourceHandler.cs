@@ -25,13 +25,13 @@ namespace Ignixa.Application.Operations.Features.Validate;
 public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, ValidateResourceResult>
 {
     private readonly IFhirRequestContextAccessor _contextAccessor;
-    private readonly Func<FhirSpecification, int, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirVersion, int, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidateResourceHandler> _logger;
 
     public ValidateResourceHandler(
         IFhirRequestContextAccessor contextAccessor,
-        Func<FhirSpecification, int, IValidationSchemaResolver> schemaResolverFactory,
+        Func<FhirVersion, int, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidateResourceHandler> logger)
     {

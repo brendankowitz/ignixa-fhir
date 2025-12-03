@@ -28,7 +28,7 @@ public class FhirPathEvaluatorTests
 
     public FhirPathEvaluatorTests()
     {
-        _r4Provider = FhirSpecification.R4.GetSchemaProvider();
+        _r4Provider = FhirVersion.R4.GetSchemaProvider();
     }
 
     /// <summary>

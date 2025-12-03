@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -33,7 +34,7 @@ public class StructureMapJsonNode : ResourceJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public StructureMapJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public StructureMapJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -112,7 +113,7 @@ public class StructureMapJsonNode : ResourceJsonNode
     {
         get
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"VersionAlgorithmString is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
@@ -121,7 +122,7 @@ public class StructureMapJsonNode : ResourceJsonNode
         }
         set
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"VersionAlgorithmString is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
@@ -140,7 +141,7 @@ public class StructureMapJsonNode : ResourceJsonNode
     {
         get
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"CopyrightLabel is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
@@ -149,7 +150,7 @@ public class StructureMapJsonNode : ResourceJsonNode
         }
         set
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"CopyrightLabel is not supported in {FhirVersion}. This property was introduced in FHIR R5.");
@@ -168,7 +169,7 @@ public class StructureMapJsonNode : ResourceJsonNode
     {
         get
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"Const is not supported in {FhirVersion}. Constants were introduced in FHIR R5.");

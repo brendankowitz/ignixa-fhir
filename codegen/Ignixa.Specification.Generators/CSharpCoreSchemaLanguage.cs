@@ -128,10 +128,10 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine($"    Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.{coreFhirVersion};");
         sb.AppendLine();
 
-        // IFhirSchemaProvider.Version property (using FhirSpecification)
-        // Note: FhirSpecification enum uses "Stu3" not "STU3"
-        string fhirSpecValue = coreFhirVersion == "STU3" ? "Stu3" : coreFhirVersion;
-        sb.AppendLine($"    public FhirSpecification Version => FhirSpecification.{fhirSpecValue};");
+        // IFhirSchemaProvider.Version property (using FhirVersion)
+        // Note: FhirVersion enum uses "Stu3" not "STU3"
+        string fhirVersionValue = coreFhirVersion == "STU3" ? "Stu3" : coreFhirVersion;
+        sb.AppendLine($"    public FhirVersion Version => FhirVersion.{fhirVersionValue};");
         sb.AppendLine();
 
         // FullVersion property

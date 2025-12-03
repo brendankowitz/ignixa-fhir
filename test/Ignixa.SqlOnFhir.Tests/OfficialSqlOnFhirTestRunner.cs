@@ -184,7 +184,7 @@ public class OfficialSqlOnFhirTestRunner
 
     /// <summary>
     /// Gets the appropriate IFhirSchemaProvider for a FHIR version string.
-    /// Uses existing FhirSpecification extensions to resolve the provider.
+    /// Uses existing FhirVersion extensions to resolve the provider.
     /// </summary>
     private static IFhirSchemaProvider GetStructureDefinitionProvider(string fhirVersion)
     {

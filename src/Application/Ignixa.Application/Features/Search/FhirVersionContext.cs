@@ -22,13 +22,13 @@ namespace Ignixa.Application.Features.Search;
 /// </summary>
 public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 {
-    private readonly ConcurrentDictionary<FhirSpecification, IFhirSchemaProvider> _schemaProviders = new();
-    private readonly ConcurrentDictionary<(FhirSpecification, int), CompositeStructureDefinitionSummaryProvider> _compositeProviders = new();
-    private readonly ConcurrentDictionary<FhirSpecification, ISearchIndexer> _searchIndexers = new();
-    private readonly ConcurrentDictionary<(FhirSpecification, int), ISearchIndexer> _tenantSearchIndexers = new();
-    private readonly ConcurrentDictionary<FhirSpecification, ISearchParameterDefinitionManager> _searchParamManagers = new();
-    private readonly ConcurrentDictionary<(FhirSpecification, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
-    private readonly ConcurrentDictionary<FhirSpecification, ICompartmentDefinitionManager> _compartmentManagers = new();
+    private readonly ConcurrentDictionary<FhirVersion, IFhirSchemaProvider> _schemaProviders = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), CompositeStructureDefinitionSummaryProvider> _compositeProviders = new();
+    private readonly ConcurrentDictionary<FhirVersion, ISearchIndexer> _searchIndexers = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), ISearchIndexer> _tenantSearchIndexers = new();
+    private readonly ConcurrentDictionary<FhirVersion, ISearchParameterDefinitionManager> _searchParamManagers = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
+    private readonly ConcurrentDictionary<FhirVersion, ICompartmentDefinitionManager> _compartmentManagers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
     private readonly SemaphoreSlim _searchParamLock = new(1, 1);
     private readonly SemaphoreSlim _compartmentLock = new(1, 1);
@@ -56,24 +56,24 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public IFhirSchemaProvider GetBaseSchemaProvider(FhirSpecification fhirVersion)
+    public IFhirSchemaProvider GetBaseSchemaProvider(FhirVersion fhirVersion)
     {
         return _schemaProviders.GetOrAdd(fhirVersion, version =>
         {
             return version switch
             {
-                FhirSpecification.Stu3 => new STU3CoreSchemaProvider(),
-                FhirSpecification.R4 => new R4CoreSchemaProvider(),
-                FhirSpecification.R4B => new R4BCoreSchemaProvider(),
-                FhirSpecification.R5 => new R5CoreSchemaProvider(),
-                FhirSpecification.R6 => new R6CoreSchemaProvider(),
+                FhirVersion.Stu3 => new STU3CoreSchemaProvider(),
+                FhirVersion.R4 => new R4CoreSchemaProvider(),
+                FhirVersion.R4B => new R4BCoreSchemaProvider(),
+                FhirVersion.R5 => new R5CoreSchemaProvider(),
+                FhirVersion.R6 => new R6CoreSchemaProvider(),
                 _ => throw new ArgumentException($"Unsupported FHIR version: {version}")
             };
         });
     }
 
     /// <inheritdoc/>
-    public IFhirSchemaProvider GetSchemaProvider(FhirSpecification fhirVersion, Nullable<int> tenantId)
+    public IFhirSchemaProvider GetSchemaProvider(FhirVersion fhirVersion, Nullable<int> tenantId)
     {
         // If no tenant ID provided, return base provider
         if (!tenantId.HasValue)
@@ -131,7 +131,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion)
+    public ISearchIndexer GetSearchIndexer(FhirVersion fhirVersion)
     {
         // Fast path: check if already cached
         if (_searchIndexers.TryGetValue(fhirVersion, out var cachedIndexer))
@@ -171,7 +171,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public ISearchIndexer GetSearchIndexer(FhirSpecification fhirVersion, Nullable<int> tenantId)
+    public ISearchIndexer GetSearchIndexer(FhirVersion fhirVersion, Nullable<int> tenantId)
     {
         // If no tenant ID provided, return base indexer
         if (!tenantId.HasValue)
@@ -237,7 +237,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion)
+    public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirVersion fhirVersion)
     {
         // Fast path: check if already cached
         if (_searchParamManagers.TryGetValue(fhirVersion, out var cachedManager))
@@ -272,7 +272,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirSpecification fhirVersion, Nullable<int> tenantId)
+    public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirVersion fhirVersion, Nullable<int> tenantId)
     {
         // If no tenant ID provided, return base manager
         if (!tenantId.HasValue)
@@ -358,7 +358,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     }
 
     /// <inheritdoc/>
-    public ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirSpecification fhirVersion)
+    public ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirVersion fhirVersion)
     {
         // Fast path: check if already cached
         if (_compartmentManagers.TryGetValue(fhirVersion, out var cachedManager))

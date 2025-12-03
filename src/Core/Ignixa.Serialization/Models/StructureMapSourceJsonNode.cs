@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -21,7 +22,7 @@ public class StructureMapSourceJsonNode : BaseJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public StructureMapSourceJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public StructureMapSourceJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -137,11 +138,12 @@ public class StructureMapSourceJsonNode : BaseJsonNode
     /// </summary>
     /// <exception cref="NotSupportedException">Thrown when accessed in FHIR versions prior to R5.</exception>
     [JsonIgnore]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1721:Property names should not match get methods", Justification = "DefaultValue property is R5+ only; GetDefaultValue() method is R4/R4B only. Version-specific by design.")]
     public string? DefaultValue
     {
         get
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"DefaultValue (string) is not supported in {FhirVersion}. In R4/R4B, use GetDefaultValue() or SetDefaultValue(suffix, value) for typed defaultValue[x] properties.");
@@ -150,7 +152,7 @@ public class StructureMapSourceJsonNode : BaseJsonNode
         }
         set
         {
-            if (FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new NotSupportedException(
                     $"DefaultValue (string) is not supported in {FhirVersion}. In R4/R4B, use SetDefaultValue(suffix, value) for typed defaultValue[x] properties.");
@@ -174,7 +176,7 @@ public class StructureMapSourceJsonNode : BaseJsonNode
     /// </remarks>
     public JsonNode? GetDefaultValue()
     {
-        if (FhirVersion.HasValue && FhirVersion >= FhirSpecification.R5)
+        if (FhirVersion.HasValue && FhirVersion >= Ignixa.Abstractions.FhirVersion.R5)
         {
             // R5: defaultValue is just a string, not a choice type
             var stringValue = GetProperty<string>("defaultValue");
@@ -184,7 +186,7 @@ public class StructureMapSourceJsonNode : BaseJsonNode
         // R4/R4B: search for defaultValue[x]
         foreach (var property in MutableNode)
         {
-            if (property.Key.StartsWith("default", StringComparison.Ordinal))
+            if (property.Key.StartsWith("defaultValue", StringComparison.Ordinal))
             {
                 return property.Value;
             }
@@ -202,14 +204,14 @@ public class StructureMapSourceJsonNode : BaseJsonNode
     /// <exception cref="NotSupportedException">Thrown when called in FHIR R5 or later.</exception>
     public void SetDefaultValue(string suffix, JsonNode? value)
     {
-        if (FhirVersion.HasValue && FhirVersion >= FhirSpecification.R5)
+        if (FhirVersion.HasValue && FhirVersion >= Ignixa.Abstractions.FhirVersion.R5)
         {
             throw new NotSupportedException(
                 $"SetDefaultValue(suffix, value) is not supported in {FhirVersion}. In R5+, use the DefaultValue property (string) instead.");
         }
 
-        // Remove any existing default[x] properties
-        var keysToRemove = MutableNode.Where(p => p.Key.StartsWith("default", StringComparison.Ordinal))
+        // Remove any existing defaultValue[x] properties
+        var keysToRemove = MutableNode.Where(p => p.Key.StartsWith("defaultValue", StringComparison.Ordinal))
             .Select(p => p.Key)
             .ToList();
 
@@ -221,7 +223,7 @@ public class StructureMapSourceJsonNode : BaseJsonNode
         // Set new value if not null
         if (value != null)
         {
-            SetProperty($"default{suffix}", value);
+            SetProperty($"defaultValue{suffix}", value);
         }
     }
 }

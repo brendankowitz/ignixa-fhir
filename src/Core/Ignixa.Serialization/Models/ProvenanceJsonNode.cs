@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -36,7 +37,7 @@ public class ProvenanceJsonNode : ResourceJsonNode
     /// <summary>
     /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    internal ProvenanceJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    internal ProvenanceJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -256,7 +257,7 @@ public class ProvenanceJsonNode : ResourceJsonNode
         /// <summary>
         /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
         /// </summary>
-        internal ReferenceComponent(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        internal ReferenceComponent(JsonObject jsonObject, FhirVersion? fhirVersion = null)
             : base(jsonObject, fhirVersion)
         {
         }
@@ -312,7 +313,7 @@ public class ProvenanceJsonNode : ResourceJsonNode
         /// <summary>
         /// Internal constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
         /// </summary>
-        internal AgentComponent(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        internal AgentComponent(JsonObject jsonObject, FhirVersion? fhirVersion = null)
             : base(jsonObject, fhirVersion)
         {
         }

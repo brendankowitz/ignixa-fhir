@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics;
+using Ignixa.Abstractions;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
@@ -84,7 +85,7 @@ public class PackageLoadedSearchParameterSyncHandler : INotificationHandler<Pack
                 return;
             }
 
-            // Convert tenant's FHIR version string to enum (e.g., "4.0" -> FhirSpecification.R4)
+            // Convert tenant's FHIR version string to enum (e.g., "4.0" -> FhirVersion.R4)
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
 
             _logger.LogDebug(

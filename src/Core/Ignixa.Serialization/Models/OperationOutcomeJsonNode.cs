@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -26,7 +27,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public OperationOutcomeJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public OperationOutcomeJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -47,7 +48,7 @@ public class OperationOutcomeJsonNode : ResourceJsonNode
         {
         }
 
-        public IssueComponent(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+        public IssueComponent(JsonObject jsonObject, FhirVersion? fhirVersion = null)
             : base(jsonObject, fhirVersion)
         {
         }
@@ -354,7 +355,7 @@ public class CodeableConceptJsonNode : BaseJsonNode
     {
     }
 
-    public CodeableConceptJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public CodeableConceptJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -380,7 +381,7 @@ public class CodingJsonNode : BaseJsonNode
     {
     }
 
-    public CodingJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public CodingJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }

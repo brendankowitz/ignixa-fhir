@@ -6,6 +6,7 @@
  */
 
 using FluentAssertions;
+using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
@@ -34,13 +35,13 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R5);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
 
         // Act
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirSpecification.R5);
+        structureMap.FhirVersion.Should().Be(FhirVersion.R5);
     }
 
     [Fact]
@@ -54,13 +55,13 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R4);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
 
         // Act
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirSpecification.R4);
+        structureMap.FhirVersion.Should().Be(FhirVersion.R4);
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public class StructureMapBuilderVersionTests
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirSpecification.R5);
+        structureMap.FhirVersion.Should().Be(FhirVersion.R5);
     }
 
     [Fact]
@@ -98,7 +99,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R5);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -129,7 +130,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R4);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -157,7 +158,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R5);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -181,7 +182,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R4);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -205,7 +206,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R5);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -228,7 +229,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R4);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -249,7 +250,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R5);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -271,7 +272,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R4);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -292,7 +293,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R5);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
 
         // Act
         var structureMap = builder.Build(ast);
@@ -312,7 +313,7 @@ public class StructureMapBuilderVersionTests
             }
             """;
         var ast = _parser.Parse(fml);
-        var builder = new StructureMapBuilder(FhirSpecification.R4);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
 
         // Act
         var structureMap = builder.Build(ast);

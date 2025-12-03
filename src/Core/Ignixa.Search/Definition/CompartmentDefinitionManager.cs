@@ -21,20 +21,20 @@ public class CompartmentDefinitionManager : ICompartmentDefinitionManager
     // This data structure stores the lookup of compartmentSearchParams (in the hash set) by ResourceType and CompartmentType.
     private readonly Dictionary<string, Dictionary<CompartmentType, HashSet<string>>> _compartmentSearchParamsLookup;
 
-    public CompartmentDefinitionManager(FhirSpecification fhirSpecification)
+    public CompartmentDefinitionManager(FhirVersion fhirVersion)
     {
         // Load pre-generated compartment definitions to eliminate runtime JSON parsing overhead.
         // The compartment definitions are compiled from the official HL7 definitions available at
         // https://www.hl7.org/fhir/compartmentdefinition.html.
         Dictionary<CompartmentType, (CompartmentType Code, Uri Url, IList<(string Resource, IList<string> Params)> Resources)> compartments =
-            fhirSpecification switch
+            fhirVersion switch
             {
-                FhirSpecification.R4 => R4CompartmentDefinitions.GetCompartments(),
-                FhirSpecification.R4B => R4BCompartmentDefinitions.GetCompartments(),
-                FhirSpecification.R5 => R5CompartmentDefinitions.GetCompartments(),
-                FhirSpecification.R6 => R6CompartmentDefinitions.GetCompartments(),
-                FhirSpecification.Stu3 => STU3CompartmentDefinitions.GetCompartments(),
-                _ => throw new NotSupportedException($"FHIR version {fhirSpecification} is not supported")
+                FhirVersion.R4 => R4CompartmentDefinitions.GetCompartments(),
+                FhirVersion.R4B => R4BCompartmentDefinitions.GetCompartments(),
+                FhirVersion.R5 => R5CompartmentDefinitions.GetCompartments(),
+                FhirVersion.R6 => R6CompartmentDefinitions.GetCompartments(),
+                FhirVersion.Stu3 => STU3CompartmentDefinitions.GetCompartments(),
+                _ => throw new NotSupportedException($"FHIR version {fhirVersion} is not supported")
             };
 
         (_compartmentSearchParamsLookup, _compartmentResourceTypesLookup) = BuildFromGenerated(compartments);

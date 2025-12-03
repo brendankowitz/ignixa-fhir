@@ -10,8 +10,8 @@ namespace Ignixa.Abstractions;
 /// </summary>
 public enum FhirVersion : byte
 {
-    /// <summary>FHIR STU3 (3.0.x)</summary>
-    STU3 = 30,
+    /// <summary>FHIR Stu3 (3.0.x)</summary>
+    Stu3 = 30,
 
     /// <summary>FHIR R4 (4.0.x)</summary>
     R4 = 40,
@@ -23,5 +23,11 @@ public enum FhirVersion : byte
     R5 = 50,
 
     /// <summary>FHIR R6 (6.0.x)</summary>
-    R6 = 60
+    R6 = 60,
+    
+    /// <summary>
+    /// Unspecified version - defaults to the latest (R6) for version comparisons.
+    /// Use this when you want forward-compatible behavior that assumes the latest FHIR version.
+    /// </summary>
+    Unspecified = 255
 }

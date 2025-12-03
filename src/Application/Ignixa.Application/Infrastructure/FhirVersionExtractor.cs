@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
+using Ignixa.Abstractions;
 using Ignixa.Domain;
 using Ignixa.Serialization;
 
@@ -19,15 +20,15 @@ public static class FhirVersionExtractor
     /// <summary>
     /// Default FHIR version when not specified in headers.
     /// </summary>
-    public const FhirSpecification DefaultFhirVersion = FhirSpecification.R4;
+    public const FhirVersion DefaultFhirVersion = FhirVersion.R4;
 
     /// <summary>
     /// Extracts FHIR version from Content-Type or Accept headers.
     /// Returns DefaultFhirVersion (R4) if not specified.
     /// </summary>
     /// <param name="context">The HTTP context containing the request headers.</param>
-    /// <returns>FHIR version enum (e.g., FhirSpecification.R4).</returns>
-    public static FhirSpecification ExtractFhirVersion(HttpContext? context)
+    /// <returns>FHIR version enum (e.g., FhirVersion.R4).</returns>
+    public static FhirVersion ExtractFhirVersion(HttpContext? context)
     {
         if (context == null)
         {
@@ -60,11 +61,11 @@ public static class FhirVersionExtractor
 
     /// <summary>
     /// Parses fhirVersion parameter from media type string and converts to enum.
-    /// Example: "application/fhir+json; fhirVersion=5.0" → FhirSpecification.R5
+    /// Example: "application/fhir+json; fhirVersion=5.0" → FhirVersion.R5
     /// </summary>
     /// <param name="mediaType">Media type string with optional parameters.</param>
     /// <returns>FHIR version enum if found and valid, null otherwise.</returns>
-    private static FhirSpecification? ParseFhirVersionFromMediaType(string? mediaType)
+    private static FhirVersion? ParseFhirVersionFromMediaType(string? mediaType)
     {
         if (string.IsNullOrEmpty(mediaType))
         {

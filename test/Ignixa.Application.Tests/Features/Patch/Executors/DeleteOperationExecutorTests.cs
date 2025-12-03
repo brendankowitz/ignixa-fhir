@@ -6,6 +6,7 @@
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Features.Search;
@@ -34,7 +35,7 @@ public class DeleteOperationExecutorTests
         var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);
 
         // Schema provider factory for tests (always returns R4)
-        var schemaProviderFactory = () => versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        var schemaProviderFactory = () => versionContext.GetBaseSchemaProvider(FhirVersion.R4);
         var mutator = new JsonNodeMutator(evaluator, compiler, schemaProviderFactory);
 
         _executor = new DeleteOperationExecutor(logger, mutator);

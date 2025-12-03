@@ -24,7 +24,7 @@ public static class FhirPrimitiveExtensions
             FhirPrimitive.Url or FhirPrimitive.Canonical or FhirPrimitive.Uuid
                 => version >= FhirVersion.R4,
             FhirPrimitive.None => false,
-            _ => true  // All others supported since STU3
+            _ => true  // All others supported since Stu3
         };
     }
 

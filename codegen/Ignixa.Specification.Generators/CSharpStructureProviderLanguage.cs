@@ -43,7 +43,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
             throw new ArgumentException($"Configuration must be of type {nameof(CSharpStructureProviderConfig)}", nameof(config));
         }
 
-        // Get the FHIR version (use Stu3 to match FhirSpecification enum casing)
+        // Get the FHIR version (use Stu3 to match FhirVersion enum casing)
         string fhirVersion = definitions.FhirSequence switch
         {
             FhirReleases.FhirSequenceCodes.R4 => "R4",
@@ -104,7 +104,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("{");
 
         // Version property
-        sb.AppendLine($"    public FhirSpecification Version => FhirSpecification.{fhirVersion};");
+        sb.AppendLine($"    public FhirVersion Version => FhirVersion.{fhirVersion};");
         sb.AppendLine();
 
         // FullVersion property (uses actual package version from metadata)

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain;
@@ -84,7 +85,7 @@ public class PostPutBenchmarks
         // Setup version context and schema provider
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
-        _schemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        _schemaProvider = _versionContext.GetBaseSchemaProvider(FhirVersion.R4);
 
         // Pre-parse for some benchmarks
         _patientNode = JsonSerializer.Deserialize<ResourceJsonNode>(_patientJson)!;
@@ -131,7 +132,7 @@ public class PostPutBenchmarks
             node = await JsonSourceNodeFactory.ParseAsync(stream, CancellationToken.None);
         }
 
-        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
+        var searchIndexer = _versionContext.GetSearchIndexer(FhirVersion.R4, tenantId: null);
         var typedElement = node.ToElement(_schemaProvider);
         return searchIndexer.Extract((Ignixa.Abstractions.IElement)typedElement);
     }
@@ -153,7 +154,7 @@ public class PostPutBenchmarks
         var typedElement = node.ToElement(_schemaProvider);
 
         // Step 3: Extract search indices
-        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
+        var searchIndexer = _versionContext.GetSearchIndexer(FhirVersion.R4, tenantId: null);
         var searchIndices = searchIndexer.Extract((Ignixa.Abstractions.IElement)typedElement);
 
         // Step 4: Set meta (simulating handler logic)
@@ -181,7 +182,7 @@ public class PostPutBenchmarks
         }
 
         var typedElement = node.ToElement(_schemaProvider);
-        var searchIndexer = _versionContext.GetSearchIndexer(FhirSpecification.R4, tenantId: null);
+        var searchIndexer = _versionContext.GetSearchIndexer(FhirVersion.R4, tenantId: null);
         var searchIndices = searchIndexer.Extract((Ignixa.Abstractions.IElement)typedElement);
 
         // Simulate wrapper creation

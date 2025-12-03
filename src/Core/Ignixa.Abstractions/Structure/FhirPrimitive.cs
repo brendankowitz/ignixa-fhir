@@ -7,11 +7,11 @@ namespace Ignixa.Abstractions;
 
 /// <summary>
 /// FHIR primitive types (byte-backed for fast type checking).
-/// Supports STU3, R4, R4B, R5, R6.
+/// Supports Stu3, R4, R4B, R5, R6.
 /// </summary>
 /// <remarks>
 /// Research findings:
-/// - STU3: 16 types
+/// - Stu3: 16 types
 /// - R4/R4B: 19 types (added url, canonical, uuid)
 /// - R5/R6: 20 types (added integer64)
 ///
@@ -23,7 +23,7 @@ public enum FhirPrimitive : byte
     /// <summary>Not a primitive type (complex type)</summary>
     None = 0,
 
-    // ===== STU3 Core Primitives (16 types) =====
+    // ===== Stu3 Core Primitives (16 types) =====
 
     /// <summary>true | false</summary>
     Boolean = 1,

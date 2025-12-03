@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
 using Ignixa.Serialization.Models;
@@ -25,7 +26,7 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R4;
+        map.FhirVersion = FhirVersion.R4;
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => map.Const.Add(new StructureMapConstJsonNode()));
@@ -38,7 +39,7 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R4;
+        map.FhirVersion = FhirVersion.R4;
 
         // Act & Assert
         var getException = Assert.Throws<NotSupportedException>(() => _ = map.VersionAlgorithmString);
@@ -53,7 +54,7 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R4;
+        map.FhirVersion = FhirVersion.R4;
 
         // Act & Assert
         var getException = Assert.Throws<NotSupportedException>(() => _ = map.CopyrightLabel);
@@ -68,10 +69,10 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R5;
+        map.FhirVersion = FhirVersion.R5;
 
         // Act
-        var constNode = new StructureMapConstJsonNode(new JsonObject(), FhirSpecification.R5)
+        var constNode = new StructureMapConstJsonNode(new JsonObject(), FhirVersion.R5)
         {
             Name = "myConstant",
             Value = "'some value'"
@@ -91,7 +92,7 @@ public class StructureMapVersionTests
     public void GivenR5Dependent_WhenAccessingVariable_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R5);
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R5);
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => dependent.Variable.Add("var1"));
@@ -103,10 +104,10 @@ public class StructureMapVersionTests
     public void GivenR4Dependent_WhenAccessingParameter_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R4);
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act & Assert
-        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R4);
+        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R4);
         var exception = Assert.Throws<NotSupportedException>(() => dependent.Parameter.Add(param));
         exception.Message.Should().Contain("Parameter is not supported in R4");
         exception.Message.Should().Contain("use the Variable property instead");
@@ -116,7 +117,7 @@ public class StructureMapVersionTests
     public void GivenR4Dependent_WhenAccessingVariable_ThenSucceeds()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R4)
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R4)
         {
             Name = "callGroup"
         };
@@ -135,13 +136,13 @@ public class StructureMapVersionTests
     public void GivenR5Dependent_WhenAccessingParameter_ThenSucceeds()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R5)
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R5)
         {
             Name = "callGroup"
         };
 
         // Act
-        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R5);
+        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R5);
         param.SetValue("String", JsonValue.Create("value1"));
         dependent.Parameter.Add(param);
 
@@ -158,7 +159,7 @@ public class StructureMapVersionTests
     public void GivenR5Source_WhenAccessingDefaultValueProperty_ThenSucceeds()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R5);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R5);
 
         // Act
         source.DefaultValue = "'some FHIRPath expression'";
@@ -171,7 +172,7 @@ public class StructureMapVersionTests
     public void GivenR4Source_WhenAccessingDefaultValueProperty_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R4);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act & Assert
         var getException = Assert.Throws<NotSupportedException>(() => _ = source.DefaultValue);
@@ -185,7 +186,7 @@ public class StructureMapVersionTests
     public void GivenR4Source_WhenUsingSetDefaultValue_ThenSucceeds()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R4);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act
         source.SetDefaultValue("String", JsonValue.Create("test"));
@@ -200,7 +201,7 @@ public class StructureMapVersionTests
     public void GivenR5Source_WhenUsingSetDefaultValue_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R5);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R5);
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() =>
@@ -216,7 +217,7 @@ public class StructureMapVersionTests
     public void GivenR5Parameter_WhenSettingDateValue_ThenSucceeds()
     {
         // Arrange
-        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R5);
+        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R5);
 
         // Act
         param.SetValueDate("2025-01-15");
@@ -231,7 +232,7 @@ public class StructureMapVersionTests
     public void GivenR4Parameter_WhenSettingDateValue_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R4);
+        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => param.SetValueDate("2025-01-15"));
@@ -243,7 +244,7 @@ public class StructureMapVersionTests
     public void GivenR4Parameter_WhenSettingTimeValue_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R4);
+        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => param.SetValueTime("14:30:00"));
@@ -254,7 +255,7 @@ public class StructureMapVersionTests
     public void GivenR4Parameter_WhenSettingDateTimeValue_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R4);
+        var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => param.SetValueDateTime("2025-01-15T14:30:00Z"));
@@ -269,7 +270,7 @@ public class StructureMapVersionTests
     public void GivenR4Group_WhenSettingTypeModeToNull_ThenThrowsArgumentNullException()
     {
         // Arrange
-        var group = new StructureMapGroupJsonNode(new JsonObject(), FhirSpecification.R4)
+        var group = new StructureMapGroupJsonNode(new JsonObject(), FhirVersion.R4)
         {
             Name = "myGroup",
             TypeMode = StructureMapGroupTypeMode.None
@@ -285,7 +286,7 @@ public class StructureMapVersionTests
     public void GivenR5Group_WhenSettingTypeModeToNull_ThenSucceeds()
     {
         // Arrange
-        var group = new StructureMapGroupJsonNode(new JsonObject(), FhirSpecification.R5)
+        var group = new StructureMapGroupJsonNode(new JsonObject(), FhirVersion.R5)
         {
             Name = "myGroup",
             TypeMode = StructureMapGroupTypeMode.None
@@ -302,7 +303,7 @@ public class StructureMapVersionTests
     public void GivenR4Rule_WhenSettingNameToNull_ThenThrowsArgumentNullException()
     {
         // Arrange
-        var rule = new StructureMapRuleJsonNode(new JsonObject(), FhirSpecification.R4)
+        var rule = new StructureMapRuleJsonNode(new JsonObject(), FhirVersion.R4)
         {
             Name = "myRule"
         };
@@ -316,7 +317,7 @@ public class StructureMapVersionTests
     public void GivenR5Rule_WhenSettingNameToNull_ThenSucceeds()
     {
         // Arrange
-        var rule = new StructureMapRuleJsonNode(new JsonObject(), FhirSpecification.R5)
+        var rule = new StructureMapRuleJsonNode(new JsonObject(), FhirVersion.R5)
         {
             Name = "myRule"
         };
@@ -336,7 +337,7 @@ public class StructureMapVersionTests
     public void GivenR4Dependent_WhenUsingGetDependentVariables_ThenReturnsVariables()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R4);
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R4);
         dependent.Variable.Add("var1");
         dependent.Variable.Add("var2");
 
@@ -353,8 +354,8 @@ public class StructureMapVersionTests
     public void GivenR5Dependent_WhenUsingGetDependentVariables_ThenReturnsParameterValues()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R5);
-        var param1 = new StructureMapParameterJsonNode(new JsonObject(), FhirSpecification.R5);
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R5);
+        var param1 = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R5);
         param1.SetValue("String", JsonValue.Create("var1"));
         dependent.Parameter.Add(param1);
 
@@ -370,7 +371,7 @@ public class StructureMapVersionTests
     public void GivenR4Dependent_WhenUsingAddDependentVariable_ThenAddsToVariable()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R4);
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act
         dependent.AddDependentVariable("var1");
@@ -384,7 +385,7 @@ public class StructureMapVersionTests
     public void GivenR5Dependent_WhenUsingAddDependentVariable_ThenAddsToParameter()
     {
         // Arrange
-        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirSpecification.R5);
+        var dependent = new StructureMapDependentJsonNode(new JsonObject(), FhirVersion.R5);
 
         // Act
         dependent.AddDependentVariable("var1");
@@ -398,7 +399,7 @@ public class StructureMapVersionTests
     public void GivenR5Source_WhenUsingSetDefaultValueString_ThenSetsDefaultValue()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R5);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R5);
 
         // Act
         source.SetDefaultValueString("test value");
@@ -411,7 +412,7 @@ public class StructureMapVersionTests
     public void GivenR4Source_WhenUsingSetDefaultValueString_ThenSetsDefaultValueString()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R4);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R4);
 
         // Act
         source.SetDefaultValueString("test value");
@@ -427,7 +428,7 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R5;
+        map.FhirVersion = FhirVersion.R5;
 
         // Act
         var supportsConstants = map.SupportsConstants();
@@ -441,7 +442,7 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R4;
+        map.FhirVersion = FhirVersion.R4;
 
         // Act
         var supportsConstants = map.SupportsConstants();
@@ -455,7 +456,7 @@ public class StructureMapVersionTests
     {
         // Arrange
         var map = new StructureMapJsonNode();
-        map.FhirVersion = FhirSpecification.R4;
+        map.FhirVersion = FhirVersion.R4;
 
         // Act
         var constants = map.GetConstantsOrEmpty().ToList();
@@ -472,13 +473,13 @@ public class StructureMapVersionTests
     public void GivenR4StructureMapWithTypedDefaultValue_WhenRoundTripping_ThenPreservesType()
     {
         // Arrange
-        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirSpecification.R4);
+        var source = new StructureMapSourceJsonNode(new JsonObject(), FhirVersion.R4);
         source.SetDefaultValue("Integer", JsonValue.Create(42));
 
         // Act - serialize and deserialize
         var json = source.MutableNode.ToJsonString();
         var parsed = JsonNode.Parse(json) as JsonObject;
-        var roundTripped = new StructureMapSourceJsonNode(parsed!, FhirSpecification.R4);
+        var roundTripped = new StructureMapSourceJsonNode(parsed!, FhirVersion.R4);
 
         // Assert
         var defaultValue = roundTripped.GetDefaultValue();

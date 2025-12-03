@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using EnsureThat;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 
@@ -106,7 +107,7 @@ public class UriSearchValue : ISearchValue
         EnsureArg.IsNotNullOrWhiteSpace(s, nameof(s));
         EnsureArg.IsNotNull(modelInfoProvider, nameof(modelInfoProvider));
 
-        if (modelInfoProvider.Version == FhirSpecification.Stu3 || !_canonicalFormat.IsMatch(s)) return new UriSearchValue(s, false);
+        if (modelInfoProvider.Version == FhirVersion.Stu3 || !_canonicalFormat.IsMatch(s)) return new UriSearchValue(s, false);
 
         return new UriSearchValue(s, separateCanonicalComponents);
     }

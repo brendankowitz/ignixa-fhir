@@ -14,7 +14,7 @@ using Ignixa.Search.Models;
 namespace Ignixa.Search.Generated;
 
 /// <summary>
-/// Pre-generated SearchParameterInfo array for FHIR STU3.
+/// Pre-generated SearchParameterInfo array for FHIR Stu3.
 /// Eliminates runtime JSON parsing overhead (~50-200ms cold start → <5ms).
 /// Base FHIR search parameters only - custom tenant parameters loaded at runtime.
 /// </summary>
@@ -23,7 +23,7 @@ public static class STU3SearchParameterDefinitions
     private static SearchParameterInfo[]? _cached;
 
     /// <summary>
-    /// Gets all base FHIR STU3 search parameters.
+    /// Gets all base FHIR Stu3 search parameters.
     /// Thread-safe lazy initialization with caching.
     /// </summary>
     public static SearchParameterInfo[] GetBaseSearchParameters()

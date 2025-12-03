@@ -104,7 +104,7 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
         var expressions = new List<Expression>(3);
 
-        // Based on spec http://hl7.org/fhir/STU3/search.html#quantity,
+        // Based on spec http://hl7.org/fhir/Stu3/search.html#quantity,
         // The system is handled differently in quantity than token.
         if (!string.IsNullOrWhiteSpace(quantity.System))
             expressions.Add(
@@ -160,13 +160,13 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
         EnsureOnlyEqualComparatorIsSupported();
 
         if (_modifier == null)
-            // Based on spec http://hl7.org/fhir/STU3/search.html#string,
+            // Based on spec http://hl7.org/fhir/Stu3/search.html#string,
             // is case-insensitive search so we will normalize into lower case for search.
             _outputExpression = Expression.StartsWith(FieldName.String, _componentIndex, s.String, true);
         else if (_modifier.SearchModifierCode == SearchModifierCode.Exact)
             _outputExpression = Expression.StringEquals(FieldName.String, _componentIndex, s.String, false);
         else if (_modifier.SearchModifierCode == SearchModifierCode.Contains)
-            // Based on spec http://hl7.org/fhir/STU3/search.html#modifiers,
+            // Based on spec http://hl7.org/fhir/Stu3/search.html#modifiers,
             // contains is case-insensitive search so we will normalize into lower case for search.
             _outputExpression = Expression.Contains(FieldName.String, _componentIndex, s.String, true);
         else

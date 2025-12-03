@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Search;
@@ -128,7 +129,7 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
     /// <summary>
     /// Gets the FHIR version for a tenant.
     /// </summary>
-    private async Task<FhirSpecification> GetFhirVersionForTenantAsync(int? tenantId, CancellationToken cancellationToken)
+    private async Task<FhirVersion> GetFhirVersionForTenantAsync(int? tenantId, CancellationToken cancellationToken)
     {
         if (!tenantId.HasValue)
         {
@@ -139,13 +140,13 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
                 return FhirSpecificationExtensions.FromVersionString(tenants[0].FhirVersion);
             }
 
-            return FhirSpecification.R4;
+            return FhirVersion.R4;
         }
 
         var tenantConfig = await _tenantConfigStore.GetTenantConfigurationAsync(tenantId.Value, cancellationToken);
         if (tenantConfig == null)
         {
-            return FhirSpecification.R4;
+            return FhirVersion.R4;
         }
 
         return FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);

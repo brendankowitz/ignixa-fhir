@@ -6,6 +6,7 @@
 #nullable disable
 
 using FluentAssertions;
+using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Models;
@@ -27,14 +28,14 @@ namespace Ignixa.Application.Tests.Features.Validate;
 public class ValidateResourceHandlerTests
 {
     private readonly IFhirRequestContextAccessor _contextAccessor;
-    private readonly Func<FhirSpecification, int, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirVersion, int, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ValidateResourceHandler _handler;
 
     public ValidateResourceHandlerTests()
     {
         _contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
-        _schemaResolverFactory = Substitute.For<Func<FhirSpecification, int, IValidationSchemaResolver>>();
+        _schemaResolverFactory = Substitute.For<Func<FhirVersion, int, IValidationSchemaResolver>>();
         _terminologyService = Substitute.For<ITerminologyService>();
         _handler = new ValidateResourceHandler(
             _contextAccessor,
@@ -343,7 +344,7 @@ public class ValidateResourceHandlerTests
         SetupHttpContext();
         var schemaResolver = Substitute.For<IValidationSchemaResolver>();
         schemaResolver.GetSchema(missingProfileUri).Returns((object)null);
-        _schemaResolverFactory(FhirSpecification.R4, Arg.Any<int>()).Returns(schemaResolver);
+        _schemaResolverFactory(FhirVersion.R4, Arg.Any<int>()).Returns(schemaResolver);
 
         // Act
         var result = await _handler.HandleAsync(command, CancellationToken.None);
@@ -534,7 +535,7 @@ public class ValidateResourceHandlerTests
 
         // Setup a basic schema resolver that returns null for schemas (which will result in no validation)
         schemaResolver.GetSchema(Arg.Any<string>()).Returns((object)null);
-        _schemaResolverFactory(Arg.Any<FhirSpecification>(), Arg.Any<int>()).Returns(schemaResolver);
+        _schemaResolverFactory(Arg.Any<FhirVersion>(), Arg.Any<int>()).Returns(schemaResolver);
     }
 
     #endregion

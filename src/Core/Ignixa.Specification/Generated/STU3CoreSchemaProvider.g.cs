@@ -15,14 +15,14 @@ using Ignixa.Serialization;
 namespace Ignixa.Specification.Generated;
 
 /// <summary>
-/// Pre-generated IFhirSchemaProvider for FHIR STU3.
+/// Pre-generated IFhirSchemaProvider for FHIR Stu3.
 /// This provider uses IType and ITypeExtended interfaces for type metadata.
 /// </summary>
 public sealed partial class STU3CoreSchemaProvider : Ignixa.Specification.IFhirSchemaProvider
 {
-    Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.STU3;
+    Ignixa.Abstractions.FhirVersion Ignixa.Abstractions.ISchema.Version => Ignixa.Abstractions.FhirVersion.Stu3;
 
-    public FhirSpecification Version => FhirSpecification.Stu3;
+    public FhirVersion Version => FhirVersion.Stu3;
 
     public string FullVersion => "3.0.2";
 

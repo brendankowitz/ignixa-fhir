@@ -211,12 +211,12 @@ public partial class ElementSearchIndexer : ISearchIndexer
                 return allowedReferenceResourceTypes.Select(t => t.ToString()).ToList();
             });
 
-            // TODO: The expression for reference search parameters in STU3 has issues.
+            // TODO: The expression for reference search parameters in Stu3 has issues.
             // The reference search parameter could be pointing to an element that can be multiple types. For example,
             // the Appointment.participant.actor can be type of Patient, Practitioner, Related Person, Location, and so on.
             // Some search parameter could refer to this property but restrict to certain types. For example,
             // Appointment's location search parameter is returned only when Appointment.participant.actor is Location element.
-            // The STU3 expressions don't have this restriction so everything is being returned. This is addressed in R4 release (see
+            // The Stu3 expressions don't have this restriction so everything is being returned. This is addressed in R4 release (see
             // http://community.fhir.org/t/expression-seems-incorrect-for-reference-search-parameter-thats-only-applicable-to-certain-types/916/2).
             // Therefore, for now, we will need to compare the reference value itself (which can be internal or external references), and restrict
             // the values ourselves.

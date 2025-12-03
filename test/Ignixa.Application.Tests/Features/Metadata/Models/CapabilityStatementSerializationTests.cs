@@ -6,6 +6,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
@@ -14,7 +15,7 @@ namespace Ignixa.Application.Tests.Features.Metadata.Models;
 
 /// <summary>
 /// Tests for CapabilityStatement serialization to verify correct JSON output
-/// for different FHIR versions (R4, R4B, R5, STU3).
+/// for different FHIR versions (R4, R4B, R5, Stu3).
 /// Ensures the BaseJsonNode pattern correctly serializes all properties.
 /// </summary>
 public class CapabilityStatementSerializationTests
@@ -499,11 +500,11 @@ public class CapabilityStatementSerializationTests
     [Fact]
     public void GivenReferenceOrCanonicalWithDisplay_WhenSerializing_ThenBothPropertiesSerialize()
     {
-        // Arrange - STU3 uses Reference object with reference and display
+        // Arrange - Stu3 uses Reference object with reference and display
         // Build from inside-out to ensure FhirVersion is set before Profile
         var resourceComponent = new ResourceComponentJsonNode
         {
-            FhirVersion = FhirSpecification.Stu3,
+            FhirVersion = FhirVersion.Stu3,
             Type = "Patient",
         };
         resourceComponent.Profile = ReferenceOrCanonicalJsonNode.FromCanonical(
@@ -512,14 +513,14 @@ public class CapabilityStatementSerializationTests
 
         var restComponent = new RestComponentJsonNode
         {
-            FhirVersion = FhirSpecification.Stu3,
+            FhirVersion = FhirVersion.Stu3,
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
         restComponent.AddResource(resourceComponent);
 
         var capability = new CapabilityStatementJsonNode
         {
-            FhirVersion = FhirSpecification.Stu3,
+            FhirVersion = FhirVersion.Stu3,
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };

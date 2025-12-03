@@ -6,14 +6,14 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Ignixa.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Metadata.Models;
 
 /// <summary>
 /// Represents a property that serializes differently between FHIR versions:
-/// - STU3: Reference object with "reference" and "display" properties
+/// - Stu3: Reference object with "reference" and "display" properties
 /// - R4+: Simple canonical string
 /// Used for profile, instantiates, and implementationGuide properties.
 /// </summary>
@@ -23,7 +23,7 @@ public class ReferenceOrCanonicalJsonNode : BaseJsonNode
     {
     }
 
-    public ReferenceOrCanonicalJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public ReferenceOrCanonicalJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -39,7 +39,7 @@ public class ReferenceOrCanonicalJsonNode : BaseJsonNode
     }
 
     /// <summary>
-    /// Optional display text (primarily for STU3 Reference objects).
+    /// Optional display text (primarily for Stu3 Reference objects).
     /// </summary>
     [JsonIgnore]
     public string? Display

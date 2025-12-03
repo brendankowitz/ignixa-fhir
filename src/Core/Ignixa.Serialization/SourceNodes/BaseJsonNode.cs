@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 
 namespace Ignixa.Serialization.SourceNodes;
 
@@ -25,7 +26,7 @@ public abstract class BaseJsonNode : IMutableJsonNode
     /// Used to determine version-specific serialization behavior.
     /// </summary>
     [JsonIgnore]
-    public FhirSpecification? FhirVersion { get; set; }
+    public FhirVersion? FhirVersion { get; set; }
 
     /// <summary>
     /// Default constructor for deserialization.
@@ -52,7 +53,7 @@ public abstract class BaseJsonNode : IMutableJsonNode
     /// </summary>
     /// <param name="jsonObject">Existing JsonObject to wrap.</param>
     /// <param name="fhirVersion">Optional FHIR version (inherited from parent). Can be null.</param>
-    protected BaseJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion)
+    protected BaseJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion)
     {
         _internalNode = jsonObject ?? throw new ArgumentNullException(nameof(jsonObject));
         FhirVersion = fhirVersion;
@@ -114,7 +115,7 @@ public abstract class BaseJsonNode : IMutableJsonNode
     {
         if (MutableNode.TryGetPropertyValue(name, out var node) && node is JsonObject jsonObject)
         {
-            // Assuming T has a constructor that takes a JsonObject and optional FhirSpecification
+            // Assuming T has a constructor that takes a JsonObject and optional FhirVersion
             return (T)Activator.CreateInstance(typeof(T), jsonObject, FhirVersion);
         }
         return default;
@@ -126,7 +127,7 @@ public abstract class BaseJsonNode : IMutableJsonNode
         {
             jsonArray = null;
         }
-        return new MutableJsonList<T>(() => GetOrCreateArray(name), jsonArray);
+        return new MutableJsonList<T>(() => GetOrCreateArray(name), jsonArray, FhirVersion);
     }
 
     protected MutablePrimitiveList<T> GetPrimitiveListProperty<T>(string name)

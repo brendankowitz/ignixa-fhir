@@ -11,7 +11,7 @@ public record PackageVersionInfo
     public required string Version { get; init; }
 
     /// <summary>
-    /// FHIR version this package targets (e.g., "R4", "STU3").
+    /// FHIR version this package targets (e.g., "R4", "Stu3").
     /// </summary>
     public string? FhirVersion { get; init; }
 

@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain;
@@ -33,7 +34,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
-    private readonly ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
+    private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
     /// <summary>
     /// Container for tenant-specific configuration and factory delegates.
@@ -66,7 +67,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
         _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
-        _definitionManagersCache = new ConcurrentDictionary<FhirSpecification, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
+        _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
 
     /// <inheritdoc/>
@@ -226,7 +227,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// Managers are cached by version to avoid recreating them for multiple tenants using the same FHIR version.
     /// </summary>
     private (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager) GetOrCreateDefinitionManagers(
-        FhirSpecification fhirSpec,
+        FhirVersion fhirSpec,
         IFhirSchemaProvider schemaProvider)
     {
         return _definitionManagersCache.GetOrAdd(fhirSpec, _ =>
@@ -298,7 +299,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             initDbContext.Dispose();
         }
 
-        // Convert FhirVersion string to FhirSpecification enum using extension method
+        // Convert FhirVersion string to FhirVersion enum using extension method
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
 
         // Get appropriate IFhirSchemaProvider using extension method

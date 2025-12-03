@@ -5,6 +5,7 @@
 
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Ignixa.Abstractions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;

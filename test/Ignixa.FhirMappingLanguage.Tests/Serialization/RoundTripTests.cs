@@ -11,6 +11,7 @@ using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Serialization;
 using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Parser;
+using Ignixa.Serialization.Models;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Serialization;
@@ -440,7 +441,8 @@ public class RoundTripTests
         };
 
         // Act
-        var ast = _structureMapParser.Parse(structureMap);
+        var structureMapNode = new StructureMapJsonNode(structureMap);
+        var ast = _structureMapParser.Parse(structureMapNode);
         var rebuiltStructureMap = _builder.Build(ast);
         var roundTrippedAst = _structureMapParser.Parse(rebuiltStructureMap);
 
@@ -487,7 +489,8 @@ public class RoundTripTests
         };
 
         // Act
-        var ast = _structureMapParser.Parse(structureMap);
+        var structureMapNode = new StructureMapJsonNode(structureMap);
+        var ast = _structureMapParser.Parse(structureMapNode);
         var rebuiltStructureMap = _builder.Build(ast);
 
         // Assert

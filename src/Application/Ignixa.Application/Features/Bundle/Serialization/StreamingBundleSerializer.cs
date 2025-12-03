@@ -127,7 +127,7 @@ public static class StreamingBundleSerializer
         int entryCount = 0;
         bool hasMore = false;
         int currentOffset = 0;
-        var fhirVersion = schemaProvider != null ? (FhirSpecification)schemaProvider.Version : FhirSpecification.R4;
+        var fhirVersion = schemaProvider != null ? (FhirVersion)schemaProvider.Version : FhirVersion.R4;
 
         // Parse current offset from existing continuation token
         if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
@@ -150,7 +150,7 @@ public static class StreamingBundleSerializer
         // Write entry array
         writer.WriteStartArray("entry");
 
-        // For R4/R4B/STU3, write issues as a Bundle entry with search.mode="outcome" (pre-R5 format)
+        // For R4/R4B/Stu3, write issues as a Bundle entry with search.mode="outcome" (pre-R5 format)
         // R5+ will write Bundle.issues property at the end instead
         WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
 
@@ -198,7 +198,7 @@ public static class StreamingBundleSerializer
         writer.WriteEndArray();
 
         // Write Bundle issues if present (e.g., unsupported search parameters)
-        // NOTE: Bundle.issues only exists in FHIR R5+, not in R4/R4B/STU3
+        // NOTE: Bundle.issues only exists in FHIR R5+, not in R4/R4B/Stu3
         WriteBundleIssues(writer, searchOptions.BundleIssues, fhirVersion);
 
         // Generate continuation token if there are more results
@@ -537,15 +537,15 @@ public static class StreamingBundleSerializer
     private static void WriteBundleIssues(
         FhirJsonWriter writer,
         IReadOnlyList<IssueComponent>? issues,
-        FhirSpecification version)
+        FhirVersion version)
     {
         if (issues == null || issues.Count == 0)
         {
             return;
         }
 
-        // Bundle.issues element only exists in FHIR R5+ (not in R4/R4B/STU3)
-        if (version < FhirSpecification.R5)
+        // Bundle.issues element only exists in FHIR R5+ (not in R4/R4B/Stu3)
+        if (version < FhirVersion.R5)
         {
             return;
         }
@@ -603,16 +603,16 @@ public static class StreamingBundleSerializer
 
     /// <summary>
     /// Writes Bundle issues as a Bundle entry with search mode="outcome".
-    /// Used for FHIR R4/R4B/STU3 which don't support Bundle.issues element.
+    /// Used for FHIR R4/R4B/Stu3 which don't support Bundle.issues element.
     /// The issues are represented as an OperationOutcome resource in a Bundle entry.
     /// </summary>
     private static void WriteBundleIssuesPreR5(
         FhirJsonWriter writer,
         IReadOnlyList<IssueComponent>? issues,
-        FhirSpecification version)
+        FhirVersion version)
     {
-        // Only write for pre-R5 versions (R4/R4B/STU3)
-        if (version >= FhirSpecification.R5)
+        // Only write for pre-R5 versions (R4/R4B/Stu3)
+        if (version >= FhirVersion.R5)
         {
             return;
         }

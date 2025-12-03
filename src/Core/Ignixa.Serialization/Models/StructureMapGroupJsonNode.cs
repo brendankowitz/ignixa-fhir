@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Serialization.Models;
@@ -23,7 +24,7 @@ public class StructureMapGroupJsonNode : BaseJsonNode
     /// <summary>
     /// Public constructor for JsonConverter (accepts pre-parsed JsonObject with optional FHIR version).
     /// </summary>
-    public StructureMapGroupJsonNode(JsonObject jsonObject, FhirSpecification? fhirVersion = null)
+    public StructureMapGroupJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
     }
@@ -63,7 +64,7 @@ public class StructureMapGroupJsonNode : BaseJsonNode
         }
         set
         {
-            if (value == null && FhirVersion.HasValue && FhirVersion < FhirSpecification.R5)
+            if (value == null && FhirVersion.HasValue && FhirVersion < Ignixa.Abstractions.FhirVersion.R5)
             {
                 throw new ArgumentNullException(nameof(value),
                     $"TypeMode is required in {FhirVersion} and cannot be null. In R5+, this field became optional.");

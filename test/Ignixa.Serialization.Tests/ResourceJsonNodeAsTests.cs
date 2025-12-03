@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -73,14 +74,14 @@ public class ResourceJsonNodeAsTests
     {
         // Arrange
         var parametersNode = ResourceJsonNode.Parse(_parametersJson);
-        parametersNode.FhirVersion = FhirSpecification.R4;
+        parametersNode.FhirVersion = FhirVersion.R4;
 
         // Act
         var result = parametersNode.As<ParametersJsonNode>();
 
         // Assert
         Assert.NotNull(result.FhirVersion);
-        Assert.Equal(FhirSpecification.R4, result.FhirVersion);
+        Assert.Equal(FhirVersion.R4, result.FhirVersion);
     }
 
     [Fact]

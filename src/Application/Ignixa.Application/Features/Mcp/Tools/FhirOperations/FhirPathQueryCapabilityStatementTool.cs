@@ -19,7 +19,6 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 
@@ -127,10 +126,10 @@ public class FhirPathQueryCapabilityStatementTool : TenantAwareMcpTool
     /// <summary>
     /// Resolve the FHIR version from tenant configuration, with fallback to R4 default.
     /// </summary>
-    private async Task<FhirSpecification> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
+    private async Task<FhirVersion> ResolveFhirVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
         // Default to R4
-        var fhirVersion = FhirSpecification.R4;
+        var fhirVersion = FhirVersion.R4;
 
         try
         {

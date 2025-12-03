@@ -61,7 +61,7 @@ internal static class SearchParameterDefinitionBuilder
 
     internal static bool ShouldExcludeEntryStu3(string resourceType, string searchParameterName, IFhirSchemaProvider modelInfoProvider)
     {
-        return modelInfoProvider.Version == FhirSpecification.Stu3 &&
+        return modelInfoProvider.Version == FhirVersion.Stu3 &&
                resourceType == "DataElement" && (searchParameterName == "objectClass" || searchParameterName == "objectClassProperty");
     }
 

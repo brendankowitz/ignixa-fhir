@@ -5,6 +5,7 @@ using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 using Hl7.FhirPath;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search; // SDK 6.0 FHIRPath extension methods
 using Ignixa.Domain;
 using Ignixa.Specification;
@@ -58,7 +59,7 @@ public class FhirPathBenchmarks
 
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions);
-        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirSpecification.R4);
+        _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirVersion.R4);
 
         _ignixaPatientTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaPatient.ToSourceNavigator(), _ignixaSchemaProvider);
         _ignixaObservationTyped = (IElement)SchemaAwareElementExtensions.ToElement(_ignixaObservation.ToSourceNavigator(), _ignixaSchemaProvider);

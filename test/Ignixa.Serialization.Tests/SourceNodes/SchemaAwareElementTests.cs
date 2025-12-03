@@ -23,7 +23,7 @@ public class SchemaAwareElementTests
 
     public SchemaAwareElementTests()
     {
-        _r4Provider = FhirSpecification.R4.GetSchemaProvider();
+        _r4Provider = FhirVersion.R4.GetSchemaProvider();
     }
 
     #region Choice Type Navigation Tests

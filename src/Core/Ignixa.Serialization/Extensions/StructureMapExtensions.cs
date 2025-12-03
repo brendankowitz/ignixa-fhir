@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 
 namespace Ignixa.Serialization.Extensions;
@@ -56,7 +57,7 @@ public static class StructureMapExtensions
         }
 
         // Version is set - use appropriate accessor
-        return dependent.FhirVersion >= FhirSpecification.R5
+        return dependent.FhirVersion >= FhirVersion.R5
             ? dependent.Parameter.Select(p => p.GetValueAs<string>() ?? string.Empty)
             : dependent.Variable ?? Enumerable.Empty<string>();
     }
@@ -81,7 +82,7 @@ public static class StructureMapExtensions
                 "Set FhirVersion on the parent StructureMapJsonNode before accessing children.");
         }
 
-        if (dependent.FhirVersion >= FhirSpecification.R5)
+        if (dependent.FhirVersion >= FhirVersion.R5)
         {
             var param = new StructureMapParameterJsonNode(new JsonObject(), dependent.FhirVersion);
             param.SetValue("String", JsonValue.Create(variable));
@@ -123,7 +124,7 @@ public static class StructureMapExtensions
             }
         }
 
-        if (source.FhirVersion >= FhirSpecification.R5)
+        if (source.FhirVersion >= FhirVersion.R5)
         {
             return source.DefaultValue;
         }
@@ -167,7 +168,7 @@ public static class StructureMapExtensions
                 "Set FhirVersion on the parent StructureMapJsonNode before accessing children.");
         }
 
-        if (source.FhirVersion >= FhirSpecification.R5)
+        if (source.FhirVersion >= FhirVersion.R5)
         {
             source.DefaultValue = value;
         }
@@ -185,7 +186,7 @@ public static class StructureMapExtensions
     public static bool SupportsConstants(this StructureMapJsonNode structureMap)
     {
         ArgumentNullException.ThrowIfNull(structureMap);
-        return structureMap.FhirVersion.HasValue && structureMap.FhirVersion >= FhirSpecification.R5;
+        return structureMap.FhirVersion.HasValue && structureMap.FhirVersion >= FhirVersion.R5;
     }
 
     /// <summary>

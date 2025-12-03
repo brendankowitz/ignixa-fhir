@@ -7,7 +7,6 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Medino;
@@ -23,13 +22,13 @@ namespace Ignixa.Application.Infrastructure.Behaviors;
 public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceCommand, ResourceKey>
 {
     private readonly IFhirRequestContextAccessor _contextAccessor;
-    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidationBehavior> _logger;
 
     public ValidationBehavior(
         IFhirRequestContextAccessor contextAccessor,
-        Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
+        Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidationBehavior> logger)
     {

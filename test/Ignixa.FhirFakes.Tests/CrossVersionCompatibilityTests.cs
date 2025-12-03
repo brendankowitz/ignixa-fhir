@@ -5,6 +5,7 @@
 
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Serialization;
@@ -85,7 +86,7 @@ public class CrossVersionCompatibilityTests
             report.MutableNode["code"].Should().NotBeNull($"code is required in {schema.Version}");
 
             // subject is required in R4/R4B/R5, but not STU3 (STU3 uses Patient + Encounter)
-            if (schema.Version != FhirSpecification.Stu3)
+            if (schema.Version != FhirVersion.Stu3)
             {
                 report.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
             }
@@ -192,7 +193,7 @@ public class CrossVersionCompatibilityTests
             immunization.MutableNode["patient"].Should().NotBeNull($"patient is required in {schema.Version}");
 
             // occurrenceDateTime is required in R4/R4B/R5
-            if (schema.Version != FhirSpecification.Stu3)
+            if (schema.Version != FhirVersion.Stu3)
             {
                 immunization.MutableNode["occurrenceDateTime"].Should().NotBeNull($"occurrenceDateTime is required in {schema.Version}");
             }
@@ -216,7 +217,7 @@ public class CrossVersionCompatibilityTests
             var immunization = scenario.Immunizations[0];
 
             // Assert - protocolApplied should exist (R4+) or vaccinationProtocol (STU3)
-            if (schema.Version == FhirSpecification.Stu3)
+            if (schema.Version == FhirVersion.Stu3)
             {
                 // STU3 uses vaccinationProtocol instead of protocolApplied
                 immunization.MutableNode["vaccinationProtocol"].Should().NotBeNull($"vaccinationProtocol should exist in {schema.Version}");
@@ -388,7 +389,7 @@ public class CrossVersionCompatibilityTests
 
             allergy.MutableNode["patient"].Should().NotBeNull($"patient is required in {schema.Version}");
 
-            if (schema.Version != FhirSpecification.Stu3)
+            if (schema.Version != FhirVersion.Stu3)
             {
                 allergy.MutableNode["clinicalStatus"].Should().NotBeNull($"clinicalStatus is required in {schema.Version}");
                 allergy.MutableNode["verificationStatus"].Should().NotBeNull($"verificationStatus is required in {schema.Version}");
@@ -470,7 +471,7 @@ public class CrossVersionCompatibilityTests
             procedure.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
 
             // code is optional in STU3 but required in R4+
-            if (schema.Version != FhirSpecification.Stu3)
+            if (schema.Version != FhirVersion.Stu3)
             {
                 procedure.MutableNode["code"].Should().NotBeNull($"code is required in {schema.Version}");
             }
@@ -511,7 +512,7 @@ public class CrossVersionCompatibilityTests
     public void GivenServiceRequest_WhenGeneratedAcrossR4Versions_ThenAllSucceed()
     {
         // ServiceRequest was introduced in R4, does not exist in STU3 (was called ProcedureRequest)
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {
@@ -539,7 +540,7 @@ public class CrossVersionCompatibilityTests
     [Fact]
     public void GivenServiceRequest_WhenGeneratedAcrossR4Versions_ThenHasRequiredFields()
     {
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {
@@ -564,7 +565,7 @@ public class CrossVersionCompatibilityTests
     [Fact]
     public void GivenServiceRequestWithPriority_WhenGeneratedAcrossR4Versions_ThenHasPriority()
     {
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {
@@ -587,7 +588,7 @@ public class CrossVersionCompatibilityTests
     [Fact]
     public void GivenServiceRequestWithCategory_WhenGeneratedAcrossR4Versions_ThenHasCategory()
     {
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {
@@ -611,7 +612,7 @@ public class CrossVersionCompatibilityTests
     [Fact]
     public void GivenServiceRequest_WhenGeneratedAcrossR4Versions_ThenHasCode()
     {
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {
@@ -640,7 +641,7 @@ public class CrossVersionCompatibilityTests
     [Fact]
     public void GivenImagingServiceRequest_WhenGeneratedAcrossR4Versions_ThenAllSucceed()
     {
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {
@@ -668,7 +669,7 @@ public class CrossVersionCompatibilityTests
     [Fact]
     public void GivenReferralServiceRequest_WhenGeneratedAcrossR4Versions_ThenAllSucceed()
     {
-        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirVersion.Stu3).ToList();
 
         foreach (var schema in r4Providers)
         {

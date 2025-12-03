@@ -8,6 +8,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Extensions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -42,33 +43,6 @@ public class StructureMapParser
 
         return new MapExpression(url, name, uses, imports, groups, conceptMaps, []);
     }
-
-    /// <summary>
-    /// Parses a FHIR StructureMap resource from JsonNode (backward compatibility).
-    /// </summary>
-    /// <param name="structureMap">The StructureMap resource as JsonNode</param>
-    /// <returns>The parsed MapExpression</returns>
-    public MapExpression Parse(JsonNode structureMap)
-    {
-        ArgumentNullException.ThrowIfNull(structureMap);
-
-        // Validate resourceType
-        var obj = structureMap.AsObject();
-        var resourceType = obj["resourceType"]?.GetValue<string>();
-        if (resourceType != "StructureMap")
-        {
-            throw new InvalidOperationException($"Expected resourceType 'StructureMap', got '{resourceType}'");
-        }
-
-        // Convert to typed model and delegate
-        var typed = JsonSourceNodeFactory.Parse<StructureMapJsonNode>(structureMap.ToJsonString());
-        return Parse(typed);
-    }
-
-    /// <summary>
-    /// Convenience overload for JsonObject.
-    /// </summary>
-    public MapExpression Parse(JsonObject structureMap) => Parse((JsonNode)structureMap);
 
     /// <summary>
     /// Parses structure[] array into UsesExpression[].
@@ -330,7 +304,11 @@ public class StructureMapParser
             var firstDependent = dependentCalls.FirstOrDefault();
             if (firstDependent?.Name is not null)
             {
-                var parameters = ParseInvocationParameters(firstDependent.Parameter);
+                // Use version-agnostic extension method to get variables
+                // R4: reads from Variable string array
+                // R5: reads from Parameter array
+                var variables = firstDependent.GetDependentVariables();
+                var parameters = ParseInvocationVariables(variables);
                 return new GroupInvocationExpression(firstDependent.Name, parameters);
             }
         }
@@ -339,51 +317,15 @@ public class StructureMapParser
     }
 
     /// <summary>
-    /// Parses parameter[] for group invocations.
+    /// Parses variable names for group invocations into identifier expressions.
+    /// These are the variables passed to a dependent group call.
     /// </summary>
-    private static List<Expression> ParseInvocationParameters(IEnumerable<StructureMapParameterJsonNode>? parameters)
+    private static List<Expression> ParseInvocationVariables(IEnumerable<string> variables)
     {
-        if (parameters is null)
-        {
-            return [];
-        }
-
-        List<Expression> result = [];
-
-        foreach (var param in parameters)
-        {
-            var valueNode = param.GetValue();
-            if (valueNode is null) continue;
-
-            // Check property names to determine type
-            foreach (var prop in param.MutableNode)
-            {
-                if (!prop.Key.StartsWith("value", StringComparison.Ordinal)) continue;
-
-                var suffix = prop.Key.Substring(5);
-
-                switch (suffix.ToLowerInvariant())
-                {
-                    case "string":
-                        var strValue = param.GetValueAs<string>();
-                        if (strValue is not null)
-                        {
-                            result.Add(new LiteralExpression(strValue));
-                        }
-                        break;
-                    case "id":
-                        var idValue = param.GetValueAs<string>();
-                        if (idValue is not null)
-                        {
-                            result.Add(new IdentifierExpression(idValue));
-                        }
-                        break;
-                }
-                break; // Only process first value[x] property
-            }
-        }
-
-        return result;
+        return variables
+            .Where(v => !string.IsNullOrEmpty(v))
+            .Select(v => new IdentifierExpression(v) as Expression)
+            .ToList();
     }
 
     /// <summary>
@@ -409,6 +351,7 @@ public class StructureMapParser
 
     /// <summary>
     /// Parses default value[x] into Expression.
+    /// Handles both R4 format (defaultValue[x]) and R5 format (defaultValue as string).
     /// </summary>
     private static Expression? ParseDefaultValue(StructureMapSourceJsonNode source)
     {
@@ -425,14 +368,29 @@ public class StructureMapParser
 
             var suffix = prop.Key.Substring(7); // Remove "default" prefix
 
+            // R5: property is "defaultValue" (no suffix)
+            if (string.IsNullOrEmpty(suffix) || suffix.Equals("Value", StringComparison.OrdinalIgnoreCase))
+            {
+                // R5 format - defaultValue is a string expression
+                if (defaultNode is JsonValue jsonValue)
+                {
+                    var strValue = jsonValue.GetValue<string>();
+                    return new LiteralExpression(strValue);
+                }
+            }
+
+            // R4: property is "defaultValue[X]" where X is the type (String, Integer, Boolean, etc.)
             switch (suffix.ToLowerInvariant())
             {
+                case "valuestring":
                 case "string":
                     var strValue = defaultNode.GetValue<string>();
                     return new LiteralExpression(strValue);
+                case "valueinteger":
                 case "integer":
                     var intValue = defaultNode.GetValue<int>();
                     return new LiteralExpression(intValue);
+                case "valueboolean":
                 case "boolean":
                     var boolValue = defaultNode.GetValue<bool>();
                     return new LiteralExpression(boolValue);

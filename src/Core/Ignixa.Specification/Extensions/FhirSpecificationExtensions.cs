@@ -3,32 +3,33 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification.Generated;
 
 namespace Ignixa.Specification.Extensions;
 
 /// <summary>
-/// Extension methods for working with IFhirSchemaProvider instances based on FhirSpecification.
+/// Extension methods for working with IFhirSchemaProvider instances based on FhirVersion.
 /// </summary>
 public static class FhirSpecificationSchemaProviderExtensions
 {
     /// <summary>
-    /// Gets the appropriate IFhirSchemaProvider instance for the given FhirSpecification.
+    /// Gets the appropriate IFhirSchemaProvider instance for the given FhirVersion.
     /// Creates and returns the correct provider based on the FHIR version.
     /// </summary>
     /// <param name="spec">The FHIR specification enum value.</param>
     /// <returns>The schema provider instance for the specified version.</returns>
     /// <exception cref="NotSupportedException">Thrown if the FHIR specification version is not supported.</exception>
-    public static IFhirSchemaProvider GetSchemaProvider(this FhirSpecification spec)
+    public static IFhirSchemaProvider GetSchemaProvider(this FhirVersion spec)
     {
         return spec switch
         {
-            FhirSpecification.R4 => new R4CoreSchemaProvider(),
-            FhirSpecification.R4B => new R4BCoreSchemaProvider(),
-            FhirSpecification.R5 => new R5CoreSchemaProvider(),
-            FhirSpecification.R6 => new R6CoreSchemaProvider(),
-            FhirSpecification.Stu3 => new STU3CoreSchemaProvider(),
+            FhirVersion.R4 => new R4CoreSchemaProvider(),
+            FhirVersion.R4B => new R4BCoreSchemaProvider(),
+            FhirVersion.R5 => new R5CoreSchemaProvider(),
+            FhirVersion.R6 => new R6CoreSchemaProvider(),
+            FhirVersion.Stu3 => new STU3CoreSchemaProvider(),
             _ => throw new NotSupportedException($"FHIR specification {spec} is not supported")
         };
     }
