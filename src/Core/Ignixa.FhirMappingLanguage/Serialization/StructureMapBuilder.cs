@@ -24,8 +24,8 @@ public class StructureMapBuilder
     /// <summary>
     /// Initializes a new instance of the StructureMapBuilder.
     /// </summary>
-    /// <param name="targetVersion">The target FHIR version for the generated StructureMap (defaults to R5).</param>
-    public StructureMapBuilder(FhirSpecification targetVersion = FhirSpecification.R5)
+    /// <param name="targetVersion">The target FHIR version for the generated StructureMap (defaults to Unspecified, which uses latest FHIR version behavior).</param>
+    public StructureMapBuilder(FhirSpecification targetVersion = FhirSpecification.Unspecified)
     {
         _targetVersion = targetVersion;
     }

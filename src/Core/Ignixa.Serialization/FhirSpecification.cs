@@ -5,13 +5,22 @@
 
 namespace Ignixa.Serialization;
 
+/// <summary>
+/// FHIR specification version.
+/// </summary>
 public enum FhirSpecification
 {
-    Stu3,
-    R4,
-    R4B,
-    R5,
-    R6
+    Stu3 = 0,
+    R4 = 1,
+    R4B = 2,
+    R5 = 3,
+    R6 = 4,
+
+    /// <summary>
+    /// Unspecified version - defaults to latest (R6) for version comparisons.
+    /// Use this when you want forward-compatible behavior that assumes the latest FHIR version.
+    /// </summary>
+    Unspecified = 999
 }
 
 /// <summary>
@@ -33,7 +42,8 @@ public static class FhirSpecificationExtensions
             FhirSpecification.R4B => "4.3",
             FhirSpecification.R5 => "5.0",
             FhirSpecification.R6 => "6.0",
-            _ => "4.0" // Default to R4
+            FhirSpecification.Unspecified => "6.0", // Unspecified defaults to latest (R6)
+            _ => "6.0" // Unknown values default to latest
         };
     }
 
@@ -42,12 +52,12 @@ public static class FhirSpecificationExtensions
     /// Supports both major.minor (e.g., "4.0") and major.minor.patch (e.g., "4.0.1") formats.
     /// </summary>
     /// <param name="versionString">Version string (e.g., "4.0", "4.0.1", "5.0", "3.0.2").</param>
-    /// <returns>FhirSpecification enum value. Defaults to R4 for unknown versions.</returns>
+    /// <returns>FhirSpecification enum value. Defaults to R6 (latest) for unknown versions.</returns>
     public static FhirSpecification FromVersionString(string versionString)
     {
         if (string.IsNullOrEmpty(versionString))
         {
-            return FhirSpecification.R4; // Default to R4
+            return FhirSpecification.R6; // Default to latest (R6)
         }
 
         // Extract major.minor by taking first 3 characters or until second dot
@@ -61,7 +71,7 @@ public static class FhirSpecificationExtensions
             "4.3" => FhirSpecification.R4B,
             "5.0" => FhirSpecification.R5,
             "6.0" => FhirSpecification.R6,
-            _ => FhirSpecification.R4 // Default to R4
+            _ => FhirSpecification.R6 // Default to latest (R6)
         };
     }
 }
