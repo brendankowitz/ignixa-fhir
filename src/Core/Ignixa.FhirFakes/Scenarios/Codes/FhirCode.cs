@@ -163,7 +163,7 @@ public record FhirCode(string System, string Code, string Display)
         public static readonly FhirCode Cephalexin500mg = new(Systems.RxNorm, "308191", "Cephalexin 500 MG Oral Capsule");
 
         /// <summary>Nitrofurantoin 100mg capsule - Antibiotic for urinary tract infections</summary>
-        public static readonly FhirCode Nitrofurantoin100mg = new(Systems.RxNorm, "197517", "Nitrofurantoin 100 MG Oral Capsule");
+        public static readonly FhirCode Nitrofurantoin100mg = new(Systems.RxNorm, "312017", "Nitrofurantoin 100 MG Oral Capsule");
 
         // Mental Health
 

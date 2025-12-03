@@ -212,7 +212,7 @@ public sealed class UrinaryTractInfectionScenarioTests
         // Assert
         context.Medications.Should().ContainSingle();
         var medication = context.Medications.Single();
-        medication.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>().Should().Be("197517");
+        medication.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["code"]?.GetValue<string>().Should().Be("312017");
         medication.MutableNode["medicationCodeableConcept"]?["coding"]?[0]?["display"]?.GetValue<string>().Should().Contain("Nitrofurantoin");
     }
 

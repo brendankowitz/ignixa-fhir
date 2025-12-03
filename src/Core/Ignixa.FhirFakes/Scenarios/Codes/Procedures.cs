@@ -234,7 +234,7 @@ public static class Procedures
     /// <summary>Incision and drainage - Abscess drainage</summary>
     public static FhirCode IncisionAndDrainage { get; } = new(
         System: FhirCode.Systems.SnomedCt,
-        Code: "172043006",
+        Code: "392235006",
         Display: "Incision and drainage");
 
     /// <summary>Intubation - Endotracheal tube insertion</summary>

@@ -47,6 +47,12 @@ public static class Immunizations
         Code: "133",
         Display: "Pneumococcal conjugate PCV 13");
 
+    /// <summary>Pneumococcal conjugate vaccine, 20 valent (Prevnar 20)</summary>
+    public static FhirCode PCV20 { get; } = new(
+        System: FhirCode.Systems.Cvx,
+        Code: "216",
+        Display: "Pneumococcal conjugate PCV20");
+
     /// <summary>Inactivated poliovirus vaccine (IPV)</summary>
     public static FhirCode IPV { get; } = new(
         System: FhirCode.Systems.Cvx,

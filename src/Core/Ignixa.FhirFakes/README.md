@@ -49,7 +49,8 @@ var schemaProvider = new R4CoreSchemaProvider();
 var generator = new PopulationGenerator(schemaProvider);
 
 // Generate 100 patients with Massachusetts demographics
-var patients = generator.Generate("Seattle", 100);
+// Note: First parameter is state name, not city name
+var patients = generator.Generate("Massachusetts", 100);
 
 // Result: 100 patients with:
 // - Names: Culturally appropriate (Bogus locales)
@@ -73,7 +74,7 @@ var allCities = KnownCities.All; // All 11 cities
 // Inspect city demographics
 Console.WriteLine($"City: {boston.Name}, {boston.State}");
 Console.WriteLine($"Population: {boston.Population:N0}");
-Console.WriteLine($"Race Distribution: {boston.RacePercentages["White"]:P0} White");
+Console.WriteLine($"Race Distribution: {boston.RaceDistribution["White"]:P0} White");
 Console.WriteLine($"Zip Codes: {boston.ZipCodePrefix}xx");
 Console.WriteLine($"Area Codes: {string.Join(", ", boston.AreaCodes)}");
 ```

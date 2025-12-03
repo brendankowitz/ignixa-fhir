@@ -166,7 +166,7 @@ Symptoms drive encounters and observations (e.g., high glucose triggers A1C test
 **New Classes:**
 
 ```csharp
-// E:\data\src\ignixa-fhir\test\Ignixa.Api.E2ETests\Fakers\Scenarios\ScenarioGenerator.cs
+// test/Ignixa.Api.E2ETests/Fakers/Scenarios/ScenarioGenerator.cs
 public class ScenarioGenerator
 {
     private readonly SchemaBasedFhirResourceFaker _resourceFaker;
@@ -180,7 +180,7 @@ public class ScenarioGenerator
     }
 }
 
-// E:\data\src\ignixa-fhir\test\Ignixa.Api.E2ETests\Fakers\Scenarios\ScenarioContext.cs
+// test/Ignixa.Api.E2ETests/Fakers/Scenarios/ScenarioContext.cs
 public class ScenarioContext
 {
     public string ScenarioId { get; init; }
@@ -199,7 +199,7 @@ public class ScenarioContext
 
 public record ScenarioEvent(DateTime Timestamp, string EventType, string ResourceId, string Description);
 
-// E:\data\src\ignixa-fhir\test\Ignixa.Api.E2ETests\Fakers\Scenarios\ScenarioTemplate.cs
+// test/Ignixa.Api.E2ETests/Fakers/Scenarios/ScenarioTemplate.cs
 public class ScenarioTemplate
 {
     public string Name { get; set; } = string.Empty;
@@ -346,7 +346,7 @@ public record DistributedTransitionOption(double Distribution, string Transition
 
 ### Phase 2: JSON Scenario Templates
 
-**Directory:** `E:\data\src\ignixa-fhir\test\Ignixa.Api.E2ETests\Fakers\Scenarios\Templates`
+**Directory:** `test/Ignixa.Api.E2ETests/Fakers/Scenarios/Templates`
 
 **Example:** `diabetic_patient.json`
 ```json
@@ -547,7 +547,7 @@ public record DistributedTransitionOption(double Distribution, string Transition
 ## Example Usage
 
 ```csharp
-// E:\data\src\ignixa-fhir\test\Ignixa.Api.E2ETests\Scenarios\DiabeticPatientScenarioTests.cs
+// test/Ignixa.Api.E2ETests/Scenarios/DiabeticPatientScenarioTests.cs
 public class DiabeticPatientScenarioTests
 {
     private readonly ScenarioGenerator _scenarioGenerator;
@@ -633,7 +633,7 @@ public class DiabeticPatientScenarioTests
 
 ## References
 
-- Synthea Source Code: `E:\data\src\ignixa-fhir\Old-src\Synthea`
+- Synthea Source Code: `Old-src/Synthea`
 - Synthea GitHub: https://github.com/synthetichealth/synthea
 - FHIR Spec - Test Data: http://hl7.org/fhir/testscripts.html
-- Current Schema-Based Faker: `E:\data\src\ignixa-fhir\test\Ignixa.Api.E2ETests\Fakers\SchemaBasedFhirResourceFaker.cs`
+- Current Schema-Based Faker: `test/Ignixa.Api.E2ETests/Fakers/SchemaBasedFhirResourceFaker.cs`

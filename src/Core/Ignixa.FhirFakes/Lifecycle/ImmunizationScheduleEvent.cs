@@ -236,7 +236,7 @@ public sealed class ImmunizationScheduleEvent : ILifecycleEvent
             "HPV" => Immunizations.HPV,
             "Zoster" => Immunizations.Zoster,
             "PCV13" => Immunizations.PCV13,
-            "PCV20" => Immunizations.PPSV23, // Use PPSV23 for adult pneumococcal
+            "PCV20" => Immunizations.PCV20,
             "MenACWY" => Immunizations.MeningococcalMCV4P,
             "RV" => Immunizations.RotavirusMonovalent,
             _ => CreateVaccineCode(vaccineCode, vaccineCode, FhirCode.Systems.Cvx)
