@@ -83,9 +83,10 @@ public sealed class DelayState : ScenarioState
     public static DelayState Weeks(int weeks) => ExactDuration(TimeSpan.FromDays(weeks * 7));
 
     /// <summary>
-    /// Creates a DelayState for the specified number of months (approximate).
+    /// Creates a DelayState for the specified number of months.
+    /// Uses 30.4375 days per month (365.25/12) for accurate age progression.
     /// </summary>
-    public static DelayState Months(int months) => ExactDuration(TimeSpan.FromDays(months * 30));
+    public static DelayState Months(int months) => ExactDuration(TimeSpan.FromDays(months * 30.4375));
 
     /// <summary>
     /// Creates a DelayState for the specified number of years (approximate).

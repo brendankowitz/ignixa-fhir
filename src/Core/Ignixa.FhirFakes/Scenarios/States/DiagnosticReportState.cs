@@ -136,14 +136,37 @@ public sealed class DiagnosticReportState : ScenarioState
         node["issued"] = context.CurrentTime.AddMinutes(_faker.Random.Int(5, 120)).ToString("o");
 
         // Set performer
-        var performerName = PerformerName ?? GeneratePerformerName(isImaging);
-        node["performer"] = new JsonArray
+        var performers = new JsonArray();
+
+        // Add practitioner reference if available
+        if (context.CurrentPractitioner is not null)
         {
-            new JsonObject
+            performers.Add(new JsonObject
+            {
+                ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}"
+            });
+        }
+
+        // Add organization reference if available
+        if (context.CurrentOrganization is not null)
+        {
+            performers.Add(new JsonObject
+            {
+                ["reference"] = $"Organization/{context.CurrentOrganization.Id}"
+            });
+        }
+
+        // If no practitioner or organization, add display name
+        if (performers.Count == 0)
+        {
+            var performerName = PerformerName ?? GeneratePerformerName(isImaging);
+            performers.Add(new JsonObject
             {
                 ["display"] = performerName
-            }
-        };
+            });
+        }
+
+        node["performer"] = performers;
 
         // Create observations and link them
         var observationReferences = new JsonArray();

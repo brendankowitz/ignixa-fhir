@@ -112,6 +112,45 @@ public sealed class EncounterState : ScenarioState
             };
         }
 
+        // Set participant if practitioner is available
+        if (context.CurrentPractitioner is not null)
+        {
+            node["participant"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["coding"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["system"] = "http://terminology.hl7.org/CodeSystem/v3-ParticipationType",
+                                    ["code"] = "PPRF",
+                                    ["display"] = "Primary Performer"
+                                }
+                            }
+                        }
+                    },
+                    ["individual"] = new JsonObject
+                    {
+                        ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}"
+                    }
+                }
+            };
+        }
+
+        // Set serviceProvider if organization is available
+        if (context.CurrentOrganization is not null)
+        {
+            node["serviceProvider"] = new JsonObject
+            {
+                ["reference"] = $"Organization/{context.CurrentOrganization.Id}"
+            };
+        }
+
         // Add to context
         var description = Reason ?? EncounterType.Display;
         context.AddEncounter(encounter, description);

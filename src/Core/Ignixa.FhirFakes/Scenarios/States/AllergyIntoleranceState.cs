@@ -174,10 +174,18 @@ public sealed class AllergyIntoleranceState : ScenarioState
         node["recordedDate"] = recordedDateTime.ToString("o");
 
         // Set recorder (who documented this allergy)
-        node["recorder"] = new JsonObject
+        var recorderNode = new JsonObject
         {
             ["display"] = _faker.Name.FullName() + ", MD"
         };
+
+        // Add practitioner reference if available
+        if (context.CurrentPractitioner is not null)
+        {
+            recorderNode["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
+        }
+
+        node["recorder"] = recorderNode;
 
         // Set reactions if provided
         if (Reactions is { Count: > 0 })

@@ -123,6 +123,15 @@ public sealed class MedicationOrderState : ScenarioState
         // Set authored date
         node["authoredOn"] = context.CurrentTime.ToString("o");
 
+        // Set requester if practitioner is available
+        if (context.CurrentPractitioner is not null)
+        {
+            node["requester"] = new JsonObject
+            {
+                ["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}"
+            };
+        }
+
         // Set dosage instructions
         var dosageText = DosageInstructions ?? BuildDosageText();
         node["dosageInstruction"] = new JsonArray

@@ -5,6 +5,7 @@
 
 using FluentAssertions;
 using Ignixa.FhirFakes.Population;
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Serialization.Models;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -27,7 +28,8 @@ public class PopulationGeneratorTests
         var generator = new PopulationGenerator(_schemaProvider);
 
         // Act
-        var bundles = generator.Generate("Massachusetts", 10).ToList();
+        var contexts = generator.Generate("Massachusetts", 10).ToList();
+        var bundles = contexts.Select(c => c.ToBundle()).ToList();
 
         // Assert
         bundles.Should().HaveCount(10);
@@ -61,7 +63,8 @@ public class PopulationGeneratorTests
         var generator = new PopulationGenerator(_schemaProvider);
 
         // Act
-        var bundles = generator.Generate("Massachusetts", 10).ToList();
+        var contexts = generator.Generate("Massachusetts", 10).ToList();
+        var bundles = contexts.Select(c => c.ToBundle()).ToList();
 
         // Assert
         bundles.Should().HaveCount(10);
@@ -91,7 +94,8 @@ public class PopulationGeneratorTests
         var generator = new PopulationGenerator(_schemaProvider);
 
         // Act
-        var bundles = generator.Generate("Washington", 10).ToList();
+        var contexts = generator.Generate("Washington", 10).ToList();
+        var bundles = contexts.Select(c => c.ToBundle()).ToList();
 
         // Assert
         bundles.Should().HaveCount(10);
@@ -131,7 +135,8 @@ public class PopulationGeneratorTests
         var validTexasAreaCodes = new[] { "713", "281", "832", "210", "726", "214", "469", "972" };
 
         // Act
-        var bundles = generator.Generate("Texas", 20).ToList();
+        var contexts = generator.Generate("Texas", 20).ToList();
+        var bundles = contexts.Select(c => c.ToBundle()).ToList();
 
         // Assert
         bundles.Should().HaveCount(20);
@@ -173,7 +178,8 @@ public class PopulationGeneratorTests
         var generator = new PopulationGenerator(_schemaProvider);
 
         // Act
-        var bundles = generator.Generate("California", 10).ToList();
+        var contexts = generator.Generate("California", 10).ToList();
+        var bundles = contexts.Select(c => c.ToBundle()).ToList();
 
         // Assert
         bundles.Should().HaveCount(10);

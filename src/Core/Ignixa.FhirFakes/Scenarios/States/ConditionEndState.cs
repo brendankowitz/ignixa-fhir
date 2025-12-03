@@ -103,6 +103,9 @@ public sealed class ConditionEndState : ScenarioState
 
         // Get condition display name for logging
         var displayName = AttributeName ?? ConditionCode?.Display ?? "Unknown";
+
+        // Record condition end event in timeline
+        context.RecordConditionEnd(condition.Id, $"End: {displayName}");
     }
 
     /// <summary>

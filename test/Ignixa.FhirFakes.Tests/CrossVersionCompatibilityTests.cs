@@ -502,6 +502,221 @@ public class CrossVersionCompatibilityTests
 
     #endregion
 
+    #region ServiceRequest Compatibility Tests
+
+    // Note: ServiceRequest was introduced in FHIR R4. In STU3, it was called ProcedureRequest.
+    // These tests skip STU3 as ServiceRequest is not available in that version.
+
+    [Fact]
+    public void GivenServiceRequest_WhenGeneratedAcrossR4Versions_ThenAllSucceed()
+    {
+        // ServiceRequest was introduced in R4, does not exist in STU3 (was called ProcedureRequest)
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing ServiceRequest with {schema.Version} ({schema.FullVersion})");
+
+            // Act
+            var exception = Record.Exception(() =>
+            {
+                var scenario = new ScenarioBuilder(schema)
+                    .WithPatient()
+                    .AddEncounter("Lab order")
+                    .AddCBCOrder()
+                    .Build();
+
+                // Assert basic structure
+                scenario.ServiceRequests.Should().HaveCount(1);
+                scenario.ServiceRequests[0].ResourceType.Should().Be("ServiceRequest");
+                scenario.ServiceRequests[0].Id.Should().NotBeNullOrEmpty();
+            });
+
+            exception.Should().BeNull($"ServiceRequest should work with {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenServiceRequest_WhenGeneratedAcrossR4Versions_ThenHasRequiredFields()
+    {
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing ServiceRequest required fields with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddEncounter("Lab order")
+                .AddCBCOrder()
+                .Build();
+
+            var serviceRequest = scenario.ServiceRequests[0];
+
+            // Assert - Required fields across all versions
+            serviceRequest.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
+            serviceRequest.MutableNode["intent"].Should().NotBeNull($"intent is required in {schema.Version}");
+            serviceRequest.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenServiceRequestWithPriority_WhenGeneratedAcrossR4Versions_ThenHasPriority()
+    {
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing ServiceRequest priority with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddUrgentCBCOrder()
+                .Build();
+
+            var serviceRequest = scenario.ServiceRequests[0];
+
+            // Assert - priority should exist across all versions
+            var priority = serviceRequest.MutableNode["priority"]?.GetValue<string>();
+            priority.Should().Be("urgent", $"priority should be 'urgent' in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenServiceRequestWithCategory_WhenGeneratedAcrossR4Versions_ThenHasCategory()
+    {
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing ServiceRequest category with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddCBCOrder()
+                .Build();
+
+            var serviceRequest = scenario.ServiceRequests[0];
+
+            // Assert - category should exist across all versions
+            var category = serviceRequest.MutableNode["category"] as JsonArray;
+            category.Should().NotBeNull($"category should exist in {schema.Version}");
+            category!.Count.Should().BeGreaterThan(0, $"should have category entries in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenServiceRequest_WhenGeneratedAcrossR4Versions_ThenHasCode()
+    {
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing ServiceRequest code with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddLipidPanelOrder()
+                .Build();
+
+            var serviceRequest = scenario.ServiceRequests[0];
+
+            // Assert - code should exist with proper coding structure
+            var code = serviceRequest.MutableNode["code"];
+            code.Should().NotBeNull($"code should exist in {schema.Version}");
+
+            var coding = code?["coding"]?[0];
+            coding.Should().NotBeNull($"code.coding should exist in {schema.Version}");
+
+            var system = coding?["system"]?.GetValue<string>();
+            system.Should().Be("http://loinc.org", $"should use LOINC system in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenImagingServiceRequest_WhenGeneratedAcrossR4Versions_ThenAllSucceed()
+    {
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing imaging ServiceRequest with {schema.Version}");
+
+            // Act
+            var exception = Record.Exception(() =>
+            {
+                var scenario = new ScenarioBuilder(schema)
+                    .WithPatient()
+                    .AddEncounter("Imaging referral")
+                    .AddChestXRayOrder()
+                    .Build();
+
+                // Assert
+                scenario.ServiceRequests.Should().HaveCount(1);
+                var categoryCode = scenario.ServiceRequests[0].MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+                categoryCode.Should().Be("363679005", $"should have imaging category in {schema.Version}"); // Imaging
+            });
+
+            exception.Should().BeNull($"Imaging ServiceRequest should work with {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenReferralServiceRequest_WhenGeneratedAcrossR4Versions_ThenAllSucceed()
+    {
+        var r4Providers = _schemaProviders.Where(p => p.Version != FhirSpecification.Stu3).ToList();
+
+        foreach (var schema in r4Providers)
+        {
+            _output.WriteLine($"Testing referral ServiceRequest with {schema.Version}");
+
+            // Act
+            var exception = Record.Exception(() =>
+            {
+                var scenario = new ScenarioBuilder(schema)
+                    .WithPatient()
+                    .AddEncounter("Specialist referral")
+                    .AddCardiologyReferral()
+                    .Build();
+
+                // Assert
+                scenario.ServiceRequests.Should().HaveCount(1);
+                var categoryCode = scenario.ServiceRequests[0].MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
+                categoryCode.Should().Be("3457005", $"should have referral category in {schema.Version}"); // Referral
+            });
+
+            exception.Should().BeNull($"Referral ServiceRequest should work with {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenServiceRequest_WhenGeneratedWithSTU3_ThenThrowsNotSupportedException()
+    {
+        // ServiceRequest doesn't exist in STU3 (it was called ProcedureRequest)
+        var stu3Schema = new STU3CoreSchemaProvider();
+        _output.WriteLine("Testing ServiceRequest with STU3 (should fail - resource renamed)");
+
+        // Act
+        var exception = Record.Exception(() =>
+        {
+            var scenario = new ScenarioBuilder(stu3Schema)
+                .WithPatient()
+                .AddCBCOrder()
+                .Build();
+        });
+
+        // Assert - Should throw because ServiceRequest doesn't exist in STU3
+        exception.Should().NotBeNull("ServiceRequest should not work with STU3");
+        exception.Should().BeOfType<ArgumentException>();
+        _output.WriteLine($"Expected failure for STU3: {exception?.Message}");
+    }
+
+    #endregion
+
     #region Version-Specific Issue Detection Tests
 
     [Fact]
@@ -576,6 +791,24 @@ public class CrossVersionCompatibilityTests
         {
             _output.WriteLine($"✗ Procedure: FAILED in STU3 - {ex.Message}");
         }
+
+        // ServiceRequest - NOTE: Does not exist in STU3 (was called ProcedureRequest)
+        try
+        {
+            var scenario = new ScenarioBuilder(stu3Schema)
+                .WithPatient()
+                .AddCBCOrder()
+                .Build();
+            _output.WriteLine("✓ ServiceRequest: Works in STU3 (unexpected!)");
+        }
+        catch (ArgumentException)
+        {
+            _output.WriteLine("✓ ServiceRequest: Correctly fails in STU3 (resource was called ProcedureRequest in STU3)");
+        }
+        catch (Exception ex)
+        {
+            _output.WriteLine($"✗ ServiceRequest: FAILED in STU3 with unexpected error - {ex.Message}");
+        }
     }
 
     [Fact]
@@ -638,6 +871,20 @@ public class CrossVersionCompatibilityTests
         catch (Exception ex)
         {
             _output.WriteLine($"✗ Procedure: FAILED in R5 - {ex.Message}");
+        }
+
+        // ServiceRequest
+        try
+        {
+            var scenario = new ScenarioBuilder(r5Schema)
+                .WithPatient()
+                .AddCBCOrder()
+                .Build();
+            _output.WriteLine("✓ ServiceRequest: Works in R5");
+        }
+        catch (Exception ex)
+        {
+            _output.WriteLine($"✗ ServiceRequest: FAILED in R5 - {ex.Message}");
         }
     }
 

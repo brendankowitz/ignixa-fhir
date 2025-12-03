@@ -163,14 +163,22 @@ public sealed class ProcedureState : ScenarioState
 
         // Set performer
         var performerName = PerformerName ?? GeneratePerformerName();
+        var performerActor = new JsonObject
+        {
+            ["display"] = performerName
+        };
+
+        // Add practitioner reference if available
+        if (context.CurrentPractitioner is not null)
+        {
+            performerActor["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
+        }
+
         node["performer"] = new JsonArray
         {
             new JsonObject
             {
-                ["actor"] = new JsonObject
-                {
-                    ["display"] = performerName
-                },
+                ["actor"] = performerActor,
                 ["function"] = new JsonObject
                 {
                     ["coding"] = new JsonArray

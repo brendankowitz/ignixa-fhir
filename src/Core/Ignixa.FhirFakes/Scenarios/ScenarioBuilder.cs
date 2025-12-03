@@ -552,6 +552,771 @@ public sealed class ScenarioBuilder
 
     #endregion
 
+    #region Coverage Methods
+
+    /// <summary>
+    /// Adds a coverage (insurance) record.
+    /// </summary>
+    /// <param name="memberId">Optional member ID (auto-generated if not specified).</param>
+    /// <param name="relationship">Relationship to subscriber (default: "self").</param>
+    /// <param name="typeCode">Coverage type code (e.g., "EHCPOL", "PUBLICPOL").</param>
+    /// <param name="typeDisplay">Coverage type display.</param>
+    /// <param name="startDate">Coverage start date (defaults to patient birth date).</param>
+    /// <param name="endDate">Coverage end date (null = ongoing).</param>
+    public ScenarioBuilder AddCoverage(
+        string? memberId = null,
+        string? relationship = null,
+        string? typeCode = null,
+        string? typeDisplay = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        _states.Add(new CoverageState
+        {
+            Name = "Coverage",
+            MemberId = memberId,
+            Relationship = relationship ?? "self",
+            TypeCode = typeCode,
+            TypeDisplay = typeDisplay,
+            StartDate = startDate,
+            EndDate = endDate
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a coverage state.
+    /// </summary>
+    public ScenarioBuilder AddCoverage(CoverageState coverage)
+    {
+        ArgumentNullException.ThrowIfNull(coverage);
+        _states.Add(coverage);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a self-insured coverage (patient is the subscriber).
+    /// </summary>
+    public ScenarioBuilder AddSelfCoverage()
+    {
+        _states.Add(CoverageState.SelfCoverage());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a child coverage (patient is a dependent on parent's plan).
+    /// </summary>
+    /// <param name="dependent">The dependent number (default 1).</param>
+    public ScenarioBuilder AddChildCoverage(int dependent = 1)
+    {
+        _states.Add(CoverageState.ChildCoverage(dependent));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Medicare coverage (US public healthcare for seniors).
+    /// </summary>
+    public ScenarioBuilder AddMedicareCoverage()
+    {
+        _states.Add(CoverageState.Medicare());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Medicaid coverage (US public healthcare for low-income).
+    /// </summary>
+    public ScenarioBuilder AddMedicaidCoverage()
+    {
+        _states.Add(CoverageState.Medicaid());
+        return this;
+    }
+
+    #endregion
+
+    #region Practitioner Methods
+
+    /// <summary>
+    /// Adds a practitioner (healthcare provider) to the scenario.
+    /// </summary>
+    /// <param name="specialty">The specialty code from Specialties constants.</param>
+    /// <param name="givenName">Optional given (first) name.</param>
+    /// <param name="familyName">Optional family (last) name.</param>
+    /// <param name="gender">Optional gender ("male", "female", "other").</param>
+    /// <param name="npiNumber">Optional NPI number (auto-generated if not specified).</param>
+    public ScenarioBuilder AddPractitioner(
+        FhirCode specialty,
+        string? givenName = null,
+        string? familyName = null,
+        string? gender = null,
+        string? npiNumber = null)
+    {
+        _states.Add(new PractitionerState
+        {
+            Name = $"Practitioner_{specialty.Display}",
+            Specialty = specialty,
+            GivenName = givenName,
+            FamilyName = familyName,
+            Gender = gender,
+            NpiNumber = npiNumber
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a practitioner state.
+    /// </summary>
+    public ScenarioBuilder AddPractitioner(PractitionerState practitioner)
+    {
+        ArgumentNullException.ThrowIfNull(practitioner);
+        _states.Add(practitioner);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a family medicine practitioner (primary care physician).
+    /// </summary>
+    public ScenarioBuilder AddFamilyPractitioner()
+    {
+        _states.Add(PractitionerState.FamilyPractitioner());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a pediatrician (children's doctor).
+    /// </summary>
+    public ScenarioBuilder AddPediatrician()
+    {
+        _states.Add(PractitionerState.Pediatrician());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a cardiologist (heart specialist).
+    /// </summary>
+    public ScenarioBuilder AddCardiologist()
+    {
+        _states.Add(PractitionerState.Cardiologist());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an emergency medicine physician.
+    /// </summary>
+    public ScenarioBuilder AddEmergencyPhysician()
+    {
+        _states.Add(PractitionerState.EmergencyPhysician());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a general surgeon.
+    /// </summary>
+    public ScenarioBuilder AddSurgeon()
+    {
+        _states.Add(PractitionerState.Surgeon());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a registered nurse.
+    /// </summary>
+    public ScenarioBuilder AddNurse()
+    {
+        _states.Add(PractitionerState.Nurse());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a nurse practitioner.
+    /// </summary>
+    public ScenarioBuilder AddNursePractitioner()
+    {
+        _states.Add(PractitionerState.NursePractitioner());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an internal medicine physician.
+    /// </summary>
+    public ScenarioBuilder AddInternist()
+    {
+        _states.Add(PractitionerState.Internist());
+        return this;
+    }
+
+    #endregion
+
+    #region Organization Methods
+
+    /// <summary>
+    /// Adds an organization (healthcare facility, payer, etc.) to the scenario.
+    /// </summary>
+    /// <param name="name">The organization name.</param>
+    /// <param name="type">Optional organization type code.</param>
+    /// <param name="npiNumber">Optional NPI number (auto-generated if not specified).</param>
+    /// <param name="taxId">Optional Tax ID (auto-generated if not specified).</param>
+    /// <param name="setAsCurrent">Whether to set this as the current organization context.</param>
+    public ScenarioBuilder AddOrganization(
+        string name,
+        FhirCode? type = null,
+        string? npiNumber = null,
+        string? taxId = null,
+        bool setAsCurrent = true)
+    {
+        _states.Add(new OrganizationState
+        {
+            Name = $"Organization_{name}",
+            OrganizationName = name,
+            Type = type,
+            NpiNumber = npiNumber,
+            TaxId = taxId,
+            SetAsCurrent = setAsCurrent
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an organization state.
+    /// </summary>
+    public ScenarioBuilder AddOrganization(OrganizationState organization)
+    {
+        ArgumentNullException.ThrowIfNull(organization);
+        _states.Add(organization);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a hospital organization.
+    /// </summary>
+    /// <param name="name">Optional hospital name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddHospital(string? name = null)
+    {
+        _states.Add(OrganizationState.Hospital(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a family practice clinic organization.
+    /// </summary>
+    /// <param name="name">Optional clinic name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddClinicFamilyPractice(string? name = null)
+    {
+        _states.Add(OrganizationState.ClinicFamilyPractice(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an emergency department organization.
+    /// </summary>
+    /// <param name="name">Optional department name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddEmergencyDepartment(string? name = null)
+    {
+        _states.Add(OrganizationState.EmergencyDepartment(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an insurance company organization.
+    /// </summary>
+    /// <param name="name">Optional company name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddInsuranceCompany(string? name = null)
+    {
+        _states.Add(OrganizationState.InsuranceCompany(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a clinical laboratory organization.
+    /// </summary>
+    /// <param name="name">Optional lab name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddLaboratory(string? name = null)
+    {
+        _states.Add(OrganizationState.Laboratory(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a pharmacy chain organization.
+    /// </summary>
+    /// <param name="name">Optional pharmacy name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddPharmacy(string? name = null)
+    {
+        _states.Add(OrganizationState.PharmacyChain(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an imaging center organization.
+    /// </summary>
+    /// <param name="name">Optional center name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddImagingCenter(string? name = null)
+    {
+        _states.Add(OrganizationState.ImagingCenter(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a payer organization (e.g., Medicare, Medicaid).
+    /// </summary>
+    /// <param name="name">Optional payer name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddPayerOrganization(string? name = null)
+    {
+        _states.Add(OrganizationState.Payer(name));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an urgent care clinic organization.
+    /// </summary>
+    /// <param name="name">Optional clinic name (auto-generated if not specified).</param>
+    public ScenarioBuilder AddUrgentCare(string? name = null)
+    {
+        _states.Add(OrganizationState.UrgentCare(name));
+        return this;
+    }
+
+    #endregion
+
+    #region Service Request Methods
+
+    /// <summary>
+    /// Adds a service request (order for labs, imaging, or referral).
+    /// </summary>
+    /// <param name="code">The service code (from ServiceRequestCodes).</param>
+    /// <param name="category">Optional category ("laboratory", "imaging", "referral", etc.).</param>
+    /// <param name="priority">Optional priority ("routine", "urgent", "asap", "stat").</param>
+    /// <param name="reasonCode">Optional reason code for the request.</param>
+    public ScenarioBuilder AddServiceRequest(
+        FhirCode code,
+        string? category = null,
+        string? priority = null,
+        FhirCode? reasonCode = null)
+    {
+        _states.Add(new ServiceRequestState
+        {
+            Name = $"ServiceRequest_{code.Display}",
+            Code = code,
+            Category = category,
+            Priority = priority ?? "routine",
+            ReasonCode = reasonCode
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a service request state.
+    /// </summary>
+    public ScenarioBuilder AddServiceRequest(ServiceRequestState serviceRequest)
+    {
+        ArgumentNullException.ThrowIfNull(serviceRequest);
+        _states.Add(serviceRequest);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a laboratory order.
+    /// </summary>
+    /// <param name="code">The laboratory test code (from ServiceRequestCodes.Laboratory).</param>
+    /// <param name="priority">Optional priority ("routine", "urgent", "stat").</param>
+    public ScenarioBuilder AddLabOrder(FhirCode code, string? priority = null)
+    {
+        _states.Add(new ServiceRequestState
+        {
+            Name = $"LabOrder_{code.Display}",
+            Code = code,
+            Category = "laboratory",
+            Priority = priority ?? "routine"
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an imaging order.
+    /// </summary>
+    /// <param name="code">The imaging study code (from ServiceRequestCodes.Imaging).</param>
+    /// <param name="priority">Optional priority ("routine", "urgent", "stat").</param>
+    public ScenarioBuilder AddImagingOrder(FhirCode code, string? priority = null)
+    {
+        _states.Add(new ServiceRequestState
+        {
+            Name = $"ImagingOrder_{code.Display}",
+            Code = code,
+            Category = "imaging",
+            Priority = priority ?? "routine"
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a specialist referral.
+    /// </summary>
+    /// <param name="code">The referral code (from ServiceRequestCodes.Referrals).</param>
+    /// <param name="reasonCode">Optional reason code for the referral.</param>
+    public ScenarioBuilder AddReferral(FhirCode code, FhirCode? reasonCode = null)
+    {
+        _states.Add(new ServiceRequestState
+        {
+            Name = $"Referral_{code.Display}",
+            Code = code,
+            Category = "referral",
+            Priority = "routine",
+            ReasonCode = reasonCode
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a CBC (Complete Blood Count) lab order.
+    /// </summary>
+    public ScenarioBuilder AddCBCOrder()
+    {
+        _states.Add(ServiceRequestState.CBCOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Comprehensive Metabolic Panel lab order.
+    /// </summary>
+    public ScenarioBuilder AddComprehensiveMetabolicPanelOrder()
+    {
+        _states.Add(ServiceRequestState.ComprehensiveMetabolicPanelOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Lipid Panel lab order.
+    /// </summary>
+    public ScenarioBuilder AddLipidPanelOrder()
+    {
+        _states.Add(ServiceRequestState.LipidPanelOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Hemoglobin A1c lab order for diabetes monitoring.
+    /// </summary>
+    public ScenarioBuilder AddHemoglobinA1cOrder()
+    {
+        _states.Add(ServiceRequestState.HemoglobinA1cOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Chest X-ray imaging order.
+    /// </summary>
+    public ScenarioBuilder AddChestXRayOrder()
+    {
+        _states.Add(ServiceRequestState.ChestXRayOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a CT Chest imaging order.
+    /// </summary>
+    public ScenarioBuilder AddCTChestOrder()
+    {
+        _states.Add(ServiceRequestState.CTChestOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an MRI Brain imaging order.
+    /// </summary>
+    public ScenarioBuilder AddMRIBrainOrder()
+    {
+        _states.Add(ServiceRequestState.MRIBrainOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Mammogram screening order.
+    /// </summary>
+    public ScenarioBuilder AddMammogramOrder()
+    {
+        _states.Add(ServiceRequestState.MammogramOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Cardiology consultation referral.
+    /// </summary>
+    public ScenarioBuilder AddCardiologyReferral()
+    {
+        _states.Add(ServiceRequestState.CardiologyReferral());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an Orthopedic consultation referral.
+    /// </summary>
+    public ScenarioBuilder AddOrthopedicReferral()
+    {
+        _states.Add(ServiceRequestState.OrthopedicReferral());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Physical Therapy referral.
+    /// </summary>
+    public ScenarioBuilder AddPhysicalTherapyReferral()
+    {
+        _states.Add(ServiceRequestState.PhysicalTherapyReferral());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a Psychiatry consultation referral.
+    /// </summary>
+    public ScenarioBuilder AddPsychiatryReferral()
+    {
+        _states.Add(ServiceRequestState.PsychiatryReferral());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an urgent CBC lab order.
+    /// </summary>
+    public ScenarioBuilder AddUrgentCBCOrder()
+    {
+        _states.Add(ServiceRequestState.UrgentCBCOrder());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a stat Metabolic Panel order (for emergencies).
+    /// </summary>
+    public ScenarioBuilder AddStatMetabolicPanelOrder()
+    {
+        _states.Add(ServiceRequestState.StatMetabolicPanelOrder());
+        return this;
+    }
+
+    #endregion
+
+    #region Goal Methods
+
+    /// <summary>
+    /// Adds a goal (desired health outcome) to the scenario.
+    /// Goals define measurable objectives that care plans and interventions aim to achieve.
+    /// </summary>
+    /// <param name="description">The goal description code (SNOMED CT).</param>
+    /// <param name="priority">Optional priority ("high-priority", "medium-priority", "low-priority").</param>
+    /// <param name="targetDate">Optional target date for achieving the goal.</param>
+    /// <param name="assignToAttribute">Optional attribute name to store the goal ID for later reference.</param>
+    public ScenarioBuilder AddGoal(
+        FhirCode description,
+        string? priority = null,
+        DateTime? targetDate = null,
+        string? assignToAttribute = null)
+    {
+        _states.Add(new GoalState
+        {
+            Name = $"Goal_{description.Display}",
+            Description = description,
+            Priority = priority ?? "medium-priority",
+            TargetDate = targetDate,
+            AssignToAttribute = assignToAttribute
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a goal state.
+    /// </summary>
+    public ScenarioBuilder AddGoal(GoalState goal)
+    {
+        ArgumentNullException.ThrowIfNull(goal);
+        _states.Add(goal);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a weight loss goal with target pounds.
+    /// </summary>
+    /// <param name="pounds">Target weight loss in pounds.</param>
+    public ScenarioBuilder AddWeightLossGoal(decimal pounds)
+    {
+        _states.Add(GoalState.WeightLossGoal(pounds));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a blood pressure control goal.
+    /// </summary>
+    /// <param name="systolic">Target maximum systolic blood pressure (default: 130 mmHg).</param>
+    public ScenarioBuilder AddBloodPressureControlGoal(int systolic = 130)
+    {
+        _states.Add(GoalState.BloodPressureControlGoal(systolic));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a glucose control goal (HbA1c target).
+    /// </summary>
+    /// <param name="a1c">Target maximum HbA1c percentage (default: 7.0%).</param>
+    public ScenarioBuilder AddGlucoseControlGoal(decimal a1c = 7.0m)
+    {
+        _states.Add(GoalState.GlucoseControlGoal(a1c));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a smoking cessation goal.
+    /// </summary>
+    public ScenarioBuilder AddSmokingCessationGoal()
+    {
+        _states.Add(GoalState.SmokingCessationGoal());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an exercise goal with target minutes per week.
+    /// </summary>
+    /// <param name="minutesPerWeek">Target exercise minutes per week (default: 150).</param>
+    public ScenarioBuilder AddExerciseGoal(int minutesPerWeek = 150)
+    {
+        _states.Add(GoalState.ExerciseGoal(minutesPerWeek));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a pain reduction goal.
+    /// </summary>
+    /// <param name="targetScore">Target maximum pain score on 0-10 scale (default: 3).</param>
+    public ScenarioBuilder AddPainReductionGoal(int targetScore = 3)
+    {
+        _states.Add(GoalState.PainReductionGoal(targetScore));
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a mobility improvement goal.
+    /// </summary>
+    public ScenarioBuilder AddMobilityImprovementGoal()
+    {
+        _states.Add(GoalState.MobilityImprovementGoal());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a medication adherence goal.
+    /// </summary>
+    public ScenarioBuilder AddMedicationAdherenceGoal()
+    {
+        _states.Add(GoalState.MedicationAdherenceGoal());
+        return this;
+    }
+
+    #endregion
+
+    #region CarePlan Methods
+
+    /// <summary>
+    /// Adds a care plan to the scenario.
+    /// CarePlans define activities and interventions to achieve goals and coordinate care.
+    /// </summary>
+    /// <param name="title">The human-readable title of the care plan.</param>
+    /// <param name="description">Optional description/summary of the care plan.</param>
+    /// <param name="assignToAttribute">Optional attribute name to store the care plan ID for later reference.</param>
+    public ScenarioBuilder AddCarePlan(
+        string title,
+        string? description = null,
+        string? assignToAttribute = null)
+    {
+        _states.Add(new CarePlanState
+        {
+            Name = $"CarePlan_{title}",
+            Title = title,
+            Description = description,
+            AssignToAttribute = assignToAttribute
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a care plan state.
+    /// </summary>
+    public ScenarioBuilder AddCarePlan(CarePlanState carePlan)
+    {
+        ArgumentNullException.ThrowIfNull(carePlan);
+        _states.Add(carePlan);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a diabetes management care plan.
+    /// </summary>
+    public ScenarioBuilder AddDiabetesManagementPlan()
+    {
+        _states.Add(CarePlanState.DiabetesManagementPlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a hypertension management care plan.
+    /// </summary>
+    public ScenarioBuilder AddHypertensionManagementPlan()
+    {
+        _states.Add(CarePlanState.HypertensionManagementPlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a cardiac rehabilitation care plan.
+    /// </summary>
+    public ScenarioBuilder AddCardiacRehabilitationPlan()
+    {
+        _states.Add(CarePlanState.CardiacRehabilitationPlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a weight loss care plan.
+    /// </summary>
+    public ScenarioBuilder AddWeightLossPlan()
+    {
+        _states.Add(CarePlanState.WeightLossPlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a chronic pain management care plan.
+    /// </summary>
+    public ScenarioBuilder AddChronicPainManagementPlan()
+    {
+        _states.Add(CarePlanState.ChronicPainManagementPlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a post-surgical care plan.
+    /// </summary>
+    public ScenarioBuilder AddPostSurgicalCarePlan()
+    {
+        _states.Add(CarePlanState.PostSurgicalCarePlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a smoking cessation care plan.
+    /// </summary>
+    public ScenarioBuilder AddSmokingCessationPlan()
+    {
+        _states.Add(CarePlanState.SmokingCessationPlan());
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a mental health care plan.
+    /// </summary>
+    public ScenarioBuilder AddMentalHealthCarePlan()
+    {
+        _states.Add(CarePlanState.MentalHealthCarePlan());
+        return this;
+    }
+
+    #endregion
+
     #region Condition End Methods
 
     /// <summary>

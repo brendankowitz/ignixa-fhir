@@ -442,7 +442,7 @@ public class ScenarioGeneratorTests
         var date1 = DateTime.Parse(visit1Start!);
         var date2 = DateTime.Parse(visit2Start!);
 
-        (date2 - date1).TotalDays.Should().BeApproximately(90, 1, "visit 2 should be ~3 months after visit 1");
+        (date2 - date1).TotalDays.Should().BeApproximately(91.3125, 2, "visit 2 should be ~3 months after visit 1 (3 * 30.4375 days)");
     }
 
     [Fact]

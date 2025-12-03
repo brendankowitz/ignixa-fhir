@@ -190,6 +190,17 @@ public sealed class ImmunizationState : ScenarioState
         };
 
         // Set performer (administering provider)
+        var performerActor = new JsonObject
+        {
+            ["display"] = _faker.Name.FullName() + ", RN"
+        };
+
+        // Add practitioner reference if available
+        if (context.CurrentPractitioner is not null)
+        {
+            performerActor["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
+        }
+
         node["performer"] = new JsonArray
         {
             new JsonObject
@@ -206,10 +217,7 @@ public sealed class ImmunizationState : ScenarioState
                         }
                     }
                 },
-                ["actor"] = new JsonObject
-                {
-                    ["display"] = _faker.Name.FullName() + ", RN"
-                }
+                ["actor"] = performerActor
             }
         };
 

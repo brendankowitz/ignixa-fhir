@@ -23,6 +23,12 @@ public sealed class ScenarioContext
     private readonly List<ResourceJsonNode> _diagnosticReports = [];
     private readonly List<ResourceJsonNode> _immunizations = [];
     private readonly List<ResourceJsonNode> _allergies = [];
+    private readonly List<ResourceJsonNode> _practitioners = [];
+    private readonly List<ResourceJsonNode> _organizations = [];
+    private readonly List<ResourceJsonNode> _coverages = [];
+    private readonly List<ResourceJsonNode> _serviceRequests = [];
+    private readonly List<ResourceJsonNode> _goals = [];
+    private readonly List<ResourceJsonNode> _carePlans = [];
     private readonly List<ResourceJsonNode> _allResources = [];
     private readonly List<ScenarioEvent> _timeline = [];
     private readonly Dictionary<string, object> _attributes = [];
@@ -101,6 +107,72 @@ public sealed class ScenarioContext
     public IReadOnlyList<ResourceJsonNode> Allergies => _allergies;
 
     /// <summary>
+    /// Gets all practitioner resources generated in this scenario.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> Practitioners => _practitioners;
+
+    /// <summary>
+    /// Gets the current practitioner context (most recently added practitioner).
+    /// Resources like Encounters, Procedures, and MedicationRequests can reference this.
+    /// </summary>
+    public ResourceJsonNode? CurrentPractitioner { get; private set; }
+
+    /// <summary>
+    /// Gets all organization resources generated in this scenario.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> Organizations => _organizations;
+
+    /// <summary>
+    /// Gets the current organization context (most recently added organization).
+    /// Resources like Encounters, Practitioners, and Coverage can reference this.
+    /// </summary>
+    public ResourceJsonNode? CurrentOrganization { get; private set; }
+
+    /// <summary>
+    /// Gets all coverage resources generated in this scenario.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> Coverages => _coverages;
+
+    /// <summary>
+    /// Gets the current coverage context (most recent coverage).
+    /// </summary>
+    public ResourceJsonNode? CurrentCoverage { get; private set; }
+
+    /// <summary>
+    /// Gets all service request resources generated in this scenario.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> ServiceRequests => _serviceRequests;
+
+    /// <summary>
+    /// Gets the current service request context (most recent service request).
+    /// Resources like Tasks and DiagnosticReports can reference this.
+    /// </summary>
+    public ResourceJsonNode? CurrentServiceRequest { get; private set; }
+
+    /// <summary>
+    /// Gets all goal resources generated in this scenario.
+    /// Goals define desired health outcomes that care plans aim to achieve.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> Goals => _goals;
+
+    /// <summary>
+    /// Gets the current goal context (most recently added goal).
+    /// CarePlans can reference goals for care coordination.
+    /// </summary>
+    public ResourceJsonNode? CurrentGoal { get; private set; }
+
+    /// <summary>
+    /// Gets all care plan resources generated in this scenario.
+    /// CarePlans define activities and interventions to achieve goals.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> CarePlans => _carePlans;
+
+    /// <summary>
+    /// Gets the current care plan context (most recently added care plan).
+    /// </summary>
+    public ResourceJsonNode? CurrentCarePlan { get; private set; }
+
+    /// <summary>
     /// Gets all resources generated in this scenario (in generation order).
     /// </summary>
     public IReadOnlyList<ResourceJsonNode> AllResources => _allResources;
@@ -142,6 +214,18 @@ public sealed class ScenarioContext
         _conditions.Add(condition);
         _allResources.Add(condition);
         AddTimelineEvent("ConditionOnset", condition.Id, "Condition", description);
+    }
+
+    /// <summary>
+    /// Records a condition end event in the timeline.
+    /// Used by ConditionEndState when a condition is resolved/ended.
+    /// </summary>
+    /// <param name="conditionId">The condition resource ID.</param>
+    /// <param name="description">Description of the end event.</param>
+    public void RecordConditionEnd(string conditionId, string description)
+    {
+        ArgumentNullException.ThrowIfNull(conditionId);
+        AddTimelineEvent("ConditionEnd", conditionId, "Condition", description);
     }
 
     /// <summary>
@@ -208,6 +292,115 @@ public sealed class ScenarioContext
         _allergies.Add(allergy);
         _allResources.Add(allergy);
         AddTimelineEvent("AllergyIntolerance", allergy.Id, "AllergyIntolerance", description);
+    }
+
+    /// <summary>
+    /// Adds a practitioner resource to the scenario.
+    /// </summary>
+    /// <param name="practitioner">The practitioner resource to add.</param>
+    /// <param name="specialty">The practitioner's specialty description for timeline event.</param>
+    public void AddPractitioner(ResourceJsonNode practitioner, string specialty)
+    {
+        ArgumentNullException.ThrowIfNull(practitioner);
+        _practitioners.Add(practitioner);
+        _allResources.Add(practitioner);
+        AddTimelineEvent("Practitioner", practitioner.Id, "Practitioner", specialty);
+    }
+
+    /// <summary>
+    /// Sets the current practitioner context.
+    /// Subsequent resources (Encounters, Procedures, etc.) can reference this practitioner.
+    /// </summary>
+    /// <param name="practitioner">The practitioner to set as current.</param>
+    public void SetCurrentPractitioner(ResourceJsonNode practitioner)
+    {
+        ArgumentNullException.ThrowIfNull(practitioner);
+        CurrentPractitioner = practitioner;
+    }
+
+    /// <summary>
+    /// Adds an organization resource to the scenario.
+    /// </summary>
+    /// <param name="organization">The organization resource to add.</param>
+    /// <param name="name">The organization's name for timeline event.</param>
+    /// <param name="setAsCurrent">If true, sets this organization as the current context.</param>
+    public void AddOrganization(ResourceJsonNode organization, string name, bool setAsCurrent = true)
+    {
+        ArgumentNullException.ThrowIfNull(organization);
+        _organizations.Add(organization);
+        _allResources.Add(organization);
+        if (setAsCurrent)
+        {
+            CurrentOrganization = organization;
+        }
+        AddTimelineEvent("Organization", organization.Id, "Organization", name);
+    }
+
+    /// <summary>
+    /// Sets the current organization context.
+    /// Subsequent resources (Encounters, Practitioners, Coverage, etc.) can reference this organization.
+    /// </summary>
+    /// <param name="organization">The organization to set as current.</param>
+    public void SetCurrentOrganization(ResourceJsonNode organization)
+    {
+        ArgumentNullException.ThrowIfNull(organization);
+        CurrentOrganization = organization;
+    }
+
+    /// <summary>
+    /// Adds a coverage resource to the scenario.
+    /// </summary>
+    public void AddCoverage(ResourceJsonNode coverage, string description)
+    {
+        ArgumentNullException.ThrowIfNull(coverage);
+        _coverages.Add(coverage);
+        _allResources.Add(coverage);
+        CurrentCoverage = coverage;
+        AddTimelineEvent("Coverage", coverage.Id, "Coverage", description);
+    }
+
+    /// <summary>
+    /// Adds a service request resource to the scenario.
+    /// </summary>
+    /// <param name="serviceRequest">The service request resource to add.</param>
+    /// <param name="description">Description for the timeline event (typically the service name).</param>
+    public void AddServiceRequest(ResourceJsonNode serviceRequest, string description)
+    {
+        ArgumentNullException.ThrowIfNull(serviceRequest);
+        _serviceRequests.Add(serviceRequest);
+        _allResources.Add(serviceRequest);
+        CurrentServiceRequest = serviceRequest;
+        AddTimelineEvent("ServiceRequest", serviceRequest.Id, "ServiceRequest", description);
+    }
+
+    /// <summary>
+    /// Adds a goal resource to the scenario.
+    /// Goals define desired health outcomes that care plans and interventions aim to achieve.
+    /// </summary>
+    /// <param name="goal">The goal resource to add.</param>
+    /// <param name="description">Description for the timeline event (typically the goal description).</param>
+    public void AddGoal(ResourceJsonNode goal, string description)
+    {
+        ArgumentNullException.ThrowIfNull(goal);
+        _goals.Add(goal);
+        _allResources.Add(goal);
+        CurrentGoal = goal;
+        AddTimelineEvent("Goal", goal.Id, "Goal", description);
+    }
+
+    /// <summary>
+    /// Adds a care plan resource to the scenario.
+    /// CarePlans define activities and interventions to achieve goals and coordinate care.
+    /// </summary>
+    /// <param name="carePlan">The care plan resource to add.</param>
+    /// <param name="title">Title for the timeline event (the care plan title).</param>
+    public void AddCarePlan(ResourceJsonNode carePlan, string title)
+    {
+        ArgumentNullException.ThrowIfNull(carePlan);
+        _carePlans.Add(carePlan);
+        _allResources.Add(carePlan);
+        CurrentCarePlan = carePlan;
+        AddTimelineEvent("CarePlan", carePlan.Id, "CarePlan", title);
     }
 
     /// <summary>
