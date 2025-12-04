@@ -55,16 +55,16 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         _logger.LogDebug("Found {Count} resource types for {FhirVersion}", resourceTypes.Count, context.FhirVersion);
 
         // Initialize REST component if not exists
-        if (statement.Rest == null || statement.Rest.Count == 0)
+        if (statement.Rest.Count == 0)
         {
-            var newRestComponent = new RestComponentJsonNode
+            statement.Rest.Add(new RestComponentJsonNode
             {
+                FhirVersion = context.FhirVersion,
                 Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
-            };
-            statement.AddRest(newRestComponent);
+            });
         }
 
-        var restComponent = statement.Rest![0];
+        var restComponent = statement.Rest[0];
 
         // Add resource components with interactions
         foreach (var resourceType in resourceTypes)
@@ -81,23 +81,32 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 
             var resourceComponent = new ResourceComponentJsonNode
             {
+                FhirVersion = context.FhirVersion,
                 Type = resourceType,
                 Profile = ReferenceOrCanonicalJsonNode.FromCanonical(canonicalUrl),
-                Interaction = BuildResourceInteractions(resourceType),
                 Versioning = ResourceComponentJsonNode.ResourceVersionPolicy.Versioned,
                 ReadHistory = true,
                 UpdateCreate = true,
                 ConditionalCreate = true,
                 ConditionalUpdate = true,
                 ConditionalDelete = ConditionalDeleteStatus.Single,
-                SearchParam = new List<SearchParamJsonNode>(), // Will be populated by SearchParameterCapabilitySegment
             };
 
-            restComponent.AddResource(resourceComponent);
+            // Add interactions (will be populated by SearchParameterCapabilitySegment for SearchParam)
+            foreach (var interaction in BuildResourceInteractions(resourceType))
+            {
+                resourceComponent.Interaction.Add(interaction);
+            }
+
+            restComponent.Resource.Add(resourceComponent);
         }
 
         // Add system-level interactions
-        restComponent.Interaction = BuildSystemInteractions();
+        restComponent.Interaction.Clear();
+        foreach (var interaction in BuildSystemInteractions())
+        {
+            restComponent.Interaction.Add(interaction);
+        }
 
         _logger.LogDebug("Added {Count} resource components with interactions", resourceTypes.Count);
 

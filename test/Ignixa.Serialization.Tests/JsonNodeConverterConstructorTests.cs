@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Xunit;
@@ -23,19 +24,26 @@ namespace Ignixa.Serialization.Tests;
 public class JsonNodeConverterConstructorTests
 {
     /// <summary>
-    /// All BaseJsonNode-derived types in Ignixa.Serialization.Models must have a constructor
-    /// that accepts (JsonObject, FhirVersion?) for JsonNodeConverter to work.
+    /// All BaseJsonNode-derived types in Models namespaces across all assemblies must have a constructor
+    /// that accepts (JsonObject, FhirVersion?) for JsonNodeConverter and MutableJsonList to work.
     /// </summary>
     [Fact]
     public void AllBaseJsonNodeTypes_ShouldHaveRequiredConstructor()
     {
-        // Arrange - Get all types deriving from BaseJsonNode in the Models namespace
-        var baseJsonNodeTypes = typeof(ResourceJsonNode).Assembly
-            .GetTypes()
+        // Arrange - Get all types deriving from BaseJsonNode in the Models namespace across multiple assemblies
+        var assemblies = new[]
+        {
+            typeof(ResourceJsonNode).Assembly, // Ignixa.Serialization
+            typeof(CapabilityStatementJsonNode).Assembly, // Ignixa.Application
+        };
+
+        var baseJsonNodeTypes = assemblies
+            .SelectMany(asm => asm.GetTypes())
             .Where(t => typeof(BaseJsonNode).IsAssignableFrom(t)
                         && !t.IsAbstract
                         && t.IsClass
                         && t.Namespace?.Contains("Models", StringComparison.Ordinal) == true)
+            .Distinct()
             .ToList();
 
         var missingConstructors = new List<string>();
@@ -46,13 +54,13 @@ public class JsonNodeConverterConstructorTests
             var hasRequiredConstructor = CanCreateWithJsonNodeConverter(type);
             if (!hasRequiredConstructor)
             {
-                missingConstructors.Add(type.Name);
+                missingConstructors.Add($"{type.Namespace}.{type.Name}");
             }
         }
 
         // Assert
         missingConstructors.Should().BeEmpty(
-            $"The following types are missing the (JsonObject, FhirVersion?) constructor required by JsonNodeConverter: {string.Join(", ", missingConstructors)}. " +
+            $"The following types are missing the (JsonObject, FhirVersion?) constructor required by JsonNodeConverter/MutableJsonList: {string.Join(", ", missingConstructors)}. " +
             "Add: public TypeName(JsonObject jsonObject, FhirVersion? fhirVersion = null) : base(jsonObject, fhirVersion) {{ }}");
     }
 

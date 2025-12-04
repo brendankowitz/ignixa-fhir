@@ -19,6 +19,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\src\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />

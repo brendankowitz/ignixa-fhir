@@ -6,7 +6,6 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
@@ -26,11 +25,6 @@ public class ResourceComponentJsonNode : BaseJsonNode
     {
     }
 
-    public ResourceComponentJsonNode(JsonObject jsonObject)
-        : base(jsonObject)
-    {
-    }
-
     public ResourceComponentJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
         : base(jsonObject, fhirVersion)
     {
@@ -40,7 +34,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     public string? Type
     {
         get => MutableNode["type"]?.GetValue<string>();
-        set => SetProperty("type", value != null ? JsonValue.Create(value) : null);
+        set => SetProperty("type", value is not null ? JsonValue.Create(value) : null);
     }
 
     [JsonIgnore]
@@ -68,7 +62,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
         }
         set
         {
-            if (value == null)
+            if (value is null)
             {
                 MutableNode.Remove("profile");
             }
@@ -132,7 +126,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
 
         if (!MutableNode.TryGetPropertyValue("supportedProfile", out var node) || node is not JsonArray array)
         {
-            array = new JsonArray();
+            array = [];
             MutableNode["supportedProfile"] = array;
         }
 
@@ -152,7 +146,7 @@ public class ResourceComponentJsonNode : BaseJsonNode
     /// </summary>
     public void SetSupportedProfiles(IEnumerable<ReferenceOrCanonicalJsonNode> supportedProfiles)
     {
-        if (supportedProfiles == null)
+        if (supportedProfiles is null)
         {
             MutableNode.Remove("supportedProfile");
         }
@@ -181,46 +175,11 @@ public class ResourceComponentJsonNode : BaseJsonNode
     public string? Documentation
     {
         get => MutableNode["documentation"]?.GetValue<string>();
-        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
+        set => SetProperty("documentation", value is not null ? JsonValue.Create(value) : null);
     }
 
     [JsonIgnore]
-    public IReadOnlyList<ResourceInteractionJsonNode>? Interaction
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("interaction", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            var result = new List<ResourceInteractionJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                result.Add(new ResourceInteractionJsonNode(item, FhirVersion));
-            }
-
-            return result;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("interaction");
-            }
-            else
-            {
-                // Propagate FhirVersion to child components
-                foreach (var interaction in value)
-                {
-                    interaction.FhirVersion = FhirVersion;
-                }
-
-                var array = new JsonArray(value.Select(i => i.MutableNode).ToArray());
-                MutableNode["interaction"] = array;
-            }
-        }
-    }
+    public MutableJsonList<ResourceInteractionJsonNode> Interaction => GetListProperty<ResourceInteractionJsonNode>("interaction");
 
     [JsonIgnore]
     public ResourceVersionPolicy? Versioning
@@ -265,114 +224,16 @@ public class ResourceComponentJsonNode : BaseJsonNode
     }
 
     [JsonIgnore]
-    public IReadOnlyList<string>? SearchInclude
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("searchInclude", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            return array.Select(n => n?.GetValue<string>()).Where(s => s != null).ToList()!;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("searchInclude");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(s => JsonValue.Create(s)).ToArray());
-                MutableNode["searchInclude"] = array;
-            }
-        }
-    }
+    public MutablePrimitiveList<string> SearchInclude => GetPrimitiveListProperty<string>("searchInclude");
 
     [JsonIgnore]
-    public IReadOnlyList<string>? SearchRevInclude
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("searchRevInclude", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            return array.Select(n => n?.GetValue<string>()).Where(s => s != null).ToList()!;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("searchRevInclude");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(s => JsonValue.Create(s)).ToArray());
-                MutableNode["searchRevInclude"] = array;
-            }
-        }
-    }
+    public MutablePrimitiveList<string> SearchRevInclude => GetPrimitiveListProperty<string>("searchRevInclude");
 
     [JsonIgnore]
-    public IReadOnlyList<SearchParamJsonNode>? SearchParam
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("searchParam", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
+    public MutableJsonList<SearchParamJsonNode> SearchParam => GetListProperty<SearchParamJsonNode>("searchParam");
 
-            var result = new List<SearchParamJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                result.Add(new SearchParamJsonNode(item, FhirVersion));
-            }
-
-            return result;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("searchParam");
-            }
-            else
-            {
-                // Propagate FhirVersion to child components
-                foreach (var param in value)
-                {
-                    param.FhirVersion = FhirVersion;
-                }
-
-                var array = new JsonArray(value.Select(s => s.MutableNode).ToArray());
-                MutableNode["searchParam"] = array;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Helper method to add a search parameter to the underlying JSON array.
-    /// This ensures the addition is persisted to the MutableNode.
-    /// </summary>
-    public void AddSearchParam(SearchParamJsonNode searchParam)
-    {
-        ArgumentNullException.ThrowIfNull(searchParam);
-
-        searchParam.FhirVersion = FhirVersion;
-
-        if (!MutableNode.TryGetPropertyValue("searchParam", out var node) || node is not JsonArray array)
-        {
-            array = new JsonArray();
-            MutableNode["searchParam"] = array;
-        }
-
-        array.Add(searchParam.MutableNode);
-    }
-
+    [JsonIgnore]
+    public MutableJsonList<OperationJsonNode> Operation => GetListProperty<OperationJsonNode>("operation");
 
     /// <summary>
     /// FHIR ResourceVersionPolicy value set.

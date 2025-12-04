@@ -23,6 +23,7 @@ public sealed class ScenarioBuilder
     private string _scenarioName = "Unnamed Scenario";
     private string _description = string.Empty;
     private string? _tag;
+    private bool _hasPatient;
 
     /// <summary>
     /// Creates a new scenario builder with the specified schema provider.
@@ -81,6 +82,14 @@ public sealed class ScenarioBuilder
         string? familyName = null,
         DateTime? startDate = null)
     {
+        if (_hasPatient)
+        {
+            throw new InvalidOperationException(
+                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
+                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
+        }
+        _hasPatient = true;
+
         _states.Add(new InitialState
         {
             Name = "Initial",
@@ -117,6 +126,15 @@ public sealed class ScenarioBuilder
     public ScenarioBuilder WithPatient(Action<PatientBuilder> configure, DateTime? startDate = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
+
+        if (_hasPatient)
+        {
+            throw new InvalidOperationException(
+                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
+                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
+        }
+        _hasPatient = true;
+
         _states.Add(new PatientBuilderState(
             builder =>
             {
@@ -150,6 +168,15 @@ public sealed class ScenarioBuilder
     public ScenarioBuilder WithSimplePatient(Action<PatientBuilder> configure, DateTime? startDate = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
+
+        if (_hasPatient)
+        {
+            throw new InvalidOperationException(
+                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
+                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
+        }
+        _hasPatient = true;
+
         _states.Add(new PatientBuilderState(
             builder =>
             {
@@ -184,6 +211,15 @@ public sealed class ScenarioBuilder
     public ScenarioBuilder WithRealisticPatient(Action<PatientBuilder> configure, DateTime? startDate = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
+
+        if (_hasPatient)
+        {
+            throw new InvalidOperationException(
+                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
+                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
+        }
+        _hasPatient = true;
+
         _states.Add(new PatientBuilderState(
             builder =>
             {
@@ -213,6 +249,14 @@ public sealed class ScenarioBuilder
     /// </example>
     public ScenarioBuilder WithSeattlePatient(Action<PatientBuilder>? configure = null, DateTime? startDate = null)
     {
+        if (_hasPatient)
+        {
+            throw new InvalidOperationException(
+                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
+                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
+        }
+        _hasPatient = true;
+
         _states.Add(new PatientBuilderState(
             builder =>
             {
@@ -253,6 +297,15 @@ public sealed class ScenarioBuilder
         DateTime? startDate = null)
     {
         ArgumentNullException.ThrowIfNull(city);
+
+        if (_hasPatient)
+        {
+            throw new InvalidOperationException(
+                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
+                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
+        }
+        _hasPatient = true;
+
         _states.Add(new PatientBuilderState(
             builder =>
             {

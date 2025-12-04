@@ -5,7 +5,9 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Api.E2ETests.Fixtures;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
 namespace Ignixa.Api.E2ETests.Infrastructure;
@@ -63,5 +65,19 @@ public abstract class CapabilityDrivenTestBase : IClassFixture<IgnixaApiFixture>
     protected ScenarioBuilder CreateScenario()
     {
         return new ScenarioBuilder(SchemaProvider);
+    }
+
+    /// <summary>
+    /// Creates a fluent PatientBuilder for building standalone patients (not part of a scenario).
+    /// Use this when you need multiple patients in a single test.
+    /// Call .Build() at the end to generate the patient resource.
+    /// </summary>
+    /// <returns>A PatientBuilder instance for fluent configuration.</returns>
+    /// <example>
+    /// var patient = CreatePatient().FromSeattle().WithAge(45).Build();
+    /// </example>
+    protected PatientBuilder CreatePatient()
+    {
+        return PatientBuilderFactory.CreateRealistic(SchemaProvider);
     }
 }

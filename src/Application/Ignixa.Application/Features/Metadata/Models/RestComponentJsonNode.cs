@@ -3,10 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
@@ -41,186 +38,38 @@ public class RestComponentJsonNode : BaseJsonNode
     public string? Documentation
     {
         get => MutableNode["documentation"]?.GetValue<string>();
-        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
+        set => SetProperty("documentation", value is not null ? JsonValue.Create(value) : null);
     }
 
     [JsonIgnore]
     public SecurityComponentJsonNode? Security
     {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("security", out var node) || node is not JsonObject jsonObject)
-            {
-                return null;
-            }
-
-            return new SecurityComponentJsonNode(jsonObject);
-        }
+        get => GetComplexProperty<SecurityComponentJsonNode>("security");
         set
         {
-            if (value == null)
+            if (value is null)
             {
                 MutableNode.Remove("security");
             }
             else
             {
+                value.FhirVersion = FhirVersion;
                 MutableNode["security"] = value.MutableNode;
             }
         }
     }
 
     [JsonIgnore]
-    public IReadOnlyList<ResourceComponentJsonNode>? Resource
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("resource", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            var result = new List<ResourceComponentJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                result.Add(new ResourceComponentJsonNode(item, FhirVersion));
-            }
-
-            return result;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("resource");
-            }
-            else
-            {
-                // Propagate FhirVersion to child components
-                foreach (var resourceComponent in value)
-                {
-                    resourceComponent.FhirVersion = FhirVersion;
-                }
-
-                var array = new JsonArray(value.Select(r => r.MutableNode).ToArray());
-                MutableNode["resource"] = array;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Helper method to add a resource component to the underlying JSON array.
-    /// This ensures the addition is persisted to the MutableNode.
-    /// </summary>
-    public void AddResource(ResourceComponentJsonNode resource)
-    {
-        ArgumentNullException.ThrowIfNull(resource);
-
-        resource.FhirVersion = FhirVersion;
-
-        if (!MutableNode.TryGetPropertyValue("resource", out var node) || node is not JsonArray array)
-        {
-            array = new JsonArray();
-            MutableNode["resource"] = array;
-        }
-
-        array.Add(resource.MutableNode);
-    }
+    public MutableJsonList<ResourceComponentJsonNode> Resource => GetListProperty<ResourceComponentJsonNode>("resource");
 
     [JsonIgnore]
-    public IReadOnlyList<SystemInteractionJsonNode>? Interaction
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("interaction", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            var result = new List<SystemInteractionJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                result.Add(new SystemInteractionJsonNode(item));
-            }
-
-            return result;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("interaction");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(i => i.MutableNode).ToArray());
-                MutableNode["interaction"] = array;
-            }
-        }
-    }
+    public MutableJsonList<SystemInteractionJsonNode> Interaction => GetListProperty<SystemInteractionJsonNode>("interaction");
 
     [JsonIgnore]
-    public IReadOnlyList<SearchParamJsonNode>? SearchParam
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("searchParam", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            var result = new List<SearchParamJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                result.Add(new SearchParamJsonNode(item));
-            }
-
-            return result;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("searchParam");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(s => s.MutableNode).ToArray());
-                MutableNode["searchParam"] = array;
-            }
-        }
-    }
+    public MutableJsonList<SearchParamJsonNode> SearchParam => GetListProperty<SearchParamJsonNode>("searchParam");
 
     [JsonIgnore]
-    public IReadOnlyList<OperationJsonNode>? Operation
-    {
-        get
-        {
-            if (!MutableNode.TryGetPropertyValue("operation", out var node) || node is not JsonArray array)
-            {
-                return null;
-            }
-
-            var result = new List<OperationJsonNode>();
-            foreach (var item in array.OfType<JsonObject>())
-            {
-                result.Add(new OperationJsonNode(item));
-            }
-
-            return result;
-        }
-        set
-        {
-            if (value == null)
-            {
-                MutableNode.Remove("operation");
-            }
-            else
-            {
-                var array = new JsonArray(value.Select(o => o.MutableNode).ToArray());
-                MutableNode["operation"] = array;
-            }
-        }
-    }
+    public MutableJsonList<OperationJsonNode> Operation => GetListProperty<OperationJsonNode>("operation");
 
     /// <summary>
     /// The mode of the REST component (client or server).

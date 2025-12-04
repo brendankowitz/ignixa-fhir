@@ -58,11 +58,38 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.ConfigureAppConfiguration((context, config) =>
         {
             // Override configuration for tests
+            // IMPORTANT: Use multi-tenant configuration pattern to override tenant storage
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                // Use filesystem storage with test directory
-                ["DataLayer:Type"] = "FileSystem",
-                ["DataLayer:FileSystem:BasePath"] = _testDataPath,
+                // Multi-tenancy mode
+                ["Tenants:Mode"] = "Isolated",
+
+                // System Partition (Tenant 0) - FileSystem for tests
+                ["Tenants:Configurations:0:TenantId"] = "0",
+                ["Tenants:Configurations:0:DisplayName"] = "System Partition (Test)",
+                ["Tenants:Configurations:0:FhirVersion"] = "4.0",
+                ["Tenants:Configurations:0:IsActive"] = "true",
+                ["Tenants:Configurations:0:IsSystemPartition"] = "true",
+                ["Tenants:Configurations:0:Storage:Type"] = "SqlEntityFramework",
+                ["Tenants:Configurations:0:Storage:BaseDirectory"] = Path.Combine(_testDataPath, "system"),
+                ["Tenants:Configurations:0:Packages:EnableAutoLoad"] = "false",
+                ["Tenants:Configurations:0:Packages:InheritConnectionStringFromTenant"] = "1",
+
+                // Tenant 1 - FileSystem for tests (overrides SQL from appsettings.json)
+                ["Tenants:Configurations:1:TenantId"] = "1",
+                ["Tenants:Configurations:1:DisplayName"] = "E2E Test Tenant",
+                ["Tenants:Configurations:1:FhirVersion"] = "4.0",
+                ["Tenants:Configurations:1:IsActive"] = "true",
+                ["Tenants:Configurations:1:Storage:Type"] = "SqlEntityFramework",
+                ["Tenants:Configurations:1:Storage:ConnectionString"] = "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true",
+                ["Tenants:Configurations:1:Storage:BaseDirectory"] = Path.Combine(_testDataPath, "tenants", "1"),
+
+                // Disable package preloading for faster test startup
+                ["Tenants:Configurations:1:Packages:EnableAutoLoad"] = "false",
+                ["Tenants:Configurations:1:Packages:PreloadPackages:0"] = null!,
+
+                // Mark Tenant 2 as inactive to avoid loading
+                ["Tenants:Configurations:2:IsActive"] = "false",
 
                 // Disable authentication for E2E tests
                 ["Authentication:Enabled"] = "false",
@@ -71,8 +98,21 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Search:IndexType"] = "InMemory",
 
                 // Disable external dependencies
-                ["DurableTask:Enabled"] = "false",
-                ["Azure:Storage:Enabled"] = "false",
+                ["DurableTask:Provider"] = "FileSystem",
+                ["BlobStorage:Provider"] = "Local",
+                ["BlobStorage:RootDirectory"] = Path.Combine(_testDataPath, "blobs"),
+
+                // Disable MCP for tests
+                ["Mcp:Enabled"] = "false",
+
+                // Disable terminology auto-import for faster test startup
+                ["Terminology:EnableAutoImport"] = "false",
+
+                // Disable transaction watcher for tests
+                ["TransactionWatcher:Enabled"] = "false",
+
+                // Disable eager loading of package search parameters (avoids SQL connection)
+                ["SearchParameters:ConflictResolution:EagerLoadPackageSearchParameters"] = "false",
 
                 // Set test environment
                 ["ASPNETCORE_ENVIRONMENT"] = "Test"

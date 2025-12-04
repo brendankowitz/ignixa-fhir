@@ -86,7 +86,12 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
             var includeList = BuildSearchIncludes(resource.Type, searchParams);
             if (includeList.Count > 0)
             {
-                resource.SearchInclude = includeList;
+                resource.SearchInclude.Clear();
+                foreach (var include in includeList)
+                {
+                    resource.SearchInclude.Add(include);
+                }
+
                 totalIncludes += includeList.Count;
             }
 
@@ -94,7 +99,12 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
             var revIncludeList = BuildSearchRevIncludes(resource.Type, manager, resourceMap.Keys);
             if (revIncludeList.Count > 0)
             {
-                resource.SearchRevInclude = revIncludeList;
+                resource.SearchRevInclude.Clear();
+                foreach (var revInclude in revIncludeList)
+                {
+                    resource.SearchRevInclude.Add(revInclude);
+                }
+
                 totalRevIncludes += revIncludeList.Count;
             }
         }

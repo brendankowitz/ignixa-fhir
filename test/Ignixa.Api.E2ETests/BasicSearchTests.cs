@@ -6,7 +6,6 @@
 using FluentAssertions;
 using Ignixa.Api.E2ETests.Fixtures;
 using Ignixa.Api.E2ETests.Infrastructure;
-using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -32,16 +31,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient City Search Test")
-            .WithDescription("Tests Patient search by address-city parameter")
-            .WithTag(tag)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Seattle).WithAge(45))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Boston).WithAge(32))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Seattle).WithAge(28))
-            .Build();
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient().FromSeattle().WithTag(tag).Build();
+        var patient2 = CreatePatient().FromCity(KnownCities.Boston).WithTag(tag).Build();
+        var patient3 = CreatePatient().FromSeattle().WithTag(tag).Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act
         var results = await Harness.SearchAsync("Patient", $"address-city=Seattle&_tag={tag}");
@@ -63,28 +58,24 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient Family Name Search Test")
-            .WithDescription("Tests Patient search by family parameter")
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Smith")
             .WithTag(tag)
-            .WithSimplePatient(p => p
-                .WithAge(45)
-                .WithGender(g => g.Male)
-                .WithGivenName("John")
-                .WithFamilyName("Smith"))
-            .WithSimplePatient(p => p
-                .WithAge(32)
-                .WithGender(g => g.Female)
-                .WithGivenName("Jane")
-                .WithFamilyName("Jones"))
-            .WithSimplePatient(p => p
-                .WithAge(28)
-                .WithGender(g => g.Male)
-                .WithGivenName("Bob")
-                .WithFamilyName("Smith"))
+            .Build();
+        var patient2 = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Jones")
+            .WithTag(tag)
+            .Build();
+        var patient3 = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Smith")
+            .WithTag(tag)
             .Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act
         var results = await Harness.SearchAsync("Patient", $"family=Smith&_tag={tag}");
@@ -102,28 +93,27 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient Family+Given Name Search Test")
-            .WithDescription("Tests Patient search by family AND given parameters")
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient()
+            .FromSeattle()
+            .WithGivenName("John")
+            .WithFamilyName("Smith")
             .WithTag(tag)
-            .WithSimplePatient(p => p
-                .WithAge(45)
-                .WithGender(g => g.Male)
-                .WithGivenName("John")
-                .WithFamilyName("Smith"))
-            .WithSimplePatient(p => p
-                .WithAge(32)
-                .WithGender(g => g.Female)
-                .WithGivenName("Jane")
-                .WithFamilyName("Smith"))
-            .WithSimplePatient(p => p
-                .WithAge(28)
-                .WithGender(g => g.Male)
-                .WithGivenName("John")
-                .WithFamilyName("Jones"))
+            .Build();
+        var patient2 = CreatePatient()
+            .FromSeattle()
+            .WithGivenName("Jane")
+            .WithFamilyName("Smith")
+            .WithTag(tag)
+            .Build();
+        var patient3 = CreatePatient()
+            .FromSeattle()
+            .WithGivenName("John")
+            .WithFamilyName("Jones")
+            .WithTag(tag)
             .Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act - AND logic: family=Smith AND given=John
         var results = await Harness.SearchAsync("Patient", $"family=Smith&given=John&_tag={tag}");
@@ -141,16 +131,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient Gender Search Test")
-            .WithDescription("Tests Patient search by gender parameter with realistic demographics")
-            .WithTag(tag)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Seattle).WithAge(45).WithGender(g => g.Male))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Boston).WithAge(32).WithGender(g => g.Female))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Chicago).WithAge(28).WithGender(g => g.Male))
-            .Build();
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient().FromCity(KnownCities.Seattle).WithGender(g => g.Male).WithTag(tag).Build();
+        var patient2 = CreatePatient().FromCity(KnownCities.Boston).WithGender(g => g.Female).WithTag(tag).Build();
+        var patient3 = CreatePatient().FromCity(KnownCities.Chicago).WithGender(g => g.Male).WithTag(tag).Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act
         var results = await Harness.SearchAsync("Patient", $"gender=male&_tag={tag}");
@@ -173,8 +159,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
             .WithDescription("Tests Observation search by code parameter with realistic patient")
             .WithTag(tag)
             .WithRealisticPatient(p => p
-                .FromCity(KnownCities.Seattle)
-                .WithAge(45)
+                .FromSeattle()
                 .WithRealisticBMI())
             .AddEncounter("Lab visit")
             // Body Weight observation #1
@@ -224,16 +209,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient State Search Test")
-            .WithDescription("Tests Patient search by state with multiple cities")
-            .WithTag(tag)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Seattle).WithAge(45))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Boston).WithAge(32))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.LosAngeles).WithAge(28))
-            .Build();
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient().FromCity(KnownCities.Seattle).WithAge(45).WithTag(tag).Build();
+        var patient2 = CreatePatient().FromCity(KnownCities.Boston).WithAge(32).WithTag(tag).Build();
+        var patient3 = CreatePatient().FromCity(KnownCities.LosAngeles).WithAge(28).WithTag(tag).Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act - Search for patients in Washington state (only Seattle patient)
         var results = await Harness.SearchAsync("Patient", $"address-state=Washington&_tag={tag}");
@@ -251,16 +232,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("International Patient Search Test")
-            .WithDescription("Tests Patient search with international cities")
-            .WithTag(tag)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Melbourne).WithAge(35))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Amsterdam).WithAge(42))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Seattle).WithAge(28))
-            .Build();
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient().FromCity(KnownCities.Melbourne).WithAge(35).WithTag(tag).Build();
+        var patient2 = CreatePatient().FromCity(KnownCities.Amsterdam).WithAge(42).WithTag(tag).Build();
+        var patient3 = CreatePatient().FromCity(KnownCities.Seattle).WithAge(28).WithTag(tag).Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act - Search for patients in Australia (only Melbourne patient)
         var results = await Harness.SearchAsync("Patient", $"address-country=Australia&_tag={tag}");
@@ -278,23 +255,23 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient BMI Extension Test")
-            .WithDescription("Tests Patient resources with BMI extensions from realistic demographics")
+        // Create two separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient()
+            .FromCity(KnownCities.Seattle)
+            .WithAge(45)
+            .WithGender(g => g.Male)
+            .WithRealisticBMI()
             .WithTag(tag)
-            .WithRealisticPatient(p => p
-                .FromCity(KnownCities.Seattle)
-                .WithAge(45)
-                .WithGender(g => g.Male)
-                .WithRealisticBMI())
-            .WithRealisticPatient(p => p
-                .FromCity(KnownCities.Boston)
-                .WithAge(32)
-                .WithGender(g => g.Female)
-                .WithRealisticBMI())
+            .Build();
+        var patient2 = CreatePatient()
+            .FromCity(KnownCities.Boston)
+            .WithAge(32)
+            .WithGender(g => g.Female)
+            .WithRealisticBMI()
+            .WithTag(tag)
             .Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2]);
 
         // Act - Search for all patients with the tag
         var results = await Harness.SearchAsync("Patient", $"_tag={tag}");
@@ -316,16 +293,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var scenario = CreateScenario()
-            .WithName("Patient Ethnic Names Test")
-            .WithDescription("Demonstrates ethnically appropriate names from realistic demographics")
-            .WithTag(tag)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Chicago).WithAge(35))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Houston).WithAge(42))
-            .WithRealisticPatient(p => p.FromCity(KnownCities.SanDiego).WithAge(28))
-            .Build();
+        // Create three separate patients (scenario builder only supports one patient)
+        var patient1 = CreatePatient().FromCity(KnownCities.Chicago).WithAge(35).WithTag(tag).Build();
+        var patient2 = CreatePatient().FromCity(KnownCities.Houston).WithAge(42).WithTag(tag).Build();
+        var patient3 = CreatePatient().FromCity(KnownCities.SanDiego).WithAge(28).WithTag(tag).Build();
 
-        await Harness.CreateResourcesAsync(scenario.AllResources.ToArray());
+        await Harness.CreateResourcesAsync([patient1, patient2, patient3]);
 
         // Act - Search for all patients with the tag
         var results = await Harness.SearchAsync("Patient", $"_tag={tag}");

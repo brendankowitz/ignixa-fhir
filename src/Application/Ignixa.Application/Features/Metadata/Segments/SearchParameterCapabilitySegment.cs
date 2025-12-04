@@ -77,8 +77,14 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
             }
 
             // Build search parameter list
-            resource.SearchParam = BuildSearchParameters(searchParams);
-            totalSearchParams += resource.SearchParam.Count;
+            var searchParamNodes = BuildSearchParameters(searchParams);
+            resource.SearchParam.Clear();
+            foreach (var sp in searchParamNodes)
+            {
+                resource.SearchParam.Add(sp);
+            }
+
+            totalSearchParams += searchParamNodes.Count;
         }
 
         _logger.LogDebug("Added {Count} total search parameters across {ResourceCount} resources",

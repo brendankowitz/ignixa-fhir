@@ -3,9 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
@@ -21,8 +21,8 @@ public class SystemInteractionJsonNode : BaseJsonNode
     {
     }
 
-    public SystemInteractionJsonNode(JsonObject jsonObject)
-        : base(jsonObject)
+    public SystemInteractionJsonNode(JsonObject jsonObject, FhirVersion? fhirVersion = null)
+        : base(jsonObject, fhirVersion)
     {
     }
 
@@ -37,6 +37,6 @@ public class SystemInteractionJsonNode : BaseJsonNode
     public string? Documentation
     {
         get => MutableNode["documentation"]?.GetValue<string>();
-        set => SetProperty("documentation", value != null ? JsonValue.Create(value) : null);
+        set => SetProperty("documentation", value is not null ? JsonValue.Create(value) : null);
     }
 }

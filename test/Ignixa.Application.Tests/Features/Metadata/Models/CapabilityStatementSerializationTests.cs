@@ -123,8 +123,9 @@ public class CapabilityStatementSerializationTests
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.SetFormats(new List<string> { "application/fhir+json", "application/fhir+xml" });
-        capability.SetPatchFormats(new List<string> { "application/json-patch+json" });
+        capability.Format.Add("application/fhir+json");
+        capability.Format.Add("application/fhir+xml");
+        capability.PatchFormat.Add("application/json-patch+json");
 
         // Act
         var json = capability.SerializeToString();
@@ -154,7 +155,7 @@ public class CapabilityStatementSerializationTests
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(new RestComponentJsonNode
+        capability.Rest.Add(new RestComponentJsonNode
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
             Documentation = "Test REST API",
@@ -183,7 +184,7 @@ public class CapabilityStatementSerializationTests
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
-        restComponent.AddResource(new ResourceComponentJsonNode
+        restComponent.Resource.Add(new ResourceComponentJsonNode
         {
             Type = "Patient",
             Documentation = "Patient resource operations",
@@ -200,7 +201,7 @@ public class CapabilityStatementSerializationTests
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -226,29 +227,28 @@ public class CapabilityStatementSerializationTests
     public void GivenResourceInteractions_WhenSerializing_ThenInteractionsSerializeCorrectly()
     {
         // Arrange
+        var resourceComponent = new ResourceComponentJsonNode
+        {
+            Type = "Patient",
+        };
+        resourceComponent.Interaction.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Read, Documentation = "Read patient" });
+        resourceComponent.Interaction.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Create });
+        resourceComponent.Interaction.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Update });
+        resourceComponent.Interaction.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Delete });
+        resourceComponent.Interaction.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.SearchType });
+
         var restComponent = new RestComponentJsonNode
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
-        restComponent.AddResource(new ResourceComponentJsonNode
-        {
-            Type = "Patient",
-            Interaction = new List<ResourceInteractionJsonNode>
-            {
-                new() { Code = TypeRestfulInteraction.Read, Documentation = "Read patient" },
-                new() { Code = TypeRestfulInteraction.Create },
-                new() { Code = TypeRestfulInteraction.Update },
-                new() { Code = TypeRestfulInteraction.Delete },
-                new() { Code = TypeRestfulInteraction.SearchType },
-            },
-        });
+        restComponent.Resource.Add(resourceComponent);
 
         var capability = new CapabilityStatementJsonNode
         {
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -272,21 +272,18 @@ public class CapabilityStatementSerializationTests
         var restComponent = new RestComponentJsonNode
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
-            Interaction = new List<SystemInteractionJsonNode>
-            {
-                new() { Code = SystemRestfulInteraction.Transaction },
-                new() { Code = SystemRestfulInteraction.Batch },
-                new() { Code = SystemRestfulInteraction.SearchSystem },
-                new() { Code = SystemRestfulInteraction.HistorySystem },
-            },
         };
+        restComponent.Interaction.Add(new SystemInteractionJsonNode { Code = SystemRestfulInteraction.Transaction });
+        restComponent.Interaction.Add(new SystemInteractionJsonNode { Code = SystemRestfulInteraction.Batch });
+        restComponent.Interaction.Add(new SystemInteractionJsonNode { Code = SystemRestfulInteraction.SearchSystem });
+        restComponent.Interaction.Add(new SystemInteractionJsonNode { Code = SystemRestfulInteraction.HistorySystem });
 
         var capability = new CapabilityStatementJsonNode
         {
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -309,37 +306,36 @@ public class CapabilityStatementSerializationTests
     public void GivenSearchParameters_WhenSerializing_ThenParametersSerializeCorrectly()
     {
         // Arrange
+        var resourceComponent = new ResourceComponentJsonNode
+        {
+            Type = "Patient",
+        };
+        resourceComponent.SearchParam.Add(new SearchParamJsonNode
+        {
+            Name = "family",
+            Definition = "http://hl7.org/fhir/SearchParameter/Patient-family",
+            Type = SearchParamType.String,
+            Documentation = "A portion of the family name",
+        });
+        resourceComponent.SearchParam.Add(new SearchParamJsonNode
+        {
+            Name = "birthdate",
+            Definition = "http://hl7.org/fhir/SearchParameter/Patient-birthdate",
+            Type = SearchParamType.Date,
+        });
+
         var restComponent = new RestComponentJsonNode
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
-        restComponent.AddResource(new ResourceComponentJsonNode
-        {
-            Type = "Patient",
-            SearchParam = new List<SearchParamJsonNode>
-            {
-                new SearchParamJsonNode
-                {
-                    Name = "family",
-                    Definition = "http://hl7.org/fhir/SearchParameter/Patient-family",
-                    Type = SearchParamType.String,
-                    Documentation = "A portion of the family name",
-                },
-                new SearchParamJsonNode
-                {
-                    Name = "birthdate",
-                    Definition = "http://hl7.org/fhir/SearchParameter/Patient-birthdate",
-                    Type = SearchParamType.Date,
-                },
-            },
-        });
+        restComponent.Resource.Add(resourceComponent);
 
         var capability = new CapabilityStatementJsonNode
         {
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -378,14 +374,14 @@ public class CapabilityStatementSerializationTests
         {
             Text = "OAuth2",
         };
-        codeableConcept.AddCoding(coding);
+        codeableConcept.Coding.Add(coding);
 
         var securityComponent = new SecurityComponentJsonNode
         {
             Cors = true,
             Description = "SMART-on-FHIR compliant",
         };
-        securityComponent.AddService(codeableConcept);
+        securityComponent.Service.Add(codeableConcept);
 
         var restComponent = new RestComponentJsonNode
         {
@@ -398,7 +394,7 @@ public class CapabilityStatementSerializationTests
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -429,23 +425,20 @@ public class CapabilityStatementSerializationTests
         var restComponent = new RestComponentJsonNode
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
-            Operation = new List<OperationJsonNode>
-            {
-                new OperationJsonNode
-                {
-                    Name = "validate",
-                    Definition = "http://hl7.org/fhir/OperationDefinition/Resource-validate",
-                    Documentation = "Validate a resource",
-                },
-            },
         };
+        restComponent.Operation.Add(new OperationJsonNode
+        {
+            Name = "validate",
+            Definition = "http://hl7.org/fhir/OperationDefinition/Resource-validate",
+            Documentation = "Validate a resource",
+        });
 
         var capability = new CapabilityStatementJsonNode
         {
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -471,7 +464,7 @@ public class CapabilityStatementSerializationTests
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
-        restComponent.AddResource(new ResourceComponentJsonNode
+        restComponent.Resource.Add(new ResourceComponentJsonNode
         {
             Type = "Patient",
             Profile = ReferenceOrCanonicalJsonNode.FromCanonical("http://hl7.org/fhir/StructureDefinition/Patient"),
@@ -482,7 +475,7 @@ public class CapabilityStatementSerializationTests
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -516,7 +509,7 @@ public class CapabilityStatementSerializationTests
             FhirVersion = FhirVersion.Stu3,
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
-        restComponent.AddResource(resourceComponent);
+        restComponent.Resource.Add(resourceComponent);
 
         var capability = new CapabilityStatementJsonNode
         {
@@ -524,7 +517,7 @@ public class CapabilityStatementSerializationTests
             Status = CapabilityStatementJsonNode.PublicationStatus.Active,
             Kind = CapabilityStatementJsonNode.CapabilityStatementKind.Instance,
         };
-        capability.AddRest(restComponent);
+        capability.Rest.Add(restComponent);
 
         // Act
         var json = capability.SerializeToString();
@@ -549,7 +542,7 @@ public class CapabilityStatementSerializationTests
         {
             Mode = RestComponentJsonNode.RestfulCapabilityMode.Server,
         };
-        restComponent.AddResource(new ResourceComponentJsonNode
+        restComponent.Resource.Add(new ResourceComponentJsonNode
         {
             Type = "Patient",
             Versioning = ResourceComponentJsonNode.ResourceVersionPolicy.Versioned,
@@ -569,8 +562,8 @@ public class CapabilityStatementSerializationTests
                 Version = "1.0.0",
             },
         };
-        original.SetFormats(new List<string> { "application/fhir+json" });
-        original.AddRest(restComponent);
+        original.Format.Add("application/fhir+json");
+        original.Rest.Add(restComponent);
 
         // Act
         var json = original.SerializeToString();
