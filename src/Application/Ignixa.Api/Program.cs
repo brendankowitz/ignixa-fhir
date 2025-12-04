@@ -1238,3 +1238,6 @@ app.Logger.LogInformation("FHIR data directory: {BaseDirectory}",
 }
 
 await app.RunAsync();
+
+// Explicit partial class to make Program public for integration testing
+public partial class Program { }

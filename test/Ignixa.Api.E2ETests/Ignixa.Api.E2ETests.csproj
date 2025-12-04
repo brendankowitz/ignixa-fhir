@@ -5,7 +5,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Suppress CA1051 for test base classes with protected fields -->
+    <NoWarn>$(NoWarn);CA1051</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Expose internal test classes to xUnit test runners -->
+    <InternalsVisibleTo Include="xunit.runner.visualstudio.dotnetcore.testadapter" />
+    <InternalsVisibleTo Include="xunit.runner.utility.netcoreapp10" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
@@ -22,7 +30,15 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Application/Ignixa.Api/Ignixa.Api.csproj" />
+    <ProjectReference Include="../../src/Application/Ignixa.Application/Ignixa.Application.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Specification/Ignixa.Specification.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="TestScenarios\" />
   </ItemGroup>
 
 </Project>

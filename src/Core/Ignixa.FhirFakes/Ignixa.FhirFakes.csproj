@@ -11,7 +11,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>Ignixa.FhirFakes</PackageId>
     <Version>0.1.0-preview</Version>
-    <Description>A 4-layer FHIR test data generation library for realistic patient populations with demographics, lifecycles, and clinical scenarios. Supports 11 US cities with real Census 2020 data, Bogus locales for culturally appropriate names, and evidence-based disease risk modeling.</Description>
+    <Description>A comprehensive FHIR test data generation library for modeling patient populations and medical histories.</Description>
     <PackageTags>$(PackageTags);test-data;test-generation;fake-data;bogus;demographics</PackageTags>
     <!-- TODO: Enable after fixing XML documentation errors (CS1570) -->
     <!-- <GenerateDocumentationFile>true</GenerateDocumentationFile> -->

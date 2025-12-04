@@ -1,21 +1,12 @@
 # Ignixa.FhirFakes
 
-A comprehensive 4-layer FHIR test data generation library for modeling patient populations and medical histories.
-
-## Overview
-
-Ignixa.FhirFakes provides a sophisticated framework for generating FHIR-compliant test data with clinical accuracy. Built on evidence-based risk models and real demographic data, it creates realistic patient populations for testing, development, and demonstration purposes.
+A comprehensive FHIR test data generation library for modeling patient populations and medical histories.
 
 ## Installation
 
 ```bash
 dotnet add package Ignixa.FhirFakes
 ```
-
-**Dependencies**:
-- `Ignixa.Specification` (FHIR schema provider)
-- `Ignixa.Serialization` (FHIR serialization)
-- `Bogus` (name and data generation)
 
 ## Quick Start
 
@@ -143,6 +134,11 @@ var context = builder.Build();
 - `CityDemographics`: US Census-based distributions
 - `KnownCities`: 11 major US cities with real demographics
 - `EthnicNameGenerator`: Culturally appropriate names via Bogus locales
+
+**Dependencies**:
+- `Ignixa.Specification` (FHIR schema provider)
+- `Ignixa.Serialization` (FHIR serialization)
+- `Bogus` (name and data generation)
 
 ## Inspiration and Complementary Tools
 

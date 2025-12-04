@@ -4,10 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json.Nodes;
-using Bogus;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios;
-using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -63,7 +61,6 @@ public sealed class PatientLifecycleGenerator(IFhirSchemaProvider schemaProvider
 
     private readonly IFhirSchemaProvider _schemaProvider = schemaProvider ?? throw new ArgumentNullException(nameof(schemaProvider));
     private readonly List<ILifecycleEvent> _events = [];
-    private readonly Faker _faker = new();
 
     private int _birthYear = DateTime.UtcNow.Year - 30; // Default to 30 years ago
     private string _gender = "unknown";
@@ -390,73 +387,38 @@ public sealed class PatientLifecycleGenerator(IFhirSchemaProvider schemaProvider
 
     /// <summary>
     /// Generates the initial patient resource with configured demographics.
+    /// Delegates to PatientBuilder for consistent patient generation.
     /// </summary>
     /// <returns>A ResourceJsonNode representing the Patient resource.</returns>
     private ResourceJsonNode GeneratePatient()
     {
-        // Determine names (use configured or generate random)
-        var gender = _gender;
-        var givenName = _givenName ?? (gender == "male"
-            ? _faker.Name.FirstName(Bogus.DataSets.Name.Gender.Male)
-            : _faker.Name.FirstName(Bogus.DataSets.Name.Gender.Female));
-        var familyName = _familyName ?? _faker.Name.LastName();
+        var builder = PatientBuilderFactory.CreateSimple(_schemaProvider)
+            .WithBirthYear(_birthYear)
+            .WithGender(_gender);
 
-        var birthDate = new DateTime(_birthYear, 1, 1);
-
-        // Build patient JSON
-        var patientJson = new JsonObject
+        // Apply optional configured names
+        if (_givenName is not null)
         {
-            ["resourceType"] = "Patient",
-            ["id"] = Guid.NewGuid().ToString(),
-            ["meta"] = new JsonObject
-            {
-                ["versionId"] = "1",
-                ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-            },
-            ["gender"] = gender,
-            ["birthDate"] = birthDate.ToString("yyyy-MM-dd"),
-            ["name"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["use"] = "official",
-                    ["family"] = familyName,
-                    ["given"] = new JsonArray(JsonValue.Create(givenName))
-                }
-            },
-            ["active"] = true
-        };
+            builder.WithGivenName(_givenName);
+        }
 
-        // Add address if zip code is provided
+        if (_familyName is not null)
+        {
+            builder.WithFamilyName(_familyName);
+        }
+
+        // Apply optional address (zip code triggers address generation in builder)
         if (!string.IsNullOrEmpty(_zipCode))
         {
-            var addressJson = new JsonObject
-            {
-                ["use"] = "home",
-                ["type"] = "both",
-                ["line"] = new JsonArray(JsonValue.Create(_faker.Address.StreetAddress())),
-                ["city"] = _faker.Address.City(),
-                ["state"] = _faker.Address.StateAbbr(),
-                ["postalCode"] = _zipCode,
-                ["country"] = "US"
-            };
-            patientJson["address"] = new JsonArray(addressJson);
+            builder.WithZipCode(_zipCode);
         }
 
-        // Add phone number if area code is provided
+        // Apply optional phone (area code triggers telecom generation in builder)
         if (!string.IsNullOrEmpty(_areaCode))
         {
-            var phoneNumber = $"{_areaCode}-{Random.Shared.Next(100, 1000)}-{Random.Shared.Next(1000, 10000)}";
-            var telecomJson = new JsonObject
-            {
-                ["system"] = "phone",
-                ["value"] = phoneNumber,
-                ["use"] = "mobile"
-            };
-            patientJson["telecom"] = new JsonArray(telecomJson);
+            builder.WithAreaCode(_areaCode);
         }
 
-        var json = patientJson.ToJsonString();
-        return JsonSourceNodeFactory.Parse(json);
+        return builder.Build();
     }
 }

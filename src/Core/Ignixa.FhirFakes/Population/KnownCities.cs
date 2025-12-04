@@ -12,7 +12,7 @@ namespace Ignixa.FhirFakes.Population;
 /// Use these constants for strongly-typed access to city demographics instead of string lookups.
 /// All demographic data is from US Census Bureau 2020 Census.
 /// </remarks>
-public static class KnownCities
+public sealed class KnownCities
 {
     private static readonly DemographicsDataProvider DefaultProvider = DemographicsDataProvider.CreateDefault();
 
@@ -125,6 +125,28 @@ public static class KnownCities
     /// - Demographics: 65.7% White, 7.1% Black, 7.1% Hispanic, 16.3% Asian
     /// </remarks>
     public static CityDemographics Seattle => DefaultProvider.Cities.First(c => c.Name == "Seattle");
+
+    // International Cities
+
+    /// <summary>
+    /// Melbourne, Victoria, Australia (Population: 5,078,000)
+    /// </summary>
+    /// <remarks>
+    /// - Postal Code Prefix: 3000
+    /// - Area Code: 03
+    /// - Demographics: 65.0% White, 28.0% Asian, 7.0% Other
+    /// </remarks>
+    public static CityDemographics Melbourne => DefaultProvider.Cities.First(c => c.Name == "Melbourne");
+
+    /// <summary>
+    /// Amsterdam, North Holland, Netherlands (Population: 872,680)
+    /// </summary>
+    /// <remarks>
+    /// - Postal Code Prefix: 1011
+    /// - Area Code: 020
+    /// - Demographics: 51.0% White, 14.0% Asian, 35.0% Other
+    /// </remarks>
+    public static CityDemographics Amsterdam => DefaultProvider.Cities.First(c => c.Name == "Amsterdam");
 
     /// <summary>
     /// Gets all available cities.

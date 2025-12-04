@@ -4,10 +4,10 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Lifecycle;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
-using Ignixa.Serialization.Models;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFakes.Population;
@@ -29,7 +29,6 @@ namespace Ignixa.FhirFakes.Population;
 public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
 {
     private readonly IFhirSchemaProvider _schemaProvider = schemaProvider;
-    private readonly EthnicNameGenerator _nameGenerator = new();
     private readonly DemographicsDataProvider _demographics = DemographicsDataProvider.CreateDefault();
     private readonly DiseaseRiskCalculator _riskCalculator = new();
 
@@ -67,38 +66,31 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
             // 1. Select city (weighted by population)
             var city = _demographics.SelectCity(state);
 
-            // 2. Sample demographics from city distribution
-            var race = _demographics.SampleRace(city);
-            var age = _demographics.SampleAge(city);
-            var gender = _demographics.SampleGender(city);
+            // 2. Sample demographics using PatientBuilder (race, age, gender, name, zip, area code)
+            var patientBuilder = PatientBuilderFactory.CreateRealistic(_schemaProvider)
+                .FromCity(city)
+                .WithName()
+                .WithRealisticBMI();
 
-            // 3. Generate culturally appropriate name using Bogus locales
-            var (firstName, lastName) = _nameGenerator.GenerateName(race, gender);
-
-            // 4. Generate realistic BMI (US adult distribution from NHANES)
-            var bmi = GenerateRealisticBMI();
-
-            // 5. Sample city-appropriate zip code and area code
-            var zipCode = _demographics.SampleZipCode(city);
-            var areaCode = _demographics.SampleAreaCode(city);
-
-            // 6. Generate full lifecycle from birth to current age
+            // 3. Extract sampled demographics for lifecycle simulation
+            var age = patientBuilder.Age!.Value;
             var birthYear = DateTime.Now.Year - age;
 
+            // 4. Configure lifecycle generator with sampled demographics
             var lifecycle = new PatientLifecycleGenerator(_schemaProvider)
                 .WithBirthYear(birthYear)
-                .WithGender(gender)
-                .WithGivenName(firstName)
-                .WithFamilyName(lastName)
-                .WithZipCode(zipCode)
-                .WithAreaCode(areaCode)
+                .WithGender(patientBuilder.Gender!)
+                .WithGivenName(patientBuilder.GivenName)
+                .WithFamilyName(patientBuilder.FamilyName)
+                .WithZipCode(patientBuilder.ZipCode)
+                .WithAreaCode(patientBuilder.AreaCode)
                 .AddWellnessSchedule(pediatric: age < 18, adult: age >= 18)
                 .AddImmunizationSchedule();
 
-            // 7. Add age/race-stratified probabilistic conditions
-            AddProbabilisticConditions(lifecycle, age, bmi);
+            // 5. Add age/race-stratified probabilistic conditions
+            AddProbabilisticConditions(lifecycle, age, patientBuilder.BMI!.Value);
 
-            // 8. Simulate lifecycle until current age
+            // 6. Simulate lifecycle until current age
             ScenarioContext context = lifecycle.SimulateUntilAge(age);
 
             yield return context;
@@ -182,19 +174,5 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
             // Don't add the scenario builder here to keep it simple
             // (Cancer management is complex - defer to future implementation)
         }
-    }
-
-    private static decimal GenerateRealisticBMI()
-    {
-        // US adult BMI distribution (NHANES 2017-2020):
-        // Mean: 29.0, SD: 6.5
-        // Distribution: 35% normal (18.5-24.9), 34% overweight (25-29.9), 31% obese (30+)
-        var random = Random.Shared.NextDouble();
-        return random switch
-        {
-            < 0.35 => (decimal)Random.Shared.Next(19, 25),  // Normal weight
-            < 0.69 => (decimal)Random.Shared.Next(25, 30),  // Overweight
-            _ => (decimal)Random.Shared.Next(30, 42)        // Obese
-        };
     }
 }

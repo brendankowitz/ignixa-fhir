@@ -3,6 +3,12 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
+using Ignixa.Api.E2ETests.Infrastructure;
+using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Serialization;
+using Ignixa.Specification;
+using Ignixa.Specification.Generated;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -14,9 +20,9 @@ namespace Ignixa.Api.E2ETests.Fixtures;
 /// <summary>
 /// Test fixture for E2E tests using WebApplicationFactory.
 /// Configures the Ignixa API with in-memory storage for testing.
-/// Suppresses CS0060 because Program is internal but accessible via InternalsVisibleTo.
+/// Program is public to support WebApplicationFactory in tests.
 /// </summary>
-internal class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly string _testDataPath;
 
@@ -26,6 +32,26 @@ internal class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         _testDataPath = Path.Combine(Path.GetTempPath(), "ignixa-e2e-tests", Guid.NewGuid().ToString());
         Directory.CreateDirectory(_testDataPath);
     }
+
+    /// <summary>
+    /// HTTP client for making requests to the test server.
+    /// </summary>
+    public HttpClient Client { get; private set; } = null!;
+
+    /// <summary>
+    /// Search test harness initialized with cached capability statement.
+    /// </summary>
+    public SearchTestHarness Harness { get; private set; } = null!;
+
+    /// <summary>
+    /// Version-specific FHIR schema provider.
+    /// </summary>
+    public IFhirSchemaProvider SchemaProvider { get; private set; } = null!;
+
+    /// <summary>
+    /// FHIR version detected from server's capability statement.
+    /// </summary>
+    public FhirVersion FhirVersion { get; private set; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -62,10 +88,26 @@ internal class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseEnvironment("Test");
     }
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        // Perform any async initialization here
-        return Task.CompletedTask;
+        // Create HTTP client and store for test access
+        Client = CreateClient();
+
+        // Fetch /metadata once and cache it
+        var metadataResponse = await Client.GetAsync("/metadata");
+        metadataResponse.EnsureSuccessStatusCode();
+
+        var metadataJson = await metadataResponse.Content.ReadAsStringAsync();
+        var capability = JsonSourceNodeFactory.Parse<CapabilityStatementJsonNode>(metadataJson);
+
+        // Parse FHIR version from capability statement
+        FhirVersion = ParseFhirVersion(capability);
+
+        // Create version-specific schema provider
+        SchemaProvider = CreateSchemaProvider(FhirVersion);
+
+        // Initialize SearchTestHarness with cached capability
+        Harness = new SearchTestHarness(Client, SchemaProvider, capability);
     }
 
     public new async Task DisposeAsync()
@@ -84,5 +126,32 @@ internal class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         }
 
         await base.DisposeAsync();
+    }
+
+    private static FhirVersion ParseFhirVersion(CapabilityStatementJsonNode capability)
+    {
+        var fhirVersionString = capability.FhirVersionString;
+        return fhirVersionString switch
+        {
+            "1.0.2" => FhirVersion.Stu3,
+            "4.0.1" => FhirVersion.R4,
+            "4.3.0" => FhirVersion.R4B,
+            "5.0.0" => FhirVersion.R5,
+            "6.0.0-ballot2" => FhirVersion.R6,
+            _ => throw new NotSupportedException($"FHIR version {fhirVersionString} not supported")
+        };
+    }
+
+    private static IFhirSchemaProvider CreateSchemaProvider(FhirVersion version)
+    {
+        return version switch
+        {
+            FhirVersion.Stu3 => new STU3CoreSchemaProvider(),
+            FhirVersion.R4 => new R4CoreSchemaProvider(),
+            FhirVersion.R4B => new R4BCoreSchemaProvider(),
+            FhirVersion.R5 => new R5CoreSchemaProvider(),
+            FhirVersion.R6 => new R6CoreSchemaProvider(),
+            _ => throw new NotSupportedException($"FHIR version {version} not supported")
+        };
     }
 }

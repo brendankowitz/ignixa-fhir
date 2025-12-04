@@ -265,8 +265,7 @@ public class PopulationGeneratorTests
             city.RaceDistribution.Should().NotBeEmpty();
             city.AgeGroupDistribution.Should().NotBeEmpty();
             city.MaleRatio.Should().BeInRange(0.4, 0.6, "typical male ratio is 40-60%");
-            city.ZipCodePrefix.Should().NotBeNullOrEmpty()
-                .And.HaveLength(3, "zip code prefixes are 3 digits");
+            city.ZipCodePrefix.Should().NotBeNullOrEmpty();
             city.AreaCodes.Should().NotBeEmpty();
         }
     }
@@ -308,11 +307,13 @@ public class PopulationGeneratorTests
         var allCities = KnownCities.All;
 
         // Assert
-        allCities.Should().HaveCount(11)
+        allCities.Should().HaveCount(13)
             .And.Contain(c => c.Name == "Boston")
             .And.Contain(c => c.Name == "Seattle")
             .And.Contain(c => c.Name == "New York")
-            .And.Contain(c => c.Name == "Los Angeles");
+            .And.Contain(c => c.Name == "Los Angeles")
+            .And.Contain(c => c.Name == "Melbourne")
+            .And.Contain(c => c.Name == "Amsterdam");
     }
 
     [Fact]

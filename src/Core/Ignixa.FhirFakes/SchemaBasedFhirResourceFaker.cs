@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
 using Ignixa.Abstractions;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -48,6 +49,7 @@ public class SchemaBasedFhirResourceFaker
     private readonly IFhirSchemaProvider _schemaProvider;
     private readonly Faker _faker;
     private readonly Random _random;
+    private string? _tag;
 
     /// <summary>
     /// Gets the FHIR schema provider used by this faker.
@@ -55,12 +57,125 @@ public class SchemaBasedFhirResourceFaker
     /// </summary>
     public IFhirSchemaProvider SchemaProvider => _schemaProvider;
 
+    /// <summary>
+    /// Gets the tag code applied to resources, if any.
+    /// Exposed to allow states like PatientBuilderState to apply the same tag to their generated resources.
+    /// </summary>
+    public string? Tag => _tag;
+
     public SchemaBasedFhirResourceFaker(IFhirSchemaProvider schemaProvider)
     {
         _schemaProvider = schemaProvider;
         _faker = new Faker();
         _random = new Random();
     }
+
+    /// <summary>
+    /// Configures this faker to tag all generated resources with the specified tag code.
+    /// This enables test isolation via the _tag search parameter.
+    /// </summary>
+    /// <param name="tag">The tag code to apply (typically a GUID for test isolation).</param>
+    /// <returns>This faker instance for fluent chaining.</returns>
+    public SchemaBasedFhirResourceFaker WithTag(string? tag)
+    {
+        _tag = tag;
+        return this;
+    }
+
+    #region PatientBuilder Convenience Methods
+
+    /// <summary>
+    /// Creates a simple patient using PatientBuilder with basic Bogus-based randomization.
+    /// Suitable for basic tests where demographic realism is not critical.
+    /// </summary>
+    /// <param name="configure">Optional configuration action to customize the patient.</param>
+    /// <returns>A ResourceJsonNode representing the generated Patient resource.</returns>
+    /// <example>
+    /// <code>
+    /// var patient = faker.CreateSimplePatient(p => p
+    ///     .WithAge(45)
+    ///     .WithGender(g => g.Male)
+    ///     .WithGivenName("John")
+    ///     .WithFamilyName("Smith"));
+    /// </code>
+    /// </example>
+    public ResourceJsonNode CreateSimplePatient(Action<PatientBuilder>? configure = null)
+    {
+        var builder = PatientBuilderFactory.CreateSimple(_schemaProvider);
+
+        // Apply tag from faker if set
+        if (_tag is not null)
+        {
+            builder.WithTag(_tag);
+        }
+
+        // Apply user configuration
+        configure?.Invoke(builder);
+
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Creates a realistic patient using PatientBuilder with real US demographics.
+    /// Suitable for population generation and realistic test scenarios.
+    /// </summary>
+    /// <param name="configure">Optional configuration action to customize the patient.</param>
+    /// <returns>A ResourceJsonNode representing the generated Patient resource.</returns>
+    /// <example>
+    /// <code>
+    /// var patient = faker.CreateRealisticPatient(p => p
+    ///     .FromCity(c => c.BostonMA)
+    ///     .WithAge(45)
+    ///     .WithRealisticBMI());
+    /// </code>
+    /// </example>
+    public ResourceJsonNode CreateRealisticPatient(Action<PatientBuilder>? configure = null)
+    {
+        var builder = PatientBuilderFactory.CreateRealistic(_schemaProvider);
+
+        // Apply tag from faker if set
+        if (_tag is not null)
+        {
+            builder.WithTag(_tag);
+        }
+
+        // Apply user configuration
+        configure?.Invoke(builder);
+
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Creates a patient from Seattle, Washington with realistic Pacific Northwest demographics.
+    /// Seattle is special and deserves its own method.
+    /// </summary>
+    /// <param name="configure">Optional configuration action to customize the patient after city selection.</param>
+    /// <returns>A ResourceJsonNode representing the generated Patient resource.</returns>
+    /// <example>
+    /// <code>
+    /// var patient = faker.CreateSeattlePatient(p => p
+    ///     .WithAge(35)
+    ///     .WithRealisticBMI());
+    /// </code>
+    /// </example>
+    public ResourceJsonNode CreateSeattlePatient(Action<PatientBuilder>? configure = null)
+    {
+        var builder = PatientBuilderFactory.CreateRealistic(_schemaProvider)
+            .FromSeattle();
+
+        // Apply tag from faker if set
+        if (_tag is not null)
+        {
+            builder.WithTag(_tag);
+        }
+
+        // Apply user configuration (allows overrides after Seattle defaults)
+        configure?.Invoke(builder);
+
+        return builder.Build();
+    }
+
+    #endregion
 
     /// <summary>
     /// Generates a fake FHIR resource by resource type name.
@@ -127,7 +242,9 @@ public class SchemaBasedFhirResourceFaker
         }
 
         var json = root.ToJsonString();
-        return JsonSourceNodeFactory.Parse(json);
+        var resource = JsonSourceNodeFactory.Parse(json);
+        ApplyTag(resource);
+        return resource;
     }
 
     /// <summary>
@@ -682,6 +799,28 @@ public class SchemaBasedFhirResourceFaker
     #endregion
 
     #region Helper Methods
+
+    /// <summary>
+    /// Applies the configured tag to a resource's meta.tag array.
+    /// </summary>
+    private void ApplyTag(ResourceJsonNode resource)
+    {
+        if (_tag is null) return;
+
+        if (resource.MutableNode["meta"] is not JsonObject meta)
+        {
+            meta = new JsonObject();
+            resource.MutableNode["meta"] = meta;
+        }
+
+        if (meta["tag"] is not JsonArray tagArray)
+        {
+            tagArray = [];
+            meta["tag"] = tagArray;
+        }
+
+        tagArray.Add(new JsonObject { ["code"] = _tag });
+    }
 
     /// <summary>
     /// Elements to skip during automatic generation.

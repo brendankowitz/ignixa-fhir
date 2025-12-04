@@ -40,6 +40,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "New York",
             State: "New York",
+            Country: "US",
             Population: 8_336_817,
             RaceDistribution: new() {
                 ["White"] = 0.424,
@@ -61,6 +62,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Los Angeles",
             State: "California",
+            Country: "US",
             Population: 3_979_576,
             RaceDistribution: new() {
                 ["White"] = 0.487,
@@ -82,6 +84,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Chicago",
             State: "Illinois",
+            Country: "US",
             Population: 2_746_388,
             RaceDistribution: new() {
                 ["White"] = 0.499,
@@ -103,6 +106,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Houston",
             State: "Texas",
+            Country: "US",
             Population: 2_304_580,
             RaceDistribution: new() {
                 ["White"] = 0.575,
@@ -124,6 +128,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Phoenix",
             State: "Arizona",
+            Country: "US",
             Population: 1_680_992,
             RaceDistribution: new() {
                 ["White"] = 0.716,
@@ -145,6 +150,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Philadelphia",
             State: "Pennsylvania",
+            Country: "US",
             Population: 1_603_797,
             RaceDistribution: new() {
                 ["White"] = 0.410,
@@ -166,6 +172,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "San Antonio",
             State: "Texas",
+            Country: "US",
             Population: 1_547_253,
             RaceDistribution: new() {
                 ["White"] = 0.802,
@@ -187,6 +194,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "San Diego",
             State: "California",
+            Country: "US",
             Population: 1_423_851,
             RaceDistribution: new() {
                 ["White"] = 0.650,
@@ -208,6 +216,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Dallas",
             State: "Texas",
+            Country: "US",
             Population: 1_343_573,
             RaceDistribution: new() {
                 ["White"] = 0.613,
@@ -229,6 +238,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Boston",
             State: "Massachusetts",
+            Country: "US",
             Population: 675_647,
             RaceDistribution: new() {
                 ["White"] = 0.530,
@@ -250,6 +260,7 @@ public class DemographicsDataProvider
         provider.AddCity(new CityDemographics(
             Name: "Seattle",
             State: "Washington",
+            Country: "US",
             Population: 737_015,
             RaceDistribution: new() {
                 ["White"] = 0.657,
@@ -266,6 +277,49 @@ public class DemographicsDataProvider
             MaleRatio: 0.502,
             ZipCodePrefix: "981",
             AreaCodes: ["206"]
+        ));
+
+        // International cities
+        provider.AddCity(new CityDemographics(
+            Name: "Melbourne",
+            State: "Victoria",
+            Country: "AU",
+            Population: 5_078_000,
+            RaceDistribution: new() {
+                ["White"] = 0.650,
+                ["Asian"] = 0.280,
+                ["Other"] = 0.070
+            },
+            AgeGroupDistribution: new() {
+                ["0-17"] = 0.195,
+                ["18-44"] = 0.445,
+                ["45-64"] = 0.265,
+                ["65+"] = 0.095
+            },
+            MaleRatio: 0.495,
+            ZipCodePrefix: "3000",
+            AreaCodes: ["03"]
+        ));
+
+        provider.AddCity(new CityDemographics(
+            Name: "Amsterdam",
+            State: "North Holland",
+            Country: "NL",
+            Population: 872_680,
+            RaceDistribution: new() {
+                ["White"] = 0.510,
+                ["Asian"] = 0.140,
+                ["Other"] = 0.350
+            },
+            AgeGroupDistribution: new() {
+                ["0-17"] = 0.165,
+                ["18-44"] = 0.475,
+                ["45-64"] = 0.245,
+                ["65+"] = 0.115
+            },
+            MaleRatio: 0.498,
+            ZipCodePrefix: "1011",
+            AreaCodes: ["020"]
         ));
 
         return provider;
