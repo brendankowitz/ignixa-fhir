@@ -25,14 +25,14 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
 {
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _fhirVersionContext;
-    private readonly Func<FhirSpecification, IValidationSchemaResolver> _schemaResolverFactory;
+    private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ITerminologyService _terminologyService;
     private readonly ILogger<ValidationBehavior> _logger;
 
     public ValidationBehavior(
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext fhirVersionContext,
-        Func<FhirSpecification, IValidationSchemaResolver> schemaResolverFactory,
+        Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
         ITerminologyService terminologyService,
         ILogger<ValidationBehavior> logger)
     {
