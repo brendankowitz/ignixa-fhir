@@ -58,48 +58,71 @@ public class SearchParameterQueryGenerator
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        _logger.LogDebug("Generating query for search parameter: {Parameter}", expression.Parameter?.Name);
-
-        // Handle resource-level parameters that query Resource table directly
-        // instead of indexed search parameter tables
-        if (expression.Parameter?.Code == "_id")
+        try
         {
-            return await ProcessResourceIdExpressionAsync(resourceTypeId, expression.Expression, ct);
-        }
+            _logger.LogDebug("Generating query for search parameter: {Parameter}", expression.Parameter?.Name);
 
-        if (expression.Parameter?.Code == "_lastUpdated")
-        {
-            return await ProcessResourceLastUpdatedExpressionAsync(resourceTypeId, expression.Expression, ct);
-        }
-
-        if (expression.Parameter?.Code == "_type")
-        {
-            return await ProcessResourceTypeExpressionAsync(resourceTypeId, expression.Expression, ct);
-        }
-
-        // Look up SearchParamId for this search parameter - required for filtering indexed search params
-        short? searchParamId = null;
-        if (expression.Parameter != null)
-        {
-            searchParamId = await _cache.GetSearchParamIdAsync(expression.Parameter);
-            if (!searchParamId.HasValue)
+            // Handle resource-level parameters that query Resource table directly
+            // instead of indexed search parameter tables
+            if (expression.Parameter?.Code == "_id")
             {
-                _logger.LogWarning(
-                    "SearchParamId not found for parameter {Code} ({Url}), search may return incorrect results",
-                    expression.Parameter.Code,
-                    expression.Parameter.Url);
+                _logger.LogDebug("Processing _id parameter expression");
+                return await ProcessResourceIdExpressionAsync(resourceTypeId, expression.Expression, ct);
             }
+
+            if (expression.Parameter?.Code == "_lastUpdated")
+            {
+                return await ProcessResourceLastUpdatedExpressionAsync(resourceTypeId, expression.Expression, ct);
+            }
+
+            if (expression.Parameter?.Code == "_type")
+            {
+                return await ProcessResourceTypeExpressionAsync(resourceTypeId, expression.Expression, ct);
+            }
+
+            // Look up SearchParamId for this search parameter - required for filtering indexed search params
+            short? searchParamId = null;
+            if (expression.Parameter != null)
+            {
+                searchParamId = await _cache.GetSearchParamIdAsync(expression.Parameter);
+                if (!searchParamId.HasValue)
+                {
+                    _logger.LogWarning(
+                        "SearchParamId not found for parameter {Code} ({Url}), search may return incorrect results",
+                        expression.Parameter.Code,
+                        expression.Parameter.Url);
+                }
+            }
+
+            // Handle composite search parameters
+            // TEMPORARILY DISABLED: Testing if this causes stack overflow
+            //if (expression.Parameter?.Type == SearchParamType.Composite && searchParamId.HasValue)
+            //{
+            //    return await ProcessCompositeExpressionAsync(resourceTypeId, searchParamId.Value, expression.Parameter, expression.Expression, ct);
+            //}
+
+            // Process the inner expression based on its type, with SearchParamId for proper filtering
+            return await ProcessExpressionAsync(resourceTypeId, searchParamId, expression.Expression, ct);
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "CRITICAL ERROR in GenerateQueryAsync - Exception during query generation BEFORE EF Core compilation. " +
+                "ResourceTypeId={ResourceTypeId}, " +
+                "ParameterCode={ParameterCode}, " +
+                "ParameterName={ParameterName}, " +
+                "ParameterType={ParameterType}, " +
+                "ExpressionType={ExpressionType}, " +
+                "InnerExpressionType={InnerExpressionType}",
+                resourceTypeId,
+                expression.Parameter?.Code,
+                expression.Parameter?.Name,
+                expression.Parameter?.Type,
+                expression.GetType().Name,
+                expression.Expression?.GetType().Name);
 
-        // Handle composite search parameters
-        // TEMPORARILY DISABLED: Testing if this causes stack overflow
-        //if (expression.Parameter?.Type == SearchParamType.Composite && searchParamId.HasValue)
-        //{
-        //    return await ProcessCompositeExpressionAsync(resourceTypeId, searchParamId.Value, expression.Parameter, expression.Expression, ct);
-        //}
-
-        // Process the inner expression based on its type, with SearchParamId for proper filtering
-        return await ProcessExpressionAsync(resourceTypeId, searchParamId, expression.Expression, ct);
+            throw;
+        }
     }
 
     /// <summary>
@@ -290,37 +313,61 @@ public class SearchParameterQueryGenerator
             return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
         }
 
-        var queries = new List<IQueryable<long>>();
+        // CRITICAL FIX: Extract all resource IDs into a List for SQL IN clause generation.
+        // Previous implementation created individual queries per ID and chained them with Union/Intersect,
+        // which created deeply nested expression trees that caused stack overflow with 100+ IDs.
+        // Using .Contains() generates a single flat SQL "WHERE ResourceId IN (...)" clause.
+        var resourceIds = new List<string>();
         foreach (var subExpr in multiaryExpr.Expressions)
         {
             if (subExpr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
             {
-                // When resourceTypeId is null (system-wide search), don't filter by resource type
+                resourceIds.Add(stringExpr.Value);
+            }
+        }
+
+        if (resourceIds.Count == 0)
+        {
+            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+        }
+
+        // For OR operations (typical for _id parameter), use Contains() to generate SQL IN clause.
+        // This creates a flat expression tree instead of deeply nested Union calls.
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.Or)
+        {
+            var query = _context.Resources
+                .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
+                    && resourceIds.Contains(r.ResourceId)  // SQL: WHERE ResourceId IN (...)
+                    && !r.IsHistory
+                    && !r.IsDeleted)
+                .Select(r => r.ResourceSurrogateId);
+
+            return Task.FromResult(query);
+        }
+        else
+        {
+            // AND operations are rare for _id (semantically unusual to search "_id=A AND _id=B").
+            // Fall back to individual queries with Intersect if needed.
+            var queries = new List<IQueryable<long>>();
+            foreach (var resourceId in resourceIds)
+            {
                 var query = _context.Resources
                     .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value)
-                        && r.ResourceId == stringExpr.Value
+                        && r.ResourceId == resourceId
                         && !r.IsHistory
                         && !r.IsDeleted)
                     .Select(r => r.ResourceSurrogateId);
                 queries.Add(query);
             }
-        }
 
-        if (queries.Count == 0)
-        {
-            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
-        }
+            var result = queries[0];
+            for (int i = 1; i < queries.Count; i++)
+            {
+                result = result.Intersect(queries[i]);
+            }
 
-        // Combine based on operator
-        var result = queries[0];
-        for (int i = 1; i < queries.Count; i++)
-        {
-            result = multiaryExpr.MultiaryOperation == MultiaryOperator.Or
-                ? result.Union(queries[i])
-                : result.Intersect(queries[i]);
+            return Task.FromResult(result);
         }
-
-        return Task.FromResult(result);
     }
 
     /// <summary>

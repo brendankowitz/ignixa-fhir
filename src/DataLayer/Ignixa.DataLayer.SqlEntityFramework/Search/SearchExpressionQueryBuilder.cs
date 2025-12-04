@@ -66,6 +66,11 @@ public class SearchExpressionQueryBuilder
     {
         ArgumentNullException.ThrowIfNull(expression);
 
+        _logger.LogDebug(
+            "ApplySearchExpressionAsync: ExpressionType={ExpressionType}, ResourceTypeId={ResourceTypeId}",
+            expression.GetType().Name,
+            resourceTypeId);
+
         return expression switch
         {
             MultiaryExpression multiaryExpr => await ApplyMultiaryExpressionAsync(baseQuery, resourceTypeId, multiaryExpr, ct),
@@ -117,11 +122,19 @@ public class SearchExpressionQueryBuilder
         SearchParameterExpression expression,
         CancellationToken ct)
     {
+        _logger.LogDebug(
+            "ApplySearchParameterExpressionAsync: ParameterCode={ParameterCode}, ParameterName={ParameterName}, ResourceTypeId={ResourceTypeId}",
+            expression.Parameter?.Code,
+            expression.Parameter?.Name,
+            resourceTypeId);
+
         // Generate query for this search parameter
         var matchingResourceIds = await _parameterQueryGenerator.GenerateQueryAsync(
             resourceTypeId,
             expression,
             ct);
+
+        _logger.LogDebug("Generated matching resource IDs query, applying to base query");
 
         // Filter base query by matching resource IDs
         return baseQuery.Where(r => matchingResourceIds.Contains(r.ResourceSurrogateId));
@@ -352,15 +365,12 @@ public class SearchExpressionQueryBuilder
             throw new ArgumentException("Cannot combine zero queries", nameof(queries));
         }
 
-        // Start with first query
-        var result = queries[0];
-
-        // Union with remaining queries (OR logic)
-        for (int i = 1; i < queries.Count; i++)
-        {
-            result = result.Union(queries[i]);
-        }
-
-        return result;
+        // Use Concat+Distinct instead of chained Union to avoid deeply nested expression trees
+        // Chained Union creates: q0.Union(q1).Union(q2)...Union(qN) which nests deeply and can cause
+        // stack overflow in EF Core's ExpressionTreeFuncletizer with 100+ queries (e.g., ChargeItem).
+        // Concat creates a flatter tree: Concat(Concat(q0, q1), q2)... then Distinct deduplicates.
+        // This provides the same OR semantics (deduplicated union) with better performance.
+        var result = queries.Aggregate((current, next) => current.Concat(next));
+        return result.Distinct();
     }
 }
