@@ -92,46 +92,16 @@ public class SchemaBasedFhirResourceFaker
     /// <returns>A ResourceJsonNode representing the generated Patient resource.</returns>
     /// <example>
     /// <code>
-    /// var patient = faker.CreateSimplePatient(p => p
+    /// var patient = faker.CreatePatient(p => p
     ///     .WithAge(45)
     ///     .WithGender(g => g.Male)
     ///     .WithGivenName("John")
     ///     .WithFamilyName("Smith"));
     /// </code>
     /// </example>
-    public ResourceJsonNode CreateSimplePatient(Action<PatientBuilder>? configure = null)
+    public ResourceJsonNode CreatePatient(Action<PatientBuilder>? configure = null)
     {
-        var builder = PatientBuilderFactory.CreateSimple(_schemaProvider);
-
-        // Apply tag from faker if set
-        if (_tag is not null)
-        {
-            builder.WithTag(_tag);
-        }
-
-        // Apply user configuration
-        configure?.Invoke(builder);
-
-        return builder.Build();
-    }
-
-    /// <summary>
-    /// Creates a realistic patient using PatientBuilder with real US demographics.
-    /// Suitable for population generation and realistic test scenarios.
-    /// </summary>
-    /// <param name="configure">Optional configuration action to customize the patient.</param>
-    /// <returns>A ResourceJsonNode representing the generated Patient resource.</returns>
-    /// <example>
-    /// <code>
-    /// var patient = faker.CreateRealisticPatient(p => p
-    ///     .FromCity(c => c.BostonMA)
-    ///     .WithAge(45)
-    ///     .WithRealisticBMI());
-    /// </code>
-    /// </example>
-    public ResourceJsonNode CreateRealisticPatient(Action<PatientBuilder>? configure = null)
-    {
-        var builder = PatientBuilderFactory.CreateRealistic(_schemaProvider);
+        var builder = PatientBuilderFactory.Create(_schemaProvider);
 
         // Apply tag from faker if set
         if (_tag is not null)
@@ -160,7 +130,7 @@ public class SchemaBasedFhirResourceFaker
     /// </example>
     public ResourceJsonNode CreateSeattlePatient(Action<PatientBuilder>? configure = null)
     {
-        var builder = PatientBuilderFactory.CreateRealistic(_schemaProvider)
+        var builder = PatientBuilderFactory.Create(_schemaProvider)
             .FromSeattle();
 
         // Apply tag from faker if set

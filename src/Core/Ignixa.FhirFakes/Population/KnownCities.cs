@@ -135,8 +135,20 @@ public sealed class KnownCities
     /// - Postal Code Prefix: 3000
     /// - Area Code: 03
     /// - Demographics: 65.0% White, 28.0% Asian, 7.0% Other
+    /// - Indigenous Status: ~3.2% Aboriginal/Torres Strait Islander
     /// </remarks>
     public static CityDemographics Melbourne => DefaultProvider.Cities.First(c => c.Name == "Melbourne");
+
+    /// <summary>
+    /// Sydney, New South Wales, Australia (Population: 5,312,000)
+    /// </summary>
+    /// <remarks>
+    /// - Postal Code Prefix: 2000
+    /// - Area Code: 02
+    /// - Demographics: 58.0% White, 34.0% Asian, 8.0% Other
+    /// - Indigenous Status: ~3.2% Aboriginal/Torres Strait Islander
+    /// </remarks>
+    public static CityDemographics Sydney => DefaultProvider.Cities.First(c => c.Name == "Sydney");
 
     /// <summary>
     /// Amsterdam, North Holland, Netherlands (Population: 872,680)

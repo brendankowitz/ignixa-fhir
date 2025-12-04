@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -25,7 +26,7 @@ namespace Ignixa.FhirFakes.Builders;
 /// Example Usage:
 /// <code>
 /// // Simple mode
-/// var patient = PatientBuilderFactory.CreateSimple(schemaProvider)
+/// var patient = PatientBuilderFactory.Create(schemaProvider)
 ///     .WithAge(45)
 ///     .WithGender("male")
 ///     .WithGivenName("John")
@@ -33,7 +34,7 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .Build();
 ///
 /// // Realistic mode
-/// var patient = PatientBuilderFactory.CreateRealistic(schemaProvider)
+/// var patient = PatientBuilderFactory.Create(schemaProvider)
 ///     .FromCity("Boston", "Massachusetts")  // Auto: race, age, gender, zip, area code, name
 ///     .WithAge(45)                          // Override age if desired
 ///     .Build();
@@ -44,7 +45,7 @@ public sealed class PatientBuilder
 {
     private readonly IFhirSchemaProvider _schemaProvider;
     private readonly Faker _faker = new();
-    private readonly EthnicNameGenerator? _nameGenerator;
+    private readonly LocalBasedNameGenerator? _nameGenerator;
     private readonly DemographicsDataProvider? _demographics;
 
     // Demographic configuration
@@ -53,8 +54,6 @@ public sealed class PatientBuilder
     private string? _gender;
     private string? _givenName;
     private string? _familyName;
-    private string? _race;
-    private string? _ethnicity;
 
     // Geographic configuration
     private string? _city;
@@ -72,6 +71,10 @@ public sealed class PatientBuilder
     private string? _id;
     private string? _tag;
 
+    // Profile-specific configuration (Attributes Pattern)
+    private IPatientProfile _profile = DefaultPatientProfile.Instance;
+    private readonly Dictionary<string, object> _profileAttributes = new();
+
     // === Public Read-Only Access to Configured Values ===
     // These enable PopulationGenerator and other consumers to access sampled demographics
 
@@ -84,11 +87,6 @@ public sealed class PatientBuilder
     /// Gets the configured or sampled gender, if set.
     /// </summary>
     public string? Gender => _gender;
-
-    /// <summary>
-    /// Gets the configured or sampled race, if set.
-    /// </summary>
-    public string? Race => _race;
 
     /// <summary>
     /// Gets the configured or sampled zip code, if set.
@@ -116,6 +114,16 @@ public sealed class PatientBuilder
     public decimal? BMI => _bmi;
 
     /// <summary>
+    /// Gets the current patient profile.
+    /// </summary>
+    public IPatientProfile Profile => _profile;
+
+    /// <summary>
+    /// Gets a read-only view of the profile-specific attributes.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> ProfileAttributes => _profileAttributes;
+
+    /// <summary>
     /// Creates a simple builder with basic Bogus-based randomization.
     /// </summary>
     public PatientBuilder(IFhirSchemaProvider schemaProvider)
@@ -130,7 +138,7 @@ public sealed class PatientBuilder
     public PatientBuilder(
         IFhirSchemaProvider schemaProvider,
         DemographicsDataProvider demographics,
-        EthnicNameGenerator nameGenerator)
+        LocalBasedNameGenerator nameGenerator)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
         ArgumentNullException.ThrowIfNull(demographics);
@@ -209,39 +217,44 @@ public sealed class PatientBuilder
     }
 
     /// <summary>
-    /// Sets the patient's race using a selector for better discoverability.
+    /// Sets a profile-specific attribute.
+    /// Use this for country-specific demographics not covered by dedicated methods.
     /// </summary>
-    /// <param name="selector">Selector function to choose race (e.g., r => r.Hispanic)</param>
+    /// <param name="key">Attribute key (e.g., "indigenousStatus", "ethnicity")</param>
+    /// <param name="value">Attribute value</param>
+    /// <returns>This builder for method chaining</returns>
     /// <example>
     /// <code>
-    /// .WithRace(r => r.Hispanic)
-    /// .WithRace(r => r.AsianChinese)
+    /// // Australian indigenous status
+    /// builder.WithAttribute("indigenousStatus", "4");
+    ///
+    /// // Custom attribute
+    /// builder.WithAttribute("customDemographic", someValue);
     /// </code>
     /// </example>
-    public PatientBuilder WithRace(Func<PatientBuilderSelectors.Race, string> selector)
+    public PatientBuilder WithAttribute(string key, object value)
     {
-        ArgumentNullException.ThrowIfNull(selector);
-        _race = selector(new PatientBuilderSelectors.Race());
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(value);
+        _profileAttributes[key] = value;
         return this;
     }
 
     /// <summary>
-    /// Sets the patient's race (e.g., "White", "Black", "Asian", "Hispanic").
+    /// Sets the patient profile explicitly.
     /// </summary>
-    public PatientBuilder WithRace(string race)
+    /// <param name="profile">The profile to use for extension generation</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// builder.WithProfile(PatientProfileFactory.AUBase)
+    ///        .WithAttribute("indigenousStatus", "4");
+    /// </code>
+    /// </example>
+    public PatientBuilder WithProfile(IPatientProfile profile)
     {
-        ArgumentNullException.ThrowIfNull(race);
-        _race = race;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the patient's ethnicity.
-    /// </summary>
-    public PatientBuilder WithEthnicity(string ethnicity)
-    {
-        ArgumentNullException.ThrowIfNull(ethnicity);
-        _ethnicity = ethnicity;
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
         return this;
     }
 
@@ -350,21 +363,22 @@ public sealed class PatientBuilder
 
     /// <summary>
     /// Samples demographics from a city using a CityDemographics instance.
-    /// Automatically sets: race, age, gender, name, zip, area code, city, state, country.
+    /// Automatically sets: profile-specific attributes, age, gender, name, zip, area code, city, state, country.
+    /// The appropriate profile (US Core, AU Base, etc.) is automatically selected based on the city's country.
     /// </summary>
     /// <param name="city">The city demographics (use KnownCities class for predefined cities)</param>
     /// <returns>This builder for method chaining</returns>
     /// <exception cref="InvalidOperationException">Thrown if DemographicsDataProvider was not provided in constructor</exception>
     /// <example>
     /// <code>
-    /// // Use KnownCities for predefined cities
-    /// var patient = PatientBuilderFactory.CreateRealistic(schemaProvider)
+    /// // Use KnownCities for predefined cities (US cities get US Core profile)
+    /// var patient = PatientBuilderFactory.Create(schemaProvider)
     ///     .FromCity(KnownCities.Boston)
     ///     .WithAge(45)
     ///     .Build();
     ///
-    /// // International cities
-    /// var patient = PatientBuilderFactory.CreateRealistic(schemaProvider)
+    /// // International cities get appropriate profile (AU cities get AU Base profile)
+    /// var patient = PatientBuilderFactory.Create(schemaProvider)
     ///     .FromCity(KnownCities.Melbourne)
     ///     .Build();
     /// </code>
@@ -377,10 +391,20 @@ public sealed class PatientBuilder
         {
             throw new InvalidOperationException(
                 "DemographicsDataProvider required for FromCity(). " +
-                "Use PatientBuilderFactory.CreateRealistic() to create a builder with demographics support.");
+                "Use PatientBuilderFactory.Create() to create a builder with demographics support.");
         }
 
-        _race = _demographics.SampleRace(city);
+        // Set the appropriate profile based on country
+        _profile = city.GetProfile();
+
+        // Sample profile-specific attributes
+        var sampledAttributes = _demographics.SampleProfileAttributes(city);
+        foreach (var (key, value) in sampledAttributes)
+        {
+            _profileAttributes[key] = value;
+        }
+
+        // Sample core demographics
         _age = _demographics.SampleAge(city);
         _gender = _demographics.SampleGender(city);
         _zipCode = _demographics.SampleZipCode(city);
@@ -394,13 +418,13 @@ public sealed class PatientBuilder
 
     /// <summary>
     /// Generates a patient from Seattle, Washington with Pacific Northwest demographics.
-    /// Automatically sets: race, age, gender, name, zip, area code, city, state.
+    /// Automatically sets: ethnicity, age, gender, name, zip, area code, city, state.
     /// </summary>
     /// <returns>This builder for method chaining</returns>
     /// <exception cref="InvalidOperationException">Thrown if DemographicsDataProvider was not provided in constructor</exception>
     /// <example>
     /// <code>
-    /// var patient = PatientBuilderFactory.CreateRealistic(schemaProvider)
+    /// var patient = PatientBuilderFactory.Create(schemaProvider)
     ///     .FromSeattle()
     ///     .WithAge(35)  // Optional: override auto-generated age
     ///     .Build();
@@ -412,24 +436,26 @@ public sealed class PatientBuilder
     }
 
     /// <summary>
-    /// Generates ethnically appropriate name based on race/gender.
-    /// If race not set, uses "White" as default.
-    /// Requires EthnicNameGenerator.
+    /// Generates culturally appropriate name based on the current profile's name generation strategy.
+    /// For US Core profile, names are based on ethnicity; for other profiles, names are based on country.
+    /// Requires LocalBasedNameGenerator (use PatientBuilderFactory.Create() for this).
     /// </summary>
     /// <returns>This builder for method chaining</returns>
-    /// <exception cref="InvalidOperationException">Thrown if EthnicNameGenerator was not provided in constructor</exception>
+    /// <exception cref="InvalidOperationException">Thrown if LocalBasedNameGenerator was not provided in constructor</exception>
     public PatientBuilder WithName()
     {
         if (_nameGenerator == null)
         {
             throw new InvalidOperationException(
-                "EthnicNameGenerator required for WithName(). " +
-                "Use PatientBuilderFactory.CreateRealistic() to create a builder with ethnic name support.");
+                "LocalBasedNameGenerator required for WithName(). " +
+                "Use PatientBuilderFactory.Create() to create a builder with ethnic name support.");
         }
 
-        var race = _race ?? PatientBuilderConstants.Race.White;
         var gender = _gender ?? PatientBuilderConstants.Gender.Unknown;
-        var (given, family) = _nameGenerator.GenerateName(race, gender);
+        var (given, family) = _profile.NameGenerationStrategy.GenerateName(
+            gender,
+            _profileAttributes,
+            _profile.CountryCode);
         _givenName = given;
         _familyName = family;
 
@@ -501,10 +527,14 @@ public sealed class PatientBuilder
         // Auto-generate names if not provided
         if (_givenName == null || _familyName == null)
         {
-            if (_nameGenerator != null && _race != null)
+            if (_nameGenerator != null)
             {
-                // Use ethnic name generator if available and race is set
-                var (given, family) = _nameGenerator.GenerateName(_race, _gender ?? PatientBuilderConstants.Gender.Unknown);
+                // Use profile's name generation strategy if name generator is available
+                var gender = _gender ?? PatientBuilderConstants.Gender.Unknown;
+                var (given, family) = _profile.NameGenerationStrategy.GenerateName(
+                    gender,
+                    _profileAttributes,
+                    _profile.CountryCode);
                 _givenName ??= given;
                 _familyName ??= family;
             }
@@ -645,57 +675,29 @@ public sealed class PatientBuilder
 
     private bool HasExtensions()
     {
-        return !string.IsNullOrEmpty(_race) || !string.IsNullOrEmpty(_ethnicity) || _bmi.HasValue;
+        // Has extensions if BMI is set OR if profile has any attributes to build extensions from
+        return _bmi.HasValue || _profileAttributes.Count > 0;
     }
 
     private JsonArray BuildExtensions()
     {
         var extensions = new JsonArray();
 
-        // US Core Race Extension
-        if (!string.IsNullOrEmpty(_race))
+        // Delegate extension building to the profile
+        foreach (var extension in _profile.BuildExtensions(_profileAttributes, _bmi))
         {
-            extensions.Add(new JsonObject
-            {
-                ["url"] = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-race",
-                ["extension"] = new JsonArray
-                {
-                    new JsonObject
-                    {
-                        ["url"] = "text",
-                        ["valueString"] = _race
-                    }
-                }
-            });
-        }
-
-        // US Core Ethnicity Extension
-        if (!string.IsNullOrEmpty(_ethnicity))
-        {
-            extensions.Add(new JsonObject
-            {
-                ["url"] = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-ethnicity",
-                ["extension"] = new JsonArray
-                {
-                    new JsonObject
-                    {
-                        ["url"] = "text",
-                        ["valueString"] = _ethnicity
-                    }
-                }
-            });
-        }
-
-        // BMI Extension (if specified)
-        if (_bmi.HasValue)
-        {
-            extensions.Add(new JsonObject
-            {
-                ["url"] = "http://ignixa.dev/StructureDefinition/patient-bmi",
-                ["valueDecimal"] = _bmi.Value
-            });
+            extensions.Add(extension);
         }
 
         return extensions;
+    }
+
+    /// <summary>
+    /// Determines if the patient is from the US (for USCore extension eligibility).
+    /// </summary>
+    private bool IsUSPatient()
+    {
+        // Country defaults to "US" if not set, so treat null/empty as US
+        return string.IsNullOrEmpty(_country) || _country == "US";
     }
 }

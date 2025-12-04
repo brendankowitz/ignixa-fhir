@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Diagnostics.CodeAnalysis;
+using Ignixa.FhirFakes.Builders.Profiles;
 
 namespace Ignixa.FhirFakes.Population;
 
@@ -42,12 +43,6 @@ public class DemographicsDataProvider
             State: "New York",
             Country: "US",
             Population: 8_336_817,
-            RaceDistribution: new() {
-                ["White"] = 0.424,
-                ["Black"] = 0.242,
-                ["Hispanic"] = 0.289,
-                ["Asian"] = 0.141
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.208,
                 ["18-44"] = 0.453,
@@ -56,7 +51,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.476,
             ZipCodePrefix: "100",
-            AreaCodes: ["212", "718", "917", "347", "646"]
+            AreaCodes: ["212", "718", "917", "347", "646"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.424,
+                    ["Black"] = 0.242,
+                    ["Hispanic"] = 0.289,
+                    ["Asian"] = 0.141
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -64,12 +69,6 @@ public class DemographicsDataProvider
             State: "California",
             Country: "US",
             Population: 3_979_576,
-            RaceDistribution: new() {
-                ["White"] = 0.487,
-                ["Black"] = 0.083,
-                ["Hispanic"] = 0.485,
-                ["Asian"] = 0.119
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.213,
                 ["18-44"] = 0.455,
@@ -78,7 +77,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.496,
             ZipCodePrefix: "900",
-            AreaCodes: ["213", "310", "323", "424", "818"]
+            AreaCodes: ["213", "310", "323", "424", "818"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.487,
+                    ["Black"] = 0.083,
+                    ["Hispanic"] = 0.485,
+                    ["Asian"] = 0.119
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -86,12 +95,6 @@ public class DemographicsDataProvider
             State: "Illinois",
             Country: "US",
             Population: 2_746_388,
-            RaceDistribution: new() {
-                ["White"] = 0.499,
-                ["Black"] = 0.290,
-                ["Hispanic"] = 0.290,
-                ["Asian"] = 0.068
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.214,
                 ["18-44"] = 0.468,
@@ -100,7 +103,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.486,
             ZipCodePrefix: "606",
-            AreaCodes: ["312", "773", "872"]
+            AreaCodes: ["312", "773", "872"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.499,
+                    ["Black"] = 0.290,
+                    ["Hispanic"] = 0.290,
+                    ["Asian"] = 0.068
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -108,12 +121,6 @@ public class DemographicsDataProvider
             State: "Texas",
             Country: "US",
             Population: 2_304_580,
-            RaceDistribution: new() {
-                ["White"] = 0.575,
-                ["Black"] = 0.229,
-                ["Hispanic"] = 0.443,
-                ["Asian"] = 0.074
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.258,
                 ["18-44"] = 0.463,
@@ -122,7 +129,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.500,
             ZipCodePrefix: "770",
-            AreaCodes: ["713", "281", "832"]
+            AreaCodes: ["713", "281", "832"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.575,
+                    ["Black"] = 0.229,
+                    ["Hispanic"] = 0.443,
+                    ["Asian"] = 0.074
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -130,12 +147,6 @@ public class DemographicsDataProvider
             State: "Arizona",
             Country: "US",
             Population: 1_680_992,
-            RaceDistribution: new() {
-                ["White"] = 0.716,
-                ["Black"] = 0.071,
-                ["Hispanic"] = 0.428,
-                ["Asian"] = 0.038
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.250,
                 ["18-44"] = 0.443,
@@ -144,7 +155,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.501,
             ZipCodePrefix: "850",
-            AreaCodes: ["602", "480", "623"]
+            AreaCodes: ["602", "480", "623"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.716,
+                    ["Black"] = 0.071,
+                    ["Hispanic"] = 0.428,
+                    ["Asian"] = 0.038
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -152,12 +173,6 @@ public class DemographicsDataProvider
             State: "Pennsylvania",
             Country: "US",
             Population: 1_603_797,
-            RaceDistribution: new() {
-                ["White"] = 0.410,
-                ["Black"] = 0.421,
-                ["Hispanic"] = 0.151,
-                ["Asian"] = 0.076
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.216,
                 ["18-44"] = 0.456,
@@ -166,7 +181,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.475,
             ZipCodePrefix: "191",
-            AreaCodes: ["215", "267"]
+            AreaCodes: ["215", "267"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.410,
+                    ["Black"] = 0.421,
+                    ["Hispanic"] = 0.151,
+                    ["Asian"] = 0.076
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -174,12 +199,6 @@ public class DemographicsDataProvider
             State: "Texas",
             Country: "US",
             Population: 1_547_253,
-            RaceDistribution: new() {
-                ["White"] = 0.802,
-                ["Black"] = 0.069,
-                ["Hispanic"] = 0.641,
-                ["Asian"] = 0.029
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.266,
                 ["18-44"] = 0.449,
@@ -188,7 +207,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.495,
             ZipCodePrefix: "782",
-            AreaCodes: ["210", "726"]
+            AreaCodes: ["210", "726"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.802,
+                    ["Black"] = 0.069,
+                    ["Hispanic"] = 0.641,
+                    ["Asian"] = 0.029
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -196,12 +225,6 @@ public class DemographicsDataProvider
             State: "California",
             Country: "US",
             Population: 1_423_851,
-            RaceDistribution: new() {
-                ["White"] = 0.650,
-                ["Black"] = 0.062,
-                ["Hispanic"] = 0.301,
-                ["Asian"] = 0.170
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.208,
                 ["18-44"] = 0.467,
@@ -210,7 +233,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.502,
             ZipCodePrefix: "921",
-            AreaCodes: ["619", "858"]
+            AreaCodes: ["619", "858"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.650,
+                    ["Black"] = 0.062,
+                    ["Hispanic"] = 0.301,
+                    ["Asian"] = 0.170
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -218,12 +251,6 @@ public class DemographicsDataProvider
             State: "Texas",
             Country: "US",
             Population: 1_343_573,
-            RaceDistribution: new() {
-                ["White"] = 0.613,
-                ["Black"] = 0.240,
-                ["Hispanic"] = 0.416,
-                ["Asian"] = 0.039
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.258,
                 ["18-44"] = 0.486,
@@ -232,7 +259,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.501,
             ZipCodePrefix: "752",
-            AreaCodes: ["214", "469", "972"]
+            AreaCodes: ["214", "469", "972"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.613,
+                    ["Black"] = 0.240,
+                    ["Hispanic"] = 0.416,
+                    ["Asian"] = 0.039
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -240,12 +277,6 @@ public class DemographicsDataProvider
             State: "Massachusetts",
             Country: "US",
             Population: 675_647,
-            RaceDistribution: new() {
-                ["White"] = 0.530,
-                ["Black"] = 0.250,
-                ["Hispanic"] = 0.190,
-                ["Asian"] = 0.090
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.170,
                 ["18-44"] = 0.500,
@@ -254,7 +285,17 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.480,
             ZipCodePrefix: "021",
-            AreaCodes: ["617", "857"]
+            AreaCodes: ["617", "857"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.530,
+                    ["Black"] = 0.250,
+                    ["Hispanic"] = 0.190,
+                    ["Asian"] = 0.090
+                }
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -262,12 +303,6 @@ public class DemographicsDataProvider
             State: "Washington",
             Country: "US",
             Population: 737_015,
-            RaceDistribution: new() {
-                ["White"] = 0.657,
-                ["Black"] = 0.071,
-                ["Hispanic"] = 0.071,
-                ["Asian"] = 0.163
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.155,
                 ["18-44"] = 0.513,
@@ -276,20 +311,35 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.502,
             ZipCodePrefix: "981",
-            AreaCodes: ["206"]
+            AreaCodes: ["206"],
+            Attributes: new Dictionary<string, object>
+            {
+                [USCorePatientProfile.EthnicityDistributionKey] = new Dictionary<string, double>
+                {
+                    ["White"] = 0.657,
+                    ["Black"] = 0.071,
+                    ["Hispanic"] = 0.071,
+                    ["Asian"] = 0.163
+                }
+            }
         ));
 
-        // International cities
+        // International cities - Australia
+        // Data source: Australian Bureau of Statistics 2021 Census
+        // Indigenous status distribution based on ABS data (approx. 3.2% nationally identify as Aboriginal/Torres Strait Islander)
+        var australianIndigenousDistribution = new Dictionary<string, double>
+        {
+            ["1"] = 0.028, // Aboriginal but not Torres Strait Islander
+            ["2"] = 0.002, // Torres Strait Islander but not Aboriginal
+            ["3"] = 0.002, // Both Aboriginal and Torres Strait Islander
+            ["4"] = 0.968  // Neither Aboriginal nor Torres Strait Islander
+        };
+
         provider.AddCity(new CityDemographics(
             Name: "Melbourne",
             State: "Victoria",
             Country: "AU",
             Population: 5_078_000,
-            RaceDistribution: new() {
-                ["White"] = 0.650,
-                ["Asian"] = 0.280,
-                ["Other"] = 0.070
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.195,
                 ["18-44"] = 0.445,
@@ -298,7 +348,31 @@ public class DemographicsDataProvider
             },
             MaleRatio: 0.495,
             ZipCodePrefix: "3000",
-            AreaCodes: ["03"]
+            AreaCodes: ["03"],
+            Attributes: new Dictionary<string, object>
+            {
+                [AUBasePatientProfile.IndigenousStatusDistributionKey] = australianIndigenousDistribution
+            }
+        ));
+
+        provider.AddCity(new CityDemographics(
+            Name: "Sydney",
+            State: "New South Wales",
+            Country: "AU",
+            Population: 5_312_000,
+            AgeGroupDistribution: new() {
+                ["0-17"] = 0.188,
+                ["18-44"] = 0.460,
+                ["45-64"] = 0.253,
+                ["65+"] = 0.099
+            },
+            MaleRatio: 0.494,
+            ZipCodePrefix: "2000",
+            AreaCodes: ["02"],
+            Attributes: new Dictionary<string, object>
+            {
+                [AUBasePatientProfile.IndigenousStatusDistributionKey] = australianIndigenousDistribution
+            }
         ));
 
         provider.AddCity(new CityDemographics(
@@ -306,11 +380,6 @@ public class DemographicsDataProvider
             State: "North Holland",
             Country: "NL",
             Population: 872_680,
-            RaceDistribution: new() {
-                ["White"] = 0.510,
-                ["Asian"] = 0.140,
-                ["Other"] = 0.350
-            },
             AgeGroupDistribution: new() {
                 ["0-17"] = 0.165,
                 ["18-44"] = 0.475,
@@ -320,6 +389,7 @@ public class DemographicsDataProvider
             MaleRatio: 0.498,
             ZipCodePrefix: "1011",
             AreaCodes: ["020"]
+            // No profile-specific attributes for Amsterdam
         ));
 
         return provider;
@@ -346,14 +416,6 @@ public class DemographicsDataProvider
         }
 
         return citiesInState[^1];
-    }
-
-    /// <summary>
-    /// Samples a race/ethnicity from the city's demographic distribution.
-    /// </summary>
-    public string SampleRace(CityDemographics city)
-    {
-        return SampleFromDistribution(city.RaceDistribution);
     }
 
     /// <summary>
@@ -402,6 +464,25 @@ public class DemographicsDataProvider
     public string SampleAreaCode(CityDemographics city)
     {
         return city.AreaCodes[Random.Shared.Next(city.AreaCodes.Count)];
+    }
+
+    /// <summary>
+    /// Samples profile-specific attributes based on the city's demographics.
+    /// Delegates to the city's profile for profile-specific attribute sampling.
+    /// </summary>
+    /// <param name="city">City demographics</param>
+    /// <returns>Dictionary of profile-specific attributes</returns>
+    /// <example>
+    /// For US cities: { "ethnicity": "White" }
+    /// For AU cities: { "indigenousStatus": "4" }
+    /// </example>
+    public Dictionary<string, object> SampleProfileAttributes(CityDemographics city)
+    {
+        ArgumentNullException.ThrowIfNull(city);
+
+        // Delegate to the city's profile for attribute sampling
+        var profile = city.GetProfile();
+        return profile.SampleProfileAttributes(city);
     }
 
     private string SampleFromDistribution(Dictionary<string, double> distribution)

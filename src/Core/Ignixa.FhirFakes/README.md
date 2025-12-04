@@ -77,8 +77,12 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 
 var builder = new ScenarioBuilder(schemaProvider)
-    .SetPatientAge(55)
-    .SetPatientGender("male")
+    // Simple patient with basic demographics
+    .WithPatient(p => p.WithAge(55).WithGender(g => g.Male))
+
+    // Or use realistic patient from specific city (ethnically appropriate names, real demographics)
+    // .WithPatient(p => p.FromCity(KnownCities.Boston).WithAge(55).WithGender(g => g.Male))
+
     .AddEncounter("Annual wellness visit")
 
     // Use reusable fragments

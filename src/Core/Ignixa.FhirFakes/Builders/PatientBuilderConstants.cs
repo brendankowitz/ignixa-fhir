@@ -30,69 +30,8 @@ public static class PatientBuilderConstants
     }
 
     /// <summary>
-    /// US Census race categories.
-    /// Used with PatientBuilder.WithRace() and ethnic name generation.
-    /// </summary>
-    public static class Race
-    {
-        /// <summary>White race category.</summary>
-        public const string White = "White";
-
-        /// <summary>Black or African American race category.</summary>
-        public const string Black = "Black";
-
-        /// <summary>Hispanic or Latino race category.</summary>
-        public const string Hispanic = "Hispanic";
-
-        /// <summary>Asian race category (general).</summary>
-        public const string Asian = "Asian";
-
-        /// <summary>Asian - Chinese ethnicity.</summary>
-        public const string AsianChinese = "Asian-Chinese";
-
-        /// <summary>Asian - Indian ethnicity.</summary>
-        public const string AsianIndian = "Asian-Indian";
-
-        /// <summary>Asian - Filipino ethnicity.</summary>
-        public const string AsianFilipino = "Asian-Filipino";
-
-        /// <summary>Asian - Vietnamese ethnicity.</summary>
-        public const string AsianVietnamese = "Asian-Vietnamese";
-
-        /// <summary>Asian - Korean ethnicity.</summary>
-        public const string AsianKorean = "Asian-Korean";
-
-        /// <summary>Asian - Japanese ethnicity.</summary>
-        public const string AsianJapanese = "Asian-Japanese";
-
-        /// <summary>Native American or Alaska Native race category.</summary>
-        public const string NativeAmerican = "NativeAmerican";
-
-        /// <summary>Native Hawaiian or Other Pacific Islander race category.</summary>
-        public const string PacificIslander = "PacificIslander";
-
-        /// <summary>Arab race category.</summary>
-        public const string Arab = "Arab";
-
-        /// <summary>Other race category.</summary>
-        public const string Other = "Other";
-    }
-
-    /// <summary>
-    /// US Census ethnicity categories.
-    /// </summary>
-    public static class Ethnicity
-    {
-        /// <summary>Hispanic or Latino ethnicity.</summary>
-        public const string HispanicOrLatino = "Hispanic or Latino";
-
-        /// <summary>Not Hispanic or Latino ethnicity.</summary>
-        public const string NotHispanicOrLatino = "Not Hispanic or Latino";
-    }
-
-    /// <summary>
     /// Available US cities in the demographics data provider.
-    /// Each city has realistic census data for race, age, and gender distributions.
+    /// Each city has realistic census data for ethnicity, age, and gender distributions.
     /// </summary>
     public static class Cities
     {
@@ -177,27 +116,6 @@ public static class PatientBuilderConstants
 
         /// <summary>Michigan state.</summary>
         public const string Michigan = "Michigan";
-    }
-
-    /// <summary>
-    /// US state abbreviations (two-letter codes).
-    /// </summary>
-    public static class StateAbbreviations
-    {
-        public const string NY = "NY";
-        public const string CA = "CA";
-        public const string IL = "IL";
-        public const string TX = "TX";
-        public const string AZ = "AZ";
-        public const string PA = "PA";
-        public const string MA = "MA";
-        public const string WA = "WA";
-        public const string OR = "OR";
-        public const string FL = "FL";
-        public const string OH = "OH";
-        public const string GA = "GA";
-        public const string NC = "NC";
-        public const string MI = "MI";
     }
 
     /// <summary>

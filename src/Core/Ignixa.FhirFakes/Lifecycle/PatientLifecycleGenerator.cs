@@ -358,6 +358,7 @@ public sealed class PatientLifecycleGenerator(IFhirSchemaProvider schemaProvider
         // Generate initial patient at age 0
         var patient = GeneratePatient();
         context.Patient = patient;
+        context.AddPatient(patient); // Add to AllResources for bundle generation
         context.BirthDate = new DateTime(_birthYear, 1, 1);
         context.CurrentTime = new DateTime(_birthYear, 1, 1);
 
@@ -392,7 +393,7 @@ public sealed class PatientLifecycleGenerator(IFhirSchemaProvider schemaProvider
     /// <returns>A ResourceJsonNode representing the Patient resource.</returns>
     private ResourceJsonNode GeneratePatient()
     {
-        var builder = PatientBuilderFactory.CreateSimple(_schemaProvider)
+        var builder = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthYear(_birthYear)
             .WithGender(_gender);
 

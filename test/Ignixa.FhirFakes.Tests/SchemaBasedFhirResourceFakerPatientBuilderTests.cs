@@ -5,6 +5,7 @@
 
 using FluentAssertions;
 using Ignixa.FhirFakes.Builders;
+using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.Specification.Generated;
 
@@ -12,7 +13,7 @@ namespace Ignixa.FhirFakes.Tests;
 
 /// <summary>
 /// Tests for PatientBuilder convenience methods in SchemaBasedFhirResourceFaker.
-/// Verifies CreateSimplePatient, CreateRealisticPatient, and CreateSeattlePatient.
+/// Verifies CreatePatient, CreatePatient, and CreateSeattlePatient.
 /// </summary>
 public class SchemaBasedFhirResourceFakerPatientBuilderTests
 {
@@ -24,13 +25,13 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         _faker = new SchemaBasedFhirResourceFaker(_schemaProvider);
     }
 
-    #region CreateSimplePatient Tests
+    #region CreatePatient Tests
 
     [Fact]
     public void GivenFaker_WhenCreatingSimplePatientWithNoConfiguration_ThenCreatesValidPatient()
     {
         // Act
-        var patient = _faker.CreateSimplePatient();
+        var patient = _faker.CreatePatient();
 
         // Assert
         patient.Should().NotBeNull();
@@ -45,7 +46,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
     public void GivenFaker_WhenCreatingSimplePatientWithConfiguration_ThenAppliesConfiguration()
     {
         // Act
-        var patient = _faker.CreateSimplePatient(p => p
+        var patient = _faker.CreatePatient(p => p
             .WithAge(45)
             .WithGender(g => g.Male)
             .WithGivenName("John")
@@ -72,7 +73,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         _faker.WithTag(tagCode);
 
         // Act
-        var patient = _faker.CreateSimplePatient(p => p.WithAge(30));
+        var patient = _faker.CreatePatient(p => p.WithAge(30));
 
         // Assert
         patient.MutableNode["meta"]?["tag"].Should().NotBeNull();
@@ -87,7 +88,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
     public void GivenFaker_WhenCreatingSimplePatientWithAddress_ThenIncludesAddress()
     {
         // Act
-        var patient = _faker.CreateSimplePatient(p => p
+        var patient = _faker.CreatePatient(p => p
             .WithAge(35)
             .WithAddress("123 Main St", "Boston", "MA", "02101"));
 
@@ -101,13 +102,13 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
     #endregion
 
-    #region CreateRealisticPatient Tests
+    #region CreatePatient Tests
 
     [Fact]
     public void GivenFaker_WhenCreatingRealisticPatientWithNoConfiguration_ThenCreatesValidPatient()
     {
         // Act
-        var patient = _faker.CreateRealisticPatient();
+        var patient = _faker.CreatePatient();
 
         // Assert
         patient.Should().NotBeNull();
@@ -122,7 +123,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
     public void GivenFaker_WhenCreatingRealisticPatientFromCity_ThenUsesRealDemographics()
     {
         // Act
-        var patient = _faker.CreateRealisticPatient(p => p
+        var patient = _faker.CreatePatient(p => p
             .FromCity(KnownCities.Boston));
 
         // Assert
@@ -150,7 +151,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         _faker.WithTag(tagCode);
 
         // Act
-        var patient = _faker.CreateRealisticPatient(p => p
+        var patient = _faker.CreatePatient(p => p
             .FromCity(KnownCities.Chicago));
 
         // Assert
@@ -166,7 +167,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
     public void GivenFaker_WhenCreatingRealisticPatientWithBMI_ThenIncludesBMIExtension()
     {
         // Act
-        var patient = _faker.CreateRealisticPatient(p => p
+        var patient = _faker.CreatePatient(p => p
             .WithAge(40)
             .WithRealisticBMI());
 
@@ -184,11 +185,12 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
     }
 
     [Fact]
-    public void GivenFaker_WhenCreatingRealisticPatientWithRaceSelector_ThenSetsRaceExtension()
+    public void GivenFaker_WhenCreatingRealisticPatientWithEthnicityAttribute_ThenSetsEthnicityExtension()
     {
         // Act
-        var patient = _faker.CreateRealisticPatient(p => p
-            .WithRace(r => r.Hispanic)
+        var patient = _faker.CreatePatient(p => p
+            .WithProfile(USCorePatientProfile.Instance)
+            .WithAttribute(USCorePatientProfile.UsCoreRaceAttribute, USCorePatientProfile.Race.Hispanic)
             .WithGender(g => g.Female)
             .WithAge(30));
 
@@ -196,11 +198,11 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         patient.MutableNode["extension"].Should().NotBeNull();
         var extensions = patient.MutableNode["extension"]?.AsArray();
 
-        // Find race extension
-        var raceExtension = extensions?
+        // Find ethnicity extension (using us-core-race URL per FHIR spec)
+        var ethnicityExtension = extensions?
             .FirstOrDefault(e => e?["url"]?.GetValue<string>() == "http://hl7.org/fhir/us/core/StructureDefinition/us-core-race");
 
-        raceExtension.Should().NotBeNull();
+        ethnicityExtension.Should().NotBeNull();
     }
 
     #endregion
@@ -285,10 +287,10 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
         // Act
         _faker.WithTag(tag1);
-        var patient1 = _faker.CreateSimplePatient();
+        var patient1 = _faker.CreatePatient();
 
         _faker.WithTag(tag2);
-        var patient2 = _faker.CreateRealisticPatient();
+        var patient2 = _faker.CreatePatient();
 
         // Assert
         patient1.MutableNode["meta"]?["tag"]?[0]?["code"]?.GetValue<string>().Should().Be(tag1);
@@ -301,11 +303,11 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
         // Arrange
         var tagCode = Guid.NewGuid().ToString();
         _faker.WithTag(tagCode);
-        var patient1 = _faker.CreateSimplePatient();
+        var patient1 = _faker.CreatePatient();
 
         // Act - Clear tag
         _faker.WithTag(null);
-        var patient2 = _faker.CreateSimplePatient();
+        var patient2 = _faker.CreatePatient();
 
         // Assert
         patient1.MutableNode["meta"]?["tag"].Should().NotBeNull();
@@ -316,8 +318,8 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
     public void GivenFaker_WhenCreatingMultiplePatientTypes_ThenAllAreDistinct()
     {
         // Act
-        var simplePatient = _faker.CreateSimplePatient();
-        var realisticPatient = _faker.CreateRealisticPatient();
+        var simplePatient = _faker.CreatePatient();
+        var realisticPatient = _faker.CreatePatient();
         var seattlePatient = _faker.CreateSeattlePatient();
 
         // Assert - All patients should have different IDs

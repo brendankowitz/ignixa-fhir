@@ -30,54 +30,6 @@ public static class PatientBuilderSelectors
     }
 
     /// <summary>
-    /// Race selector for use with PatientBuilder.WithRace().
-    /// </summary>
-    public sealed class Race
-    {
-        /// <summary>White race category.</summary>
-        public string White => PatientBuilderConstants.Race.White;
-
-        /// <summary>Black or African American race category.</summary>
-        public string Black => PatientBuilderConstants.Race.Black;
-
-        /// <summary>Hispanic or Latino race category.</summary>
-        public string Hispanic => PatientBuilderConstants.Race.Hispanic;
-
-        /// <summary>Asian race category (general).</summary>
-        public string Asian => PatientBuilderConstants.Race.Asian;
-
-        /// <summary>Asian - Chinese ethnicity.</summary>
-        public string AsianChinese => PatientBuilderConstants.Race.AsianChinese;
-
-        /// <summary>Asian - Indian ethnicity.</summary>
-        public string AsianIndian => PatientBuilderConstants.Race.AsianIndian;
-
-        /// <summary>Asian - Filipino ethnicity.</summary>
-        public string AsianFilipino => PatientBuilderConstants.Race.AsianFilipino;
-
-        /// <summary>Asian - Vietnamese ethnicity.</summary>
-        public string AsianVietnamese => PatientBuilderConstants.Race.AsianVietnamese;
-
-        /// <summary>Asian - Korean ethnicity.</summary>
-        public string AsianKorean => PatientBuilderConstants.Race.AsianKorean;
-
-        /// <summary>Asian - Japanese ethnicity.</summary>
-        public string AsianJapanese => PatientBuilderConstants.Race.AsianJapanese;
-
-        /// <summary>Native American or Alaska Native race category.</summary>
-        public string NativeAmerican => PatientBuilderConstants.Race.NativeAmerican;
-
-        /// <summary>Native Hawaiian or Other Pacific Islander race category.</summary>
-        public string PacificIslander => PatientBuilderConstants.Race.PacificIslander;
-
-        /// <summary>Arab race category.</summary>
-        public string Arab => PatientBuilderConstants.Race.Arab;
-
-        /// <summary>Other race category.</summary>
-        public string Other => PatientBuilderConstants.Race.Other;
-    }
-
-    /// <summary>
     /// City-state pair selector for use with PatientBuilder.FromCity().
     /// </summary>
     [Obsolete("Use KnownCities class instead. This class is maintained for backward compatibility only.")]

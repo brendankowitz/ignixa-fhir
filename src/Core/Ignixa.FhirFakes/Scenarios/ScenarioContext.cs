@@ -194,6 +194,16 @@ public sealed class ScenarioContext
     public int CurrentAge => (int)((CurrentTime - BirthDate).TotalDays / 365.25);
 
     /// <summary>
+    /// Adds the patient resource to the AllResources collection.
+    /// Called internally by PatientBuilderState to ensure Patient is included in AllResources.
+    /// </summary>
+    internal void AddPatient(ResourceJsonNode patient)
+    {
+        ArgumentNullException.ThrowIfNull(patient);
+        _allResources.Add(patient);
+    }
+
+    /// <summary>
     /// Adds an encounter resource to the scenario.
     /// </summary>
     public void AddEncounter(ResourceJsonNode encounter, string description)
@@ -452,7 +462,7 @@ public sealed class ScenarioContext
 
     /// <summary>
     /// Creates a transaction Bundle containing all resources from this scenario.
-    /// The Patient resource is added first, followed by all other resources in generation order.
+    /// Resources are added in generation order (Patient first, then others).
     /// Each entry uses urn:uuid references for client-assigned IDs.
     /// </summary>
     /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
@@ -460,14 +470,9 @@ public sealed class ScenarioContext
     {
         var entries = new JsonArray();
 
-        // Add Patient first (if present)
-        if (Patient is not null)
-        {
-            entries.Add(CreateBundleEntry(Patient));
-        }
-
-        // Add all other resources in generation order
-        foreach (var resource in _allResources.Where(r => r.ResourceType != "Patient"))
+        // Add all resources in generation order
+        // (Patient is already first in _allResources since PatientBuilderState adds it)
+        foreach (var resource in _allResources)
         {
             entries.Add(CreateBundleEntry(resource));
         }

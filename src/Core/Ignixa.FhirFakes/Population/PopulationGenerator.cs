@@ -18,7 +18,7 @@ namespace Ignixa.FhirFakes.Population;
 /// <remarks>
 /// Orchestrates:
 /// - Demographic sampling from real US cities (DemographicsDataProvider)
-/// - Culturally appropriate name generation (EthnicNameGenerator + Bogus locales)
+/// - Culturally appropriate name generation (LocalBasedNameGenerator + Bogus locales)
 /// - Full lifecycle simulation from birth to current age (PatientLifecycleGenerator)
 /// - Age/race-stratified disease risk modeling (DiseaseRiskCalculator)
 ///
@@ -67,7 +67,7 @@ public class PopulationGenerator(IFhirSchemaProvider schemaProvider)
             var city = _demographics.SelectCity(state);
 
             // 2. Sample demographics using PatientBuilder (race, age, gender, name, zip, area code)
-            var patientBuilder = PatientBuilderFactory.CreateRealistic(_schemaProvider)
+            var patientBuilder = PatientBuilderFactory.Create(_schemaProvider)
                 .FromCity(city)
                 .WithName()
                 .WithRealisticBMI();

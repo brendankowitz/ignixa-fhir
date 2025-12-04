@@ -78,6 +78,6 @@ public abstract class CapabilityDrivenTestBase : IClassFixture<IgnixaApiFixture>
     /// </example>
     protected PatientBuilder CreatePatient()
     {
-        return PatientBuilderFactory.CreateRealistic(SchemaProvider);
+        return PatientBuilderFactory.Create(SchemaProvider);
     }
 }

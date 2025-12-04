@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using FluentAssertions;
+using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Serialization.Models;
@@ -262,11 +263,24 @@ public class PopulationGeneratorTests
             city.Name.Should().NotBeNullOrEmpty();
             city.State.Should().NotBeNullOrEmpty();
             city.Population.Should().BeGreaterThan(0);
-            city.RaceDistribution.Should().NotBeEmpty();
             city.AgeGroupDistribution.Should().NotBeEmpty();
             city.MaleRatio.Should().BeInRange(0.4, 0.6, "typical male ratio is 40-60%");
             city.ZipCodePrefix.Should().NotBeNullOrEmpty();
             city.AreaCodes.Should().NotBeEmpty();
+
+            // Verify profile-specific attributes based on country
+            if (city.IsUSA)
+            {
+                city.Attributes.Should().ContainKey(USCorePatientProfile.EthnicityDistributionKey);
+                var ethnicityDistribution = city.Attributes[USCorePatientProfile.EthnicityDistributionKey] as Dictionary<string, double>;
+                ethnicityDistribution.Should().NotBeNull().And.NotBeEmpty();
+            }
+            else if (city.IsAustralian)
+            {
+                city.Attributes.Should().ContainKey(AUBasePatientProfile.IndigenousStatusDistributionKey);
+                var indigenousDistribution = city.Attributes[AUBasePatientProfile.IndigenousStatusDistributionKey] as Dictionary<string, double>;
+                indigenousDistribution.Should().NotBeNull().And.NotBeEmpty();
+            }
         }
     }
 
@@ -307,12 +321,13 @@ public class PopulationGeneratorTests
         var allCities = KnownCities.All;
 
         // Assert
-        allCities.Should().HaveCount(13)
+        allCities.Should().HaveCount(14)
             .And.Contain(c => c.Name == "Boston")
             .And.Contain(c => c.Name == "Seattle")
             .And.Contain(c => c.Name == "New York")
             .And.Contain(c => c.Name == "Los Angeles")
             .And.Contain(c => c.Name == "Melbourne")
+            .And.Contain(c => c.Name == "Sydney")
             .And.Contain(c => c.Name == "Amsterdam");
     }
 

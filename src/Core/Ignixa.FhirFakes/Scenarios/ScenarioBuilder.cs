@@ -106,7 +106,7 @@ public sealed class ScenarioBuilder
 
     /// <summary>
     /// Adds a patient using PatientBuilder with full configuration control.
-    /// Uses PatientBuilderFactory.CreateSimple() as the base builder.
+    /// Uses PatientBuilderFactory.Create() as the base builder.
     /// This should typically be the first state in any scenario.
     /// </summary>
     /// <param name="configure">Configuration action for the PatientBuilder.</param>
@@ -114,12 +114,21 @@ public sealed class ScenarioBuilder
     /// <returns>This builder for fluent chaining.</returns>
     /// <example>
     /// <code>
+    /// // Simple patient with basic demographics (suitable for simple tests)
     /// var scenario = new ScenarioBuilder(schemaProvider)
     ///     .WithPatient(p => p
     ///         .WithAge(45)
     ///         .WithGender(g => g.Male)
     ///         .WithGivenName("John")
     ///         .WithFamilyName("Smith"))
+    ///     .Build();
+    ///
+    /// // Realistic patient from specific city (ethnically appropriate names, real demographics)
+    /// var scenario = new ScenarioBuilder(schemaProvider)
+    ///     .WithPatient(p => p
+    ///         .FromCity(KnownCities.Boston)
+    ///         .WithAge(45)
+    ///         .WithRealisticBMI())
     ///     .Build();
     /// </code>
     /// </example>
@@ -141,92 +150,7 @@ public sealed class ScenarioBuilder
                 configure(builder);
                 return builder;
             },
-            PatientBuilderFactory.CreateSimple)
-        {
-            StartDate = startDate
-        });
-        return this;
-    }
-
-    /// <summary>
-    /// Adds a patient using PatientBuilderFactory.CreateSimple() with the specified configuration.
-    /// Suitable for basic tests where demographic realism is not critical.
-    /// This should typically be the first state in any scenario.
-    /// </summary>
-    /// <param name="configure">Configuration action for the PatientBuilder.</param>
-    /// <param name="startDate">Scenario start date (optional, defaults to 1 year ago).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    /// <example>
-    /// <code>
-    /// var scenario = new ScenarioBuilder(schemaProvider)
-    ///     .WithSimplePatient(p => p
-    ///         .WithAge(30)
-    ///         .WithGender(g => g.Female))
-    ///     .Build();
-    /// </code>
-    /// </example>
-    public ScenarioBuilder WithSimplePatient(Action<PatientBuilder> configure, DateTime? startDate = null)
-    {
-        ArgumentNullException.ThrowIfNull(configure);
-
-        if (_hasPatient)
-        {
-            throw new InvalidOperationException(
-                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
-                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
-        }
-        _hasPatient = true;
-
-        _states.Add(new PatientBuilderState(
-            builder =>
-            {
-                configure(builder);
-                return builder;
-            },
-            PatientBuilderFactory.CreateSimple)
-        {
-            StartDate = startDate
-        });
-        return this;
-    }
-
-    /// <summary>
-    /// Adds a patient using PatientBuilderFactory.CreateRealistic() with the specified configuration.
-    /// Uses sophisticated US demographics with ethnically appropriate names.
-    /// This should typically be the first state in any scenario.
-    /// </summary>
-    /// <param name="configure">Configuration action for the PatientBuilder.</param>
-    /// <param name="startDate">Scenario start date (optional, defaults to 1 year ago).</param>
-    /// <returns>This builder for fluent chaining.</returns>
-    /// <example>
-    /// <code>
-    /// var scenario = new ScenarioBuilder(schemaProvider)
-    ///     .WithRealisticPatient(p => p
-    ///         .FromCity(c => c.BostonMA)
-    ///         .WithAge(45)
-    ///         .WithRealisticBMI())
-    ///     .Build();
-    /// </code>
-    /// </example>
-    public ScenarioBuilder WithRealisticPatient(Action<PatientBuilder> configure, DateTime? startDate = null)
-    {
-        ArgumentNullException.ThrowIfNull(configure);
-
-        if (_hasPatient)
-        {
-            throw new InvalidOperationException(
-                "Cannot add multiple patients to a single scenario. Each scenario supports only one patient. " +
-                "To test multiple patients, create them separately and add them directly without using the scenario builder.");
-        }
-        _hasPatient = true;
-
-        _states.Add(new PatientBuilderState(
-            builder =>
-            {
-                configure(builder);
-                return builder;
-            },
-            PatientBuilderFactory.CreateRealistic)
+            PatientBuilderFactory.Create)
         {
             StartDate = startDate
         });
@@ -235,7 +159,7 @@ public sealed class ScenarioBuilder
 
     /// <summary>
     /// Adds a patient from Seattle, Washington with realistic Pacific Northwest demographics.
-    /// Uses PatientBuilderFactory.CreateRealistic() with FromSeattle() configuration.
+    /// Uses PatientBuilderFactory.Create() with FromSeattle() configuration.
     /// </summary>
     /// <param name="configure">Optional additional configuration for the PatientBuilder.</param>
     /// <param name="startDate">Scenario start date (optional, defaults to 1 year ago).</param>
@@ -264,7 +188,7 @@ public sealed class ScenarioBuilder
                 configure?.Invoke(builder);
                 return builder;
             },
-            PatientBuilderFactory.CreateRealistic)
+            PatientBuilderFactory.Create)
         {
             StartDate = startDate
         });
@@ -273,7 +197,7 @@ public sealed class ScenarioBuilder
 
     /// <summary>
     /// Adds a patient from a specific city with realistic demographics.
-    /// Uses PatientBuilderFactory.CreateRealistic() with FromCity() configuration.
+    /// Uses PatientBuilderFactory.Create() with FromCity() configuration.
     /// </summary>
     /// <param name="city">The city demographics (use KnownCities class for predefined cities).</param>
     /// <param name="configure">Optional additional configuration for the PatientBuilder.</param>
@@ -313,7 +237,7 @@ public sealed class ScenarioBuilder
                 configure?.Invoke(builder);
                 return builder;
             },
-            PatientBuilderFactory.CreateRealistic)
+            PatientBuilderFactory.Create)
         {
             StartDate = startDate
         });

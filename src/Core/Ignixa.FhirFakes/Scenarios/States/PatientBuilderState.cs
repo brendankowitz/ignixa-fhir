@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.FhirFakes.Builders;
+using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -74,6 +75,9 @@ public sealed class PatientBuilderState : ScenarioState
         context.BirthDate = birthDate;
         context.CurrentTime = startDate;
 
+        // Add patient to AllResources collection so it's included in scenario.AllResources
+        context.AddPatient(patient);
+
         // Store demographics as attributes for later use
         if (builder.Gender != null)
         {
@@ -82,9 +86,9 @@ public sealed class PatientBuilderState : ScenarioState
 
         context.SetAttribute("age", age);
 
-        if (builder.Race != null)
+        if (builder.ProfileAttributes.TryGetValue(USCorePatientProfile.UsCoreRaceAttribute, out var ethnicity) && ethnicity is string ethnicityString)
         {
-            context.SetAttribute("race", builder.Race);
+            context.SetAttribute("ethnicity", ethnicityString);
         }
 
         if (builder.ZipCode != null)

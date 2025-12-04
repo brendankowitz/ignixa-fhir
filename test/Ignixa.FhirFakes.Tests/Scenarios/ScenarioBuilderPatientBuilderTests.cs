@@ -74,14 +74,14 @@ public class ScenarioBuilderPatientBuilderTests
 
     #endregion
 
-    #region WithSimplePatient Tests
+    #region WithPatient Tests
 
     [Fact]
-    public void GivenScenarioBuilder_WhenUsingWithSimplePatient_ThenCreatesPatient()
+    public void GivenScenarioBuilder_WhenUsingWithPatient_ThenCreatesPatient()
     {
         // Arrange & Act
         var scenario = new ScenarioBuilder(_schemaProvider)
-            .WithSimplePatient(p => p
+            .WithPatient(p => p
                 .WithAge(30)
                 .WithGender(g => g.Female)
                 .WithAddress("123 Main St", "Seattle", "WA", "98101"))
@@ -98,14 +98,14 @@ public class ScenarioBuilderPatientBuilderTests
     }
 
     [Fact]
-    public void GivenScenarioBuilder_WhenUsingWithSimplePatientAndStartDate_ThenUsesStartDate()
+    public void GivenScenarioBuilder_WhenUsingWithPatientAndStartDate_ThenUsesStartDate()
     {
         // Arrange
         var startDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         // Act
         var scenario = new ScenarioBuilder(_schemaProvider)
-            .WithSimplePatient(p => p.WithAge(40).WithGender("male"), startDate)
+            .WithPatient(p => p.WithAge(40).WithGender("male"), startDate)
             .Build();
 
         // Assert
@@ -114,14 +114,14 @@ public class ScenarioBuilderPatientBuilderTests
 
     #endregion
 
-    #region WithRealisticPatient Tests
+    #region WithPatient Tests
 
     [Fact]
-    public void GivenScenarioBuilder_WhenUsingWithRealisticPatient_ThenCreatesRealisticPatient()
+    public void GivenScenarioBuilder_WhenUsingWithPatient_ThenCreatesRealisticPatient()
     {
         // Arrange & Act
         var scenario = new ScenarioBuilder(_schemaProvider)
-            .WithRealisticPatient(p => p
+            .WithPatient(p => p
                 .FromCity(KnownCities.Boston)
                 .WithAge(45)
                 .WithRealisticBMI())
@@ -142,25 +142,25 @@ public class ScenarioBuilderPatientBuilderTests
     }
 
     [Fact]
-    public void GivenScenarioBuilder_WhenUsingWithRealisticPatient_ThenSetsRaceAttribute()
+    public void GivenScenarioBuilder_WhenUsingWithPatient_ThenSetsEthnicityAttribute()
     {
         // Arrange & Act
         var scenario = new ScenarioBuilder(_schemaProvider)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Chicago))
+            .WithPatient(p => p.FromCity(KnownCities.Chicago))
             .Build();
 
         // Assert
-        // Race should be set from city demographics
-        scenario.Attributes.Should().ContainKey("race");
-        scenario.GetAttribute<string>("race").Should().NotBeNullOrEmpty();
+        // Ethnicity should be set from city demographics
+        scenario.Attributes.Should().ContainKey("ethnicity");
+        scenario.GetAttribute<string>("ethnicity").Should().NotBeNullOrEmpty();
     }
 
     [Fact]
-    public void GivenScenarioBuilder_WhenUsingWithRealisticPatient_ThenSetsZipCodeAttribute()
+    public void GivenScenarioBuilder_WhenUsingWithPatient_ThenSetsZipCodeAttribute()
     {
         // Arrange & Act
         var scenario = new ScenarioBuilder(_schemaProvider)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.NewYork))
+            .WithPatient(p => p.FromCity(KnownCities.NewYork))
             .Build();
 
         // Assert
@@ -252,7 +252,7 @@ public class ScenarioBuilderPatientBuilderTests
         // Arrange & Act
         var scenario = new ScenarioBuilder(_schemaProvider)
             .WithName("Complete Scenario with PatientBuilder")
-            .WithRealisticPatient(p => p
+            .WithPatient(p => p
                 .FromCity(KnownCities.Boston)
                 .WithAge(55)
                 .WithGender(g => g.Male))
@@ -280,7 +280,7 @@ public class ScenarioBuilderPatientBuilderTests
         // Act
         var scenario = new ScenarioBuilder(_schemaProvider)
             .WithTag(tag)
-            .WithSimplePatient(p => p.WithAge(40).WithGender("female"))
+            .WithPatient(p => p.WithAge(40).WithGender("female"))
             .Build();
 
         // Assert
@@ -300,11 +300,11 @@ public class ScenarioBuilderPatientBuilderTests
     {
         // Arrange & Act
         var scenario1 = new ScenarioBuilder(_schemaProvider)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Boston))
+            .WithPatient(p => p.FromCity(KnownCities.Boston))
             .Build();
 
         var scenario2 = new ScenarioBuilder(_schemaProvider)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Boston))
+            .WithPatient(p => p.FromCity(KnownCities.Boston))
             .Build();
 
         // Assert
@@ -336,7 +336,7 @@ public class ScenarioBuilderPatientBuilderTests
     {
         // Arrange
         var scenario = new ScenarioBuilder(_schemaProvider)
-            .WithRealisticPatient(p => p.FromCity(KnownCities.Chicago).WithAge(45))
+            .WithPatient(p => p.FromCity(KnownCities.Chicago).WithAge(45))
             .AddEncounter("Visit")
             .Build();
 

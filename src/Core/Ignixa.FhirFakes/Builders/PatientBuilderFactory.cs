@@ -9,32 +9,37 @@ using Ignixa.Specification;
 namespace Ignixa.FhirFakes.Builders;
 
 /// <summary>
-/// Factory for creating PatientBuilder instances with different capabilities.
+/// Factory for creating PatientBuilder instances.
 /// </summary>
 /// <remarks>
-/// Provides two factory methods:
-/// 1. CreateSimple() - Basic Bogus-based random generation for simple tests
-/// 2. CreateRealistic() - Sophisticated US demographics with ethnically appropriate names
+/// Creates builders with profile-aware demographics and name generation.
+/// Use .FromCity() for automatic demographic sampling, or manually specify fields for precise control.
 ///
-/// The realistic builder uses lazy-loaded singleton instances of DemographicsDataProvider
-/// and EthnicNameGenerator for performance.
+/// Uses lazy-loaded singleton instances of DemographicsDataProvider and LocalBasedNameGenerator for performance.
 /// </remarks>
 public static class PatientBuilderFactory
 {
     private static readonly Lazy<DemographicsDataProvider> _demographics =
         new(() => DemographicsDataProvider.CreateDefault());
-    private static readonly Lazy<EthnicNameGenerator> _nameGenerator =
-        new(() => new EthnicNameGenerator());
+    private static readonly Lazy<LocalBasedNameGenerator> _nameGenerator =
+        new(() => new LocalBasedNameGenerator());
 
     /// <summary>
-    /// Creates a simple builder with Bogus-based random generation.
-    /// Suitable for basic tests where demographic realism is not critical.
+    /// Creates a PatientBuilder with profile-aware demographics and name generation.
     /// </summary>
     /// <param name="schemaProvider">The FHIR schema provider for the desired FHIR version</param>
-    /// <returns>A PatientBuilder instance with simple randomization</returns>
+    /// <returns>A PatientBuilder instance with demographics support and profile-aware name generation</returns>
     /// <example>
     /// <code>
-    /// var patient = PatientBuilderFactory.CreateSimple(schemaProvider)
+    /// // Option 1: Use .FromCity() for automatic demographic sampling
+    /// var patient = PatientBuilderFactory.Create(schemaProvider)
+    ///     .FromCity("Boston", "Massachusetts")  // Auto: race, age, gender, zip, area code, name
+    ///     .WithAge(45)                          // Override age if desired
+    ///     .WithRealisticBMI()
+    ///     .Build();
+    ///
+    /// // Option 2: Manually specify all fields for precise control
+    /// var patient = PatientBuilderFactory.Create(schemaProvider)
     ///     .WithAge(45)
     ///     .WithGender("male")
     ///     .WithGivenName("John")
@@ -42,27 +47,7 @@ public static class PatientBuilderFactory
     ///     .Build();
     /// </code>
     /// </example>
-    public static PatientBuilder CreateSimple(IFhirSchemaProvider schemaProvider)
-    {
-        return new PatientBuilder(schemaProvider);
-    }
-
-    /// <summary>
-    /// Creates a sophisticated builder with real US demographics.
-    /// Suitable for population generation and realistic test scenarios.
-    /// </summary>
-    /// <param name="schemaProvider">The FHIR schema provider for the desired FHIR version</param>
-    /// <returns>A PatientBuilder instance with realistic demographics support</returns>
-    /// <example>
-    /// <code>
-    /// var patient = PatientBuilderFactory.CreateRealistic(schemaProvider)
-    ///     .FromCity("Boston", "Massachusetts")  // Auto: race, age, gender, zip, area code, name
-    ///     .WithAge(45)                          // Override age if desired
-    ///     .WithRealisticBMI()
-    ///     .Build();
-    /// </code>
-    /// </example>
-    public static PatientBuilder CreateRealistic(IFhirSchemaProvider schemaProvider)
+    public static PatientBuilder Create(IFhirSchemaProvider schemaProvider)
     {
         return new PatientBuilder(
             schemaProvider,
