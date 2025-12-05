@@ -17,7 +17,12 @@ namespace Ignixa.Api.E2ETests.Infrastructure;
 /// Provides access to test harness and helpers for capability checking.
 /// Tests skip automatically if required capabilities are not supported.
 /// </summary>
-public abstract class CapabilityDrivenTestBase : IClassFixture<IgnixaApiFixture>
+/// <remarks>
+/// All derived classes must use the [Collection(E2ETestCollection.Name)] attribute
+/// to ensure they share a single fixture instance and avoid database race conditions.
+/// </remarks>
+[Collection(E2ETestCollection.Name)]
+public abstract class CapabilityDrivenTestBase
 {
     protected readonly SearchTestHarness Harness;
     protected readonly HttpClient Client;

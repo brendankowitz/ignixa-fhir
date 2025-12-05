@@ -197,10 +197,24 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     ///
     /// Expected connection string format:
     /// Server=tcp:servername.database.windows.net,1433;Database=FhirDatabase;Encrypt=true;TrustServerCertificate=false;Authentication=Active Directory Managed Identity;
+    ///
+    /// Validation is skipped in Development and Test environments to allow local SQL Server testing.
     /// </remarks>
     private void ValidateManagedIdentityAuthentication(string connectionString, int tenantId)
     {
         var logger = _loggerFactory.CreateLogger<SqlEntityFrameworkRepositoryFactory>();
+
+        // Only enforce Managed Identity validation in Production environments
+        var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        if (!string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogWarning(
+                "Tenant {TenantId} Managed Identity validation skipped (Environment: {Environment}). " +
+                "SQL authentication allowed for non-production environments.",
+                tenantId,
+                environment ?? "Unknown");
+            return;
+        }
 
         // Check if connection string contains password-based authentication indicators
         bool hasPassword = connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase) ||

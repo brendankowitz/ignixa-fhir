@@ -451,8 +451,8 @@ public class PatientBuilderTests
     [Fact]
     public void GivenSimpleBuilder_WhenCalledFromCityWithoutDemographics_ThenThrowsInvalidOperationException()
     {
-        // Arrange & Act
-        var act = () => PatientBuilderFactory.Create(_schemaProvider)
+        // Arrange & Act - Use direct constructor to create simple builder WITHOUT dependencies
+        var act = () => new PatientBuilder(_schemaProvider)
             .FromCity(KnownCities.Boston)
             .Build();
 
@@ -464,8 +464,8 @@ public class PatientBuilderTests
     [Fact]
     public void GivenSimpleBuilder_WhenCalledWithEthnicNameWithoutGenerator_ThenThrowsInvalidOperationException()
     {
-        // Arrange & Act
-        var act = () => PatientBuilderFactory.Create(_schemaProvider)
+        // Arrange & Act - Use direct constructor to create simple builder WITHOUT dependencies
+        var act = () => new PatientBuilder(_schemaProvider)
             .WithName()
             .Build();
 

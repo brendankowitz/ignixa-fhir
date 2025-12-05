@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -35,10 +36,7 @@
     <ProjectReference Include="../../src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Specification/Ignixa.Specification.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="TestScenarios\" />
+    <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
   </ItemGroup>
 
 </Project>

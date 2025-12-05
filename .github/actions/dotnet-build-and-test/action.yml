@@ -14,6 +14,10 @@ inputs:
     description: 'Build configuration (Debug/Release)'
     required: false
     default: 'Release'
+  test-filter:
+    description: 'Test filter expression for dotnet test (e.g., "FullyQualifiedName!~E2ETests")'
+    required: false
+    default: ''
 
 outputs:
   version:
@@ -61,7 +65,12 @@ runs:
       shell: bash
 
     - name: Run unit tests
-      run: dotnet test "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-build --verbosity minimal --logger "trx;LogFileName=test-results.trx"
+      run: |
+        FILTER_ARG=""
+        if [ -n "${{ inputs.test-filter }}" ]; then
+          FILTER_ARG="--filter \"${{ inputs.test-filter }}\""
+        fi
+        dotnet test "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-build --verbosity minimal --logger "trx;LogFileName=test-results.trx" $FILTER_ARG
       shell: bash
 
     - name: Upload test results

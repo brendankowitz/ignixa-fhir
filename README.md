@@ -297,9 +297,24 @@ See `Directory.Packages.props` for complete package list (centralized package ma
 dotnet clean All.sln
 dotnet build All.sln
 
-# Run tests
-dotnet test All.sln
+# Run unit tests only (fast, excludes E2E)
+dotnet test All.sln --filter "FullyQualifiedName!~E2ETests"
+
+# Run E2E tests with SQL Server (default, recommended)
+docker compose -f docker-compose.test.yml up -d --wait
+dotnet test All.sln --filter "FullyQualifiedName~E2ETests"
+docker compose -f docker-compose.test.yml down -v
+
+# Run E2E tests with FileSystem (fast, limited search support)
+# PowerShell:
+$env:TEST_USE_FILESYSTEM="true"
+dotnet test All.sln --filter "FullyQualifiedName~E2ETests"
+# Bash/Linux:
+# export TEST_USE_FILESYSTEM=true
+# dotnet test All.sln --filter "FullyQualifiedName~E2ETests"
 ```
+
+See [E2E Testing Guide](docs/testing/e2e-testing-guide.md) for details.
 
 ### Code Generation
 

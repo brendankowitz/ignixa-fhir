@@ -3,14 +3,18 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Api.E2ETests.Infrastructure;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Application.Features.Search;
+using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,12 +29,38 @@ namespace Ignixa.Api.E2ETests.Fixtures;
 public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly string _testDataPath;
+    private readonly string _sqlConnectionString;
+
+    private static bool UseSqlServer =>
+        Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) != true;
+
+    private static string GetSqlConnectionString()
+    {
+        var connStr = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
+        if (!string.IsNullOrEmpty(connStr))
+            return connStr;
+
+        // Default for local docker-compose
+        var password = Environment.GetEnvironmentVariable("SQL_SA_PASSWORD");
+
+        if (!string.IsNullOrEmpty(password))
+        {
+            var database = $"FhirTest_{Guid.NewGuid():N}"; // Unique DB per test run
+            return $"Server=localhost,1433;Database={database};User Id=sa;Password={password};TrustServerCertificate=true;Encrypt=false";
+        }
+
+        // default local test instance
+        return "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true";
+    }
 
     public IgnixaApiFixture()
     {
         // Create a unique test data directory for this test run
         _testDataPath = Path.Combine(Path.GetTempPath(), "ignixa-e2e-tests", Guid.NewGuid().ToString());
         Directory.CreateDirectory(_testDataPath);
+
+        // Cache SQL connection string for consistent use throughout fixture lifecycle
+        _sqlConnectionString = GetSqlConnectionString();
     }
 
     /// <summary>
@@ -59,29 +89,30 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         {
             // Override configuration for tests
             // IMPORTANT: Use multi-tenant configuration pattern to override tenant storage
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+            var storageType = UseSqlServer ? "SqlEntityFramework" : "FileSystem";
+
+            var configValues = new Dictionary<string, string?>
             {
                 // Multi-tenancy mode
                 ["Tenants:Mode"] = "Isolated",
 
-                // System Partition (Tenant 0) - FileSystem for tests
+                // System Partition (Tenant 0)
                 ["Tenants:Configurations:0:TenantId"] = "0",
                 ["Tenants:Configurations:0:DisplayName"] = "System Partition (Test)",
                 ["Tenants:Configurations:0:FhirVersion"] = "4.0",
                 ["Tenants:Configurations:0:IsActive"] = "true",
                 ["Tenants:Configurations:0:IsSystemPartition"] = "true",
-                ["Tenants:Configurations:0:Storage:Type"] = "SqlEntityFramework",
+                ["Tenants:Configurations:0:Storage:Type"] = storageType,
                 ["Tenants:Configurations:0:Storage:BaseDirectory"] = Path.Combine(_testDataPath, "system"),
                 ["Tenants:Configurations:0:Packages:EnableAutoLoad"] = "false",
                 ["Tenants:Configurations:0:Packages:InheritConnectionStringFromTenant"] = "1",
 
-                // Tenant 1 - FileSystem for tests (overrides SQL from appsettings.json)
+                // Tenant 1
                 ["Tenants:Configurations:1:TenantId"] = "1",
                 ["Tenants:Configurations:1:DisplayName"] = "E2E Test Tenant",
                 ["Tenants:Configurations:1:FhirVersion"] = "4.0",
                 ["Tenants:Configurations:1:IsActive"] = "true",
-                ["Tenants:Configurations:1:Storage:Type"] = "SqlEntityFramework",
-                ["Tenants:Configurations:1:Storage:ConnectionString"] = "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true",
+                ["Tenants:Configurations:1:Storage:Type"] = storageType,
                 ["Tenants:Configurations:1:Storage:BaseDirectory"] = Path.Combine(_testDataPath, "tenants", "1"),
 
                 // Disable package preloading for faster test startup
@@ -116,7 +147,16 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Set test environment
                 ["ASPNETCORE_ENVIRONMENT"] = "Test"
-            });
+            };
+
+            // Add SQL connection strings only when using SQL Server
+            if (UseSqlServer)
+            {
+                configValues["Tenants:Configurations:0:Storage:ConnectionString"] = _sqlConnectionString;
+                configValues["Tenants:Configurations:1:Storage:ConnectionString"] = _sqlConnectionString;
+            }
+
+            config.AddInMemoryCollection(configValues);
         });
 
         builder.ConfigureServices(services =>
@@ -130,8 +170,22 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Initialize SQL database if using SQL Server mode
+        if (UseSqlServer)
+        {
+            await InitializeSqlDatabaseAsync();
+        }
+
         // Create HTTP client and store for test access
         Client = CreateClient();
+
+        // Sync base search parameters to database for SQL Server mode
+        // This ensures search parameters like _tag, address-city, etc. are present
+        // before tests run. Without this, searches will fail with "SearchParamId not found".
+        if (UseSqlServer)
+        {
+            await SyncBaseSearchParametersAsync();
+        }
 
         // Fetch /metadata once and cache it
         var metadataResponse = await Client.GetAsync("/metadata");
@@ -148,6 +202,68 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
         // Initialize SearchTestHarness with cached capability
         Harness = new SearchTestHarness(Client, SchemaProvider, capability);
+    }
+
+    private async Task InitializeSqlDatabaseAsync()
+    {
+        var dbName = ExtractDatabaseName(_sqlConnectionString);
+
+        // Create database if not exists - replace "Database=" or "Initial Catalog=" with "Initial Catalog=master"
+        var masterConnStr = Regex.Replace(
+            _sqlConnectionString,
+            @"(Database|Initial\s+Catalog)=[^;]+",
+            "Initial Catalog=master",
+            RegexOptions.IgnoreCase);
+        await using var masterConn = new SqlConnection(masterConnStr);
+        await masterConn.OpenAsync();
+
+        await using var cmd = masterConn.CreateCommand();
+        // CA2100 suppressed: dbName comes from test configuration (environment variable or generated GUID),
+        // not user input. This is safe in test fixture context.
+#pragma warning disable CA2100
+        cmd.CommandText = $"IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{dbName}') CREATE DATABASE [{dbName}]";
+#pragma warning restore CA2100
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Syncs base FHIR search parameters to the database.
+    /// CRITICAL: SQL Server mode requires search parameters to be registered in the SearchParam table
+    /// before searches can work. Without this, queries fail with "SearchParamId not found for parameter..."
+    /// </summary>
+    private async Task SyncBaseSearchParametersAsync()
+    {
+        // Get the search parameter definition manager from the application services
+        // This contains all base FHIR search parameters from the pre-generated code
+        var fhirVersionContext = Services.GetRequiredService<IFhirVersionContext>();
+        var searchParamManager = fhirVersionContext.GetSearchParameterDefinitionManager(FhirVersion.R4);
+
+        // Get all search parameter URLs from base spec
+        var searchParamUrls = searchParamManager.AllSearchParameters
+            .Where(sp => sp.Url is not null)
+            .Select(sp => sp.Url!.ToString())
+            .Distinct()
+            .ToList();
+
+        // Get the repository factory to access the reference data cache
+        var repositoryFactory = Services.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
+
+        // Get the reference data cache for tenant 1 (the E2E test tenant)
+        var referenceDataCache = await repositoryFactory.GetSearchIndexReferenceCacheAsync(1, CancellationToken.None);
+
+        // Sync search parameters to database
+        var syncedCount = await referenceDataCache.SyncSearchParametersToDatabase(
+            searchParamUrls,
+            searchParamManager);
+
+        Console.WriteLine($"Synced {syncedCount} base search parameters to database ({searchParamUrls.Count} total)");
+    }
+
+    private static string ExtractDatabaseName(string connectionString)
+    {
+        // Match both "Database=..." and "Initial Catalog=..." formats
+        var match = Regex.Match(connectionString, @"(Database|Initial\s+Catalog)=([^;]+)", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[2].Value : throw new InvalidOperationException("Database name not found in connection string");
     }
 
     public new async Task DisposeAsync()

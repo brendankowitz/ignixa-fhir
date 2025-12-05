@@ -341,3 +341,6 @@ old-src/
 fhir-data/
 
 ThirdParty/
+
+# E2E test environment files
+.env.test
