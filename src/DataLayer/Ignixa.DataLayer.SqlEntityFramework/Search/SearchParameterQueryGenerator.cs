@@ -45,6 +45,16 @@ public class SearchParameterQueryGenerator
     }
 
     /// <summary>
+    /// Gets the SearchParamId for a search parameter from the cache.
+    /// </summary>
+    /// <param name="searchParamInfo">The search parameter info.</param>
+    /// <returns>The SearchParamId, or null if not found.</returns>
+    public ValueTask<short?> GetSearchParamIdAsync(SearchParameterInfo searchParamInfo)
+    {
+        return _cache.GetSearchParamIdAsync(searchParamInfo);
+    }
+
+    /// <summary>
     /// Generates a query for a search parameter expression, returning matching resource surrogate IDs.
     /// </summary>
     /// <param name="resourceTypeId">The resource type identifier, or null for system-wide search across all types.</param>

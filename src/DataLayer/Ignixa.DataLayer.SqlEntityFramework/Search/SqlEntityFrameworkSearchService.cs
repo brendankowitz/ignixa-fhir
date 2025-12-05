@@ -225,9 +225,37 @@ public class SqlEntityFrameworkSearchService : ISearchService
         {
             _logger.LogDebug("System-wide count query - no resource type filter");
 
-            // Base query without resource type filter
-            var multiTypeBaseQuery = _context.Resources
-                .Where(r => !r.IsHistory && !r.IsDeleted);
+            IQueryable<ResourceEntity> multiTypeBaseQuery;
+
+            // Handle _type parameter filtering for system-wide search
+            if (options.ResourceTypes.Count > 0)
+            {
+                var resourceTypeNames = options.ResourceTypes.ToList();
+                var typeIds = await _context.ResourceTypes
+                    .Where(rt => resourceTypeNames.Contains(rt.Name))
+                    .Select(rt => rt.ResourceTypeId)
+                    .ToListAsync(ct);
+
+                if (typeIds.Count == 0)
+                {
+                    // No valid types found, return 0
+                    return 0;
+                }
+
+                multiTypeBaseQuery = _context.Resources
+                    .Where(r => typeIds.Contains(r.ResourceTypeId)
+                        && !r.IsHistory
+                        && !r.IsDeleted);
+
+                _logger.LogDebug("Applied _type filter for count: {Types} -> TypeIds: {TypeIds}",
+                    string.Join(",", resourceTypeNames), string.Join(",", typeIds));
+            }
+            else
+            {
+                // Base query without resource type filter
+                multiTypeBaseQuery = _context.Resources
+                    .Where(r => !r.IsHistory && !r.IsDeleted);
+            }
 
             // Apply search expression filters
             if (options.Expression != null)
@@ -459,6 +487,32 @@ public class SqlEntityFrameworkSearchService : ISearchService
                         && !r.IsHistory
                         && !r.IsDeleted);
             }
+            else if (options.ResourceTypes.Count > 0)
+            {
+                // Multi-type search with _type filter: filter by specified resource types
+                // Get ResourceTypeIds for the specified types
+                var resourceTypeNames = options.ResourceTypes.ToList();
+                var typeIds = await _context.ResourceTypes
+                    .Where(rt => resourceTypeNames.Contains(rt.Name))
+                    .Select(rt => rt.ResourceTypeId)
+                    .ToListAsync(ct);
+
+                if (typeIds.Count == 0)
+                {
+                    // No valid types found, return empty query
+                    baseQuery = _context.Resources.Where(r => false);
+                }
+                else
+                {
+                    baseQuery = _context.Resources
+                        .Where(r => typeIds.Contains(r.ResourceTypeId)
+                            && !r.IsHistory
+                            && !r.IsDeleted);
+                }
+
+                _logger.LogDebug("Applied _type filter: {Types} -> TypeIds: {TypeIds}",
+                    string.Join(",", resourceTypeNames), string.Join(",", typeIds));
+            }
             else
             {
                 // Multi-type search: no resource type filter
@@ -474,12 +528,11 @@ public class SqlEntityFrameworkSearchService : ISearchService
             {
                 _logger.LogDebug("Applying search expression filters");
 
-                // For multi-type searches, we pass a dummy resourceTypeId (not used by expressions like CompartmentSearchExpression)
-                var typeIdForExpression = resourceTypeId ?? 1; // Use 1 as dummy value for multi-type
-
+                // For multi-type searches, pass null to skip resource type filtering in search parameter queries
+                // The base query already filters by resource types via _type parameter or no filter at all
                 filteredQuery = await _queryBuilder.ApplySearchExpressionAsync(
                     baseQuery,
-                    typeIdForExpression,
+                    resourceTypeId, // null for multi-type searches
                     options.Expression,
                     ct);
             }

@@ -63,8 +63,9 @@ public class ConditionalPatchHandler : IRequestHandler<ConditionalPatchCommand, 
         var queryParameters = _queryParser.Parse(request.SearchCriteria);
 
         // Step 2: Get FHIR version from context
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirVersion = context.FhirVersion;
-        var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion);
+        var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion, context.TenantId);
 
         // Step 3: Build search options with _count=2 (we only need to know if 0, 1, or multiple)
         var searchOptions = searchOptionsBuilder.Build(request.ResourceType, queryParameters);

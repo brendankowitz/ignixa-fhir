@@ -73,6 +73,22 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             string.Join(",", partition.PartitionIds),
             partition.Mode);
 
+        // Handle _summary=count - return only total, no resources
+        if (request.SearchOptions.Summary == SummaryType.Count)
+        {
+            _logger.LogDebug("Summary=Count requested, returning only total count");
+
+            int totalCount = await _executionStrategy.CountAsync(partition, request.SearchOptions, cancellationToken);
+            _logger.LogDebug("Count query returned {TotalCount}", totalCount);
+
+            return new SearchResourcesResult(
+                Resources: EmptyAsyncEnumerable(),
+                Total: totalCount,
+                ContinuationToken: null,
+                HasMore: false,
+                SearchOptions: request.SearchOptions);
+        }
+
         // 2. Request pageSize + 1 results to detect if there are more (count-as-render pattern)
         //    The serializer will render only pageSize items and use the +1 to detect hasMore
         var searchOptionsWithExtra = new SearchOptions
@@ -86,7 +102,8 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             Total = request.SearchOptions.Total,
             Summary = request.SearchOptions.Summary,
             UnsupportedParams = request.SearchOptions.UnsupportedParams,
-            ResourceType = request.SearchOptions.ResourceType
+            ResourceType = request.SearchOptions.ResourceType,
+            ResourceTypes = request.SearchOptions.ResourceTypes
         };
 
         _logger.LogDebug(
@@ -130,5 +147,11 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             SearchOptions: request.SearchOptions); // Original pageSize, not +1
 
         return result;
+    }
+
+    private static async IAsyncEnumerable<SearchEntryResult> EmptyAsyncEnumerable()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 }

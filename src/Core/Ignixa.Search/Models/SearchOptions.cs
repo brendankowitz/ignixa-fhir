@@ -76,6 +76,12 @@ public class SearchOptions
     public string ResourceType { get; set; }
 
     /// <summary>
+    /// Gets or sets the resource types to filter by (from _type parameter).
+    /// Used in system-level search to filter results to specific resource types.
+    /// </summary>
+    public IReadOnlyList<string> ResourceTypes { get; set; } = Array.Empty<string>();
+
+    /// <summary>
     /// Optional: When set, filters results to resources within this surrogate ID range.
     /// Used for parallel export operations to partition work across multiple workers.
     /// When both are set, filters to resources where: StartSurrogateId <= SurrogateId <= EndSurrogateId

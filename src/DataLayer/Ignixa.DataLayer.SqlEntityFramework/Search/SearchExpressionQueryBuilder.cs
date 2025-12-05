@@ -247,7 +247,7 @@ public class SearchExpressionQueryBuilder
         return baseQuery.Where(r => !matchingResourceIds.Contains(r.ResourceSurrogateId));
     }
 
-    private Task<IQueryable<ResourceEntity>> ApplyMissingSearchParameterExpressionAsync(
+    private async Task<IQueryable<ResourceEntity>> ApplyMissingSearchParameterExpressionAsync(
         IQueryable<ResourceEntity> baseQuery,
         short? resourceTypeId,
         MissingSearchParameterExpression expression,
@@ -262,66 +262,85 @@ public class SearchExpressionQueryBuilder
         if (searchParamInfo == null)
         {
             _logger.LogWarning("Missing search parameter expression has no parameter info");
-            return Task.FromResult(baseQuery.Where(r => false)); // Return empty
+            return baseQuery.Where(r => false); // Return empty
         }
 
+        // Look up the SearchParamId for this specific search parameter
+        short? searchParamId = await _parameterQueryGenerator.GetSearchParamIdAsync(searchParamInfo);
+        if (!searchParamId.HasValue)
+        {
+            _logger.LogWarning("Could not find SearchParamId for parameter {Code}", searchParamInfo.Code);
+            return baseQuery.Where(r => false); // Return empty
+        }
+
+        _logger.LogDebug("Found SearchParamId {SearchParamId} for parameter {Code}", searchParamId.Value, searchParamInfo.Code);
+
         // Query the appropriate search parameter table based on parameter type
+        // IMPORTANT: Filter by both ResourceTypeId AND SearchParamId to find resources
+        // that have this specific parameter indexed
         IQueryable<long> resourcesWithParameter;
 
         switch (searchParamInfo.Type)
         {
             case SearchParamType.String:
                 resourcesWithParameter = _context.StringSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Token:
                 resourcesWithParameter = _context.TokenSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Reference:
                 resourcesWithParameter = _context.ReferenceSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Number:
                 resourcesWithParameter = _context.NumberSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Date:
                 resourcesWithParameter = _context.DateTimeSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Quantity:
                 resourcesWithParameter = _context.QuantitySearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             case SearchParamType.Uri:
                 resourcesWithParameter = _context.UriSearchParams
-                    .Where(sp => sp.ResourceTypeId == resourceTypeId)
+                    .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                        && sp.SearchParamId == searchParamId.Value)
                     .Select(sp => sp.ResourceSurrogateId)
                     .Distinct();
                 break;
 
             default:
                 _logger.LogWarning("Unsupported search parameter type for missing modifier: {Type}", searchParamInfo.Type);
-                return Task.FromResult(baseQuery.Where(r => false)); // Return empty
+                return baseQuery.Where(r => false); // Return empty
         }
 
         IQueryable<ResourceEntity> result;
@@ -336,7 +355,7 @@ public class SearchExpressionQueryBuilder
             result = baseQuery.Where(r => resourcesWithParameter.Contains(r.ResourceSurrogateId));
         }
 
-        return Task.FromResult(result);
+        return result;
     }
 
     private static IQueryable<long> CombineWithAnd(List<IQueryable<long>> queries)

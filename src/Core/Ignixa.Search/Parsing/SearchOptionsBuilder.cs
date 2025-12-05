@@ -69,6 +69,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var revIncludeParameters = new List<string>();
         var elementsParameters = new List<string>();
         var unsupportedParameters = new List<string>();
+        var typeFilterParameters = new List<string>();
 
         // For system-wide search (resourceType is null), use "Resource" as base type
         // This allows searching with common parameters like _tag, _profile, _security, _id, _lastUpdated
@@ -129,6 +130,15 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
                     case ParameterCategory.Elements:
                         elementsParameters.Add(param.Value);
+                        break;
+
+                    case ParameterCategory.Type:
+                        // _type parameter for system-level search (filter by resource type)
+                        // Value can be comma-separated: _type=Patient,Observation
+                        typeFilterParameters.AddRange(
+                            param.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                .Select(t => t.Trim())
+                                .Where(t => !string.IsNullOrEmpty(t)));
                         break;
 
                     case ParameterCategory.Search:
@@ -238,7 +248,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             }
         }
 
-        // STEP 7: Record unsupported parameters and create Bundle issues
+        // STEP 7: Set resource type filter (_type parameter)
+        if (typeFilterParameters.Count > 0)
+        {
+            options.ResourceTypes = typeFilterParameters;
+        }
+
+        // STEP 8: Record unsupported parameters and create Bundle issues
         options.UnsupportedParams = unsupportedParameters;
         foreach (var param in unsupportedParameters)
         {

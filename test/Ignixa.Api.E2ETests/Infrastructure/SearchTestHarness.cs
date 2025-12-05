@@ -90,6 +90,34 @@ public sealed class SearchTestHarness
     }
 
     /// <summary>
+    /// Updates a resource on the server using PUT.
+    /// </summary>
+    public async Task<ResourceJsonNode> UpdateResourceAsync(ResourceJsonNode resource, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        var resourceType = resource.ResourceType;
+        var resourceId = resource.Id;
+
+        if (string.IsNullOrEmpty(resourceId))
+        {
+            throw new ArgumentException("Resource must have an ID for update", nameof(resource));
+        }
+
+        var json = resource.MutableNode.ToJsonString();
+
+        var response = await _client.PutAsync(
+            $"/{resourceType}/{resourceId}",
+            new StringContent(json, System.Text.Encoding.UTF8, "application/fhir+json"),
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSourceNodeFactory.Parse<ResourceJsonNode>(responseJson);
+    }
+
+    /// <summary>
     /// Creates multiple resources on the server using a FHIR batch bundle for better performance.
     /// </summary>
     public async Task<ResourceJsonNode[]> CreateResourcesAsync(ResourceJsonNode[] resources, CancellationToken cancellationToken = default)
@@ -165,5 +193,54 @@ public sealed class SearchTestHarness
             .Where(e => e.Resource is not null)
             .Select(e => e.Resource!)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Executes a search and returns the full Bundle (for pagination/total tests).
+    /// </summary>
+    public async Task<BundleJsonNode> SearchBundleAsync(string resourceType, string queryString, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+
+        var url = string.IsNullOrEmpty(queryString)
+            ? $"/{resourceType}"
+            : $"/{resourceType}?{queryString}";
+
+        var response = await _client.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+    }
+
+    /// <summary>
+    /// Executes a system-level search (no resource type) and returns the full Bundle.
+    /// Used for cross-resource-type searches with _type parameter.
+    /// </summary>
+    public async Task<BundleJsonNode> SearchSystemAsync(string queryString, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrEmpty(queryString)
+            ? "/"
+            : $"/?{queryString}";
+
+        var response = await _client.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
+    }
+
+    /// <summary>
+    /// Executes a search via GET request to a URL (for following next links).
+    /// </summary>
+    public async Task<BundleJsonNode> GetBundleAsync(string url, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+
+        var response = await _client.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSourceNodeFactory.Parse<BundleJsonNode>(responseJson);
     }
 }

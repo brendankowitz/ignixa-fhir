@@ -580,8 +580,10 @@ public static class FhirEndpoints
         var tenantConfig = fhirContext.TenantConfiguration;
 
         // Get version-specific search options builder and schema provider
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
+        // This ensures query parsing uses the same parameters as indexing
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, tenantId);
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
 
         // Parse query parameters
@@ -664,8 +666,9 @@ public static class FhirEndpoints
         }
 
         var tenantConfig = fhirContext.TenantConfiguration;
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, tenantId);
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
@@ -1427,8 +1430,9 @@ public static class FhirEndpoints
         var tenantConfig = fhirContext.TenantConfiguration;
 
         // Get version-specific search options builder and schema provider
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, tenantId);
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
 
         // Parse query parameters
@@ -1510,8 +1514,9 @@ public static class FhirEndpoints
         }
 
         var tenantConfig = fhirContext.TenantConfiguration;
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, tenantId);
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 

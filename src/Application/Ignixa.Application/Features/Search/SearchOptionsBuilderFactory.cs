@@ -24,6 +24,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 {
     private readonly IFhirVersionContext _versionContext;
     private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version), ISearchOptionsBuilder> _builderCache = new();
+    private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version, int? TenantId), ISearchOptionsBuilder> _tenantBuilderCache = new();
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
@@ -36,27 +37,42 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     /// <inheritdoc/>
     public ISearchOptionsBuilder Create(FhirVersion fhirVersion)
     {
-        // Phase 1: Single-tenant mode - always use default tenant
-        // Phase 2+: Extract tenant from HttpContext and create tenant-specific builders
-        return CreateForTenant(TenantContext.Default, fhirVersion);
+        // Uses base search parameter definitions only (no tenant-specific IG parameters)
+        return CreateForTenant(TenantContext.Default, fhirVersion, tenantId: null);
+    }
+
+    /// <inheritdoc/>
+    public ISearchOptionsBuilder Create(FhirVersion fhirVersion, int? tenantId)
+    {
+        // Uses tenant-specific search parameter definitions including IG parameters
+        return CreateForTenant(TenantContext.Default, fhirVersion, tenantId);
     }
 
     /// <summary>
     /// Creates a SearchOptionsBuilder for the specified tenant and FHIR version.
-    /// Internal method for future multi-tenant support.
+    /// Internal method for multi-tenant support with IG-specific search parameters.
     /// </summary>
     /// <param name="tenant">The tenant context.</param>
     /// <param name="fhirVersion">The FHIR version.</param>
+    /// <param name="tenantId">The tenant ID for IG-specific search parameters (null uses base definitions only).</param>
     private ISearchOptionsBuilder CreateForTenant(
         TenantContext tenant,
-        FhirVersion fhirVersion)
+        FhirVersion fhirVersion,
+        int? tenantId)
     {
-        var cacheKey = (tenant, fhirVersion);
+        // Include tenantId in cache key to separate tenant-specific builders
+        var cacheKey = (tenant, fhirVersion, tenantId);
 
-        // Fast path: check cache
-        if (_builderCache.TryGetValue(cacheKey, out var cachedBuilder))
+        // Fast path: check cache (use TryGetValue on extension for tuple key)
+        if (_builderCache.TryGetValue((tenant, fhirVersion), out var cachedBuilder) && !tenantId.HasValue)
         {
             return cachedBuilder;
+        }
+
+        // Check tenant-specific cache
+        if (tenantId.HasValue && _tenantBuilderCache.TryGetValue(cacheKey, out var tenantCachedBuilder))
+        {
+            return tenantCachedBuilder;
         }
 
         // Slow path: create new builder with version-specific dependencies
@@ -64,14 +80,24 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         try
         {
             // Double-check after acquiring lock
-            if (_builderCache.TryGetValue(cacheKey, out cachedBuilder))
+            if (!tenantId.HasValue && _builderCache.TryGetValue((tenant, fhirVersion), out cachedBuilder))
             {
                 return cachedBuilder;
             }
 
+            if (tenantId.HasValue && _tenantBuilderCache.TryGetValue(cacheKey, out tenantCachedBuilder))
+            {
+                return tenantCachedBuilder;
+            }
+
             // Get version-specific components from context (cached and reused)
             var schemaProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
-            var searchParamDefinitionManager = _versionContext.GetSearchParameterDefinitionManager(fhirVersion);
+
+            // CRITICAL: Use tenant-specific search parameter manager when tenantId is provided
+            // This ensures query parsing uses the same search parameters as indexing (including US Core)
+            var searchParamDefinitionManager = tenantId.HasValue
+                ? _versionContext.GetSearchParameterDefinitionManager(fhirVersion, tenantId)
+                : _versionContext.GetSearchParameterDefinitionManager(fhirVersion);
 
             // Create resolver delegate for SearchParameterDefinitionManager
             ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver resolver =
@@ -92,10 +118,16 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
             // Create version-specific SearchOptionsBuilder
             var builder = new SearchOptionsBuilder(expressionParser, searchParamDefinitionManager);
 
-            // Cache and return
-            // Phase 2+: This cache will hold separate builders for (tenant, version) pairs
-            // allowing custom search parameters per tenant
-            _builderCache.TryAdd(cacheKey, builder);
+            // Cache and return - use appropriate cache based on tenant ID
+            if (tenantId.HasValue)
+            {
+                _tenantBuilderCache.TryAdd(cacheKey, builder);
+            }
+            else
+            {
+                _builderCache.TryAdd((tenant, fhirVersion), builder);
+            }
+
             return builder;
         }
         finally

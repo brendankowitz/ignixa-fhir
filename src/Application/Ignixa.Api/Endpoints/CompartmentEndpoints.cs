@@ -227,8 +227,9 @@ public static class CompartmentEndpoints
         var tenantConfig = fhirContext.TenantConfiguration;
 
         // Get version-specific search options builder
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec);
+        var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, fhirContext.TenantId);
 
         // Parse query parameters
         var queryParameters = queryParser.Parse(context.Request.Query);

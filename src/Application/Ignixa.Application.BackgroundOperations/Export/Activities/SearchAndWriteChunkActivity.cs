@@ -86,7 +86,8 @@ public class SearchAndWriteChunkActivity : AsyncTaskActivity<SearchAndWriteChunk
                 var parameters = queryParser.Parse(input.TypeFilter);
 
                 // Build SearchOptions using the factory with tenant's FHIR version
-                var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion);
+                // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
+                var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion, input.TenantId);
                 searchOptions = searchOptionsBuilder.Build(input.ResourceType, parameters);
 
                 // Override MaxItemCount for chunked export (ignore client's _count parameter)

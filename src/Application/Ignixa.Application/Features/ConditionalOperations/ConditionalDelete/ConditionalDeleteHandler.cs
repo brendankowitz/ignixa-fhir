@@ -53,8 +53,9 @@ public class ConditionalDeleteHandler : IRequestHandler<ConditionalDeleteCommand
         var queryParameters = _queryParser.Parse(request.SearchCriteria);
 
         // Step 2: Get FHIR version from context
+        // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirVersion = context.FhirVersion;
-        var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion);
+        var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(fhirVersion, context.TenantId);
 
         // Step 3: Build search options with appropriate max count
         int maxItemCount = isSingleMode ? 2 : (request.Count!.Value + 1);

@@ -8,9 +8,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SQL_SA_PASSWORD: ${{ secrets.SQL_SA_PASSWORD || 'YourStrong!Passw0rd' }}
+
 jobs:
-  build-and-test:
-    name: Build and Test
+  build-and-unit-tests:
+    name: Build and Unit Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,23 +27,108 @@ jobs:
           fetch-depth: 0  # Full history for GitVersion
           submodules: recursive
 
-      - name: Build and test solution
+      - name: Build and run unit tests (exclude E2E)
         id: build
         uses: ./.github/actions/dotnet-build-and-test
         with:
           dotnet-version: ${{ matrix.dotnet-version }}
           solution-file: 'All.sln'
           build-configuration: 'Release'
+          test-filter: 'FullyQualifiedName!~E2ETests'
 
       - name: Store version for later jobs
         run: |
           echo "VERSION=${{ steps.build.outputs.version }}" >> $GITHUB_ENV
           echo "ASSEMBLY_VERSION=${{ steps.build.outputs.assembly-version }}" >> $GITHUB_ENV
 
+  e2e-tests-sql:
+    name: E2E Tests (SQL Server)
+    runs-on: ubuntu-latest
+    # Run in parallel with unit tests for faster CI (both do their own build)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Start SQL Server container
+        run: |
+          echo "Starting SQL Server and Azurite containers..."
+          docker compose -f docker-compose.test.yml up -d --wait || {
+            echo "❌ Container startup failed. Checking logs..."
+            docker compose -f docker-compose.test.yml logs
+            docker ps -a
+            exit 1
+          }
+          echo "✅ SQL Server and Azurite started and healthy"
+        env:
+          SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
+
+      - name: Verify SQL Server connection
+        run: |
+          docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
+            -Q "SELECT @@VERSION" -b
+        timeout-minutes: 2
+
+      - name: Restore dependencies
+        run: dotnet restore All.sln
+
+      - name: Build solution
+        run: dotnet build All.sln --configuration Release --no-restore
+
+      - name: Run E2E tests
+        run: |
+          dotnet test All.sln \
+            --configuration Release \
+            --no-build \
+            --filter "FullyQualifiedName~E2ETests" \
+            --logger "trx;LogFileName=e2e-test-results.trx" \
+            --verbosity normal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=FhirTest;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: '**/e2e-test-results.trx'
+          retention-days: 30
+
+      - name: Publish E2E test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: '**/e2e-test-results.trx'
+          check_name: 'E2E Test Results'
+          comment_mode: 'off'
+
+      - name: Capture SQL Server logs on failure
+        if: failure()
+        run: |
+          echo "=== SQL Server Logs ==="
+          docker logs ignixa-test-sql
+          echo "=== SQL Server Error Logs ==="
+          docker exec ignixa-test-sql cat /var/opt/mssql/log/errorlog || true
+
+      - name: Cleanup SQL Server container
+        if: always()
+        run: |
+          docker compose -f docker-compose.test.yml down -v
+          echo "✅ SQL Server container stopped and removed"
+
   check-code-quality:
     name: Code Quality
     runs-on: ubuntu-latest
-    needs: [ build-and-test ]
+    needs: [ build-and-unit-tests ]
     continue-on-error: true
 
     steps:
@@ -93,7 +181,7 @@ jobs:
   build-and-push-container:
     name: Build and Push Container
     runs-on: ubuntu-latest
-    needs: [ build-and-test, check-docker-changes ]
+    needs: [ build-and-unit-tests, check-docker-changes ]
     if: success() && needs.check-docker-changes.outputs.should-build == 'true'
     permissions:
       contents: read
@@ -165,10 +253,11 @@ jobs:
   notify-success:
     name: Notify Success
     runs-on: ubuntu-latest
-    needs: [ build-and-test, check-docker-changes, build-and-push-container ]
+    needs: [ build-and-unit-tests, e2e-tests-sql, check-docker-changes, build-and-push-container ]
     if: |
       always() &&
-      needs.build-and-test.result == 'success' &&
+      needs.build-and-unit-tests.result == 'success' &&
+      needs.e2e-tests-sql.result == 'success' &&
       (needs.build-and-push-container.result == 'success' ||
        needs.build-and-push-container.result == 'skipped')
 
@@ -180,15 +269,20 @@ jobs:
           else
             echo "✅ CI pipeline completed successfully"
           fi
+          echo "Unit tests: ✅"
+          echo "E2E tests: ✅"
 
   notify-failure:
     name: Notify Failure
     runs-on: ubuntu-latest
-    needs: [ build-and-test, check-docker-changes, build-and-push-container ]
+    needs: [ build-and-unit-tests, e2e-tests-sql, check-docker-changes, build-and-push-container ]
     if: failure()
 
     steps:
       - name: Create failure status
         run: |
           echo "❌ CI pipeline failed"
+          echo "Unit tests: ${{ needs.build-and-unit-tests.result }}"
+          echo "E2E tests: ${{ needs.e2e-tests-sql.result }}"
+          echo "Docker build: ${{ needs.build-and-push-container.result }}"
           exit 1
