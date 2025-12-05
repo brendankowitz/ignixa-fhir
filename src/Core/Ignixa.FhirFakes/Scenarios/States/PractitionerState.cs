@@ -186,6 +186,9 @@ public sealed class PractitionerState : ScenarioState
         // Add to context
         context.AddPractitioner(practitioner, Specialty.Display);
         context.SetCurrentPractitioner(practitioner);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, practitioner);
     }
 
     /// <summary>

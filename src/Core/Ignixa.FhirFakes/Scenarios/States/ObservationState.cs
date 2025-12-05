@@ -193,6 +193,9 @@ public sealed class ObservationState : ScenarioState
 
         // Add to context
         context.AddObservation(observation, Code.Display);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, observation);
     }
 
     /// <summary>

@@ -41,6 +41,13 @@ public sealed class DiagnosticReportState : ScenarioState
     public IReadOnlyList<(FhirCode Code, decimal Value, string Unit)>? Observations { get; init; }
 
     /// <summary>
+    /// Gets the StateIds of observations to reference in this diagnostic report.
+    /// These observations must have been created with StateId in a previous AddState() call.
+    /// Allows referencing existing observations without creating duplicates.
+    /// </summary>
+    public IReadOnlyList<string>? ReferencedObservationStateIds { get; init; }
+
+    /// <summary>
     /// Gets or sets the conclusion text for imaging reports.
     /// </summary>
     public string? Conclusion { get; init; }
@@ -168,8 +175,26 @@ public sealed class DiagnosticReportState : ScenarioState
 
         node["performer"] = performers;
 
-        // Create observations and link them
+        // Create result array for observation references
         var observationReferences = new JsonArray();
+
+        // Add references to existing observations by StateId
+        if (ReferencedObservationStateIds is not null)
+        {
+            foreach (var stateId in ReferencedObservationStateIds)
+            {
+                var observation = context.GetStateResource(stateId);
+                if (observation is not null)
+                {
+                    observationReferences.Add(new JsonObject
+                    {
+                        ["reference"] = $"Observation/{observation.Id}"
+                    });
+                }
+            }
+        }
+
+        // Create new observations from tuples (existing behavior)
         if (Observations is { Count: > 0 })
         {
             foreach (var (obsCode, obsValue, obsUnit) in Observations)
@@ -198,6 +223,9 @@ public sealed class DiagnosticReportState : ScenarioState
 
         // Add to context
         context.AddDiagnosticReport(report, Code.Display);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, report);
     }
 
     private bool InferIsImagingReport()

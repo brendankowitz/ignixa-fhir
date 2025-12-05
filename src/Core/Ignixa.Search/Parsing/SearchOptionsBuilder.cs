@@ -71,10 +71,37 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var unsupportedParameters = new List<string>();
         var typeFilterParameters = new List<string>();
 
-        // For system-wide search (resourceType is null), use "Resource" as base type
-        // This allows searching with common parameters like _tag, _profile, _security, _id, _lastUpdated
-        // which are defined on the base Resource type and inherited by all resource types.
-        string[] resourceTypes = resourceType != null ? new[] { resourceType } : new[] { "Resource" };
+        // For system-wide search (resourceType is null), we need to first extract _type parameters
+        // to know what resource types we're searching. This is essential for parsing reverse chain
+        // parameters like _has:Observation:subject:code which need to know the target types.
+        //
+        // First pass: Extract _type parameters
+        foreach (var param in parameters.Where(p => p.Category == ParameterCategory.Type))
+        {
+            typeFilterParameters.AddRange(
+                param.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(t => t.Trim())
+                    .Where(t => !string.IsNullOrEmpty(t)));
+        }
+
+        // Determine resource types for parsing search expressions:
+        // 1. If resourceType is specified (type-specific search), use it
+        // 2. If _type is specified (system search with type filter), use those types
+        // 3. Otherwise (unfiltered system search), use "Resource" as base type
+        string[] resourceTypes;
+        if (resourceType != null)
+        {
+            resourceTypes = [resourceType];
+        }
+        else if (typeFilterParameters.Count > 0)
+        {
+            resourceTypes = [.. typeFilterParameters];
+        }
+        else
+        {
+            // Use "Resource" as base type for common parameters like _tag, _profile, _security, _id, _lastUpdated
+            resourceTypes = ["Resource"];
+        }
 
         foreach (var param in parameters)
         {
@@ -134,11 +161,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
                     case ParameterCategory.Type:
                         // _type parameter for system-level search (filter by resource type)
-                        // Value can be comma-separated: _type=Patient,Observation
-                        typeFilterParameters.AddRange(
-                            param.Value.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                .Select(t => t.Trim())
-                                .Where(t => !string.IsNullOrEmpty(t)));
+                        // Already processed in first pass - skip to avoid duplicate processing
                         break;
 
                     case ParameterCategory.Search:

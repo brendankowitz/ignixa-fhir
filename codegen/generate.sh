@@ -1,49 +1,27 @@
 #!/usr/bin/env bash
 # Generate FHIR IStructureDefinitionSummaryProvider implementations
-# This script uses fhir-codegen with our custom CSharpStructureProviderLanguage
+# This script uses Ignixa.Specification.Generators to generate providers and metadata
 
 set -e
 
 # Paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-OUTPUT_DIR="$SCRIPT_DIR/../src/Ignixa.Specification/Generated"
-CODEGEN_EXE="$SCRIPT_DIR/fhir-codegen/src/fhir-codegen/bin/Release/net8.0/fhir-codegen"
+GENERATORS_DIR="$SCRIPT_DIR/Ignixa.Specification.Generators"
 
 # Parse arguments
 FHIR_VERSION="${1:-All}"
 
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
-
-echo -e "\033[0;36mBuilding fhir-codegen tool...\033[0m"
-pushd "$SCRIPT_DIR/fhir-codegen" > /dev/null
-dotnet build -c Release src/fhir-codegen/fhir-codegen.csproj
-popd > /dev/null
-
 echo -e "\033[0;36mBuilding Ignixa.Specification.Generators...\033[0m"
-dotnet build -c Release "$SCRIPT_DIR/Ignixa.Specification.Generators/Ignixa.Specification.Generators.csproj"
+dotnet build -c Release "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj"
 
 # Function to generate for a specific version
 generate_version() {
     local version=$1
     echo -e "\n\033[0;32mGenerating $version provider...\033[0m"
 
-    local package=""
-    case $version in
-        R4) package="hl7.fhir.r4.core" ;;
-        R4B) package="hl7.fhir.r4b.core" ;;
-        R5) package="hl7.fhir.r5.core" ;;
-        R6) package="hl7.fhir.r6.core#6.0.0-ballot2" ;;
-        STU3) package="hl7.fhir.r3.core" ;;
-        *) echo "Unknown FHIR version: $version"; return 1 ;;
-    esac
-
-    # Run fhir-codegen with our custom language
-    "$CODEGEN_EXE" generate \
-        --package "$package" \
-        --output-directory "$OUTPUT_DIR" \
-        --language CSharpStructureProvider \
-        --language-options "{\"OutputDirectory\":\"$OUTPUT_DIR\",\"Namespace\":\"Ignixa.Specification.Generated\"}"
+    # Run the generator tool for structure mode (generates reference metadata and providers)
+    # Default mode is "structure", so just pass the version
+    dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- "$version"
 
     if [ $? -eq 0 ]; then
         echo -e "\033[0;32m✓ Generated $version provider\033[0m"
@@ -70,7 +48,6 @@ done
 
 if [ "$SUCCESS" = true ]; then
     echo -e "\n\033[0;32m✓ All providers generated successfully!\033[0m"
-    echo -e "\033[0;36mOutput directory: $OUTPUT_DIR\033[0m"
 else
     echo -e "\n\033[0;31m✗ Some providers failed to generate\033[0m"
     exit 1

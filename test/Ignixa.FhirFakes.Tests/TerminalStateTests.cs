@@ -197,7 +197,7 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().BeEmpty(); // Only patient exists, not in AllResources
+        scenario.AllResources.Should().HaveCount(1); // Only patient exists in AllResources
         scenario.Attributes["scenario_completed"].Should().Be(true);
     }
 

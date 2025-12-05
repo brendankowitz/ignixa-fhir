@@ -85,4 +85,18 @@ public abstract class CapabilityDrivenTestBase
     {
         return PatientBuilderFactory.Create(SchemaProvider);
     }
+
+    /// <summary>
+    /// Creates a fluent OrganizationBuilder for building standalone organizations.
+    /// Use this when you need to create Organization resources in a test.
+    /// Call .Build() at the end to generate the organization resource.
+    /// </summary>
+    /// <returns>An OrganizationBuilder instance for fluent configuration.</returns>
+    /// <example>
+    /// var org = CreateOrganization().WithName("Acme Medical").WithTag(tag).Build();
+    /// </example>
+    protected OrganizationBuilder CreateOrganization()
+    {
+        return OrganizationBuilder.Create(SchemaProvider);
+    }
 }

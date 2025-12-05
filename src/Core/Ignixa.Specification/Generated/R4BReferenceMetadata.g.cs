@@ -6,6 +6,7 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using Ignixa.Abstractions;
 
@@ -15,7 +16,8 @@ namespace Ignixa.Specification.Generated;
 /// Pre-generated reference metadata for FHIR R4B.
 /// Provides efficient lookup of which elements are references and their target types.
 /// </summary>
-public static class R4BReferenceMetadata
+[CLSCompliant(false)]
+public sealed class R4BReferenceMetadata : IReferenceMetadataProvider
 {
     private static readonly Dictionary<string, List<ReferenceFieldMetadata>> _metadata = new()
     {
@@ -863,23 +865,19 @@ public static class R4BReferenceMetadata
         },
     };
 
-    /// <summary>
-    /// Gets reference metadata for a resource type.
-    /// Returns empty list if resource type has no references or is unknown.
-    /// </summary>
-    [System.CLSCompliant(false)]
-    public static IReadOnlyList<ReferenceFieldMetadata> GetMetadata(string resourceType)
+    /// <inheritdoc/>
+    public IReadOnlyList<ReferenceFieldMetadata> GetMetadata(string resourceType)
     {
+        ArgumentNullException.ThrowIfNull(resourceType);
         return _metadata.TryGetValue(resourceType, out var metadata)
             ? metadata
             : System.Array.Empty<ReferenceFieldMetadata>();
     }
 
-    /// <summary>
-    /// Checks if a resource type has any reference elements.
-    /// </summary>
-    public static bool HasReferences(string resourceType)
+    /// <inheritdoc/>
+    public bool HasReferences(string resourceType)
     {
+        ArgumentNullException.ThrowIfNull(resourceType);
         return _metadata.ContainsKey(resourceType);
     }
 }

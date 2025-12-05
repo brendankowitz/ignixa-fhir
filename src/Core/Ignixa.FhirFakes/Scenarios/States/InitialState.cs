@@ -84,6 +84,7 @@ public sealed class InitialState : ScenarioState
 
         // Initialize context
         context.Patient = patient;
+        context.AddPatient(patient);  // Add patient to AllResources
         context.BirthDate = birthDate;
         context.CurrentTime = startDate;
 

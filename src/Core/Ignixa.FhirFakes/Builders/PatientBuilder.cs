@@ -71,6 +71,9 @@ public sealed class PatientBuilder
     private string? _id;
     private string? _tag;
 
+    // Reference configuration
+    private string? _managingOrganizationId;
+
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
     private readonly Dictionary<string, object> _profileAttributes = new();
@@ -359,6 +362,27 @@ public sealed class PatientBuilder
         return this;
     }
 
+    // === Reference Configuration ===
+
+    /// <summary>
+    /// Sets the patient's managing organization reference.
+    /// </summary>
+    /// <param name="organizationId">The organization resource ID (not the full reference path).</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithManagingOrganization(organization.Id!)
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithManagingOrganization(string organizationId)
+    {
+        ArgumentNullException.ThrowIfNull(organizationId);
+        _managingOrganizationId = organizationId;
+        return this;
+    }
+
     // === Smart Defaults ===
 
     /// <summary>
@@ -514,6 +538,14 @@ public sealed class PatientBuilder
         if (HasExtensions())
         {
             patientJson["extension"] = BuildExtensions();
+        }
+
+        if (!string.IsNullOrEmpty(_managingOrganizationId))
+        {
+            patientJson["managingOrganization"] = new JsonObject
+            {
+                ["reference"] = $"Organization/{_managingOrganizationId}"
+            };
         }
 
         var json = patientJson.ToJsonString();

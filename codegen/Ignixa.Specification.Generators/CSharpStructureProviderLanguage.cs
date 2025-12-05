@@ -90,7 +90,6 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Collections.Immutable;");
-        sb.AppendLine("using Ignixa.Domain;");
         sb.AppendLine("using Ignixa.Serialization;");
         sb.AppendLine("using Ignixa.Abstractions;");
         sb.AppendLine("using Ignixa.Specification;");
@@ -721,6 +720,7 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine();
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
+        sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using Ignixa.Abstractions;");
         sb.AppendLine();
@@ -730,10 +730,11 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine($"/// Pre-generated reference metadata for FHIR {fhirVersion}.");
         sb.AppendLine("/// Provides efficient lookup of which elements are references and their target types.");
         sb.AppendLine("/// </summary>");
-        sb.AppendLine($"public static class {fhirVersion}ReferenceMetadata");
+        sb.AppendLine("[CLSCompliant(false)]");
+        sb.AppendLine($"public sealed class {fhirVersion}ReferenceMetadata : IReferenceMetadataProvider");
         sb.AppendLine("{");
 
-        // Generate metadata dictionary
+        // Generate metadata dictionary (remains static for shared data)
         sb.AppendLine("    private static readonly Dictionary<string, List<ReferenceFieldMetadata>> _metadata = new()");
         sb.AppendLine("    {");
 
@@ -793,26 +794,21 @@ public sealed class CSharpStructureProviderLanguage : ILanguage
         sb.AppendLine("    };");
         sb.AppendLine();
 
-        // Generate lookup method
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// Gets reference metadata for a resource type.");
-        sb.AppendLine("    /// Returns empty list if resource type has no references or is unknown.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine("    [System.CLSCompliant(false)]");
-        sb.AppendLine("    public static IReadOnlyList<ReferenceFieldMetadata> GetMetadata(string resourceType)");
+        // Instance methods implementing IReferenceMetadataProvider
+        sb.AppendLine("    /// <inheritdoc/>");
+        sb.AppendLine("    public IReadOnlyList<ReferenceFieldMetadata> GetMetadata(string resourceType)");
         sb.AppendLine("    {");
+        sb.AppendLine("        ArgumentNullException.ThrowIfNull(resourceType);");
         sb.AppendLine("        return _metadata.TryGetValue(resourceType, out var metadata)");
         sb.AppendLine("            ? metadata");
         sb.AppendLine("            : System.Array.Empty<ReferenceFieldMetadata>();");
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // Generate HasReferences method
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// Checks if a resource type has any reference elements.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine("    public static bool HasReferences(string resourceType)");
+        sb.AppendLine("    /// <inheritdoc/>");
+        sb.AppendLine("    public bool HasReferences(string resourceType)");
         sb.AppendLine("    {");
+        sb.AppendLine("        ArgumentNullException.ThrowIfNull(resourceType);");
         sb.AppendLine("        return _metadata.ContainsKey(resourceType);");
         sb.AppendLine("    }");
         sb.AppendLine("}");

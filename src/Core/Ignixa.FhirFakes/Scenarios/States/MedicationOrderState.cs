@@ -217,6 +217,9 @@ public sealed class MedicationOrderState : ScenarioState
 
         // Add to context
         context.AddMedication(medication, Code.Display);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, medication);
     }
 
     private string BuildDosageText()

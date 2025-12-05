@@ -17,6 +17,13 @@ public abstract class ScenarioState
     public string Name { get; init; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the unique identifier for this state.
+    /// Used for cross-state references (e.g., DiagnosticReport referencing Observations).
+    /// If not specified, the state is not referenceable by other states.
+    /// </summary>
+    public string? StateId { get; init; }
+
+    /// <summary>
     /// Executes this state's logic against the scenario context.
     /// May generate FHIR resources, modify attributes, or advance time.
     /// </summary>

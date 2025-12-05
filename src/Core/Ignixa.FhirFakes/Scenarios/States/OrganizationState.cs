@@ -54,6 +54,13 @@ public sealed class OrganizationState : ScenarioState
     public string? TaxId { get; init; }
 
     /// <summary>
+    /// Gets custom identifiers to add beyond NPI and Tax ID.
+    /// Each tuple contains (system, value).
+    /// Example: [("http://example.org/test-ids", "unique-guid-12345")]
+    /// </summary>
+    public IReadOnlyList<(string System, string Value)>? CustomIdentifiers { get; init; }
+
+    /// <summary>
     /// Gets the organization's contact phone number.
     /// </summary>
     public string? Phone { get; init; }
@@ -138,6 +145,19 @@ public sealed class OrganizationState : ScenarioState
             ["value"] = taxId
         });
 
+        // Add custom identifiers
+        if (CustomIdentifiers is not null)
+        {
+            foreach (var (system, value) in CustomIdentifiers)
+            {
+                identifiers.Add(new JsonObject
+                {
+                    ["system"] = system,
+                    ["value"] = value
+                });
+            }
+        }
+
         node["identifier"] = identifiers;
 
         // Set telecom
@@ -179,6 +199,9 @@ public sealed class OrganizationState : ScenarioState
 
         // Add to context
         context.AddOrganization(organization, OrganizationName, SetAsCurrent);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, organization);
     }
 
     #region NPI and Tax ID Generation

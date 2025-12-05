@@ -29,9 +29,12 @@ public sealed class ScenarioContext
     private readonly List<ResourceJsonNode> _serviceRequests = [];
     private readonly List<ResourceJsonNode> _goals = [];
     private readonly List<ResourceJsonNode> _carePlans = [];
+    private readonly List<ResourceJsonNode> _careTeams = [];
     private readonly List<ResourceJsonNode> _allResources = [];
     private readonly List<ScenarioEvent> _timeline = [];
     private readonly Dictionary<string, object> _attributes = [];
+    private readonly Dictionary<string, ResourceJsonNode> _stateResources = [];
+    private ResourceRegistry? _registry;
 
     /// <summary>
     /// Gets or sets the scenario name.
@@ -173,6 +176,17 @@ public sealed class ScenarioContext
     public ResourceJsonNode? CurrentCarePlan { get; private set; }
 
     /// <summary>
+    /// Gets all care team resources generated in this scenario.
+    /// CareTeams coordinate care across multiple practitioners for a patient.
+    /// </summary>
+    public IReadOnlyList<ResourceJsonNode> CareTeams => _careTeams;
+
+    /// <summary>
+    /// Gets the current care team context (most recently added care team).
+    /// </summary>
+    public ResourceJsonNode? CurrentCareTeam { get; private set; }
+
+    /// <summary>
     /// Gets all resources generated in this scenario (in generation order).
     /// </summary>
     public IReadOnlyList<ResourceJsonNode> AllResources => _allResources;
@@ -194,6 +208,28 @@ public sealed class ScenarioContext
     public int CurrentAge => (int)((CurrentTime - BirthDate).TotalDays / 365.25);
 
     /// <summary>
+    /// Sets the resource registry for automatic resource tracking.
+    /// Called internally by ScenarioBuilder during Build().
+    /// </summary>
+    internal void SetRegistry(ResourceRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        _registry = registry;
+    }
+
+    /// <summary>
+    /// Registers a resource with optional logical name in the registry.
+    /// </summary>
+    private void RegisterResource(ResourceJsonNode resource, string? logicalName = null)
+    {
+        if (_registry is not null)
+        {
+            var identity = new ResourceIdentity(resource.ResourceType, resource.Id, logicalName);
+            _registry.Register(identity);
+        }
+    }
+
+    /// <summary>
     /// Adds the patient resource to the AllResources collection.
     /// Called internally by PatientBuilderState to ensure Patient is included in AllResources.
     /// </summary>
@@ -201,6 +237,7 @@ public sealed class ScenarioContext
     {
         ArgumentNullException.ThrowIfNull(patient);
         _allResources.Add(patient);
+        RegisterResource(patient, "patient");
     }
 
     /// <summary>
@@ -212,6 +249,7 @@ public sealed class ScenarioContext
         _encounters.Add(encounter);
         _allResources.Add(encounter);
         CurrentEncounter = encounter;
+        RegisterResource(encounter, "current-encounter");
         AddTimelineEvent("Encounter", encounter.Id, "Encounter", description);
     }
 
@@ -223,6 +261,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(condition);
         _conditions.Add(condition);
         _allResources.Add(condition);
+        RegisterResource(condition);
         AddTimelineEvent("ConditionOnset", condition.Id, "Condition", description);
     }
 
@@ -246,6 +285,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(observation);
         _observations.Add(observation);
         _allResources.Add(observation);
+        RegisterResource(observation);
         AddTimelineEvent("Observation", observation.Id, "Observation", description);
     }
 
@@ -257,6 +297,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(medication);
         _medications.Add(medication);
         _allResources.Add(medication);
+        RegisterResource(medication);
         AddTimelineEvent("MedicationOrder", medication.Id, "MedicationRequest", description);
     }
 
@@ -268,6 +309,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(procedure);
         _procedures.Add(procedure);
         _allResources.Add(procedure);
+        RegisterResource(procedure);
         AddTimelineEvent("Procedure", procedure.Id, "Procedure", description);
     }
 
@@ -279,6 +321,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(diagnosticReport);
         _diagnosticReports.Add(diagnosticReport);
         _allResources.Add(diagnosticReport);
+        RegisterResource(diagnosticReport);
         AddTimelineEvent("DiagnosticReport", diagnosticReport.Id, "DiagnosticReport", description);
     }
 
@@ -290,6 +333,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(immunization);
         _immunizations.Add(immunization);
         _allResources.Add(immunization);
+        RegisterResource(immunization);
         AddTimelineEvent("Immunization", immunization.Id, "Immunization", description);
     }
 
@@ -301,6 +345,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(allergy);
         _allergies.Add(allergy);
         _allResources.Add(allergy);
+        RegisterResource(allergy);
         AddTimelineEvent("AllergyIntolerance", allergy.Id, "AllergyIntolerance", description);
     }
 
@@ -314,6 +359,7 @@ public sealed class ScenarioContext
         ArgumentNullException.ThrowIfNull(practitioner);
         _practitioners.Add(practitioner);
         _allResources.Add(practitioner);
+        RegisterResource(practitioner);
         AddTimelineEvent("Practitioner", practitioner.Id, "Practitioner", specialty);
     }
 
@@ -326,6 +372,7 @@ public sealed class ScenarioContext
     {
         ArgumentNullException.ThrowIfNull(practitioner);
         CurrentPractitioner = practitioner;
+        RegisterResource(practitioner, "current-practitioner");
     }
 
     /// <summary>
@@ -342,6 +389,11 @@ public sealed class ScenarioContext
         if (setAsCurrent)
         {
             CurrentOrganization = organization;
+            RegisterResource(organization, "current-organization");
+        }
+        else
+        {
+            RegisterResource(organization);
         }
         AddTimelineEvent("Organization", organization.Id, "Organization", name);
     }
@@ -355,6 +407,7 @@ public sealed class ScenarioContext
     {
         ArgumentNullException.ThrowIfNull(organization);
         CurrentOrganization = organization;
+        RegisterResource(organization, "current-organization");
     }
 
     /// <summary>
@@ -366,6 +419,7 @@ public sealed class ScenarioContext
         _coverages.Add(coverage);
         _allResources.Add(coverage);
         CurrentCoverage = coverage;
+        RegisterResource(coverage, "current-coverage");
         AddTimelineEvent("Coverage", coverage.Id, "Coverage", description);
     }
 
@@ -380,6 +434,7 @@ public sealed class ScenarioContext
         _serviceRequests.Add(serviceRequest);
         _allResources.Add(serviceRequest);
         CurrentServiceRequest = serviceRequest;
+        RegisterResource(serviceRequest, "current-service-request");
         AddTimelineEvent("ServiceRequest", serviceRequest.Id, "ServiceRequest", description);
     }
 
@@ -395,6 +450,7 @@ public sealed class ScenarioContext
         _goals.Add(goal);
         _allResources.Add(goal);
         CurrentGoal = goal;
+        RegisterResource(goal, "current-goal");
         AddTimelineEvent("Goal", goal.Id, "Goal", description);
     }
 
@@ -410,7 +466,24 @@ public sealed class ScenarioContext
         _carePlans.Add(carePlan);
         _allResources.Add(carePlan);
         CurrentCarePlan = carePlan;
+        RegisterResource(carePlan, "current-care-plan");
         AddTimelineEvent("CarePlan", carePlan.Id, "CarePlan", title);
+    }
+
+    /// <summary>
+    /// Adds a care team resource to the scenario.
+    /// CareTeams coordinate care across multiple practitioners for a patient.
+    /// </summary>
+    /// <param name="careTeam">The care team resource to add.</param>
+    /// <param name="description">Description for the timeline event (the team name).</param>
+    public void AddCareTeam(ResourceJsonNode careTeam, string description)
+    {
+        ArgumentNullException.ThrowIfNull(careTeam);
+        _careTeams.Add(careTeam);
+        _allResources.Add(careTeam);
+        CurrentCareTeam = careTeam;
+        RegisterResource(careTeam, "current-care-team");
+        AddTimelineEvent("CareTeam", careTeam.Id, "CareTeam", description);
     }
 
     /// <summary>
@@ -490,6 +563,41 @@ public sealed class ScenarioContext
     }
 
     /// <summary>
+    /// Creates a batch Bundle containing all resources from this scenario.
+    /// Resources are added in generation order (Patient first, then others).
+    /// Each entry uses resolved references (ResourceType/id format).
+    /// Suitable for scenarios where resources are already created on the server.
+    /// </summary>
+    /// <returns>A BundleJsonNode representing a FHIR batch bundle.</returns>
+    public BundleJsonNode ToBatchBundle()
+    {
+        var entries = new JsonArray();
+
+        // Add all resources in generation order
+        foreach (var resource in _allResources)
+        {
+            entries.Add(CreateBatchBundleEntry(resource));
+        }
+
+        // Create the bundle
+        var bundleNode = new JsonObject
+        {
+            ["resourceType"] = "Bundle",
+            ["id"] = Guid.NewGuid().ToString(),
+            ["type"] = "batch",
+            ["entry"] = entries
+        };
+
+        return new BundleJsonNode(bundleNode);
+    }
+
+    /// <summary>
+    /// Alias for ToBundle(). Creates a transaction bundle with urn:uuid references.
+    /// </summary>
+    /// <returns>A BundleJsonNode representing a FHIR transaction bundle.</returns>
+    public BundleJsonNode ToTransactionBundle() => ToBundle();
+
+    /// <summary>
     /// Creates a bundle entry for a resource with POST request.
     /// </summary>
     private static JsonObject CreateBundleEntry(ResourceJsonNode resource)
@@ -504,5 +612,49 @@ public sealed class ScenarioContext
                 ["url"] = resource.ResourceType
             }
         };
+    }
+
+    /// <summary>
+    /// Creates a batch bundle entry for a resource with POST request.
+    /// Uses resolved references (ResourceType/id format).
+    /// </summary>
+    private static JsonObject CreateBatchBundleEntry(ResourceJsonNode resource)
+    {
+        return new JsonObject
+        {
+            ["fullUrl"] = $"{resource.ResourceType}/{resource.Id}",
+            ["resource"] = resource.MutableNode.DeepClone(),
+            ["request"] = new JsonObject
+            {
+                ["method"] = "POST",
+                ["url"] = resource.ResourceType
+            }
+        };
+    }
+
+    /// <summary>
+    /// Registers a resource created by a state with the given StateId.
+    /// Enables cross-state references via GetStateResource().
+    /// </summary>
+    /// <param name="stateId">The StateId from the state that created this resource.</param>
+    /// <param name="resource">The resource to register.</param>
+    internal void RegisterStateResource(string? stateId, ResourceJsonNode resource)
+    {
+        if (!string.IsNullOrEmpty(stateId))
+        {
+            _stateResources[stateId] = resource;
+        }
+    }
+
+    /// <summary>
+    /// Gets a resource created by a state with the given StateId.
+    /// Returns null if no resource with this StateId exists.
+    /// </summary>
+    /// <param name="stateId">The StateId to look up.</param>
+    /// <returns>The resource, or null if not found.</returns>
+    public ResourceJsonNode? GetStateResource(string stateId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(stateId);
+        return _stateResources.TryGetValue(stateId, out var resource) ? resource : null;
     }
 }

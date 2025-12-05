@@ -154,6 +154,9 @@ public sealed class EncounterState : ScenarioState
         // Add to context
         var description = Reason ?? EncounterType.Display;
         context.AddEncounter(encounter, description);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, encounter);
     }
 
     /// <summary>

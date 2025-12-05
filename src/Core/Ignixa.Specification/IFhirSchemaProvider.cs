@@ -29,4 +29,10 @@ public interface IFhirSchemaProvider : ISchema
     /// Examples: "3.0.2", "4.0.1", "4.3.0", "5.0.0", "6.0.0-ballot2"
     /// </summary>
     string FullVersion { get; }
+
+    /// <summary>
+    /// Gets the reference metadata provider for this schema's FHIR version.
+    /// Provides metadata about reference fields in FHIR resources.
+    /// </summary>
+    IReferenceMetadataProvider ReferenceMetadataProvider { get; }
 }

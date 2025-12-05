@@ -526,7 +526,7 @@ public class ScenarioGeneratorTests
                             scenario.Procedures.Count;
 
         // Assert
-        scenario.AllResources.Should().HaveCount(expectedCount - 1, "AllResources should contain all generated resources except patient");
+        scenario.AllResources.Should().HaveCount(expectedCount, "AllResources should contain all generated resources including patient");
     }
 
     #endregion

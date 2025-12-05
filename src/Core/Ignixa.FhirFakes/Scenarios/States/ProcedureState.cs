@@ -272,6 +272,9 @@ public sealed class ProcedureState : ScenarioState
 
         // Add to context
         context.AddProcedure(procedure, Code.Display);
+
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, procedure);
     }
 
     private string InferCategory()

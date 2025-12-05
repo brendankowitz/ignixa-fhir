@@ -144,6 +144,9 @@ public sealed class ConditionOnsetState : ScenarioState
         // Add to context
         context.AddCondition(condition, Code.Display);
 
+        // NEW: Register with StateId for cross-references
+        context.RegisterStateResource(StateId, condition);
+
         // Set severity attribute if provided
         if (!string.IsNullOrEmpty(AssignToAttribute))
         {

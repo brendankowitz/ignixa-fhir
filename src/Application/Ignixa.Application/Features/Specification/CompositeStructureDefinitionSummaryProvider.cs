@@ -299,6 +299,12 @@ public class CompositeStructureDefinitionSummaryProvider : IFhirSchemaProvider
     public IReadOnlySet<string> ResourceTypeNames => _resourceTypeNamesCache.Value;
 
     /// <summary>
+    /// Gets the reference metadata provider for this schema's FHIR version.
+    /// Delegates to the base FHIR specification provider.
+    /// </summary>
+    public IReferenceMetadataProvider ReferenceMetadataProvider => _baseProvider.ReferenceMetadataProvider;
+
+    /// <summary>
     /// Computes the combined resource type names from base spec and loaded packages.
     /// Called lazily on first access to ResourceTypeNames property.
     /// </summary>

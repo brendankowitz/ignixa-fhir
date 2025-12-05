@@ -129,10 +129,10 @@ public sealed class SearchTestHarness
             return [];
         }
 
-        // Create batch bundle
+        // Create transaction bundle (supports PUT with resolved references)
         var bundle = new BundleJsonNode
         {
-            Type = BundleJsonNode.BundleType.Batch
+            Type = BundleJsonNode.BundleType.Transaction
         };
 
         // Add entries for each resource
@@ -143,8 +143,8 @@ public sealed class SearchTestHarness
                 Resource = resource,
                 Request = new BundleComponentRequestJsonNode
                 {
-                    Method = "POST",
-                    Url = resource.ResourceType
+                    Method = "PUT",
+                    Url = $"{resource.ResourceType}/{resource.Id}"
                 }
             };
 
