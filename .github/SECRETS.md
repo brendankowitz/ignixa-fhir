@@ -1,0 +1,79 @@
+# GitHub Secrets Configuration
+
+This document describes the secrets required for GitHub Actions workflows to function properly.
+
+## Required Secrets
+
+### NuGet Publishing
+- **`NUGET_API_KEY`** (required for `publish-to-nuget` job)
+  - Type: API Key
+  - Source: [NuGet.org Account Settings](https://www.nuget.org/account)
+  - Scope: Publish packages to nuget.org
+  - Instructions:
+    1. Go to nuget.org → Account
+    2. Select "API Keys"
+    3. Create a new API key with "Push new packages and versions" scope
+    4. Add to GitHub secrets as `NUGET_API_KEY`
+
+### Release Notes Generation
+- **`GEMINI_API_KEY`** (required for `ai-release-notes` workflow)
+  - Type: API Key
+  - Source: [Google AI Studio](https://aistudio.google.com/app/apikey)
+  - Model: Gemini 1.5 Flash
+  - Instructions:
+    1. Go to Google AI Studio
+    2. Create an API key for your project
+    3. Add to GitHub secrets as `GEMINI_API_KEY`
+  - Cost: Free tier includes generous limits (subject to Google's terms)
+
+### Azure Container Registry (Optional)
+For Docker image publishing to Azure:
+- **`AZURE_CLIENT_ID`** (Azure Service Principal Client ID)
+- **`AZURE_TENANT_ID`** (Azure Tenant ID)
+- **`AZURE_SUBSCRIPTION_ID`** (Azure Subscription ID)
+
+These are only needed if you enable the `build-and-push-container` job with Azure registry integration.
+
+## Setting Up Secrets
+
+1. Navigate to your GitHub repository
+2. Go to Settings → Secrets and variables → Actions
+3. Click "New repository secret"
+4. Enter the secret name (exactly as listed above)
+5. Paste the secret value
+6. Click "Add secret"
+
+## Validating Secrets
+
+You can test if secrets are properly configured by:
+
+1. **NuGet API Key**: Trigger the CI workflow on main branch with NuGet changes
+   - Monitor the `publish-to-nuget` job logs
+   - Should complete without authentication errors
+
+2. **Gemini API Key**: Trigger a release manually or via the AI Release Notes workflow
+   - Monitor the `generate-notes` job logs
+   - Should complete without API authentication errors
+
+## Security Notes
+
+- Secrets are never logged or exposed in workflow output
+- Each secret is only accessible to jobs that explicitly reference it
+- Consider rotating API keys periodically for security
+- Do not commit secrets to the repository under any circumstances
+
+## Troubleshooting
+
+### "Error: Gemini API returned null or failed"
+- Verify `GEMINI_API_KEY` is set and valid
+- Check Google Cloud quotas/limits
+- Review [Gemini API documentation](https://ai.google.dev/docs)
+
+### "401 Unauthorized" on NuGet publish
+- Verify `NUGET_API_KEY` is set and valid
+- Ensure API key has "Push" permissions
+- Check if API key has expired
+
+### "Permission denied" on GitHub release creation
+- Verify workflow has `contents: write` permission
+- Check branch protection rules (may require additional approval)
