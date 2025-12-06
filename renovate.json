@@ -13,8 +13,7 @@
   "timezone": "UTC",
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security"],
-    "assignees": ["@brendankowitz"]
+    "labels": ["security"]
   },
   "prConcurrentLimit": 2,
   "prCreation": "auto",
@@ -48,8 +47,7 @@
       "matchDatasources": ["nuget"],
       "groupName": "major version updates",
       "schedule": ["before 3am on Monday"],
-      "labels": ["semver-major"],
-      "assignees": ["@brendankowitz"]
+      "labels": ["semver-major"]
     },
     {
       "description": "Handle Firely SDK updates (FHIR Standard Library)",
@@ -58,7 +56,6 @@
       "schedule": ["before 3am on Monday"],
       "labels": ["fhir-sdk"],
       "automerge": false,
-      "reviewers": ["@brendankowitz"],
       "minimumReleaseAge": "7 days"
     },
     {
@@ -156,8 +153,7 @@
     "rangeStrategy": "bump"
   },
   "labels": ["renovate", "dependencies"],
-  "assignees": ["@brendankowitz"],
-  "reviewers": ["@brendankowitz"],
+  "reviewers": ["@github-copilot"],
   "statusCheckNames": [
     "build-and-unit-tests",
     "e2e-tests-sql",
