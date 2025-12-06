@@ -240,6 +240,10 @@
     <value>The _include search is missing the type to search.</value>
     <comment>_include is a query parameter.</comment>
   </data>
+  <data name="IncludeInvalidTargetResourceType" xml:space="preserve">
+    <value>The {0}={1}:{2}:{3} specifies an invalid target resource type '{3}'. The target resource type must be a valid FHIR resource type.</value>
+    <comment>{0}=_include or _revinclude, {1}=source type, {2}=search parameter, {3}=target type</comment>
+  </data>
   <data name="RevIncludeMissingType" xml:space="preserve">
     <value>The _revinclude search is missing the type to search.</value>
     <comment>_revinclude is a query parameter.</comment>

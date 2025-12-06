@@ -72,7 +72,7 @@ Content-Type: application/json
 }
 
 ### Revinclude
-GET {{hostname}}/Patient?_revinclude=Encounter:subject
+GET {{hostname}}/Patient?_id=searchpatient3&_revinclude=Encounter:subject
 
 ### Elements
 GET {{hostname}}/Patient?_elements=identifier,active

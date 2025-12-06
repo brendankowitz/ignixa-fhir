@@ -158,13 +158,20 @@ public class SqlEntityFrameworkSearchService : ISearchService
             {
                 var includeQuery = BuildIncludeQuery(options, includeExpr, resourceTypeId.Value);
 
-                _logger.LogDebug("Executing include query for parameter {ParamCode}", includeExpr.ReferenceSearchParameter?.Code);
+                _logger.LogDebug("Executing include query for parameter {ParamCode}", includeExpr.ReferenceSearchParameter?.Code ?? "*");
 
                 // Stream each included resource directly to client
+                // For wildcard includes or unspecified target type, get resource type from navigation property or cache
                 await foreach (var entity in includeQuery
                     .AsAsyncEnumerable().WithCancellation(ct))
                 {
-                    var searchResult = MapResourceEntityToSearchResult(entity, includeExpr.TargetResourceType);
+                    // Determine resource type: use target type if specified, otherwise get from entity or cache
+                    var resourceTypeName = includeExpr.TargetResourceType
+                        ?? entity.ResourceType?.Name
+                        ?? _cache.TryGetResourceTypeNameFromCache(entity.ResourceTypeId)
+                        ?? throw new InvalidOperationException($"ResourceType ID {entity.ResourceTypeId} not found in cache or database");
+
+                    var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
                     searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
                     yield return searchResult;
                 }
@@ -191,8 +198,9 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     .AsAsyncEnumerable().WithCancellation(ct))
                 {
                     // Determine resource type from entity
-                    // First try using the provided SourceResourceType, then fall back to cache lookup of the ID
+                    // First try using the provided SourceResourceType, then navigation property, then fall back to cache lookup of the ID
                     var resourceTypeName = revIncludeExpr.SourceResourceType
+                        ?? entity.ResourceType?.Name
                         ?? _cache.TryGetResourceTypeNameFromCache(entity.ResourceTypeId)
                         ?? throw new InvalidOperationException($"ResourceType ID {entity.ResourceTypeId} not found in cache or database");
 
@@ -466,7 +474,8 @@ public class SqlEntityFrameworkSearchService : ISearchService
         SearchOptions options,
         short? resourceTypeId,
         CancellationToken ct,
-        bool includePagination = true)
+        bool includePagination = true,
+        bool forIncludeProcessing = false)
     {
         _logger.LogDebug(
             "BuildQueryAsync: ResourceType={ResourceType}, ResourceTypeId={ResourceTypeId}, " +
@@ -558,7 +567,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             _logger.LogDebug("Applying sorting");
             IOrderedQueryable<ResourceEntity> sortedQuery = ApplySorting(filteredQuery, options.Sort);
 
-            // For include/revinclude subqueries, skip pagination - they need all matching results
+            // Skip pagination when explicitly requested (e.g., for count queries or internal processing)
             if (!includePagination)
             {
                 return sortedQuery;
@@ -575,8 +584,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     options.ContinuationToken, out int tokenOffset, out int tokenCount))
                 {
                     offset = tokenOffset;
-                    pageSize = tokenCount; // Use count from token for consistency
-                    _logger.LogDebug("Using continuation token: offset={Offset}, count={Count}", offset, pageSize);
+                    // Token stores original user-requested count (without +1),
+                    // but handler adds +1 for hasMore detection - so we add it back here
+                    pageSize = tokenCount + 1;
+                    _logger.LogDebug("Using continuation token: offset={Offset}, count={Count} (+1 for hasMore)", offset, pageSize);
                 }
                 else
                 {
@@ -584,8 +595,13 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 }
             }
 
-            // Apply Skip/Take for pagination (limit results to pageSize + 1 to detect if more results exist)
-            return sortedQuery.Skip(offset).Take(pageSize + 1);
+            // Apply Skip/Take for pagination
+            // NOTE: The handler layer (SearchResourcesHandler) already adds +1 for hasMore detection,
+            // so we just use pageSize as-is for main queries.
+            // For include processing, we need to subtract 1 since we only want the actual page results
+            // (not the +1 extra for hasMore detection).
+            int takeCount = forIncludeProcessing ? Math.Max(1, pageSize - 1) : pageSize;
+            return sortedQuery.Skip(offset).Take(takeCount);
     }
 
     private IOrderedQueryable<ResourceEntity> ApplySorting(
@@ -818,6 +834,40 @@ public class SqlEntityFrameworkSearchService : ISearchService
         return searchParamId;
     }
 
+    /// <summary>
+    /// Gets the SearchParamId for a search parameter, with support for OverridesUrl fallback.
+    /// This is the preferred method for include/revinclude queries where Implementation Guide
+    /// parameters (e.g., US Core) may override base FHIR parameters.
+    /// Uses the cache's async method but blocks synchronously since EF queries require sync execution.
+    /// </summary>
+    /// <param name="searchParameter">The search parameter containing URL and optional OverridesUrl.</param>
+    /// <returns>The SearchParamId, or 0 if not found.</returns>
+#pragma warning disable CA2012 // Use ValueTasks correctly - Must block synchronously in EF LINQ expression context
+    private short GetSearchParamIdFromSearchParameter(SearchParameterInfo searchParameter)
+    {
+        if (searchParameter?.Url == null)
+        {
+            _logger.LogWarning("SearchParameter or URL is null");
+            return 0;
+        }
+
+        // Use the cache's async method that handles OverridesUrl fallback, but block synchronously
+        // This is acceptable since BuildIncludeQuery/BuildRevIncludeQuery are already using .GetAwaiter().GetResult()
+        var searchParamId = _cache.GetSearchParamIdAsync(searchParameter).AsTask().GetAwaiter().GetResult();
+
+        if (!searchParamId.HasValue)
+        {
+            _logger.LogWarning(
+                "Search parameter not found for URL: {Url} (OverridesUrl: {OverridesUrl})",
+                searchParameter.Url,
+                searchParameter.OverridesUrl);
+            return 0;
+        }
+
+        return searchParamId.Value;
+    }
+#pragma warning restore CA2012
+
     private IOrderedQueryable<ResourceEntity> ApplyThenBy(
         IOrderedQueryable<ResourceEntity> query,
         SortExpression sortExpr)
@@ -988,23 +1038,17 @@ public class SqlEntityFrameworkSearchService : ISearchService
     /// Builds a CTE-based include query that replicates the main query filters without buffering IDs.
     /// Uses SQL Common Table Expression (CTE) pattern to find resources referenced by main results.
     /// Implements DISTINCT to deduplicate resources referenced by multiple main results.
+    /// Supports both specific search parameter includes and wildcard includes (_include=Type:*).
     /// </summary>
     private IQueryable<ResourceEntity> BuildIncludeQuery(
         SearchOptions options,
         IncludeExpression includeExpr,
         short resourceTypeId)
     {
-        // Get SearchParamId from the reference search parameter URL
-        short searchParamId = GetSearchParamIdFromUrl(includeExpr.ReferenceSearchParameter.Url);
-        if (searchParamId == 0)
-        {
-            _logger.LogWarning("Search parameter not found for include: {Parameter}", includeExpr.ReferenceSearchParameter.Code);
-            return _context.Resources.Where(r => false);  // Return empty
-        }
-
-        // Step 1: Build main query as CTE (replicate filters and sort, but NOT pagination)
-        // Include/revinclude needs all matching results, not just the current page
-        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: false).GetAwaiter().GetResult();
+        // Step 1: Build main query as CTE (replicate filters, sort, AND pagination)
+        // Include should only include resources referenced by the CURRENT PAGE of results per FHIR spec
+        // Use forIncludeProcessing=true to avoid the +1 hasMore detection (only need exact pageSize)
+        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: true, forIncludeProcessing: true).GetAwaiter().GetResult();
 
         // Extract surrogate IDs from the base query BEFORE using in .Contains()
         // This prevents EF Core from generating complex subqueries with sorting in the WHERE clause
@@ -1012,26 +1056,72 @@ public class SqlEntityFrameworkSearchService : ISearchService
             .Select(r => r.ResourceSurrogateId)
             .Distinct();
 
-        // Find resources referenced by these main results using a subquery
-        // This keeps everything in the database query (no client-side materialization)
-        var referencedTypeAndIds = _context.ReferenceSearchParams
-            .Where(rsp => mainResultSurrogateIds.Contains(rsp.ResourceSurrogateId) && rsp.SearchParamId == searchParamId)
-            .Select(rsp => new { rsp.ReferenceResourceTypeId, rsp.ReferenceResourceId })
-            .Distinct();
+        if (includeExpr.WildCard)
+        {
+            // Wildcard include: fetch ALL referenced resources from ALL reference search parameters
+            _logger.LogDebug("Building wildcard include query for source type {SourceType}", includeExpr.SourceResourceType);
 
-        // Get actual resources for these references using subquery join
-        return _context.Resources
-            .Where(r => !r.IsHistory && !r.IsDeleted &&
-                        referencedTypeAndIds.Any(x => x.ReferenceResourceTypeId == r.ResourceTypeId && x.ReferenceResourceId == r.ResourceId))
-            .Include(r => r.Transaction)
-            .Distinct()
-            .OrderBy(r => r.ResourceSurrogateId);  // Stable order for deduplication
+            var referencedTypeAndIds = _context.ReferenceSearchParams
+                .Where(rsp => mainResultSurrogateIds.Contains(rsp.ResourceSurrogateId)
+                    && rsp.ReferenceResourceTypeId != null)
+                .Select(rsp => new { rsp.ReferenceResourceTypeId, rsp.ReferenceResourceId })
+                .Distinct();
+
+            // Get actual resources for these references using subquery join
+            // CRITICAL: Exclude resources that are already in the main result set
+            // When a resource references itself (e.g., Location.partOf = self), it should appear
+            // only once with search.mode="match", not twice (once as match, once as include)
+            // FHIR spec: "match" mode takes precedence over "include" mode
+            return _context.Resources
+                .Where(r => !r.IsHistory && !r.IsDeleted &&
+                            referencedTypeAndIds.Any(x => x.ReferenceResourceTypeId == r.ResourceTypeId && x.ReferenceResourceId == r.ResourceId) &&
+                            !mainResultSurrogateIds.Contains(r.ResourceSurrogateId))
+                .Include(r => r.Transaction)
+                .Include(r => r.ResourceType)
+                .Distinct()
+                .OrderBy(r => r.ResourceSurrogateId);
+        }
+        else
+        {
+            // Specific search parameter include
+            // Get SearchParamId from the reference search parameter (handles OverridesUrl for IG parameters like US Core)
+            short searchParamId = GetSearchParamIdFromSearchParameter(includeExpr.ReferenceSearchParameter);
+            if (searchParamId == 0)
+            {
+                _logger.LogWarning("Search parameter not found for include: {Parameter}", includeExpr.ReferenceSearchParameter?.Code);
+                return _context.Resources.Where(r => false);  // Return empty
+            }
+
+            // Find resources referenced by these main results using a subquery
+            // This keeps everything in the database query (no client-side materialization)
+            var referencedTypeAndIds = _context.ReferenceSearchParams
+                .Where(rsp => mainResultSurrogateIds.Contains(rsp.ResourceSurrogateId)
+                    && rsp.SearchParamId == searchParamId
+                    && rsp.ReferenceResourceTypeId != null)
+                .Select(rsp => new { rsp.ReferenceResourceTypeId, rsp.ReferenceResourceId })
+                .Distinct();
+
+            // Get actual resources for these references using subquery join
+            // CRITICAL: Exclude resources that are already in the main result set
+            // When a resource references itself (e.g., Location.partOf = self), it should appear
+            // only once with search.mode="match", not twice (once as match, once as include)
+            // FHIR spec: "match" mode takes precedence over "include" mode
+            return _context.Resources
+                .Where(r => !r.IsHistory && !r.IsDeleted &&
+                            referencedTypeAndIds.Any(x => x.ReferenceResourceTypeId == r.ResourceTypeId && x.ReferenceResourceId == r.ResourceId) &&
+                            !mainResultSurrogateIds.Contains(r.ResourceSurrogateId))
+                .Include(r => r.Transaction)
+                .Include(r => r.ResourceType)
+                .Distinct()
+                .OrderBy(r => r.ResourceSurrogateId);
+        }
     }
 
     /// <summary>
     /// Builds a CTE-based revinclude query that finds resources referencing the main results.
     /// Uses SQL Common Table Expression (CTE) pattern.
     /// Implements DISTINCT to deduplicate resources that reference multiple main results.
+    /// Supports both specific search parameter revincludes and wildcard revincludes (_revinclude=Type:*).
     /// </summary>
     private IQueryable<ResourceEntity> BuildRevIncludeQuery(
         SearchOptions options,
@@ -1047,17 +1137,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
             return _context.Resources.Where(r => false);  // Return empty
         }
 
-        // Get SearchParamId from the reference search parameter URL
-        short searchParamId = GetSearchParamIdFromUrl(revIncludeExpr.ReferenceSearchParameter.Url);
-        if (searchParamId == 0)
-        {
-            _logger.LogWarning("Search parameter not found for revinclude: {Parameter}", revIncludeExpr.ReferenceSearchParameter.Code);
-            return _context.Resources.Where(r => false);  // Return empty
-        }
-
-        // Build main query using BuildQueryAsync (filters and sorting, but NOT pagination)
-        // Revinclude needs all matching results, not just the current page
-        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: false)
+        // Build main query using BuildQueryAsync (filters, sorting, AND pagination)
+        // Revinclude should only include resources that reference the CURRENT PAGE of results per FHIR spec
+        // Use forIncludeProcessing=true to avoid the +1 hasMore detection (only need exact pageSize)
+        IQueryable<ResourceEntity> baseQuery = BuildQueryAsync(options, resourceTypeId, CancellationToken.None, includePagination: true, forIncludeProcessing: true)
             .GetAwaiter().GetResult();
 
         // Extract resource type and ID pairs from the base query BEFORE using in .Any()
@@ -1067,20 +1150,58 @@ public class SqlEntityFrameworkSearchService : ISearchService
             .Select(r => new { r.ResourceTypeId, r.ResourceId })
             .Distinct();
 
-        // Find resources that reference these main results using a subquery
-        // Filter by source resource type (e.g., Encounter), search parameter, and reference target
-        // This keeps everything in the database query (no client-side materialization)
-        var referencingRsps = _context.ReferenceSearchParams
-            .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
-                          rsp.SearchParamId == searchParamId &&
-                          mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
-            .Select(rsp => rsp.ResourceSurrogateId)
+        // Also extract surrogate IDs for deduplication (exclude main results from revinclude)
+        var mainResultSurrogateIds = baseQuery
+            .Select(r => r.ResourceSurrogateId)
             .Distinct();
 
+        IQueryable<long> referencingRsps;
+
+        if (revIncludeExpr.WildCard)
+        {
+            // Wildcard revinclude: find ALL resources of the source type that reference main results
+            // using ANY reference search parameter
+            _logger.LogDebug("Building wildcard revinclude query for source type {SourceType}", revIncludeExpr.SourceResourceType);
+
+            referencingRsps = _context.ReferenceSearchParams
+                .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
+                              mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+                .Select(rsp => rsp.ResourceSurrogateId)
+                .Distinct();
+        }
+        else
+        {
+            // Specific search parameter revinclude
+            // Get SearchParamId from the reference search parameter (handles OverridesUrl for IG parameters like US Core)
+            short searchParamId = GetSearchParamIdFromSearchParameter(revIncludeExpr.ReferenceSearchParameter);
+            if (searchParamId == 0)
+            {
+                _logger.LogWarning("Search parameter not found for revinclude: {Parameter}", revIncludeExpr.ReferenceSearchParameter?.Code);
+                return _context.Resources.Where(r => false);  // Return empty
+            }
+
+            // Find resources that reference these main results using a subquery
+            // Filter by source resource type (e.g., Encounter), search parameter, and reference target
+            // This keeps everything in the database query (no client-side materialization)
+            referencingRsps = _context.ReferenceSearchParams
+                .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
+                              rsp.SearchParamId == searchParamId &&
+                              mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+                .Select(rsp => rsp.ResourceSurrogateId)
+                .Distinct();
+        }
+
         // Get the actual resources using subquery containment
+        // CRITICAL: Exclude resources that are already in the main result set
+        // When a resource references itself (e.g., Location.partOf = self), it should appear
+        // only once with search.mode="match", not twice (once as match, once as include)
+        // FHIR spec: "match" mode takes precedence over "include" mode
         return _context.Resources
-            .Where(r => referencingRsps.Contains(r.ResourceSurrogateId) && !r.IsHistory && !r.IsDeleted)
+            .Where(r => referencingRsps.Contains(r.ResourceSurrogateId) &&
+                        !mainResultSurrogateIds.Contains(r.ResourceSurrogateId) &&
+                        !r.IsHistory && !r.IsDeleted)
             .Include(r => r.Transaction)
+            .Include(r => r.ResourceType)
             .Distinct()
             .OrderBy(r => r.ResourceSurrogateId);  // Stable order for streaming
     }

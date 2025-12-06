@@ -509,6 +509,15 @@ namespace Ignixa.Search {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to The {0}={1}:{2}:{3} specifies an invalid target resource type &apos;{3}&apos;. The target resource type must be a valid FHIR resource type..
+        /// </summary>
+        internal static string IncludeInvalidTargetResourceType {
+            get {
+                return ResourceManager.GetString("IncludeInvalidTargetResourceType", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Field &apos;{0}&apos; with value &apos;{1}&apos; is not supported..
         /// </summary>
         internal static string InvalidBooleanConfigSetting {

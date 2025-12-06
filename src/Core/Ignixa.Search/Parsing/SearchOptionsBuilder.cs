@@ -381,17 +381,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
         foreach (string includeParam in includeParameters)
         {
-            try
-            {
-                // Use ExpressionParser to parse include expressions
-                IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeParam, isReversed, iterate: false);
-                includeExpressions.Add(includeExpr);
-            }
-            catch
-            {
-                // Skip invalid include parameters
-                continue;
-            }
+            // Use ExpressionParser to parse include expressions
+            // Note: InvalidSearchOperationException will propagate to caller and result in 400 Bad Request
+            IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeParam, isReversed, iterate: false);
+            includeExpressions.Add(includeExpr);
         }
 
         return includeExpressions;

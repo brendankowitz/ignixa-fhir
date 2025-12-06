@@ -54,6 +54,8 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
 
         // Use FHIR version from context (defaults to R4)
         var fhirVersionEnum = context.FhirVersion;
+        
+        var fhirSchemaProvider = _contextAccessor.RequestContext.VersionContext!.GetSchemaProvider(fhirVersionEnum, currentTenantConfig!.TenantId);
 
         // Determine validation depth: Default to Spec depth for $validate operation
         var validationDepth = ParseValidationDepth(currentTenantConfig?.ValidationDepth ?? "Spec");
@@ -190,14 +192,14 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
                 });
             }
             else
-                {
+            {
                     var settings = new ValidationSettings
                     {
                         Depth = validationDepth,
                         TerminologyService = _terminologyService
                     };
                     var state = new ValidationState();
-                    var validationResult = schema.Validate((IElement)sourceNode, settings, state);
+                    var validationResult = schema.Validate(sourceNode.ToElement(fhirSchemaProvider), settings, state);
 
                 if (!validationResult.IsValid)
                 {

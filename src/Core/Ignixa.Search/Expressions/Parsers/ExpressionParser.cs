@@ -101,6 +101,29 @@ public class ExpressionParser : IExpressionParser
             else
                 targetType = valueSpan.ToString();
 
+            // Validate target resource type if specified
+            // Empty target type (e.g., "Patient:link:") is invalid
+            if (targetType != null && string.IsNullOrWhiteSpace(targetType))
+            {
+                throw new InvalidSearchOperationException(
+                    string.Format(Resources.IncludeInvalidTargetResourceType,
+                        isReversed ? "_revinclude" : "_include",
+                        originalType.ToString(),
+                        searchParam.ToString(),
+                        "<empty>"));
+            }
+
+            // Non-empty target type must be a valid FHIR resource type
+            if (!string.IsNullOrEmpty(targetType) && !_schemaProvider.ResourceTypeNames.Contains(targetType))
+            {
+                throw new InvalidSearchOperationException(
+                    string.Format(Resources.IncludeInvalidTargetResourceType,
+                        isReversed ? "_revinclude" : "_include",
+                        originalType.ToString(),
+                        searchParam.ToString(),
+                        targetType));
+            }
+
             refSearchParameter = _searchParameterDefinitionManager.GetSearchParameter(originalType.ToString(), searchParam.ToString());
         }
 
