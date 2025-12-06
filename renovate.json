@@ -113,7 +113,7 @@
     },
     {
       "description": "Handle SQL Server related updates",
-      "matchPackagePatterns": ["^Microsoft\\.Data\\.SqlClient", "^Polly$"],
+      "matchPackagePatterns": ["^Microsoft\\.Data\\.SqlClient$", "^Polly$"],
       "groupName": "Data Access & Resilience",
       "schedule": ["before 3am on Monday"],
       "automerge": true,
@@ -129,8 +129,7 @@
     {
       "description": "Do not automerge pre-release versions",
       "matchDatasources": ["nuget"],
-      "matchCurrentVersion": ".*-(alpha|beta|rc|preview).*",
-      "matchCurrentVersionFlags": "i",
+      "matchCurrentVersion": "^.*-(alpha|beta|rc|preview).*$",
       "automerge": false
     },
     {
