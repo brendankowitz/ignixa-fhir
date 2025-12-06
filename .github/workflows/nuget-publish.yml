@@ -145,7 +145,7 @@ jobs:
     name: Publish to NuGet.org
     runs-on: ubuntu-latest
     needs: [ build-and-pack ]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
 
     steps:
       - name: Download packages
