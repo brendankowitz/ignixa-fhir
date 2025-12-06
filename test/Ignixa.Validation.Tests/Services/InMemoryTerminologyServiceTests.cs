@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 // <copyright file="InMemoryTerminologyServiceTests.cs" company="Microsoft Corporation">
 //     Copyright (c) Microsoft Corporation. All rights reserved.
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
@@ -20,7 +21,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenValidGenderCode_WhenValidating_ThenReturnsValid()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -39,7 +40,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenValidPublicationStatus_WhenValidating_ThenReturnsValid()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -58,7 +59,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenValidObservationStatus_WhenValidating_ThenReturnsValid()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -81,7 +82,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenInvalidGenderCode_WhenValidating_ThenReturnsError()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -101,7 +102,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenInvalidCode_WhenValidating_ThenIncludesValueSetInMessage()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -124,7 +125,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenUnknownValueSet_WhenValidating_ThenReturnsWarning()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -145,7 +146,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenUnknownLoincValueSet_WhenValidating_ThenReturnsWarning()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -169,7 +170,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenNullCode_WhenValidating_ThenReturnsError()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -189,7 +190,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenEmptyCode_WhenValidating_ThenReturnsError()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -208,7 +209,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenNullValueSetUrl_WhenValidating_ThenReturnsWarning()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -228,7 +229,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenNullSystem_WhenCodeIsValid_ThenReturnsValid()
     {
         // Arrange - system is optional for some bindings
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -250,7 +251,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenContactPointSystem_WhenCodeIsValid_ThenReturnsValid()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(
@@ -268,7 +269,7 @@ public class InMemoryTerminologyServiceTests
     public async Task GivenNameUse_WhenCodeIsValid_ThenReturnsValid()
     {
         // Arrange
-        var service = new InMemoryTerminologyService();
+        var service = new InMemoryTerminologyService(FhirVersion.R4);
 
         // Act
         var result = await service.ValidateCodeAsync(

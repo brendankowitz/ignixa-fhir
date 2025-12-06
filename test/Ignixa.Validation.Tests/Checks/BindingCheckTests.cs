@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 // <copyright file="BindingCheckTests.cs" company="Microsoft Corporation">
 //     Copyright (c) Microsoft Corporation. All rights reserved.
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
@@ -6,7 +7,6 @@
 #pragma warning disable CA1861 // Avoid constant arrays as arguments
 
 using System.Text.Json.Nodes;
-using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
@@ -30,7 +30,7 @@ public class BindingCheckTests
         // Arrange
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"gender\":\"male\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",
@@ -56,7 +56,7 @@ public class BindingCheckTests
             ""status"":""final""
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "status",
             "http://hl7.org/fhir/ValueSet/observation-status",
@@ -83,7 +83,7 @@ public class BindingCheckTests
         // Arrange
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"gender\":\"invalid-gender\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",
@@ -111,7 +111,7 @@ public class BindingCheckTests
         // Arrange - even with invalid code, extensible bindings are not validated
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"gender\":\"custom-gender\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",
@@ -134,7 +134,7 @@ public class BindingCheckTests
         // Arrange
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"gender\":\"anything\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",
@@ -170,7 +170,7 @@ public class BindingCheckTests
             }
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "code",
             "http://hl7.org/fhir/ValueSet/observation-codes", // Unknown ValueSet - will get warning
@@ -202,7 +202,7 @@ public class BindingCheckTests
             }
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",
@@ -236,7 +236,7 @@ public class BindingCheckTests
             }
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "code",
             "http://hl7.org/fhir/ValueSet/unknown-valueset",
@@ -272,7 +272,7 @@ public class BindingCheckTests
             }
         }");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "code",
             "http://hl7.org/fhir/ValueSet/unknown-valueset",
@@ -303,7 +303,7 @@ public class BindingCheckTests
         // Arrange
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"gender\":\"invalid\"}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",
@@ -333,7 +333,7 @@ public class BindingCheckTests
         // Arrange - gender element is not present
         var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"active\":true}");
         var sourceNode = JsonNodeSourceNode.Create(json);
-        var terminologyService = new InMemoryTerminologyService();
+        var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "gender",
             "http://hl7.org/fhir/ValueSet/administrative-gender",

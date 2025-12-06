@@ -35,7 +35,7 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
     {
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _builder = builder ?? new StructureDefinitionSchemaBuilder();
-        _terminologyService = terminologyService ?? new InMemoryTerminologyService();
+        _terminologyService = terminologyService ?? new InMemoryTerminologyService(schema.Version);
 
         // Extract valid resource types if schema is an IFhirSchemaProvider
         _validResourceTypes = (schema as IFhirSchemaProvider)?.ResourceTypeNames;

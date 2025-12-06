@@ -18,6 +18,7 @@ mode = mode switch
     "valueset" => "valueset",
     "invariant" => "invariant",
     "coreschema" => "coreschema",
+    "validation-terminology" => "validation-terminology",
     _ => "structure"
 };
 
@@ -28,6 +29,7 @@ string defaultOutputDir = mode switch
     "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "ValueSets", "Normative"),
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
+    "validation-terminology" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Validation", "Generated"),
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
 };
 
@@ -43,6 +45,7 @@ string title = mode switch
     "valueset" => "Ignixa FHIR ValueSet Enum Generator",
     "invariant" => "Ignixa FHIR Invariant Provider Generator",
     "coreschema" => "Ignixa FHIR Core Schema Provider Generator",
+    "validation-terminology" => "Ignixa FHIR In-Memory Terminology Service Generator",
     _ => "Ignixa FHIR Structure Definition Provider Generator"
 };
 
@@ -155,6 +158,17 @@ switch (mode)
             Namespace = "Ignixa.Specification.Generated"
         };
         coreSchemaLanguage.Export(coreSchemaConfig, definitions);
+        break;
+
+    case "validation-terminology":
+        Console.WriteLine("Generating in-memory terminology service code...");
+        var terminologyLanguage = new CSharpInMemoryTerminologyLanguage();
+        var terminologyConfig = new CSharpInMemoryTerminologyConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Ignixa.Validation.Generated"
+        };
+        terminologyLanguage.Export(terminologyConfig, definitions);
         break;
 
     default: // structure

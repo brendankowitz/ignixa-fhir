@@ -3,85 +3,47 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Services;
 
 /// <summary>
-/// In-memory terminology service with hardcoded ValueSets for common FHIR code systems.
+/// In-memory terminology service with version-specific ValueSets.
 /// Returns warnings for unknown ValueSets to enable graceful degradation.
 /// Intended for testing and prototype scenarios - production systems should use external terminology servers.
 /// </summary>
-public class InMemoryTerminologyService : ITerminologyService
+public partial class InMemoryTerminologyService : ITerminologyService
 {
-    // Hardcoded ValueSets for common FHIR administrative codes
-    private static readonly Dictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal)
-    {
-        // Administrative Gender (http://hl7.org/fhir/ValueSet/administrative-gender)
-        ["http://hl7.org/fhir/ValueSet/administrative-gender"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "male", "female", "other", "unknown"
-        },
-
-        // Publication Status (http://hl7.org/fhir/ValueSet/publication-status)
-        ["http://hl7.org/fhir/ValueSet/publication-status"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "draft", "active", "retired", "unknown"
-        },
-
-        // Observation Status (http://hl7.org/fhir/ValueSet/observation-status)
-        ["http://hl7.org/fhir/ValueSet/observation-status"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "registered", "preliminary", "final", "amended", "corrected",
-            "cancelled", "entered-in-error", "unknown"
-        },
-
-        // Contact Point System (http://hl7.org/fhir/ValueSet/contact-point-system)
-        ["http://hl7.org/fhir/ValueSet/contact-point-system"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "phone", "fax", "email", "pager", "url", "sms", "other"
-        },
-
-        // Contact Point Use (http://hl7.org/fhir/ValueSet/contact-point-use)
-        ["http://hl7.org/fhir/ValueSet/contact-point-use"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "home", "work", "temp", "old", "mobile"
-        },
-
-        // Address Use (http://hl7.org/fhir/ValueSet/address-use)
-        ["http://hl7.org/fhir/ValueSet/address-use"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "home", "work", "temp", "old", "billing"
-        },
-
-        // Address Type (http://hl7.org/fhir/ValueSet/address-type)
-        ["http://hl7.org/fhir/ValueSet/address-type"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "postal", "physical", "both"
-        },
-
-        // Name Use (http://hl7.org/fhir/ValueSet/name-use)
-        ["http://hl7.org/fhir/ValueSet/name-use"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "usual", "official", "temp", "nickname", "anonymous", "old", "maiden"
-        },
-
-        // Identifier Use (http://hl7.org/fhir/ValueSet/identifier-use)
-        ["http://hl7.org/fhir/ValueSet/identifier-use"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "usual", "official", "temp", "secondary", "old"
-        },
-
-        // Quantity Comparator (http://hl7.org/fhir/ValueSet/quantity-comparator)
-        ["http://hl7.org/fhir/ValueSet/quantity-comparator"] = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "<", "<=", ">=", ">"
-        }
-    };
+    private readonly Dictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Validates a code against a ValueSet binding.
-    /// Returns WARNING for unknown ValueSets (graceful degradation).
+    /// Initializes a new instance of the InMemoryTerminologyService for the specified FHIR version.
+    /// </summary>
+    /// <param name="fhirVersion">The FHIR version to load ValueSets for.</param>
+    public InMemoryTerminologyService(FhirVersion fhirVersion)
+    {
+        switch (fhirVersion)
+        {
+            case FhirVersion.R4:
+                AddFhirR4ValueSets(_valueSets);
+                break;
+            case FhirVersion.R4B:
+                AddFhirR4BValueSets(_valueSets);
+                break;
+            case FhirVersion.R5:
+                AddFhirR5ValueSets(_valueSets);
+                break;
+            case FhirVersion.R6:
+                AddFhirR6ValueSets(_valueSets);
+                break;
+            case FhirVersion.Stu3:
+                AddFhirSTU3ValueSets(_valueSets);
+                break;
+            default:
+                throw new ArgumentException($"Unsupported FHIR version: {fhirVersion}", nameof(fhirVersion));
+        }
+    }
     /// Returns ERROR for known ValueSets with invalid codes.
     /// </summary>
     /// <param name="system">The code system URL.</param>
@@ -114,8 +76,13 @@ public class InMemoryTerminologyService : ITerminologyService
                 Message: "No ValueSet URL provided - skipping terminology validation"));
         }
 
+        // Normalize the URL by removing version specifier (e.g., "url|4.0.1" -> "url")
+        var normalizedUrl = valueSetUrl.Contains('|', StringComparison.Ordinal)
+            ? valueSetUrl[..valueSetUrl.LastIndexOf('|')]
+            : valueSetUrl;
+
         // Check if we have this ValueSet in memory
-        if (!_valueSets.TryGetValue(valueSetUrl, out var validCodes))
+        if (!_valueSets.TryGetValue(normalizedUrl, out var validCodes))
         {
             // Unknown ValueSet - return WARNING (graceful degradation)
             return Task.FromResult(new TerminologyValidationResult(

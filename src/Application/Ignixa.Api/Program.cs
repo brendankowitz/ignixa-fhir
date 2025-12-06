@@ -750,9 +750,15 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
     // falls back to InMemoryTerminologyService (JSON) when not imported
 
     // Register InMemoryTerminologyService as fallback for non-imported terminology
-    containerBuilder.RegisterType<Ignixa.Validation.Services.InMemoryTerminologyService>()
+    // Resolves FhirVersion from the current request context (tenant resolution)
+    containerBuilder.Register<Ignixa.Validation.Services.InMemoryTerminologyService>(c =>
+        {
+            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext;
+            var fhirVersion = requestContext?.FhirVersion ?? FhirVersion.R4; // Default to R4 if no context
+            return new Ignixa.Validation.Services.InMemoryTerminologyService(fhirVersion);
+        })
         .AsSelf()
-        .SingleInstance();
+        .InstancePerLifetimeScope();
 
     // Register SqlTerminologyService as concrete type (dependency for HybridTerminologyService)
     containerBuilder.RegisterType<SqlTerminologyService>()
