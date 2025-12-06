@@ -1,0 +1,166 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "group:allNonMajor"
+  ],
+  "description": "Renovate config for ignixa-fhir - Automates NuGet dependency updates",
+  "schedule": [
+    "before 3am on Monday"
+  ],
+  "timezone": "UTC",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "assignees": ["@brendankowitz"]
+  },
+  "prConcurrentLimit": 2,
+  "prCreation": "auto",
+  "semanticCommits": "enabled",
+  "semanticCommitScope": "deps",
+  "semanticCommitType": "chore",
+  "commitMessagePrefix": "chore(deps): ",
+  "commitMessageAction": "update",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
+  "packageRules": [
+    {
+      "description": "Automatically approve and merge minor/patch updates for dependencies",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchDatasources": ["nuget"],
+      "excludePackagePatterns": [
+        "^Microsoft\\.AspNetCore",
+        "^Microsoft\\.EntityFrameworkCore",
+        "^Hl7\\.Fhir",
+        "^Firely\\.Fhir"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "minimumReleaseAge": "3 days",
+      "schedule": ["before 6am on Monday-Friday"]
+    },
+    {
+      "description": "Group major version updates for careful review",
+      "matchUpdateTypes": ["major"],
+      "matchDatasources": ["nuget"],
+      "groupName": "major version updates",
+      "schedule": ["before 3am on Monday"],
+      "labels": ["semver-major"],
+      "assignees": ["@brendankowitz"]
+    },
+    {
+      "description": "Handle Firely SDK updates (FHIR Standard Library)",
+      "matchPackagePatterns": ["^Hl7\\.Fhir", "^Firely\\.Fhir"],
+      "groupName": "Firely FHIR SDK",
+      "schedule": ["before 3am on Monday"],
+      "labels": ["fhir-sdk"],
+      "automerge": false,
+      "reviewers": ["@brendankowitz"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Handle ASP.NET Core updates carefully",
+      "matchPackagePatterns": ["^Microsoft\\.AspNetCore"],
+      "groupName": "ASP.NET Core",
+      "schedule": ["before 3am on Monday"],
+      "labels": ["aspnetcore"],
+      "automerge": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Handle Entity Framework Core updates carefully",
+      "matchPackagePatterns": ["^Microsoft\\.EntityFrameworkCore"],
+      "groupName": "Entity Framework Core",
+      "schedule": ["before 3am on Monday"],
+      "labels": ["ef-core"],
+      "automerge": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Handle Azure SDK updates",
+      "matchPackagePatterns": ["^Azure\\.", "^Microsoft\\.Azure"],
+      "groupName": "Azure SDK",
+      "schedule": ["before 3am on Monday"],
+      "labels": ["azure"],
+      "automerge": true,
+      "automergeType": "pr",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Handle testing framework updates",
+      "matchPackagePatterns": ["^xunit", "^NSubstitute", "^FluentAssertions", "^Bogus"],
+      "groupName": "Testing frameworks",
+      "schedule": ["before 3am on Monday"],
+      "automerge": true,
+      "automergeType": "pr",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Handle Microsoft Extensions updates",
+      "matchPackagePatterns": ["^Microsoft\\.Extensions"],
+      "groupName": "Microsoft Extensions",
+      "automerge": true,
+      "automergeType": "pr",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Handle DurableTask framework updates",
+      "matchPackagePatterns": ["^Microsoft\\.Azure\\.DurableTask"],
+      "groupName": "DurableTask Framework",
+      "schedule": ["before 3am on Monday"],
+      "labels": ["durability"],
+      "automerge": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Handle SQL Server related updates",
+      "matchPackagePatterns": ["^Microsoft\\.Data\\.SqlClient", "Polly"],
+      "groupName": "Data Access & Resilience",
+      "schedule": ["before 3am on Monday"],
+      "automerge": true,
+      "automergeType": "pr",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Pre-release versions: enable for SDK and preview packages",
+      "matchPackagePatterns": ["^Hl7\\.Fhir", "^ModelContextProtocol"],
+      "allowUnstable": true,
+      "schedule": ["before 3am on Monday"]
+    },
+    {
+      "description": "Do not automerge pre-release versions",
+      "matchDatasources": ["nuget"],
+      "matchCurrentVersion": "/.*-(alpha|beta|rc|preview).*/i",
+      "automerge": false
+    },
+    {
+      "description": "High priority: Security updates",
+      "matchDatasources": ["nuget"],
+      "matchVulnerabilityIDs": ["*"],
+      "schedule": ["at any time"],
+      "automerge": true,
+      "automergeType": "pr",
+      "prPriority": 10
+    }
+  ],
+  "ignoreDeps": [],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "npmDedupe",
+    "yarnDedupeHighest"
+  ],
+  "nuget": {
+    "rangeStrategy": "bump"
+  },
+  "labels": ["renovate", "dependencies"],
+  "assignees": ["@brendankowitz"],
+  "reviewers": ["@brendankowitz"],
+  "statusCheckNames": [
+    "build-and-unit-tests",
+    "e2e-tests-sql",
+    "validate-docker"
+  ]
+}
