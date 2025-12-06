@@ -33,16 +33,17 @@ jobs:
     needs: [ check-ci-success ]
     if: always() && (needs.check-ci-success.result == 'success' || needs.check-ci-success.result == 'skipped')
     outputs:
-      should-publish: ${{ steps.filter.outputs.nuget }}
+      should-publish: ${{ steps.filter.outputs.nuget || (github.event_name == 'workflow_run' && 'true') || 'false' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 2  # Need at least 2 commits to compare
 
-      - name: Check paths
+      - name: Check paths (on push events only)
         uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name != 'workflow_run'
         with:
           filters: |
             nuget:
@@ -61,6 +62,10 @@ jobs:
               - 'Directory.Build.props'
               - 'Directory.Packages.props'
               - 'GitVersion.yml'
+
+      - name: Set publish flag for workflow_run
+        if: github.event_name == 'workflow_run'
+        run: echo "Skipping path filter for workflow_run - will publish on successful CI"
 
   build-and-pack:
     name: Build and Pack NuGet Packages

@@ -41,6 +41,12 @@
         "Tenants__Configurations__1__IsActive": "true",
         "Tenants__Configurations__1__Storage__Type": "SqlEntityFramework",
         "Tenants__Configurations__1__Storage__ConnectionString": "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true",
+        "Tenants__Configurations__2__TenantId": "2",
+        "Tenants__Configurations__2__DisplayName": "R5 Clinic",
+        "Tenants__Configurations__2__FhirVersion": "5.0",
+        "Tenants__Configurations__2__IsActive": "false",
+        "Tenants__Configurations__2__Storage__Type": "SqlEntityFramework",
+        "Tenants__Configurations__2__Storage__ConnectionString": "server=(local);Initial Catalog=FHIR_R5;Integrated Security=true;TrustServerCertificate=true",
         "TransactionWatcher__Enabled": "true",
         "TransactionWatcher__ScanInterval": "00:01:00",
         "TransactionWatcher__StallThreshold": "00:05:00"
