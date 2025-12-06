@@ -109,28 +109,12 @@ jobs:
       - name: Run all tests
         run: |
           # Run unit tests only - E2E tests already validated by CI workflow
+          # Test results already published by CI - this is just a safety check
           dotnet test All.sln \
             --configuration Release \
             --no-build \
             --filter "FullyQualifiedName!~E2ETests" \
-            --logger "trx;LogFileName=test-results.trx" \
             --verbosity normal
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: '**/test-results.trx'
-          retention-days: 30
-
-      - name: Publish test results
-        if: always()
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: '**/test-results.trx'
-          check_name: 'Test Results'
-          comment_mode: 'off'
 
       - name: Pack Core projects
         run: |
