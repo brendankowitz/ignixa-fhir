@@ -132,14 +132,14 @@ public class InMemoryTerminologyServiceTests
             system: "http://snomed.info/sct",
             code: "123456",
             display: null,
-            valueSetUrl: "http://hl7.org/fhir/ValueSet/condition-code",
+            valueSetUrl: "http://custom.example.org/ValueSet/unknown-valueset",
             CancellationToken.None);
 
         // Assert
         Assert.True(result.IsValid); // Graceful degradation - returns true
         Assert.Equal(IssueSeverity.Warning, result.Severity);
         Assert.Contains("Terminology validation unavailable", result.Message);
-        Assert.Contains("http://hl7.org/fhir/ValueSet/condition-code", result.Message);
+        Assert.Contains("http://custom.example.org/ValueSet/unknown-valueset", result.Message);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class InMemoryTerminologyServiceTests
             system: "http://loinc.org",
             code: "8302-2",
             display: null,
-            valueSetUrl: "http://hl7.org/fhir/ValueSet/observation-codes",
+            valueSetUrl: "http://custom.example.org/ValueSet/unknown-loinc-valueset",
             CancellationToken.None);
 
         // Assert

@@ -173,7 +173,7 @@ public class BindingCheckTests
         var terminologyService = new InMemoryTerminologyService(FhirVersion.R4);
         var check = new BindingCheck(
             "code",
-            "http://hl7.org/fhir/ValueSet/observation-codes", // Unknown ValueSet - will get warning
+            "http://custom.example.org/ValueSet/unknown-observation-codes", // Unknown ValueSet - will get warning
             "Required",
             terminologyService);
         var settings = new ValidationSettings();
