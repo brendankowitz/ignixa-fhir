@@ -191,15 +191,6 @@
       "metadata": {
         "description": "Enable automatic transaction recovery and stall detection"
       }
-    },
-    "tenantCount": {
-      "type": "int",
-      "defaultValue": 1,
-      "minValue": 1,
-      "maxValue": 50,
-      "metadata": {
-        "description": "Number of tenants to provision (1-50). Each tenant gets a separate database."
-      }
     }
   },
   "variables": {
@@ -221,14 +212,7 @@
     "durableTaskBlobEndpoint": "[concat('https://', variables('durableTaskStorageAccountName'), '.blob.core.windows.net')]",
     "dockerRegistryServer": "[replace(parameters('dockerRegistryUrl'), 'https://', '')]",
     "dockerImageFull": "[concat(replace(parameters('dockerRegistryUrl'), 'https://', ''), '/', parameters('dockerImage'), ':', parameters('dockerImageTag'))]",
-    "useDockerAuth": "[and(not(empty(parameters('dockerRegistryUsername'))), not(empty(parameters('dockerRegistryPassword'))))]",
-    "copy": [
-      {
-        "name": "tenantDatabaseNames",
-        "count": "[parameters('tenantCount')]",
-        "input": "[concat('FhirTenant', copyIndex('tenantDatabaseNames', 1))]"
-      }
-    ]
+    "useDockerAuth": "[and(not(empty(parameters('dockerRegistryUsername'))), not(empty(parameters('dockerRegistryPassword'))))]"
   },
   "resources": [
     {
@@ -397,7 +381,7 @@
             },
             {
               "name": "Tenants__Configurations__0__FhirVersion",
-              "value": "[parameters('fhirVersion')]"
+              "value": "4.0"
             },
             {
               "name": "Tenants__Configurations__0__IsActive",
@@ -437,11 +421,7 @@
             },
             {
               "name": "Tenants__Configurations__1__Storage__ConnectionString",
-              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=FhirTenant1;User ID=', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId, ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
-            },
-            {
-              "name": "_Comment_MultiTenant",
-              "value": "For multi-tenant deployments (tenantCount > 1), use the Bicep templates (main.bicep) which support dynamic tenant configuration generation. ARM JSON templates have limitations with dynamic app settings generation."
+              "value": "[concat('Server=tcp:', variables('sqlServerFqdn'), ',1433;Initial Catalog=', variables('sqlDatabaseName'), ';User ID=', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId, ';Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;')]"
             }
           ]
         }
@@ -492,12 +472,8 @@
     {
       "type": "Microsoft.Sql/servers/databases",
       "apiVersion": "2023-08-01-preview",
-      "name": "[concat(variables('sqlServerName'), '/FhirTenant', copyIndex(1))]",
+      "name": "[concat(variables('sqlServerName'), '/', variables('sqlDatabaseName'))]",
       "location": "[parameters('location')]",
-      "copy": {
-        "name": "tenantDatabaseCopy",
-        "count": "[parameters('tenantCount')]"
-      },
       "dependsOn": [
         "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
       ],
@@ -512,20 +488,15 @@
       },
       "tags": {
         "environment": "[parameters('environment')]",
-        "purpose": "FHIR Server",
-        "tenantId": "[copyIndex(1)]"
+        "purpose": "FHIR Server"
       }
     },
     {
       "type": "Microsoft.Sql/servers/databases/transparentDataEncryption",
       "apiVersion": "2023-08-01-preview",
-      "name": "[concat(variables('sqlServerName'), '/FhirTenant', copyIndex(1), '/current')]",
-      "copy": {
-        "name": "tenantDatabaseTdeCopy",
-        "count": "[parameters('tenantCount')]"
-      },
+      "name": "[concat(variables('sqlServerName'), '/', variables('sqlDatabaseName'), '/current')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Sql/servers/databases', variables('sqlServerName'), concat('FhirTenant', copyIndex(1)))]"
+        "[resourceId('Microsoft.Sql/servers/databases', variables('sqlServerName'), variables('sqlDatabaseName'))]"
       ],
       "properties": {
         "state": "Enabled"
@@ -805,23 +776,9 @@
     },
     "databaseName": {
       "type": "string",
-      "value": "FhirTenant1",
+      "value": "[variables('sqlDatabaseName')]",
       "metadata": {
-        "description": "The name of the primary SQL Database (Tenant 1)"
-      }
-    },
-    "tenantDatabases": {
-      "type": "array",
-      "value": "[variables('tenantDatabaseNames')]",
-      "metadata": {
-        "description": "Array of all tenant database names (FhirTenant1, FhirTenant2, etc.)"
-      }
-    },
-    "tenantCount": {
-      "type": "int",
-      "value": "[parameters('tenantCount')]",
-      "metadata": {
-        "description": "Number of tenant databases provisioned"
+        "description": "The name of the SQL Database"
       }
     },
     "storageAccountName": {

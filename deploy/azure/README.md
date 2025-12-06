@@ -27,7 +27,7 @@ The deployment supports **1-50 tenants**, where each tenant gets its own isolate
 
 ### Option 1: ARM Template (JSON) - Single Tenant ⚡
 
-Use the consolidated `azuredeploy.json` template for single-tenant deployments:
+Use the consolidated `azuredeploy.json` template for **single-tenant** deployments:
 
 ```bash
 az deployment group create \
@@ -38,7 +38,7 @@ az deployment group create \
 
 **Best for**: Single tenant deployments, CI/CD pipelines, users familiar with ARM templates
 
-**Limitation**: The ARM JSON template will provision multiple databases if `tenantCount > 1`, but can only auto-configure Tenant 1 in app settings due to ARM template limitations. For full multi-tenant support with dynamic configuration, use Bicep (Option 2).
+**Note**: ARM JSON templates only support single-tenant deployments. For multi-tenant (2+ tenants), use Bicep (Option 2).
 
 ### Option 2: Bicep Modules (Modular IaC) 🔧 Multi-Tenant Support
 
@@ -179,9 +179,7 @@ az deployment group create \
   --parameters azuredeploy.parameters.json
 ```
 
-**Note**: The ARM JSON template supports `tenantCount` parameter to create multiple databases, but only auto-configures Tenant 1. For additional tenants, you must manually add app settings after deployment (see "Manual Multi-Tenant Configuration" section below).
-
-**Multi-Tenant Deployment** (using Bicep - **recommended** for 2+ tenants):
+**Multi-Tenant Deployment** (using Bicep - **required** for 2+ tenants):
 
 Deploy with 10 tenants:
 
@@ -233,42 +231,6 @@ cd scripts
 ```
 
 Deployment takes approximately **5-10 minutes** for single tenant, **10-20 minutes** for 50 tenants.
-
-### 4a. Manual Multi-Tenant Configuration (ARM JSON Only)
-
-If you deployed with `azuredeploy.json` and `tenantCount > 1`, you need to manually add app settings for Tenant 2+:
-
-```bash
-# Get the SQL Server FQDN
-SQL_SERVER=$(az deployment group show \
-  --resource-group ignixa-fhir-rg \
-  --name <deployment-name> \
-  --query properties.outputs.sqlServerFqdn.value -o tsv)
-
-# Get the Managed Identity Client ID
-MI_CLIENT_ID=$(az deployment group show \
-  --resource-group ignixa-fhir-rg \
-  --name <deployment-name> \
-  --query properties.outputs.userAssignedIdentityClientId.value -o tsv)
-
-# Add Tenant 2 configuration
-az webapp config appsettings set \
-  --resource-group ignixa-fhir-rg \
-  --name ignixa-fhir-demo \
-  --settings \
-    "Tenants__Configurations__2__TenantId=2" \
-    "Tenants__Configurations__2__DisplayName=Tenant 2" \
-    "Tenants__Configurations__2__FhirVersion=4.0" \
-    "Tenants__Configurations__2__IsActive=true" \
-    "Tenants__Configurations__2__IsSystemPartition=false" \
-    "Tenants__Configurations__2__Storage__Type=SqlEntityFramework" \
-    "Tenants__Configurations__2__Storage__ConnectionString=Server=tcp:$SQL_SERVER,1433;Initial Catalog=FhirTenant2;User ID=$MI_CLIENT_ID;Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;"
-
-# Restart app to apply settings
-az webapp restart --resource-group ignixa-fhir-rg --name ignixa-fhir-demo
-```
-
-**Recommendation**: Use Bicep templates (`main.bicep`) to avoid manual configuration. Bicep automatically generates all tenant settings.
 
 ### 5. Configure GHCR Authentication
 
