@@ -73,6 +73,7 @@ public sealed class PatientBuilder
 
     // Reference configuration
     private string? _managingOrganizationId;
+    private readonly List<string> _generalPractitionerIds = [];
 
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
@@ -383,6 +384,25 @@ public sealed class PatientBuilder
         return this;
     }
 
+    /// <summary>
+    /// Adds a general practitioner reference.
+    /// </summary>
+    /// <param name="practitionerId">The ID of the practitioner.</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithGeneralPractitioner(practitioner.Id!)
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithGeneralPractitioner(string practitionerId)
+    {
+        ArgumentNullException.ThrowIfNull(practitionerId);
+        _generalPractitionerIds.Add(practitionerId);
+        return this;
+    }
+
     // === Smart Defaults ===
 
     /// <summary>
@@ -546,6 +566,19 @@ public sealed class PatientBuilder
             {
                 ["reference"] = $"Organization/{_managingOrganizationId}"
             };
+        }
+
+        if (_generalPractitionerIds.Count > 0)
+        {
+            var gpArray = new JsonArray();
+            foreach (var practitionerId in _generalPractitionerIds)
+            {
+                gpArray.Add(new JsonObject
+                {
+                    ["reference"] = $"Practitioner/{practitionerId}"
+                });
+            }
+            patientJson["generalPractitioner"] = gpArray;
         }
 
         var json = patientJson.ToJsonString();

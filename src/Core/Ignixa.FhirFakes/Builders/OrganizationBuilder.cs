@@ -51,6 +51,9 @@ public sealed class OrganizationBuilder
     private string? _phone;
     private string? _email;
 
+    // Reference fields
+    private string? _partOfOrganizationId;
+
     private OrganizationBuilder(IFhirSchemaProvider schemaProvider)
     {
         ArgumentNullException.ThrowIfNull(schemaProvider);
@@ -182,6 +185,17 @@ public sealed class OrganizationBuilder
     }
 
     /// <summary>
+    /// Sets the parent organization reference (partOf).
+    /// </summary>
+    /// <param name="organizationId">The ID of the parent organization.</param>
+    public OrganizationBuilder WithPartOf(string organizationId)
+    {
+        ArgumentNullException.ThrowIfNull(organizationId);
+        _partOfOrganizationId = organizationId;
+        return this;
+    }
+
+    /// <summary>
     /// Sets whether the organization is active.
     /// </summary>
     public OrganizationBuilder WithActive(bool active)
@@ -232,6 +246,15 @@ public sealed class OrganizationBuilder
         if (telecomArray.Count > 0)
         {
             orgJson["telecom"] = telecomArray;
+        }
+
+        // Build partOf reference
+        if (!string.IsNullOrEmpty(_partOfOrganizationId))
+        {
+            orgJson["partOf"] = new JsonObject
+            {
+                ["reference"] = $"Organization/{_partOfOrganizationId}"
+            };
         }
 
         var json = orgJson.ToJsonString();

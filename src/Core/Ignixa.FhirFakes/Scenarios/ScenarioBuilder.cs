@@ -13,8 +13,41 @@ using Ignixa.Specification.Extensions;
 namespace Ignixa.FhirFakes.Scenarios;
 
 /// <summary>
-/// Fluent builder for composing clinical scenarios.
-/// Uses a state machine pattern to build patient journeys with temporal sequencing.
+/// Fluent builder for creating patient-centric test scenarios.
+///
+/// <para>
+/// <b>Design Principle: One Scenario = One Patient</b><br/>
+/// ScenarioBuilder is optimized for creating a single patient with their related resources
+/// (encounters, observations, conditions, etc.). For tests requiring multiple patients,
+/// organizations, or complex resource graphs, use resource builders directly.
+/// </para>
+///
+/// <para>
+/// <b>When to use ScenarioBuilder:</b><br/>
+/// - Creating a patient with clinical history (encounters, observations, medications)<br/>
+/// - Building test data for patient-specific workflows<br/>
+/// - Generating bundles for transaction/batch operations
+/// </para>
+///
+/// <para>
+/// <b>When NOT to use ScenarioBuilder:</b><br/>
+/// - Multiple unrelated patients<br/>
+/// - Organization hierarchies without a patient context<br/>
+/// - Complex cross-patient references (use builders directly)
+/// </para>
+///
+/// <example>
+/// // GOOD: Patient-centric scenario
+/// var scenario = new ScenarioBuilder(schemaProvider)
+///     .WithPatient(p => p.WithAge(35).WithGender(g => g.Female))
+///     .AddEncounter(...)
+///     .AddObservation(...)
+///     .Build();
+///
+/// // AVOID: Multiple unrelated patients - use PatientBuilder directly
+/// var patient1 = new PatientBuilder(schemaProvider).WithAge(35).Build();
+/// var patient2 = new PatientBuilder(schemaProvider).WithAge(42).Build();
+/// </example>
 /// </summary>
 public sealed class ScenarioBuilder
 {
