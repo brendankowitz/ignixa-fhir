@@ -17,6 +17,14 @@ param appName string
 @description('Azure SQL database admin email (AAD user or group)')
 param sqlAdminEmail string = ''
 
+@description('Number of tenants to provision (1-50). Each tenant gets a separate database.')
+@minValue(1)
+@maxValue(50)
+param tenantCount int = 1
+
+@description('FHIR version for all tenants')
+param fhirVersion string = '4.0'
+
 // Deploy App Service (with System-Assigned Managed Identity)
 module appService './modules/app-service.bicep' = {
   name: 'app-service-deployment'
@@ -24,18 +32,40 @@ module appService './modules/app-service.bicep' = {
     appName: appName
     location: location
     environment: environment
+    tenantCount: tenantCount
+    fhirVersion: fhirVersion
+    sqlServerFqdn: sqlServer.outputs.sqlServerFqdn
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
+  dependsOn: [
+    sqlServer
+    tenantDatabases
+    monitoring
+  ]
 }
 
-// Deploy SQL Database (with AAD-only authentication)
-module sql './modules/sql-database.bicep' = {
-  name: 'sql-deployment'
+// Deploy SQL Server (single server for all tenant databases)
+module sqlServer './modules/sql-server.bicep' = {
+  name: 'sql-server-deployment'
   params: {
     sqlServerName: '${appName}-sql'
     location: location
-    databaseName: 'FhirDatabase'
     disableLocalAuth: true
   }
+}
+
+// Deploy tenant databases (one per tenant)
+module tenantDatabases './modules/tenant-databases.bicep' = {
+  name: 'tenant-databases-deployment'
+  params: {
+    sqlServerName: sqlServer.outputs.sqlServerName
+    location: location
+    tenantCount: tenantCount
+    environment: environment
+  }
+  dependsOn: [
+    sqlServer
+  ]
 }
 
 // Deploy Blob Storage (with Managed Identity access only)
@@ -73,9 +103,10 @@ module monitoring './modules/monitoring.bicep' = {
 output appServiceUrl string = appService.outputs.appServiceUrl
 output appServiceName string = appService.outputs.appServiceName
 output appServiceManagedIdentityPrincipalId string = appService.outputs.managedIdentityPrincipalId
-output sqlServerFqdn string = sql.outputs.sqlServerFqdn
-output sqlServerName string = sql.outputs.sqlServerName
-output databaseName string = sql.outputs.databaseName
+output sqlServerFqdn string = sqlServer.outputs.sqlServerFqdn
+output sqlServerName string = sqlServer.outputs.sqlServerName
+output tenantDatabases array = tenantDatabases.outputs.databaseNames
 output storageAccountName string = storage.outputs.storageAccountName
 output keyVaultUri string = keyVault.outputs.keyVaultUri
 output appInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
+output tenantCount int = tenantCount

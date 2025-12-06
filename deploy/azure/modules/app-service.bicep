@@ -24,6 +24,17 @@ param appInsightsInstrumentationKey string = ''
 @description('Application Insights Connection String')
 param appInsightsConnectionString string = ''
 
+@description('Number of tenants to configure (1-50)')
+@minValue(1)
+@maxValue(50)
+param tenantCount int = 1
+
+@description('FHIR version for all tenants')
+param fhirVersion string = '4.0'
+
+@description('SQL Server FQDN for tenant database connections')
+param sqlServerFqdn string
+
 // Create App Service Plan
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: '${appName}-plan'
@@ -61,7 +72,7 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
       defaultDocuments: []
 
       // ASP.NET Core configuration
-      appSettings: [
+      appSettings: concat([
         {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: environment
@@ -91,7 +102,72 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
           name: 'XDT_MicrosoftApplicationInsights_Mode'
           value: 'default'
         }
-      ]
+        // Tenant configuration
+        {
+          name: 'Tenants__Mode'
+          value: 'Isolated'
+        }
+        // System partition (Tenant 0) - reserved for transaction IDs
+        {
+          name: 'Tenants__Configurations__0__TenantId'
+          value: '0'
+        }
+        {
+          name: 'Tenants__Configurations__0__DisplayName'
+          value: 'System Partition (Reserved)'
+        }
+        {
+          name: 'Tenants__Configurations__0__FhirVersion'
+          value: fhirVersion
+        }
+        {
+          name: 'Tenants__Configurations__0__IsActive'
+          value: 'true'
+        }
+        {
+          name: 'Tenants__Configurations__0__IsSystemPartition'
+          value: 'true'
+        }
+        {
+          name: 'Tenants__Configurations__0__Storage__Type'
+          value: 'SqlEntityFramework'
+        }
+        {
+          name: 'Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant'
+          value: '1'
+        }
+      ],
+      // Generate tenant configurations dynamically (Tenant 1 through tenantCount)
+      flatten([for i in range(1, tenantCount): [
+        {
+          name: 'Tenants__Configurations__${i}__TenantId'
+          value: string(i)
+        }
+        {
+          name: 'Tenants__Configurations__${i}__DisplayName'
+          value: 'Tenant ${i}'
+        }
+        {
+          name: 'Tenants__Configurations__${i}__FhirVersion'
+          value: fhirVersion
+        }
+        {
+          name: 'Tenants__Configurations__${i}__IsActive'
+          value: 'true'
+        }
+        {
+          name: 'Tenants__Configurations__${i}__IsSystemPartition'
+          value: 'false'
+        }
+        {
+          name: 'Tenants__Configurations__${i}__Storage__Type'
+          value: 'SqlEntityFramework'
+        }
+        {
+          name: 'Tenants__Configurations__${i}__Storage__ConnectionString'
+          value: 'Server=tcp:${sqlServerFqdn},1433;Initial Catalog=FhirTenant${i};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;Authentication=Active Directory Managed Identity;'
+        }
+      ]]))
     }
   }
   tags: {

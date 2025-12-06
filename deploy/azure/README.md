@@ -7,11 +7,21 @@ This directory contains Azure Infrastructure as Code (IaC) templates for deployi
 The deployment uses **Bicep templates** or **ARM JSON templates** with **Managed Identity** for secure, passwordless authentication across all Azure services:
 
 - **App Service (Linux)**: Runs the FHIR Server Docker container with System-Assigned Managed Identity
-- **Azure SQL Database**: FHIR data storage with Azure AD-only authentication (no SQL passwords)
+- **Azure SQL Server**: Shared SQL server for all tenants
+- **Tenant Databases**: One database per tenant (1-50 tenants supported) with Azure AD-only authentication
 - **Blob Storage (2 accounts)**: FHIR data storage + DurableTask orchestration backend
 - **Application Insights**: Application monitoring and logging
 - **Log Analytics**: Centralized logging workspace
 - **Docker/GHCR Support**: Configured to pull Docker images from GitHub Container Registry (public, no credentials needed)
+
+## Multi-Tenant Support
+
+The deployment supports **1-50 tenants**, where each tenant gets its own isolated SQL database:
+
+- **Tenant 0**: System partition (reserved for transaction IDs) - shares database with Tenant 1
+- **Tenant 1-N**: Active tenants, each with their own database (`FhirTenant1`, `FhirTenant2`, etc.)
+- **Configuration**: Automatically injected into App Service as environment variables
+- **Authentication**: All tenants use Managed Identity for SQL access
 
 ## Deployment Options
 
@@ -153,7 +163,7 @@ az group create \
 
 ### 4. Deploy Infrastructure
 
-**Using ARM Template** (recommended for quick start):
+**Single-Tenant Deployment** (using ARM Template):
 
 ```bash
 az deployment group create \
@@ -162,13 +172,47 @@ az deployment group create \
   --parameters azuredeploy.parameters.json
 ```
 
-**OR using Bicep Modules** (for advanced scenarios):
+**Multi-Tenant Deployment** (using Bicep - recommended for 2+ tenants):
+
+Deploy with 10 tenants:
 
 ```bash
 az deployment group create \
   --resource-group ignixa-fhir-rg \
   --template-file main.bicep \
-  --parameters appName=ignixa-fhir-demo
+  --parameters appName=ignixa-fhir-demo tenantCount=10 fhirVersion=4.0
+```
+
+Deploy with 50 tenants (maximum supported):
+
+```bash
+az deployment group create \
+  --resource-group ignixa-fhir-rg \
+  --template-file main.bicep \
+  --parameters appName=ignixa-fhir-prod tenantCount=50 fhirVersion=4.0
+```
+
+**Using Parameters File**:
+
+Edit `azuredeploy.parameters.json` to set `tenantCount`:
+
+```json
+{
+  "parameters": {
+    "appName": { "value": "ignixa-fhir-demo" },
+    "tenantCount": { "value": 10 },
+    "fhirVersion": { "value": "4.0" }
+  }
+}
+```
+
+Then deploy:
+
+```bash
+az deployment group create \
+  --resource-group ignixa-fhir-rg \
+  --template-file main.bicep \
+  --parameters @azuredeploy.parameters.json
 ```
 
 **OR using PowerShell script**:
@@ -179,7 +223,7 @@ cd scripts
     -Location eastus
 ```
 
-Deployment takes approximately **5-10 minutes**.
+Deployment takes approximately **5-10 minutes** for single tenant, **10-20 minutes** for 50 tenants.
 
 ### 5. Configure GHCR Authentication
 
@@ -226,14 +270,23 @@ az webapp restart \
 
 ### 8. Application Auto-Initialization
 
-The FHIR Server **automatically initializes the entire database** on first run. No manual SQL scripts needed!
+The FHIR Server **automatically initializes all tenant databases** on first run. No manual SQL scripts needed!
 
 **What Gets Configured:**
-- ✅ **Tenant 1** (Default Production Tenant) - Configured to use the SQL database
-- ✅ **Database Schema** - Auto-created with all tables, indexes, and stored procedures
-- ✅ **Managed Identity** - Database user auto-created with permissions
+- ✅ **Tenant 0** (System Partition) - Shares database with Tenant 1, used for transaction IDs
+- ✅ **Tenant 1-N** (Production Tenants) - Each configured with their own SQL database
+- ✅ **Database Schema** - Auto-created with all tables, indexes, and stored procedures (per tenant database)
+- ✅ **Managed Identity** - Database user auto-created with permissions (per tenant database)
 - ✅ **DurableTask Backend** - Connected to Azure Storage with Managed Identity
 - ✅ **Export/Import Storage** - Connected to Azure Blob Storage with Managed Identity
+
+**Multi-Tenant Initialization:**
+
+For a deployment with `tenantCount=10`, the application automatically:
+1. Initializes schema in all 10 tenant databases (`FhirTenant1` through `FhirTenant10`)
+2. Creates managed identity users in each database
+3. Configures tenant routing for `/tenant/1/`, `/tenant/2/`, etc.
+4. System partition (Tenant 0) shares `FhirTenant1` database
 
 **Automatic Full Initialization** (On First Run):
 
@@ -295,11 +348,17 @@ APP_URL=$(az deployment group show \
   --query properties.outputs.appServiceUrl.value \
   --output tsv)
 
-# Test capability statement
+# Test capability statement (auto-detects single tenant or uses tenant 1)
 curl "$APP_URL/metadata"
 
-# Create a test Patient resource (Tenant 1)
-curl -X PUT "$APP_URL/Patient/test-123" \
+# Multi-tenant: Test Tenant 1
+curl "$APP_URL/tenant/1/metadata"
+
+# Multi-tenant: Test Tenant 2
+curl "$APP_URL/tenant/2/metadata"
+
+# Create a test Patient resource in Tenant 1
+curl -X PUT "$APP_URL/tenant/1/Patient/test-123" \
   -H "Content-Type: application/fhir+json" \
   -d '{
     "resourceType": "Patient",
@@ -307,17 +366,30 @@ curl -X PUT "$APP_URL/Patient/test-123" \
     "name": [{"family": "Doe", "given": ["John"]}]
   }'
 
-# Retrieve the Patient
-curl "$APP_URL/Patient/test-123"
+# Create a different Patient in Tenant 2 (isolated from Tenant 1)
+curl -X PUT "$APP_URL/tenant/2/Patient/test-456" \
+  -H "Content-Type: application/fhir+json" \
+  -d '{
+    "resourceType": "Patient",
+    "id": "test-456",
+    "name": [{"family": "Smith", "given": ["Jane"]}]
+  }'
 
-# Search for Patients
-curl "$APP_URL/Patient?name=Doe"
+# Retrieve the Patient from Tenant 1
+curl "$APP_URL/tenant/1/Patient/test-123"
+
+# Search in Tenant 1 (only returns Tenant 1's patients)
+curl "$APP_URL/tenant/1/Patient?name=Doe"
+
+# Search in Tenant 2 (only returns Tenant 2's patients)
+curl "$APP_URL/tenant/2/Patient?name=Smith"
 ```
 
 **Expected Results:**
-- `/metadata` returns CapabilityStatement (FHIR conformance)
-- `/Patient/test-123` creates and returns the Patient resource
-- Data is stored in Azure SQL Database (Tenant 1)
+- `/metadata` and `/tenant/{id}/metadata` return CapabilityStatement (FHIR conformance)
+- `/tenant/1/Patient/test-123` creates and returns the Patient resource
+- `/tenant/2/Patient/test-456` creates a separate Patient in Tenant 2's database
+- Data is isolated per tenant (Tenant 1 data stored in `FhirTenant1`, Tenant 2 in `FhirTenant2`)
 - All operations use Managed Identity (no credentials exposed)
 
 ## Deployment Outputs

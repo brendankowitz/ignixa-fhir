@@ -52,6 +52,9 @@
     },
     "enableTransactionWatcher": {
       "value": true
+    },
+    "tenantCount": {
+      "value": 3
     }
   }
 }
