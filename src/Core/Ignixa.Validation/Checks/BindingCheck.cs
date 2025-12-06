@@ -105,7 +105,7 @@ public class BindingCheck : IValidationCheck
         string location,
         ValidationSettings settings)
     {
-        // Determine element type by checking for known child properties
+        // Check for child properties that indicate complex structures
         var hasCoding = element.Children("coding").Any();
         var hasSystem = element.Children("system").Any();
         var hasCode = element.Children("code").Any();
@@ -115,19 +115,19 @@ public class BindingCheck : IValidationCheck
             // This is a CodeableConcept - validate each coding
             return await ValidateCodeableConcept(element, location, settings).ConfigureAwait(false);
         }
-        else if (hasSystem || hasCode)
+
+        if (hasSystem || hasCode)
         {
             // This is a Coding - validate it
             return await ValidateCoding(element, location, settings).ConfigureAwait(false);
         }
-        else
+
+        // Check for primitive code element (e.g., "status": "planned")
+        // Primitive codes have a direct value with no child properties
+        var codeValue = element.Value?.ToString();
+        if (!string.IsNullOrEmpty(codeValue))
         {
-            // This might be a primitive code element
-            var codeValue = element.Value?.ToString();
-            if (!string.IsNullOrEmpty(codeValue))
-            {
-                return await ValidateCode(null, codeValue, null, location, settings).ConfigureAwait(false);
-            }
+            return await ValidateCode(null, codeValue, null, location, settings).ConfigureAwait(false);
         }
 
         // Element structure doesn't match expected patterns

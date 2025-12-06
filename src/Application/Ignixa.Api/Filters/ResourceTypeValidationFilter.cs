@@ -95,6 +95,7 @@ public class ResourceTypeValidationFilter : IEndpointFilter
         }
 
         // Resource type is valid - continue to handler
+        // Handlers are responsible for validating body resourceType matches URL resourceType
         return await next(context);
     }
 }

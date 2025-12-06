@@ -36,12 +36,14 @@ public class StructureDefinitionSchemaBuilder
     /// <param name="typeDefinition">The type definition containing element metadata.</param>
     /// <param name="schema">The schema used to resolve type references and build nested schemas.</param>
     /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
+    /// <param name="validResourceTypes">Optional set of valid FHIR resource type names for resourceType validation. If provided, a ResourceTypeValidationCheck is added.</param>
     /// <returns>A ValidationSchema with checks derived from the type definition metadata.</returns>
     /// <exception cref="ArgumentNullException">Thrown if typeDefinition or schema is null.</exception>
     public ValidationSchema BuildSchema(
         IType typeDefinition,
         ISchema schema,
-        ITerminologyService? terminologyService = null)
+        ITerminologyService? terminologyService = null,
+        IReadOnlySet<string>? validResourceTypes = null)
     {
         ArgumentNullException.ThrowIfNull(typeDefinition);
         ArgumentNullException.ThrowIfNull(schema);
@@ -57,6 +59,13 @@ public class StructureDefinitionSchemaBuilder
         if (typeDefinition.Info.IsResource)
         {
             universalChecks.Add(new JsonStructureCheck());
+
+            // Add resourceType validation if valid resource types are provided
+            if (validResourceTypes is not null && validResourceTypes.Count > 0)
+            {
+                universalChecks.Add(new ResourceTypeValidationCheck(validResourceTypes));
+            }
+
             universalChecks.Add(new NarrativeCheck());
         }
 

@@ -197,7 +197,12 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 
     // SqlEntityFrameworkRepositoryFactory implements both interfaces, register with both names
     // Also register as itself for handlers that need direct access (e.g., PackageLoadedSearchParameterSyncHandler)
-    containerBuilder.RegisterType<SqlEntityFrameworkRepositoryFactory>()
+    containerBuilder.Register(c => new SqlEntityFrameworkRepositoryFactory(
+            c.Resolve<ITenantConfigurationStore>(),
+            c.Resolve<ILoggerFactory>(),
+            c.Resolve<RecyclableMemoryStreamManager>(),
+            c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
+            builder.Environment.EnvironmentName))
         .Named<IFhirRepositoryFactory>("SqlEf")
         .Named<ISearchServiceFactory>("SqlEf")
         .AsSelf()
@@ -718,14 +723,15 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
             var builder = c.Resolve<Ignixa.Validation.Schema.StructureDefinitionSchemaBuilder>();
+            var terminologyService = c.Resolve<Ignixa.Validation.Abstractions.ITerminologyService>();
 
             return (version, tenantId) =>
             {
                 // Get tenant-aware schema provider (includes custom resource types from loaded packages)
                 var schemaProvider = versionContext.GetSchemaProvider(version, tenantId);
 
-                // Pass ISchema directly to StructureDefinitionSchemaResolver (no longer needs adapter)
-                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(schemaProvider, builder);
+                // Pass ISchema and terminology service to StructureDefinitionSchemaResolver for binding validation
+                var resolver = new Ignixa.Validation.Schema.StructureDefinitionSchemaResolver(schemaProvider, builder, terminologyService);
                 return new Ignixa.Validation.Schema.CachedValidationSchemaResolver(resolver);
             };
         })

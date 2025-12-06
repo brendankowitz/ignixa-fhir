@@ -68,29 +68,10 @@ public class ValidateResourceHandler : IRequestHandler<ValidateResourceCommand, 
         var sourceNode = request.JsonNode.ToSourceNavigator();
         var issues = new List<object>();
 
-        // If no resource type is specified in the request, extract from the resource itself
-        var resourceType = request.ResourceType;
-        if (string.IsNullOrEmpty(resourceType))
-        {
-            // Try to extract from JsonNode directly
-            var resourceTypeValue = request.JsonNode.ResourceType;
-            if (!string.IsNullOrEmpty(resourceTypeValue))
-            {
-                resourceType = resourceTypeValue;
-            }
-        }
+        // Extract resourceType from request (either from body or URL parameter)
+        var resourceType = request.ResourceType ?? request.JsonNode.ResourceType;
 
-        if (string.IsNullOrEmpty(resourceType))
-        {
-            // No resource type found - return error
-            issues.Add(new
-            {
-                severity = "error",
-                code = "required",
-                diagnostics = "Resource must contain a 'resourceType' field"
-            });
-        }
-        else if (sourceNode is not null)
+        if (sourceNode is not null)
         {
             // Handle mode-specific validation logic (FHIR spec requirement)
             var normalizedMode = request.Mode?.ToUpperInvariant();

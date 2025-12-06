@@ -19,16 +19,22 @@ public class DatabaseInitializer
 
     private readonly FhirDbContext _context;
     private readonly ILogger<DatabaseInitializer> _logger;
+    private readonly string _environment;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DatabaseInitializer"/> class.
     /// </summary>
     /// <param name="context">The database context to initialize.</param>
     /// <param name="logger">The logger instance.</param>
-    public DatabaseInitializer(FhirDbContext context, ILogger<DatabaseInitializer> logger)
+    /// <param name="environment">The environment name (e.g., Development, Production).</param>
+    public DatabaseInitializer(
+        FhirDbContext context,
+        ILogger<DatabaseInitializer> logger,
+        string environment = "Production")
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _environment = environment;
     }
 
     /// <summary>
@@ -47,14 +53,51 @@ public class DatabaseInitializer
             _logger.LogInformation("Verifying database connection and schema...");
 
             // Check if database exists
-            var canConnect = await _context.Database.CanConnectAsync(cancellationToken);
-            if (!canConnect)
+            // Note: CanConnectAsync() throws exception if database doesn't exist, not just returns false
+            bool canConnect;
+            try
             {
-                _logger.LogError("Cannot connect to database.");
-                throw new InvalidOperationException("Database connection failed.");
+                canConnect = await _context.Database.CanConnectAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Database doesn't exist (common exceptions: SqlException with "Cannot open database", "Login failed")
+                _logger.LogDebug(ex, "Cannot connect to database (expected if database doesn't exist)");
+                canConnect = false;
             }
 
-            _logger.LogInformation("Database connection verified.");
+            if (!canConnect)
+            {
+                // In development mode, try to create the database
+                if (IsDevelopmentMode())
+                {
+                    _logger.LogWarning("Database does not exist. Creating empty database (development mode)...");
+                    try
+                    {
+                        // Create EMPTY database (no schema) by executing raw SQL
+                        // DO NOT use EnsureCreatedAsync() - it creates schema without migrations history
+                        // Schema will be created later by 97.sql script or migrations
+                        await CreateEmptyDatabaseAsync(cancellationToken);
+                        _logger.LogInformation("Empty database created successfully. Schema will be initialized next.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to create database in development mode.");
+                        throw new InvalidOperationException(
+                            "Failed to create database. Ensure SQL Server is running and connection string is correct.", ex);
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Cannot connect to database. Database creation is only supported in Development mode.");
+                    throw new InvalidOperationException(
+                        "Database connection failed. Please create the database manually or run in Development mode.");
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Database connection verified.");
+            }
 
             // Check if database is empty and needs schema creation
             var databaseIsEmpty = await IsDatabaseEmptyAsync(cancellationToken);
@@ -111,7 +154,7 @@ public class DatabaseInitializer
                 using var command = connection.CreateCommand();
                 command.CommandText = @"
                     SELECT CASE
-                        WHEN EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ClaimType')
+                        WHEN EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Resource')
                         THEN 0
                         ELSE 1
                     END AS IsEmpty";
@@ -249,5 +292,92 @@ public class DatabaseInitializer
     public async Task<IEnumerable<string>> GetPendingMigrationsAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Database.GetPendingMigrationsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Checks if running in development mode.
+    /// </summary>
+    private bool IsDevelopmentMode()
+    {
+        return string.Equals(_environment, "Development", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(_environment, "Debug", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Creates an empty database (no schema, no tables) using raw SQL.
+    /// This allows the 97.sql script and migrations to properly initialize the schema.
+    /// </summary>
+    /// <remarks>
+    /// We cannot use EnsureCreatedAsync() because it creates the schema from the EF model
+    /// without recording migrations in __EFMigrationsHistory, which causes conflicts when
+    /// MigrateAsync() tries to apply migrations later.
+    /// </remarks>
+    private async Task CreateEmptyDatabaseAsync(CancellationToken cancellationToken)
+    {
+        // Extract database name from connection string
+        var connectionString = _context.Database.GetConnectionString();
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            throw new InvalidOperationException("Connection string is null or empty");
+        }
+
+        var databaseName = ExtractDatabaseName(connectionString);
+        if (string.IsNullOrEmpty(databaseName))
+        {
+            throw new InvalidOperationException("Could not extract database name from connection string");
+        }
+
+        // Build connection string to master database (to create the new database)
+        var masterConnectionString = connectionString.Replace($"Database={databaseName}", "Database=master", StringComparison.OrdinalIgnoreCase)
+            .Replace($"Initial Catalog={databaseName}", "Initial Catalog=master", StringComparison.OrdinalIgnoreCase);
+
+        _logger.LogDebug("Creating empty database: {DatabaseName}", databaseName);
+
+        // Connect to master and create the database
+        var optionsBuilder = new DbContextOptionsBuilder<FhirDbContext>();
+        optionsBuilder.UseSqlServer(masterConnectionString);
+
+        using var masterContext = new FhirDbContext(optionsBuilder.Options);
+        var connection = masterContext.Database.GetDbConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        try
+        {
+            using var command = connection.CreateCommand();
+#pragma warning disable CA2100 // Database name is from connection string (app config), not user input. Brackets prevent SQL injection.
+            command.CommandText = $"CREATE DATABASE [{databaseName}]";
+#pragma warning restore CA2100
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            _logger.LogInformation("Empty database created: {DatabaseName}", databaseName);
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// Extracts the database name from a connection string.
+    /// </summary>
+    private string? ExtractDatabaseName(string connectionString)
+    {
+        // Handle both "Database=" and "Initial Catalog=" formats
+        var parts = connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var part in parts)
+        {
+            var kvp = part.Split('=', 2);
+            if (kvp.Length == 2)
+            {
+                var key = kvp[0].Trim();
+                if (key.Equals("Database", StringComparison.OrdinalIgnoreCase) ||
+                    key.Equals("Initial Catalog", StringComparison.OrdinalIgnoreCase))
+                {
+                    return kvp[1].Trim();
+                }
+            }
+        }
+
+        return null;
     }
 }

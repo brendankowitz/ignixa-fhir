@@ -4,7 +4,9 @@
 // </copyright>
 
 using Ignixa.Abstractions;
+using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
+using Ignixa.Validation.Services;
 
 namespace Ignixa.Validation.Schema;
 
@@ -16,19 +18,27 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
 {
     private readonly ISchema _schema;
     private readonly StructureDefinitionSchemaBuilder _builder;
+    private readonly IReadOnlySet<string>? _validResourceTypes;
+    private readonly ITerminologyService? _terminologyService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaResolver"/> class.
     /// </summary>
     /// <param name="schema">The schema provider.</param>
     /// <param name="builder">The schema builder (optional, creates default if null).</param>
+    /// <param name="terminologyService">Optional terminology service for binding validation. If null, binding checks are not created.</param>
     /// <exception cref="ArgumentNullException">Thrown if schema is null.</exception>
     public StructureDefinitionSchemaResolver(
         ISchema schema,
-        StructureDefinitionSchemaBuilder? builder = null)
+        StructureDefinitionSchemaBuilder? builder = null,
+        ITerminologyService? terminologyService = null)
     {
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _builder = builder ?? new StructureDefinitionSchemaBuilder();
+        _terminologyService = terminologyService ?? new InMemoryTerminologyService();
+
+        // Extract valid resource types if schema is an IFhirSchemaProvider
+        _validResourceTypes = (schema as IFhirSchemaProvider)?.ResourceTypeNames;
     }
 
     /// <summary>
@@ -58,8 +68,8 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
             return null;
         }
 
-        // Build schema using builder
-        return _builder.BuildSchema(typeDefinition, _schema);
+        // Build schema using builder, passing terminology service for binding validation and valid resource types
+        return _builder.BuildSchema(typeDefinition, _schema, terminologyService: _terminologyService, validResourceTypes: _validResourceTypes);
     }
 
     /// <summary>
