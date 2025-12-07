@@ -38,7 +38,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
     <!-- SQL Server -->
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.3" />
     <!-- ASP.NET Core -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
@@ -72,7 +72,7 @@
     <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
     <!-- Package Management (ADR-2532) -->
     <PackageVersion Include="SharpZipLib" Version="1.4.2" />
-    <PackageVersion Include="Polly" Version="8.4.1" />
+    <PackageVersion Include="Polly" Version="8.6.5" />
     <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
     <PackageVersion Include="System.Text.Json" Version="8.0.0" />
     <!-- SearchParameter Conflict Resolution -->
