@@ -13,7 +13,9 @@
   "timezone": "UTC",
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security"]
+    "labels": [
+      "security"
+    ]
   },
   "prConcurrentLimit": 2,
   "prCreation": "auto",
@@ -26,151 +28,250 @@
   "packageRules": [
     {
       "description": "Automatically approve and merge minor/patch updates for dependencies",
-      "matchUpdateTypes": ["minor", "patch"],
-      "matchDatasources": ["nuget"],
-      "excludePackagePatterns": [
-        "^Microsoft\\.AspNetCore",
-        "^Microsoft\\.EntityFrameworkCore",
-        "^Hl7\\.Fhir",
-        "^Firely\\.Fhir"
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchDatasources": [
+        "nuget"
       ],
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
       "minimumReleaseAge": "5 days",
-      "schedule": ["before 6am on Monday-Friday"]
+      "schedule": [
+        "before 6am on Monday-Friday"
+      ],
+      "matchPackageNames": [
+        "!/^Microsoft\\.AspNetCore/",
+        "!/^Microsoft\\.EntityFrameworkCore/",
+        "!/^Hl7\\.Fhir/",
+        "!/^Firely\\.Fhir/"
+      ]
     },
     {
       "description": "Group major version updates for careful review",
-      "matchUpdateTypes": ["major"],
-      "matchDatasources": ["nuget"],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "matchDatasources": [
+        "nuget"
+      ],
       "groupName": "major version updates",
-      "schedule": ["before 3am on Monday"],
-      "labels": ["semver-major"]
+      "schedule": [
+        "before 3am on Monday"
+      ],
+      "labels": [
+        "semver-major"
+      ]
     },
     {
       "description": "Handle Firely SDK updates (FHIR Standard Library)",
-      "matchPackagePatterns": ["^Hl7\\.Fhir", "^Firely\\.Fhir"],
       "groupName": "Firely FHIR SDK",
-      "schedule": ["before 3am on Monday"],
-      "labels": ["fhir-sdk"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
+      "labels": [
+        "fhir-sdk"
+      ],
       "automerge": false,
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "7 days",
+      "matchPackageNames": [
+        "/^Hl7\\.Fhir/",
+        "/^Firely\\.Fhir/"
+      ]
     },
     {
       "description": "Handle ASP.NET Core updates carefully",
-      "matchPackagePatterns": ["^Microsoft\\.AspNetCore"],
       "groupName": "ASP.NET Core",
-      "schedule": ["before 3am on Monday"],
-      "labels": ["aspnetcore"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
+      "labels": [
+        "aspnetcore"
+      ],
       "automerge": false,
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "7 days",
+      "matchPackageNames": [
+        "/^Microsoft\\.AspNetCore/"
+      ]
     },
     {
       "description": "Handle Entity Framework Core updates carefully",
-      "matchPackagePatterns": ["^Microsoft\\.EntityFrameworkCore"],
       "groupName": "Entity Framework Core",
-      "schedule": ["before 3am on Monday"],
-      "labels": ["ef-core"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
+      "labels": [
+        "ef-core"
+      ],
       "automerge": false,
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "7 days",
+      "matchPackageNames": [
+        "/^Microsoft\\.EntityFrameworkCore/"
+      ]
     },
     {
       "description": "Handle Azure SDK updates",
-      "matchPackagePatterns": ["^Azure\\.", "^Microsoft\\.Azure"],
       "groupName": "Azure SDK",
-      "schedule": ["before 3am on Monday"],
-      "labels": ["azure"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
+      "labels": [
+        "azure"
+      ],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "5 days"
+      "minimumReleaseAge": "5 days",
+      "matchPackageNames": [
+        "/^Azure\\./",
+        "/^Microsoft\\.Azure/"
+      ]
     },
     {
       "description": "Handle testing framework updates",
-      "matchPackagePatterns": ["^xunit", "^NSubstitute", "^FluentAssertions", "^Bogus"],
       "groupName": "Testing frameworks",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "5 days"
+      "minimumReleaseAge": "5 days",
+      "matchPackageNames": [
+        "/^xunit/",
+        "/^NSubstitute/",
+        "/^FluentAssertions/",
+        "/^Bogus/"
+      ]
     },
     {
       "description": "Handle Microsoft Extensions updates",
-      "matchPackagePatterns": ["^Microsoft\\.Extensions"],
       "groupName": "Microsoft Extensions",
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "5 days"
+      "minimumReleaseAge": "5 days",
+      "matchPackageNames": [
+        "/^Microsoft\\.Extensions/"
+      ]
     },
     {
       "description": "Handle DurableTask framework updates",
-      "matchPackagePatterns": ["^Microsoft\\.Azure\\.DurableTask"],
       "groupName": "DurableTask Framework",
-      "schedule": ["before 3am on Monday"],
-      "labels": ["durability"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
+      "labels": [
+        "durability"
+      ],
       "automerge": false,
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "7 days",
+      "matchPackageNames": [
+        "/^Microsoft\\.Azure\\.DurableTask/"
+      ]
     },
     {
       "description": "Handle SQL Server related updates",
-      "matchPackagePatterns": ["^Microsoft\\.Data\\.SqlClient$", "^Polly$"],
       "groupName": "Data Access & Resilience",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "5 days"
+      "minimumReleaseAge": "5 days",
+      "matchPackageNames": [
+        "/^Microsoft\\.Data\\.SqlClient$/",
+        "/^Polly$/"
+      ]
     },
     {
       "description": "Do not automerge pre-release versions",
-      "matchDatasources": ["nuget"],
+      "matchDatasources": [
+        "nuget"
+      ],
       "automerge": false,
       "rangeStrategy": "auto"
     },
     {
       "description": "Handle GitHub Actions updates",
-      "matchDatasources": ["github-actions"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchDatasources": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "groupName": "GitHub Actions",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": true,
       "automergeType": "pr",
       "minimumReleaseAge": "5 days"
     },
     {
       "description": "Major GitHub Actions updates require review",
-      "matchDatasources": ["github-actions"],
-      "matchUpdateTypes": ["major"],
+      "matchDatasources": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "groupName": "GitHub Actions (major)",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": false,
-      "labels": ["semver-major"]
+      "labels": [
+        "semver-major"
+      ]
     },
     {
       "description": "Handle Docker base image updates",
-      "matchDatasources": ["docker"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "groupName": "Docker base images",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": true,
       "automergeType": "pr",
       "minimumReleaseAge": "7 days"
     },
     {
       "description": "Major Docker updates require review",
-      "matchDatasources": ["docker"],
-      "matchUpdateTypes": ["major"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "groupName": "Docker base images (major)",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": false,
-      "labels": ["semver-major"]
+      "labels": [
+        "semver-major"
+      ]
     },
     {
       "description": "Handle Azure ARM template schema updates",
-      "matchDatasources": ["azure-pipelines-template-schema"],
+      "matchDatasources": [
+        "azure-pipelines-template-schema"
+      ],
       "groupName": "Azure ARM templates",
-      "schedule": ["before 3am on Monday"],
+      "schedule": [
+        "before 3am on Monday"
+      ],
       "automerge": false,
-      "labels": ["infrastructure"]
+      "labels": [
+        "infrastructure"
+      ]
     }
   ],
   "ignoreDeps": [],
@@ -178,5 +279,8 @@
   "nuget": {
     "rangeStrategy": "bump"
   },
-  "labels": ["renovate", "dependencies"]
+  "labels": [
+    "renovate",
+    "dependencies"
+  ]
 }
