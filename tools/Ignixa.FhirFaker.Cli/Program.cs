@@ -13,7 +13,7 @@ class Program
     static async Task<int> Main(string[] args)
     {
         // Create root command
-        var rootCommand = new RootCommand("FHIR Faker - Generate realistic FHIR test data");
+        var rootCommand = new RootCommand("FHIR Faker - Generate and model FHIR test data");
 
         // Add help command for discoverability
         rootCommand.AddCommand(HelpCommand.Create());

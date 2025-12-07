@@ -1,6 +1,6 @@
 # FHIR Faker CLI
 
-A command-line tool for generating realistic FHIR test data using the Ignixa FhirFaker library.
+A command-line tool for generating and modeling FHIR test data.
 
 ## Installation
 
