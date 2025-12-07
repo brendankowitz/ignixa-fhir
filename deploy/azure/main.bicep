@@ -20,8 +20,8 @@ param dockerRegistryUrl string = 'https://ghcr.io'
 @description('Docker image name (e.g., brendankowitz/ignixa-fhir)')
 param dockerImage string = 'brendankowitz/ignixa-fhir'
 
-@description('Docker image tag (e.g., latest, v1.0.0)')
-param dockerImageTag string = 'latest'
+@description('Docker image tag (e.g., release, 1.0.0)')
+param dockerImageTag string = 'release'
 
 @description('Docker registry username (leave empty for public registries)')
 param dockerRegistryUsername string = ''

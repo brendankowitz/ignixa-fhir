@@ -30,9 +30,9 @@
     },
     "dockerImageTag": {
       "type": "string",
-      "defaultValue": "latest",
+      "defaultValue": "release",
       "metadata": {
-        "description": "Docker image tag (e.g., latest, v1.0.0, main)"
+        "description": "Docker image tag (e.g., release, 1.0.0, main)"
       }
     },
     "dockerRegistryUsername": {
