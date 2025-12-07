@@ -75,12 +75,12 @@ ARG VCS_REF
 
 # OCI Labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="Ignixa FHIR Server" \
-      org.opencontainers.image.description="Modern FHIR R4/R4B/R5 server with advanced search capabilities" \
+      org.opencontainers.image.description="A blazing-fast multi-FHIR, multi-tenant, multi-database, data streaming reference implementation FHIR Server built in dotnet" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.vendor="Ignixa Contributors" \
-      org.opencontainers.image.source="https://github.com/brendankowitz/fhir-server-contrib" \
+      org.opencontainers.image.source="https://github.com/brendankowitz/ignixa-fhir" \
       org.opencontainers.image.licenses="MIT"
 
 # tdnf clean all - cleans all the repos used to obtain packages and reduces the size of our image.

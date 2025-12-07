@@ -77,6 +77,12 @@ Deploy the complete Ignixa FHIR Server infrastructure to Azure with one click:
 - Grant App Service Managed Identity the `AcrPull` role on your ACR
 - See [deployment guide](deploy/azure/README.md) for complete instructions
 
+## Container Image
+
+The Ignixa FHIR Server is available as a Docker container image on GitHub Container Registry:
+
+**GitHub Container Registry**: [ghcr.io/brendankowitz/ignixa-fhir](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir)
+
 ## Quick Start
 
 ### Prerequisites

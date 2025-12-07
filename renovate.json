@@ -17,7 +17,6 @@
   },
   "prConcurrentLimit": 2,
   "prCreation": "auto",
-  "semanticCommits": "enabled",
   "semanticCommitScope": "deps",
   "semanticCommitType": "chore",
   "commitMessagePrefix": "chore(deps): ",
@@ -38,7 +37,7 @@
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
-      "minimumReleaseAge": "3 days",
+      "minimumReleaseAge": "5 days",
       "schedule": ["before 6am on Monday-Friday"]
     },
     {
@@ -84,7 +83,7 @@
       "labels": ["azure"],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "3 days"
+      "minimumReleaseAge": "5 days"
     },
     {
       "description": "Handle testing framework updates",
@@ -93,7 +92,7 @@
       "schedule": ["before 3am on Monday"],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "3 days"
+      "minimumReleaseAge": "5 days"
     },
     {
       "description": "Handle Microsoft Extensions updates",
@@ -101,7 +100,7 @@
       "groupName": "Microsoft Extensions",
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "3 days"
+      "minimumReleaseAge": "5 days"
     },
     {
       "description": "Handle DurableTask framework updates",
@@ -114,12 +113,12 @@
     },
     {
       "description": "Handle SQL Server related updates",
-      "matchPackagePatterns": ["^Microsoft\\.Data\\.SqlClient", "Polly"],
+      "matchPackagePatterns": ["^Microsoft\\.Data\\.SqlClient$", "^Polly$"],
       "groupName": "Data Access & Resilience",
       "schedule": ["before 3am on Monday"],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "3 days"
+      "minimumReleaseAge": "5 days"
     },
     {
       "description": "Pre-release versions: enable for SDK and preview packages",
@@ -130,7 +129,7 @@
     {
       "description": "Do not automerge pre-release versions",
       "matchDatasources": ["nuget"],
-      "matchCurrentVersion": "/.*-(alpha|beta|rc|preview).*/i",
+      "matchCurrentVersion": "^.*-(alpha|beta|rc|preview).*$",
       "automerge": false
     },
     {
@@ -138,22 +137,15 @@
       "matchDatasources": ["nuget"],
       "matchVulnerabilityIDs": ["*"],
       "schedule": ["at any time"],
-      "automerge": true,
-      "automergeType": "pr",
+      "automerge": false,
       "prPriority": 10
     }
   ],
   "ignoreDeps": [],
-  "postUpdateOptions": [
-    "gomodTidy",
-    "npmDedupe",
-    "yarnDedupeHighest"
-  ],
   "nuget": {
     "rangeStrategy": "bump"
   },
   "labels": ["renovate", "dependencies"],
-  "reviewers": ["@github-copilot"],
   "statusCheckNames": [
     "build-and-unit-tests",
     "e2e-tests-sql",
