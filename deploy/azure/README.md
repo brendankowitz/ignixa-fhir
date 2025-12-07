@@ -208,7 +208,7 @@ The Docker image is automatically pulled from GitHub Container Registry during d
 ```
 
 The public image is built and pushed automatically by GitHub Actions on every commit. You can find the latest image at:
-- **Repository**: https://github.com/brendankowitz/fhir-server-contrib
+- **Repository**: https://github.com/brendankowitz/ignixa-fhir
 - **Image**: `ghcr.io/brendankowitz/ignixa-fhir`
 - **Available tags**: `latest`, `release`, version tags (e.g., `v1.0.0`)
 

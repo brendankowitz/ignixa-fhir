@@ -73,7 +73,7 @@ You can test if secrets are properly configured by:
 
 3. **Docker Registry (GHCR)**:
    - Docker images are automatically pushed on every commit
-   - Verify at: https://github.com/brendankowitz/fhir-server-contrib/pkgs/container/ignixa-fhir
+   - Verify at: https://github.com/brendankowitz/ignixa-fhir/pkgs/container/ignixa-fhir
    - Images should appear with tags: `main`, `latest`, `release`, version tags
 
 ## Publishing a Release
