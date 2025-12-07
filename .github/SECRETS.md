@@ -2,6 +2,23 @@
 
 This document describes the secrets required for GitHub Actions workflows to function properly.
 
+## Workflow Overview
+
+The NuGet publishing process uses a **two-step approach**:
+
+1. **CI Workflow** (`ci.yml`): Automatically builds and packs NuGet packages on every push to main
+   - Uploads packages as GitHub artifacts
+   - Does NOT publish to NuGet.org (manual control)
+
+2. **Publish Release Workflow** (`publish-release.yml`): Manual trigger for releasing
+   - Downloads latest artifacts from CI
+   - Publishes packages to NuGet.org
+   - Creates Git tags
+   - Generates AI-powered release notes
+   - Creates GitHub releases
+
+This separation allows you to build on every commit but release only when intentional.
+
 ## Required Secrets
 
 ### NuGet Publishing
@@ -47,13 +64,29 @@ These are only needed if you enable the `build-and-push-container` job with Azur
 
 You can test if secrets are properly configured by:
 
-1. **NuGet API Key**: Trigger the CI workflow on main branch with NuGet changes
-   - Monitor the `publish-to-nuget` job logs
+1. **NuGet API Key**:
+   - Trigger the **Publish Release** workflow manually with a test version
+   - Monitor the `Publish to NuGet.org` step logs
    - Should complete without authentication errors
 
-2. **Gemini API Key**: Trigger a release manually or via the AI Release Notes workflow
-   - Monitor the `generate-notes` job logs
+2. **Gemini API Key**:
+   - Trigger the **Publish Release** workflow manually
+   - Monitor the `Generate Smart Release Notes` step logs
    - Should complete without API authentication errors
+
+## Publishing a Release
+
+1. Go to **Actions** → **Publish Release** workflow
+2. Click **Run workflow**
+3. Enter the release version (e.g., `v1.2.3`)
+4. Click **Run workflow**
+
+The workflow will:
+- Download the latest NuGet packages from CI
+- Publish them to NuGet.org
+- Create a Git tag
+- Generate AI release notes using Gemini
+- Create a GitHub release with the generated notes
 
 ## Security Notes
 

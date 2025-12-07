@@ -1,0 +1,201 @@
+name: 🚀 Publish Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  promote-release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for release notes
+
+      # --- 1. Get Latest Build Artifacts from CI ---
+      - name: Download Latest NuGet Artifacts
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          name: nuget-packages
+          path: ./nuget-packages
+          workflow_conclusion: success
+          branch: main
+
+      # --- 1b. Extract version and commit SHA from artifact ---
+      - name: Read Release Version and Commit SHA
+        id: version
+        run: |
+          RELEASE_VERSION=$(cat ./nuget-packages/version.txt)
+          COMMIT_SHA=$(cat ./nuget-packages/commit-sha.txt)
+          echo "release_version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "Release Version: $RELEASE_VERSION"
+          echo "Commit SHA: $COMMIT_SHA"
+
+      # --- 2. Promote Docker Image ---
+      - name: Promote Docker Image to Release
+        env:
+          IMAGE_REGISTRY: ignixa.azurecr.io
+          IMAGE_NAME: ignixa-fhir
+        run: |
+          # Extract short SHA for tag lookup (format: main-{short-sha})
+          SHORT_SHA=$(echo "${{ steps.version.outputs.commit_sha }}" | cut -c1-7)
+          SOURCE_TAG="main-${SHORT_SHA}"
+          RELEASE_TAG="release"
+          VERSION_TAG="${{ steps.version.outputs.release_version }}"
+
+          IMAGE_URL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          echo "Promoting Docker image..."
+          echo "Source: ${IMAGE_URL}:${SOURCE_TAG}"
+          echo "To: ${IMAGE_URL}:${RELEASE_TAG}"
+          echo "To: ${IMAGE_URL}:${VERSION_TAG}"
+
+          # Pull the image
+          docker pull "${IMAGE_URL}:${SOURCE_TAG}"
+
+          # Retag with release and version
+          docker tag "${IMAGE_URL}:${SOURCE_TAG}" "${IMAGE_URL}:${RELEASE_TAG}"
+          docker tag "${IMAGE_URL}:${SOURCE_TAG}" "${IMAGE_URL}:${VERSION_TAG}"
+
+          # Push the new tags
+          docker push "${IMAGE_URL}:${RELEASE_TAG}"
+          docker push "${IMAGE_URL}:${VERSION_TAG}"
+
+          echo "✅ Docker image promoted successfully"
+
+      # --- 4. Publish to NuGet ---
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish to NuGet.org
+        run: |
+          dotnet nuget push ./nuget-packages/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+      # --- 5. Create Git Tag ---
+      - name: Create Git Tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag ${{ steps.version.outputs.release_version }}
+          git push origin ${{ steps.version.outputs.release_version }}
+
+      # --- 6. Generate AI Release Notes ---
+      - name: Generate Smart Release Notes
+        id: ai_notes
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          # Use the tag we just created
+          CURRENT_TAG=${{ steps.version.outputs.release_version }}
+          PREV_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG"^ 2>/dev/null || echo "")
+
+          echo "Generating release notes for $CURRENT_TAG (comparing to $PREV_TAG)..."
+
+          # Get Commits
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log "$CURRENT_TAG" --pretty=format:"HASH:%h | AUTHOR:%an | SUBJECT:%s | BODY:%b")
+          else
+            COMMITS=$(git log "$PREV_TAG..$CURRENT_TAG" --pretty=format:"HASH:%h | AUTHOR:%an | SUBJECT:%s | BODY:%b")
+          fi
+
+          # Define the System Prompt
+          read -r -d '' SYSTEM_PROMPT << EOM
+          You are a chaotic good Release Manager for an Open Source Project.
+
+          TASK:
+          Create release notes from the provided commit log for version ${{ steps.version.outputs.release_version }}.
+
+          FORMATTING RULES:
+          1. **Categorize**: Group changes into standard headers like '🚀 Features', '🐛 Bug Fixes', '🔧 Chore/Maintenance'.
+          2. **Links**: Whenever you see a reference to a PR or Issue (like #123), convert it to a Markdown link using this base URL: $REPO_URL/issues/NUMBER (e.g., [#123]($REPO_URL/issues/123)).
+          3. **Style**: Be concise but descriptive. Ignore merge commits unless they provide unique context.
+
+          CONTRIBUTORS SECTION:
+          Create a main heading "## Contributors". Underneath it, create exactly two sub-sections:
+
+          1. **### 🏆 The Humans**
+             - List all unique human authors.
+
+          2. **### [Insert Creative Title Here]** (For Bots)
+             - Identify bot authors (e.g., dependabot, renovate, actions-user, vercel).
+             - **THEME**: Pick a random theme for this specific release (e.g., Sci-Fi, Noir, Fantasy, Corporate Satire, Western, Cyberpunk).
+             - **TITLE**: Invent a funny sub-heading title based on that theme.
+             - **DESCRIPTIONS**: Write a 1-sentence description for each bot fitting that theme.
+             - *If no bots are found in the log, omit this sub-section entirely.*
+
+          COMMITS TO PROCESS:
+          $COMMITS
+          EOM
+
+          # Call Gemini API
+          jq -n --arg prompt "$SYSTEM_PROMPT" '{ contents: [{ parts: [{ text: $prompt }] }] }' > payload.json
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
+            -d @payload.json \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" > response.json
+
+          # Extract and validate response
+          GENERATED_NOTES=$(jq -r '.candidates[0].content.parts[0].text' response.json)
+
+          if [ "$GENERATED_NOTES" == "null" ] || [ -z "$GENERATED_NOTES" ]; then
+            echo "❌ Error: Gemini API returned null or failed."
+            cat response.json
+            exit 1
+          fi
+
+          # Output to file for the next step
+          echo "$GENERATED_NOTES" > release_notes.md
+          echo "✅ Release notes generated successfully"
+
+      # --- 7. Create GitHub Release ---
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.release_version }}
+          name: Release ${{ steps.version.outputs.release_version }}
+          body_path: release_notes.md
+          files: ./nuget-packages/*.nupkg
+          draft: false
+          prerelease: false
+
+      - name: Release Summary
+        run: |
+          echo "## ✅ Release Published Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.release_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Published Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for pkg in ./nuget-packages/*.nupkg; do
+            echo "- \`$(basename "$pkg")\`" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Image" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ignixa.azurecr.io/ignixa-fhir:release\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ignixa.azurecr.io/ignixa-fhir:${{ steps.version.outputs.release_version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Actions" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Promoted Docker image to release" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Published to NuGet.org" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Created Git tag" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Generated AI release notes" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Created GitHub release" >> $GITHUB_STEP_SUMMARY

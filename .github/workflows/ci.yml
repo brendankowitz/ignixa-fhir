@@ -290,9 +290,6 @@ jobs:
     if: |
       success() &&
       (needs.check-nuget-changes.outputs.should-publish == 'true' || github.event_name == 'workflow_dispatch')
-    outputs:
-      version: ${{ steps.gitversion.outputs.nuGetVersion }}
-      semver: ${{ steps.gitversion.outputs.semVer }}
 
     steps:
       - name: Checkout code
@@ -347,97 +344,39 @@ jobs:
       - name: List packages
         run: ls -lh ./packages/
 
+      - name: Save version and commit SHA for release
+        run: |
+          echo "v${{ steps.gitversion.outputs.semVer }}" > ./packages/version.txt
+          echo "${{ github.sha }}" > ./packages/commit-sha.txt
+          echo "Version: $(cat ./packages/version.txt)"
+          echo "Commit SHA: $(cat ./packages/commit-sha.txt)"
+
       - name: Upload packages as artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nuget-packages
-          path: ./packages/*.nupkg
+          path: |
+            ./packages/*.nupkg
+            ./packages/version.txt
+            ./packages/commit-sha.txt
           retention-days: 30
 
-  publish-to-nuget:
-    name: Publish to NuGet.org
-    runs-on: ubuntu-latest
-    needs: [ pack-nuget-packages ]
-    if: github.ref == 'refs/heads/main'
-    outputs:
-      version: ${{ needs.pack-nuget-packages.outputs.version }}
-      semver: ${{ needs.pack-nuget-packages.outputs.semver }}
-
-    steps:
-      - name: Download packages
-        uses: actions/download-artifact@v4
-        with:
-          name: nuget-packages
-          path: ./packages
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.0.x'
-
-      - name: Publish to NuGet.org
+      - name: Package summary
         run: |
-          dotnet nuget push "./packages/*.nupkg" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-
-      - name: Create release summary
-        run: |
-          echo "## 📦 NuGet Packages Published" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 NuGet Packages Ready for Release" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following packages have been published to NuGet.org:" >> $GITHUB_STEP_SUMMARY
+          echo "The following packages are ready to be published:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           for pkg in ./packages/*.nupkg; do
             basename "$pkg" >> $GITHUB_STEP_SUMMARY
           done
-
-  create-github-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [ publish-to-nuget ]
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.publish-to-nuget.outputs.version }}
-          SEMVER: ${{ needs.publish-to-nuget.outputs.semver }}
-        run: |
-          # Check if release already exists
-          if gh release view "v$SEMVER" 2>/dev/null; then
-            echo "✅ Release v$SEMVER already exists. AI release notes workflow will update it."
-          else
-            echo "Creating release v$SEMVER..."
-            # Create a release with a placeholder note
-            # The ai-release-notes workflow will automatically trigger and update it
-            gh release create "v$SEMVER" \
-              --title "Release v$SEMVER" \
-              --notes "📦 NuGet packages published. AI-generating release notes..." \
-              --target ${{ github.sha }}
-            echo "✅ Release v$SEMVER created successfully"
-          fi
-
-      - name: Release created notification
-        run: |
-          echo "## 🚀 GitHub Release Created" >> $GITHUB_STEP_SUMMARY
-          echo "Version: v${{ needs.publish-to-nuget.outputs.semver }}" >> $GITHUB_STEP_SUMMARY
-          echo "AI release notes will be generated automatically." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Use the **Publish Release** workflow to publish and create a GitHub release." >> $GITHUB_STEP_SUMMARY
 
   notify-success:
     name: Notify Success
     runs-on: ubuntu-latest
-    needs: [ build-and-unit-tests, e2e-tests-sql, check-docker-changes, build-and-push-container, pack-nuget-packages, publish-to-nuget, create-github-release ]
+    needs: [ build-and-unit-tests, e2e-tests-sql, check-docker-changes, build-and-push-container, pack-nuget-packages ]
     if: |
       always() &&
       needs.build-and-unit-tests.result == 'success' &&
@@ -445,11 +384,7 @@ jobs:
       (needs.build-and-push-container.result == 'success' ||
        needs.build-and-push-container.result == 'skipped') &&
       (needs.pack-nuget-packages.result == 'success' ||
-       needs.pack-nuget-packages.result == 'skipped') &&
-      (needs.publish-to-nuget.result == 'success' ||
-       needs.publish-to-nuget.result == 'skipped') &&
-      (needs.create-github-release.result == 'success' ||
-       needs.create-github-release.result == 'skipped')
+       needs.pack-nuget-packages.result == 'skipped')
 
     steps:
       - name: Create success status
@@ -465,7 +400,7 @@ jobs:
   notify-failure:
     name: Notify Failure
     runs-on: ubuntu-latest
-    needs: [ build-and-unit-tests, e2e-tests-sql, check-docker-changes, build-and-push-container, pack-nuget-packages, publish-to-nuget, create-github-release ]
+    needs: [ build-and-unit-tests, e2e-tests-sql, check-docker-changes, build-and-push-container, pack-nuget-packages ]
     if: failure()
 
     steps:
@@ -476,6 +411,4 @@ jobs:
           echo "E2E tests: ${{ needs.e2e-tests-sql.result }}"
           echo "Docker build: ${{ needs.build-and-push-container.result }}"
           echo "NuGet packing: ${{ needs.pack-nuget-packages.result }}"
-          echo "NuGet publish: ${{ needs.publish-to-nuget.result }}"
-          echo "GitHub release: ${{ needs.create-github-release.result }}"
           exit 1
