@@ -34,12 +34,34 @@ jobs:
         run: |
           RELEASE_VERSION=$(cat ./nuget-packages/version.txt)
           COMMIT_SHA=$(cat ./nuget-packages/commit-sha.txt)
+
+          # Validate files were read successfully
+          if [ -z "$RELEASE_VERSION" ]; then
+            echo "❌ Error: Failed to read release version from artifact"
+            exit 1
+          fi
+          if [ -z "$COMMIT_SHA" ]; then
+            echo "❌ Error: Failed to read commit SHA from artifact"
+            exit 1
+          fi
+
           echo "release_version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
           echo "Release Version: $RELEASE_VERSION"
           echo "Commit SHA: $COMMIT_SHA"
 
-      # --- 2. Promote Docker Image ---
+      # --- 2. Authenticate with Azure ---
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name ignixa
+
+      # --- 3. Promote Docker Image ---
       - name: Promote Docker Image to Release
         env:
           IMAGE_REGISTRY: ignixa.azurecr.io

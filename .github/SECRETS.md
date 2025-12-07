@@ -78,12 +78,13 @@ You can test if secrets are properly configured by:
 
 1. Go to **Actions** → **Publish Release** workflow
 2. Click **Run workflow**
-3. Enter the release version (e.g., `v1.2.3`)
-4. Click **Run workflow**
+3. Click **Run workflow** (no inputs needed - uses latest CI artifacts)
 
 The workflow will:
 - Download the latest NuGet packages from CI
-- Publish them to NuGet.org
+- Automatically detect version from CI artifacts (no manual input required)
+- Promote Docker image to release and version-specific tags
+- Publish packages to NuGet.org
 - Create a Git tag
 - Generate AI release notes using Gemini
 - Create a GitHub release with the generated notes
