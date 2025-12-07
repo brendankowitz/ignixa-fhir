@@ -15,8 +15,8 @@
     <!-- Messaging -->
     <PackageVersion Include="Medino" Version="2.0.7" />
     <!-- DurableTask Framework -->
-    <PackageVersion Include="Microsoft.Azure.DurableTask.Core" Version="3.5.1" />
-    <PackageVersion Include="Microsoft.Azure.DurableTask.AzureStorage" Version="2.6.1" />
+    <PackageVersion Include="Microsoft.Azure.DurableTask.Core" Version="3.6.0" />
+    <PackageVersion Include="Microsoft.Azure.DurableTask.AzureStorage" Version="2.7.0" />
     <!-- Azure Storage -->
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.21.2" />
     <PackageVersion Include="Azure.Identity" Version="1.11.4" />
