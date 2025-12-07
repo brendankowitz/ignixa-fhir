@@ -5,11 +5,11 @@
   <ItemGroup>
     <!-- Firely SDK 6.0.0 final (released October 14, 2025) -->
     <PackageVersion Include="Fhir.Metrics" Version="1.3.1" />
-    <PackageVersion Include="Hl7.Fhir.Base" Version="6.0.0" />
-    <PackageVersion Include="Hl7.Fhir.R4" Version="6.0.0" />
-    <PackageVersion Include="Hl7.Fhir.R4B" Version="6.0.0" />
-    <PackageVersion Include="Hl7.Fhir.R5" Version="6.0.0" />
-    <PackageVersion Include="Hl7.Fhir.STU3" Version="6.0.0" />
+    <PackageVersion Include="Hl7.Fhir.Base" Version="6.0.1" />
+    <PackageVersion Include="Hl7.Fhir.R4" Version="6.0.1" />
+    <PackageVersion Include="Hl7.Fhir.R4B" Version="6.0.1" />
+    <PackageVersion Include="Hl7.Fhir.R5" Version="6.0.1" />
+    <PackageVersion Include="Hl7.Fhir.STU3" Version="6.0.1" />
     <PackageVersion Include="Firely.Fhir.Packages" Version="4.9.1" />
     <!-- Legacy 4.3.0 packages removed - SDK 6.0 has unified package structure -->
     <!-- Messaging -->
