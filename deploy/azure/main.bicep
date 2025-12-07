@@ -14,34 +14,51 @@ param location string = resourceGroup().location
 @description('FHIR server application name (must be globally unique for App Service)')
 param appName string
 
-@description('Azure SQL database admin email (AAD user or group)')
-param sqlAdminEmail string = ''
+@description('Docker registry URL (login server, e.g., https://ghcr.io)')
+param dockerRegistryUrl string = 'https://ghcr.io'
 
-@description('Number of tenants to provision (1-50). Each tenant gets a separate database.')
-@minValue(1)
-@maxValue(50)
+@description('Docker image name (e.g., brendankowitz/ignixa-fhir)')
+param dockerImage string = 'brendankowitz/ignixa-fhir'
+
+@description('Docker image tag (e.g., latest, v1.0.0)')
+param dockerImageTag string = 'latest'
+
+@description('Docker registry username (leave empty for public registries)')
+param dockerRegistryUsername string = ''
+
+@description('Docker registry password (leave empty for public registries)')
+@secure()
+param dockerRegistryPassword string = ''
+
+@description('App Service Plan SKU (default: B2 for basic production)')
+param appServicePlanSku string = 'B2'
+
+@description('App Service Plan Tier')
+param appServicePlanTier string = 'Basic'
+
+@description('Number of tenant databases to create (1-50)')
 param tenantCount int = 1
 
-@description('FHIR version for all tenants')
+@description('FHIR version for all tenants (e.g., 4.0, 5.0)')
 param fhirVersion string = '4.0'
 
-// Deploy App Service (with System-Assigned Managed Identity)
-module appService './modules/app-service.bicep' = {
-  name: 'app-service-deployment'
+// Deploy monitoring (Application Insights + Log Analytics) - needed early for app service
+module monitoring './modules/monitoring.bicep' = {
+  name: 'monitoring-deployment'
   params: {
-    appName: appName
+    appInsightsName: '${appName}-insights'
+    location: location
+  }
+}
+
+// Deploy User-Assigned Managed Identity for SQL Server authentication (critical for webapp to talk to DB)
+module sqlAuthIdentity './modules/user-assigned-identity.bicep' = {
+  name: 'sql-auth-identity-deployment'
+  params: {
+    identityName: '${appName}-sql-auth'
     location: location
     environment: environment
-    tenantCount: tenantCount
-    fhirVersion: fhirVersion
-    sqlServerFqdn: sqlServer.outputs.sqlServerFqdn
-    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
-  dependsOn: [
-    sqlServer
-    tenantDatabases
-    monitoring
-  ]
 }
 
 // Deploy SQL Server (single server for all tenant databases)
@@ -50,7 +67,9 @@ module sqlServer './modules/sql-server.bicep' = {
   params: {
     sqlServerName: '${appName}-sql'
     location: location
-    disableLocalAuth: true
+    sqlAdminPrincipalId: sqlAuthIdentity.outputs.principalId
+    sqlAdminName: sqlAuthIdentity.outputs.identityName
+    tenantId: subscription().tenantId
   }
 }
 
@@ -63,9 +82,6 @@ module tenantDatabases './modules/tenant-databases.bicep' = {
     tenantCount: tenantCount
     environment: environment
   }
-  dependsOn: [
-    sqlServer
-  ]
 }
 
 // Deploy Blob Storage (with Managed Identity access only)
@@ -74,8 +90,33 @@ module storage './modules/storage.bicep' = {
   params: {
     storageAccountName: replace('${appName}storage', '-', '')
     location: location
-    principalId: appService.outputs.managedIdentityPrincipalId
+    principalId: '' // Will be assigned after app service is created
     disableLocalAuth: true
+  }
+}
+
+// Deploy App Service (Linux container running Ignixa)
+// UAMI is critical for webapp to authenticate to SQL Server using AAD
+module appService './modules/app-service.bicep' = {
+  name: 'app-service-deployment'
+  params: {
+    appName: appName
+    location: location
+    environment: environment
+    appServicePlanSku: appServicePlanSku
+    appServicePlanTier: appServicePlanTier
+    dockerRegistryUrl: dockerRegistryUrl
+    dockerImage: dockerImage
+    dockerImageTag: dockerImageTag
+    dockerRegistryUsername: dockerRegistryUsername
+    dockerRegistryPassword: dockerRegistryPassword
+    appInsightsInstrumentationKey: monitoring.outputs.appInsightsInstrumentationKey
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    uamiResourceId: sqlAuthIdentity.outputs.identityResourceId
+    uamiClientId: sqlAuthIdentity.outputs.clientId
+    sqlServerFqdn: sqlServer.outputs.sqlServerFqdn
+    tenantCount: tenantCount
+    fhirVersion: fhirVersion
   }
 }
 
@@ -90,15 +131,6 @@ module keyVault './modules/key-vault.bicep' = {
   }
 }
 
-// Deploy monitoring (Application Insights + Log Analytics)
-module monitoring './modules/monitoring.bicep' = {
-  name: 'monitoring-deployment'
-  params: {
-    appInsightsName: '${appName}-insights'
-    location: location
-  }
-}
-
 // Output key information for next steps
 output appServiceUrl string = appService.outputs.appServiceUrl
 output appServiceName string = appService.outputs.appServiceName
@@ -109,4 +141,3 @@ output tenantDatabases array = tenantDatabases.outputs.databaseNames
 output storageAccountName string = storage.outputs.storageAccountName
 output keyVaultUri string = keyVault.outputs.keyVaultUri
 output appInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
-output tenantCount int = tenantCount

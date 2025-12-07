@@ -54,9 +54,9 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// Create alert rule for high CPU usage
-resource highCpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
-  name: '${appInsightsName}-high-cpu'
+// Create alert rule for high request duration
+resource highRequestDurationAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${appInsightsName}-high-duration'
   location: 'global'
   properties: {
     enabled: true
@@ -65,14 +65,15 @@ resource highCpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
     ]
     evaluationFrequency: 'PT5M'
     windowSize: 'PT15M'
+    severity: 2
     criteria: {
       'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
       allOf: [
         {
-          name: 'Cpu Percentage'
-          metricName: 'ProcessorTime'
+          name: 'Request Duration'
+          metricName: 'requests/duration'
           operator: 'GreaterThan'
-          threshold: 80
+          threshold: 2000
           timeAggregation: 'Average'
           criterionType: 'StaticThresholdCriterion'
         }
@@ -85,9 +86,9 @@ resource highCpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
-// Create alert rule for failed requests
-resource failedRequestsAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
-  name: '${appInsightsName}-failed-requests'
+// Create alert rule for high exception rate
+resource highExceptionRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${appInsightsName}-high-exceptions'
   location: 'global'
   properties: {
     enabled: true
@@ -96,12 +97,13 @@ resource failedRequestsAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
     ]
     evaluationFrequency: 'PT5M'
     windowSize: 'PT15M'
+    severity: 3
     criteria: {
       'odata.type': 'Microsoft.Azure.Monitor.MultipleResourceMultipleMetricCriteria'
       allOf: [
         {
-          name: 'Failed Requests Count'
-          metricName: 'failedRequests'
+          name: 'Exception Count'
+          metricName: 'exceptions/server'
           operator: 'GreaterThan'
           threshold: 10
           timeAggregation: 'Count'

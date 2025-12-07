@@ -33,7 +33,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
     accessTier: 'Hot'
     allowBlobPublicAccess: false
     allowSharedKeyAccess: !disableLocalAuth // Disable shared key (local auth)
-    httpsTrafficOnlyEnabled: true
+    supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     publicNetworkAccess: 'Enabled'
     networkAcls: {

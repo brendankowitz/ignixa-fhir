@@ -535,15 +535,39 @@ var blobClient = new BlobContainerClient(
 
 ### Network Security
 
-Current deployment uses:
-- Public network access enabled (can be restricted with firewall rules)
-- Bypass Azure Services for SQL and Storage
-- Adjust network ACLs as needed for production
+**Default Configuration**:
+- Network Security Group (NSG) in **listening/audit mode** (enabled by default)
+- Virtual Network with App Service subnet and service endpoints
+- NSG Flow Logs enabled (30-day retention) for monitoring traffic
+- SQL Server firewall rules (allows Azure Services to bypass)
+- Storage Account and Key Vault network ACLs
+- Public network access enabled
 
-**To restrict further**:
-1. Deploy Virtual Network (VNet)
-2. Create Private Endpoints for SQL, Storage, Key Vault
-3. Update network ACLs to restrict to VNet
+**NSG Listening Mode (Audit)**:
+- All traffic is **allowed** but **logged and monitored**
+- Useful for understanding traffic patterns before implementing restrictions
+- Flow logs available in Log Analytics Workspace for analysis
+- No traffic is blocked - purely observational
+
+**To disable NSG** (if not needed):
+```bash
+az deployment group create \
+  --resource-group ignixa-fhir-rg \
+  --template-file main.bicep \
+  --parameters appName=ignixa-fhir-demo enableNetworkSecurity=false
+```
+
+**To transition from listening mode to enforcement**:
+1. Review NSG Flow Logs in Log Analytics for 1-2 weeks
+2. Identify necessary inbound/outbound rules
+3. Update NSG security rules from `Allow` with audit to `Deny` with enforcement
+4. Test thoroughly before moving to production
+
+**To restrict further with Private Endpoints**:
+1. Create Private Endpoints for SQL, Storage, Key Vault
+2. Update NSG rules to restrict public access
+3. Disable public network access on resources
+4. Update network ACLs to restrict to VNet
 
 ## Monitoring and Logging
 
@@ -570,6 +594,37 @@ Query centralized logs:
 # View Log Analytics Workspace in Azure Portal
 # https://portal.azure.com → Resource Groups → Log Analytics Workspaces
 ```
+
+### NSG Flow Logs (Network Security Monitoring)
+
+Monitor network traffic in listening mode:
+
+```bash
+# Get NSG Flow Logs from Log Analytics
+# Query: AzureNetworkAnalytics_CL table
+
+# Example KQL query: Top source IPs accessing the App Service
+AzureNetworkAnalytics_CL
+| where TimeGenerated > ago(1h)
+| where Subnet_s == "app-service-subnet"
+| summarize Count = count() by SrcIP_s
+| top 10 by Count desc
+
+# Example: Monitor outbound connections to SQL Server
+AzureNetworkAnalytics_CL
+| where TimeGenerated > ago(1h)
+| where DestPort_d == 1433
+| summarize Count = count() by DestIP_s, Action_s
+| sort by Count desc
+
+# Example: Check for denied traffic (should be none in listening mode)
+AzureNetworkAnalytics_CL
+| where TimeGenerated > ago(24h)
+| where Action_s == "D"  // D = Deny
+| summarize Count = count() by SrcIP_s, DestIP_s, DestPort_d
+```
+
+**Flow Log Data Retention**: 30 days (configurable in network-security.bicep)
 
 ### Alerts
 

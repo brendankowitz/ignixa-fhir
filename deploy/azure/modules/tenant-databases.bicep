@@ -75,7 +75,7 @@ resource databaseSecurityAlerts 'Microsoft.Sql/servers/databases/securityAlertPo
     state: 'Enabled'
     disabledAlerts: []
     emailAddresses: []
-    emailNotificationAdmins: false
+    emailAccountAdmins: false
     retentionDays: 0
   }
 }]
