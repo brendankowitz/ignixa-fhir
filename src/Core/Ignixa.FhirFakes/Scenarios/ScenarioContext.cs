@@ -615,7 +615,7 @@ public sealed class ScenarioContext
     }
 
     /// <summary>
-    /// Creates a batch bundle entry for a resource with POST request.
+    /// Creates a batch bundle entry for a resource with PUT request.
     /// Uses resolved references (ResourceType/id format).
     /// </summary>
     private static JsonObject CreateBatchBundleEntry(ResourceJsonNode resource)
@@ -626,8 +626,8 @@ public sealed class ScenarioContext
             ["resource"] = resource.MutableNode.DeepClone(),
             ["request"] = new JsonObject
             {
-                ["method"] = "POST",
-                ["url"] = resource.ResourceType
+                ["method"] = "PUT",
+                ["url"] = $"{resource.ResourceType}/{resource.Id}"
             }
         };
     }

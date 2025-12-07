@@ -7,7 +7,7 @@ namespace Ignixa.FhirFaker.Cli.Tests;
 public class ScenarioDiscoveryTests
 {
     [Fact]
-    public void GetScenarioNames_ShouldReturnKnownScenarios()
+    public void GivenScenarioDiscovery_WhenGettingScenarioNames_ThenReturnsKnownScenarios()
     {
         // Act
         var names = ScenarioDiscovery.GetScenarioNames().ToList();
@@ -20,7 +20,7 @@ public class ScenarioDiscoveryTests
     }
 
     [Fact]
-    public void CreateScenario_WithValidName_ShouldReturnContext()
+    public void GivenValidScenarioName_WhenCreatingScenario_ThenReturnsContext()
     {
         // Arrange
         var schemaProvider = new R4CoreSchemaProvider();
@@ -35,7 +35,7 @@ public class ScenarioDiscoveryTests
     }
 
     [Fact]
-    public void CreateScenario_WithInvalidName_ShouldReturnNull()
+    public void GivenInvalidScenarioName_WhenCreatingScenario_ThenReturnsNull()
     {
         // Arrange
         var schemaProvider = new R4CoreSchemaProvider();
@@ -48,7 +48,7 @@ public class ScenarioDiscoveryTests
     }
 
     [Fact]
-    public void CreateScenario_WithDifferentCasing_ShouldWork()
+    public void GivenDifferentCasing_WhenCreatingScenario_ThenStillWorks()
     {
         // Arrange
         var schemaProvider = new R4CoreSchemaProvider();

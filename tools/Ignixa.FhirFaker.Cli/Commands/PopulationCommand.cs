@@ -11,7 +11,7 @@ namespace Ignixa.FhirFaker.Cli.Commands;
 /// </summary>
 internal static class PopulationCommand
 {
-    public static Command Create(IFhirSchemaProvider schemaProvider)
+    public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
         var populationCommand = new Command("population", "Generate a population of patients");
 
@@ -27,7 +27,7 @@ internal static class PopulationCommand
 
         populationCommand.SetHandler(async (outFolder, from, count, resolvedReferences) =>
         {
-            await HandlePopulationCommand(schemaProvider, outFolder, from, count, resolvedReferences);
+            await HandlePopulationCommand(schemaProvider, fhirVersion, outFolder, from, count, resolvedReferences);
         }, outOption, fromOption, countOption, resolvedReferencesOption);
 
         return populationCommand;
@@ -36,6 +36,7 @@ internal static class PopulationCommand
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
     private static async Task HandlePopulationCommand(
         IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
         string outFolder,
         string? from,
         int count,
@@ -94,7 +95,7 @@ internal static class PopulationCommand
                     var context = contexts[i];
                     var id = Guid.NewGuid().ToString();
                     var sanitizedState = SanitizeFileName(state);
-                    var filename = $"bundle-population-{sanitizedState}-{count}-{i + 1}-{id}.json";
+                    var filename = $"{fhirVersion}-bundle-population-{sanitizedState}-{count}-{i + 1}-{id}.json";
                     var outputPath = Path.Combine(outFolder, filename);
 
                     var bundle = context.ToBatchBundle();
@@ -121,7 +122,7 @@ internal static class PopulationCommand
 
                 var id = Guid.NewGuid().ToString();
                 var sanitizedState = SanitizeFileName(state);
-                var filename = $"bundle-population-{sanitizedState}-{count}-{id}.json";
+                var filename = $"{fhirVersion}-bundle-population-{sanitizedState}-{count}-{id}.json";
                 var outputPath = Path.Combine(outFolder, filename);
 
                 // Combine all contexts into a single bundle

@@ -13,7 +13,7 @@ namespace Ignixa.FhirFaker.Cli.Commands;
 /// </summary>
 internal static class ResourceCommand
 {
-    public static Command Create(IFhirSchemaProvider schemaProvider)
+    public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
         var resourceCommand = new Command("resource", "Generate a single FHIR resource");
 
@@ -34,7 +34,7 @@ internal static class ResourceCommand
 
         resourceCommand.SetHandler(async (resourceType, stateName, outFolder, firstname, surname, from) =>
         {
-            await HandleResourceCommand(schemaProvider, resourceType, stateName, outFolder, firstname, surname, from);
+            await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder, firstname, surname, from);
         }, resourceTypeArg, stateNameArg, outOption, firstnameOption, surnameOption, fromOption);
 
         return resourceCommand;
@@ -42,6 +42,7 @@ internal static class ResourceCommand
 
     private static async Task HandleResourceCommand(
         IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
         string resourceType,
         string? stateName,
         string outFolder,
@@ -86,7 +87,7 @@ internal static class ResourceCommand
 
                 var patient = builder.Build();
                 var id = patient.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
-                var filename = $"patient-{id}.json";
+                var filename = $"{fhirVersion}-patient-{id}.json";
                 var outputPath = Path.Combine(outFolder, filename);
 
                 var json = JsonSerializer.Serialize(patient.MutableNode, options);
@@ -126,7 +127,7 @@ internal static class ResourceCommand
                 {
                     var observation = allResources[allResources.Count - 1];
                     var id = observation.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
-                    var filename = $"observation-{stateName}-{id}.json";
+                    var filename = $"{fhirVersion}-observation-{stateName}-{id}.json";
                     var outputPath = Path.Combine(outFolder, filename);
 
                     var json = JsonSerializer.Serialize(observation.MutableNode, options);

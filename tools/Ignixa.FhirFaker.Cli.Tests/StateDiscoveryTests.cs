@@ -6,7 +6,7 @@ namespace Ignixa.FhirFaker.Cli.Tests;
 public class StateDiscoveryTests
 {
     [Fact]
-    public void GetObservationStateNames_ShouldReturnKnownStates()
+    public void GivenStateDiscovery_WhenGettingObservationStateNames_ThenReturnsKnownStates()
     {
         // Act
         var names = StateDiscovery.GetObservationStateNames().ToList();
@@ -19,7 +19,7 @@ public class StateDiscoveryTests
     }
 
     [Fact]
-    public void CreateObservationState_WithValidName_ShouldReturnState()
+    public void GivenValidStateName_WhenCreatingObservationState_ThenReturnsState()
     {
         // Act
         var state = StateDiscovery.CreateObservationState("BloodGlucose");
@@ -32,7 +32,7 @@ public class StateDiscoveryTests
     }
 
     [Fact]
-    public void CreateObservationState_WithInvalidName_ShouldReturnNull()
+    public void GivenInvalidStateName_WhenCreatingObservationState_ThenReturnsNull()
     {
         // Act
         var state = StateDiscovery.CreateObservationState("InvalidState");
@@ -42,7 +42,7 @@ public class StateDiscoveryTests
     }
 
     [Fact]
-    public void FindCity_WithValidName_ShouldReturnCity()
+    public void GivenValidCityName_WhenFindingCity_ThenReturnsCity()
     {
         // Act
         var city = StateDiscovery.FindCity("Seattle");
@@ -53,7 +53,7 @@ public class StateDiscoveryTests
     }
 
     [Fact]
-    public void FindCity_WithInvalidName_ShouldReturnNull()
+    public void GivenInvalidCityName_WhenFindingCity_ThenReturnsNull()
     {
         // Act
         var city = StateDiscovery.FindCity("NonExistentCity");

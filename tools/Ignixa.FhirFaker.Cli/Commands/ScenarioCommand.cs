@@ -10,7 +10,7 @@ namespace Ignixa.FhirFaker.Cli.Commands;
 /// </summary>
 internal static class ScenarioCommand
 {
-    public static Command Create(IFhirSchemaProvider schemaProvider)
+    public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
         var scenarioCommand = new Command("scenario", "Generate a predefined FHIR scenario");
 
@@ -24,7 +24,7 @@ internal static class ScenarioCommand
 
         scenarioCommand.SetHandler(async (scenarioName, outFolder, resolvedReferences) =>
         {
-            await HandleScenarioCommand(schemaProvider, scenarioName, outFolder, resolvedReferences);
+            await HandleScenarioCommand(schemaProvider, fhirVersion, scenarioName, outFolder, resolvedReferences);
         }, scenarioNameArg, outOption, resolvedReferencesOption);
 
         return scenarioCommand;
@@ -32,6 +32,7 @@ internal static class ScenarioCommand
 
     private static async Task HandleScenarioCommand(
         IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
         string scenarioName,
         string outFolder,
         bool resolvedReferences)
@@ -55,7 +56,7 @@ internal static class ScenarioCommand
             }
 
             var id = Guid.NewGuid().ToString();
-            var filename = $"bundle-{scenarioName}-{id}.json";
+            var filename = $"{fhirVersion}-bundle-{scenarioName}-{id}.json";
             var outputPath = Path.Combine(outFolder, filename);
 
             JsonSerializerOptions options = new()
