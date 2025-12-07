@@ -344,3 +344,8 @@ ThirdParty/
 
 # E2E test environment files
 .env.test
+
+# fhir-faker CLI tool output
+patient-*.json
+observation-*.json
+bundle-*.json

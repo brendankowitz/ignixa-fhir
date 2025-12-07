@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'test/**'
       - 'bench/**'
+      - 'tools/**'
       - 'All.sln'
       - 'Directory.Packages.props'
       - 'Directory.Build.props'

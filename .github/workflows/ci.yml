@@ -279,6 +279,7 @@ jobs:
           dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Ignixa.Extensions.FirelySdk5.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
           dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack tools/Ignixa.FhirFaker.Cli/Ignixa.FhirFaker.Cli.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
 
       - name: List packages
         run: ls -lh ./packages/
