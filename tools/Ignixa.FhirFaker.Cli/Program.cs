@@ -15,6 +15,9 @@ class Program
         // Create root command
         var rootCommand = new RootCommand("FHIR Faker - Generate realistic FHIR test data");
 
+        // Add help command for discoverability
+        rootCommand.AddCommand(HelpCommand.Create());
+
         // Add STU3 support
         var stu3Command = new Command("stu3", "Use FHIR STU3 specification");
         var stu3SchemaProvider = new STU3CoreSchemaProvider();

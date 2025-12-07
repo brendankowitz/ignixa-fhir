@@ -16,6 +16,32 @@ Or install locally in a project:
 dotnet tool install Ignixa.FhirFaker.Cli
 ```
 
+## Getting Help
+
+Use the built-in help command to discover available options:
+
+```bash
+# General help
+fhir-faker help
+
+# List all available scenarios
+fhir-faker help scenarios
+
+# List all available observation states
+fhir-faker help states
+
+# List all available cities
+fhir-faker help cities
+
+# Show supported FHIR versions
+fhir-faker help versions
+
+# Command-specific help
+fhir-faker r4 resource --help
+fhir-faker r4 scenario --help
+fhir-faker r4 population --help
+```
+
 ## Usage
 
 All commands start with a FHIR version and require an output folder:
