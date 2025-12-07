@@ -18,24 +18,26 @@ dotnet tool install Ignixa.FhirFaker.Cli
 
 ## Usage
 
-All commands start with a FHIR version (currently only `r4` is supported):
+All commands start with a FHIR version and require an output folder:
 
 ```bash
-fhir-faker <version> <command> [options]
+fhir-faker <version> <command> --out <folder> [options]
 ```
+
+Available FHIR versions: `stu3`, `r4`, `r4b`, `r5`, `r6`
 
 ### Generate Single Resources
 
 Generate a Patient resource with specific attributes:
 
 ```bash
-fhir-faker r4 resource Patient --firstname Bob --surname Smith --from Seattle
+fhir-faker r4 resource Patient --out ./output --firstname Bob --surname Smith --from Seattle
 ```
 
 Generate an Observation using a predefined state:
 
 ```bash
-fhir-faker r4 resource Observation BloodGlucose
+fhir-faker r4 resource Observation BloodGlucose --out ./output
 ```
 
 ### Generate Predefined Scenarios
@@ -43,7 +45,7 @@ fhir-faker r4 resource Observation BloodGlucose
 Generate a complete patient scenario with related resources:
 
 ```bash
-fhir-faker r4 scenario DiabeticPatient --resolved-references
+fhir-faker r4 scenario DiabeticPatient --out ./output --resolved-references
 ```
 
 Available scenarios include:
@@ -58,11 +60,12 @@ Available scenarios include:
 Generate multiple patients from a specific location:
 
 ```bash
-fhir-faker r4 population --from Seattle --count 100 --resolved-references
+fhir-faker r4 population --out ./output --from Seattle --count 100 --resolved-references
 ```
 
 ## Options
 
+- `--out <folder>` - **Required** - Output folder for generated files (will be created if it doesn't exist)
 - `--resolved-references` - Creates a batch bundle instead of references (for scenario and population commands)
 - `--firstname <name>` - Set patient first name
 - `--surname <name>` - Set patient surname
@@ -71,7 +74,7 @@ fhir-faker r4 population --from Seattle --count 100 --resolved-references
 
 ## Output
 
-All commands generate JSON files in the current directory with the format:
+All commands generate JSON files in the specified output directory with the format:
 - Single resources: `{resource}-{name}-{id}.json` or `patient-{id}.json`
 - Scenarios: `bundle-{scenario}-{id}.json`
 - Populations: `bundle-population-{city}-{count}-{id}.json`
@@ -80,25 +83,26 @@ All commands generate JSON files in the current directory with the format:
 
 ```bash
 # Generate a single patient from R4
-fhir-faker r4 resource Patient --firstname Alice --surname Johnson
+fhir-faker r4 resource Patient --out ./output --firstname Alice --surname Johnson
 
 # Generate a diabetic patient scenario using R4
-fhir-faker r4 scenario DiabeticPatient --resolved-references
+fhir-faker r4 scenario DiabeticPatient --out ./output --resolved-references
 
 # Generate 50 patients from Boston using R4
-fhir-faker r4 population --from Boston --count 50 --resolved-references
+fhir-faker r4 population --out ./output --from Boston --count 50 --resolved-references
 
 # Generate a blood glucose observation using R4
-fhir-faker r4 resource Observation BloodGlucose
+fhir-faker r4 resource Observation BloodGlucose --out ./output
 ```
 
 ## FHIR Versions
 
-Currently supported:
+Supported FHIR versions:
+- **stu3** - FHIR STU3 (v3.0.2)
 - **r4** - FHIR R4 (v4.0.1)
-
-Coming soon:
-- **r5** - FHIR R5
+- **r4b** - FHIR R4B (v4.3.0)
+- **r5** - FHIR R5 (v5.0.0)
+- **r6** - FHIR R6 (v6.0.0)
 
 ## More Information
 

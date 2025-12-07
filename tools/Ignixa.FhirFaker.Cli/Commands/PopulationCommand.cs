@@ -15,18 +15,20 @@ internal static class PopulationCommand
     {
         var populationCommand = new Command("population", "Generate a population of patients");
 
+        var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
         var fromOption = new Option<string?>("--from", "City or state to generate from");
         var countOption = new Option<int>("--count", () => 10, "Number of patients to generate");
         var resolvedReferencesOption = new Option<bool>("--resolved-references", "Create batch bundles instead of references");
 
+        populationCommand.AddOption(outOption);
         populationCommand.AddOption(fromOption);
         populationCommand.AddOption(countOption);
         populationCommand.AddOption(resolvedReferencesOption);
 
-        populationCommand.SetHandler(async (from, count, resolvedReferences) =>
+        populationCommand.SetHandler(async (outFolder, from, count, resolvedReferences) =>
         {
-            await HandlePopulationCommand(schemaProvider, from, count, resolvedReferences);
-        }, fromOption, countOption, resolvedReferencesOption);
+            await HandlePopulationCommand(schemaProvider, outFolder, from, count, resolvedReferences);
+        }, outOption, fromOption, countOption, resolvedReferencesOption);
 
         return populationCommand;
     }
@@ -34,12 +36,16 @@ internal static class PopulationCommand
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
     private static async Task HandlePopulationCommand(
         IFhirSchemaProvider schemaProvider,
+        string outFolder,
         string? from,
         int count,
         bool resolvedReferences)
     {
         try
         {
+            // Ensure output directory exists
+            Directory.CreateDirectory(outFolder);
+
             var generator = new PopulationGenerator(schemaProvider);
             
             // Determine the state to generate from
@@ -89,10 +95,11 @@ internal static class PopulationCommand
                     var id = Guid.NewGuid().ToString();
                     var sanitizedState = SanitizeFileName(state);
                     var filename = $"bundle-population-{sanitizedState}-{count}-{i + 1}-{id}.json";
+                    var outputPath = Path.Combine(outFolder, filename);
 
                     var bundle = context.ToBatchBundle();
                     var json = JsonSerializer.Serialize(bundle.MutableNode, options);
-                    await File.WriteAllTextAsync(filename, json);
+                    await File.WriteAllTextAsync(outputPath, json);
 
                     if ((i + 1) % 10 == 0 || i == contexts.Count - 1)
                     {
@@ -115,6 +122,7 @@ internal static class PopulationCommand
                 var id = Guid.NewGuid().ToString();
                 var sanitizedState = SanitizeFileName(state);
                 var filename = $"bundle-population-{sanitizedState}-{count}-{id}.json";
+                var outputPath = Path.Combine(outFolder, filename);
 
                 // Combine all contexts into a single bundle
                 var allResources = contexts.SelectMany(c => c.AllResources).ToList();
@@ -142,9 +150,9 @@ internal static class PopulationCommand
                 combinedBundle.MutableNode["entry"] = entries;
                 
                 var json = JsonSerializer.Serialize(combinedBundle.MutableNode, options);
-                await File.WriteAllTextAsync(filename, json);
+                await File.WriteAllTextAsync(outputPath, json);
 
-                Console.WriteLine($"✓ Generated population bundle: {filename}");
+                Console.WriteLine($"✓ Generated population bundle: {outputPath}");
                 Console.WriteLine($"  Total resources: {allResources.Count}");
             }
         }

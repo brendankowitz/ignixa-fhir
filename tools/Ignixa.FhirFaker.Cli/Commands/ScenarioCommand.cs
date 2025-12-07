@@ -15,15 +15,17 @@ internal static class ScenarioCommand
         var scenarioCommand = new Command("scenario", "Generate a predefined FHIR scenario");
 
         var scenarioNameArg = new Argument<string>("scenarioName", "The scenario name (e.g., DiabeticPatient)");
+        var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
         var resolvedReferencesOption = new Option<bool>("--resolved-references", "Create a batch bundle instead of references");
 
         scenarioCommand.AddArgument(scenarioNameArg);
+        scenarioCommand.AddOption(outOption);
         scenarioCommand.AddOption(resolvedReferencesOption);
 
-        scenarioCommand.SetHandler(async (scenarioName, resolvedReferences) =>
+        scenarioCommand.SetHandler(async (scenarioName, outFolder, resolvedReferences) =>
         {
-            await HandleScenarioCommand(schemaProvider, scenarioName, resolvedReferences);
-        }, scenarioNameArg, resolvedReferencesOption);
+            await HandleScenarioCommand(schemaProvider, scenarioName, outFolder, resolvedReferences);
+        }, scenarioNameArg, outOption, resolvedReferencesOption);
 
         return scenarioCommand;
     }
@@ -31,10 +33,14 @@ internal static class ScenarioCommand
     private static async Task HandleScenarioCommand(
         IFhirSchemaProvider schemaProvider,
         string scenarioName,
+        string outFolder,
         bool resolvedReferences)
     {
         try
         {
+            // Ensure output directory exists
+            Directory.CreateDirectory(outFolder);
+
             // Discover and create the scenario
             var context = ScenarioDiscovery.CreateScenario(schemaProvider, scenarioName);
             if (context == null)
@@ -50,6 +56,7 @@ internal static class ScenarioCommand
 
             var id = Guid.NewGuid().ToString();
             var filename = $"bundle-{scenarioName}-{id}.json";
+            var outputPath = Path.Combine(outFolder, filename);
 
             JsonSerializerOptions options = new()
             {
@@ -60,10 +67,10 @@ internal static class ScenarioCommand
             // Use ToBatchBundle if resolved references is requested
             var bundle = resolvedReferences ? context.ToBatchBundle() : context.ToBundle();
             var json = JsonSerializer.Serialize(bundle.MutableNode, options);
-            await File.WriteAllTextAsync(filename, json);
+            await File.WriteAllTextAsync(outputPath, json);
 
             var bundleType = resolvedReferences ? "batch" : "transaction";
-            Console.WriteLine($"✓ Generated scenario bundle ({bundleType}): {filename}");
+            Console.WriteLine($"✓ Generated scenario bundle ({bundleType}): {outputPath}");
             Console.WriteLine($"  Resources: {context.AllResources.Count}");
         }
         catch (Exception ex)

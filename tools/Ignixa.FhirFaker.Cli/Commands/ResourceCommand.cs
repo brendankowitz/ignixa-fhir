@@ -20,20 +20,22 @@ internal static class ResourceCommand
         var resourceTypeArg = new Argument<string>("resourceType", "The FHIR resource type (e.g., Patient, Observation)");
         var stateNameArg = new Argument<string?>("stateName", () => null, "Optional state/builder name (e.g., BloodGlucose for Observation)");
 
+        var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
         var firstnameOption = new Option<string?>("--firstname", "Patient first name");
         var surnameOption = new Option<string?>("--surname", "Patient surname");
         var fromOption = new Option<string?>("--from", "City to generate from");
 
         resourceCommand.AddArgument(resourceTypeArg);
         resourceCommand.AddArgument(stateNameArg);
+        resourceCommand.AddOption(outOption);
         resourceCommand.AddOption(firstnameOption);
         resourceCommand.AddOption(surnameOption);
         resourceCommand.AddOption(fromOption);
 
-        resourceCommand.SetHandler(async (resourceType, stateName, firstname, surname, from) =>
+        resourceCommand.SetHandler(async (resourceType, stateName, outFolder, firstname, surname, from) =>
         {
-            await HandleResourceCommand(schemaProvider, resourceType, stateName, firstname, surname, from);
-        }, resourceTypeArg, stateNameArg, firstnameOption, surnameOption, fromOption);
+            await HandleResourceCommand(schemaProvider, resourceType, stateName, outFolder, firstname, surname, from);
+        }, resourceTypeArg, stateNameArg, outOption, firstnameOption, surnameOption, fromOption);
 
         return resourceCommand;
     }
@@ -42,12 +44,16 @@ internal static class ResourceCommand
         IFhirSchemaProvider schemaProvider,
         string resourceType,
         string? stateName,
+        string outFolder,
         string? firstname,
         string? surname,
         string? from)
     {
         try
         {
+            // Ensure output directory exists
+            Directory.CreateDirectory(outFolder);
+
             JsonSerializerOptions options = new()
             {
                 WriteIndented = true
@@ -81,11 +87,12 @@ internal static class ResourceCommand
                 var patient = builder.Build();
                 var id = patient.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                 var filename = $"patient-{id}.json";
+                var outputPath = Path.Combine(outFolder, filename);
 
                 var json = JsonSerializer.Serialize(patient.MutableNode, options);
-                await File.WriteAllTextAsync(filename, json);
+                await File.WriteAllTextAsync(outputPath, json);
 
-                Console.WriteLine($"✓ Generated Patient: {filename}");
+                Console.WriteLine($"✓ Generated Patient: {outputPath}");
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
@@ -120,11 +127,12 @@ internal static class ResourceCommand
                     var observation = allResources[allResources.Count - 1];
                     var id = observation.MutableNode["id"]?.ToString() ?? Guid.NewGuid().ToString();
                     var filename = $"observation-{stateName}-{id}.json";
+                    var outputPath = Path.Combine(outFolder, filename);
 
                     var json = JsonSerializer.Serialize(observation.MutableNode, options);
-                    await File.WriteAllTextAsync(filename, json);
+                    await File.WriteAllTextAsync(outputPath, json);
 
-                    Console.WriteLine($"✓ Generated Observation ({stateName}): {filename}");
+                    Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
                 }
             }
             else
