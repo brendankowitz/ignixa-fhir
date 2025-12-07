@@ -123,7 +123,7 @@
     {
       "description": "Pre-release versions: enable for SDK and preview packages",
       "matchPackagePatterns": ["^Hl7\\.Fhir", "^ModelContextProtocol"],
-      "allowUnstable": true,
+      "allowPreRelease": true,
       "schedule": ["before 3am on Monday"]
     },
     {
@@ -131,14 +131,6 @@
       "matchDatasources": ["nuget"],
       "matchCurrentVersion": "^.*-(alpha|beta|rc|preview).*$",
       "automerge": false
-    },
-    {
-      "description": "High priority: Security updates",
-      "matchDatasources": ["nuget"],
-      "matchVulnerabilityIDs": ["*"],
-      "schedule": ["at any time"],
-      "automerge": false,
-      "prPriority": 10
     }
   ],
   "ignoreDeps": [],
@@ -146,7 +138,7 @@
     "rangeStrategy": "bump"
   },
   "labels": ["renovate", "dependencies"],
-  "statusCheckNames": [
+  "requiredStatusChecks": [
     "build-and-unit-tests",
     "e2e-tests-sql",
     "validate-docker"
