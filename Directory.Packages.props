@@ -40,7 +40,7 @@
     <!-- SQL Server -->
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.2" />
     <!-- ASP.NET Core -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.11" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
     <!-- Model Context Protocol (MCP) - AI Integration -->
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
@@ -65,7 +65,7 @@
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.11" />
     <!-- Microsoft Health FHIR E2E Tests (from Azure DevOps feed) -->
     <PackageVersion Include="Microsoft.Health.Fhir.R4.Tests.E2E" Version="4.0.559" />
     <!-- Benchmarking -->
