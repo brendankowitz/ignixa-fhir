@@ -124,6 +124,16 @@ module appService './modules/app-service.bicep' = {
   }
 }
 
+// Assign Storage RBAC roles to App Service Managed Identity (runs after app service is created)
+// DurableTask requires Blob, Queue, and Table Data Contributor roles
+module storageRbac './modules/storage-rbac.bicep' = {
+  name: 'storage-rbac-deployment'
+  params: {
+    storageAccountName: storage.outputs.storageAccountName
+    principalId: appService.outputs.managedIdentityPrincipalId
+  }
+}
+
 // Deploy Network Security Perimeter (associates Storage, SQL, and Log Analytics in learning/audit mode)
 module networkSecurityPerimeter './modules/network-security-perimeter.bicep' = if (enableNetworkSecurityPerimeter) {
   name: 'network-security-perimeter-deployment'

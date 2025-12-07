@@ -429,7 +429,7 @@ Content-Type: application/fhir+json
 
 {
   "resourceType": "Observation",
-  "status": "final",
+  "status": "fifnal",
   "code": {
     "coding": [
       {
