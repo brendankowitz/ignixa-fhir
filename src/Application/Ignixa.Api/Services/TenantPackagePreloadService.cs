@@ -140,103 +140,113 @@ public class TenantPackagePreloadService : BackgroundService
 
         await Parallel.ForEachAsync(allTenants, parallelOptions, async (tenant, ct) =>
         {
-            // Build list of packages to load for this tenant
-            var packagesToLoad = new List<(string PackageId, string Version)>();
-
-            // Add configured packages from tenant configuration
-            if (tenant.Packages.EnableAutoLoad && tenant.Packages.PreloadPackages.Count > 0)
+            try
             {
-                foreach (var packageRef in tenant.Packages.PreloadPackages)
+                // Build list of packages to load for this tenant
+                var packagesToLoad = new List<(string PackageId, string Version)>();
+
+                // Add configured packages from tenant configuration
+                if (tenant.Packages.EnableAutoLoad && tenant.Packages.PreloadPackages.Count > 0)
                 {
-                    // Parse "packageId@version" format
-                    var parts = packageRef.Split('@', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length != 2)
+                    foreach (var packageRef in tenant.Packages.PreloadPackages)
                     {
-                        _logger.LogWarning(
-                            "Invalid package reference format for tenant {TenantId}: '{PackageRef}'. Expected format: 'packageId@version'",
-                            tenant.TenantId,
-                            packageRef);
-                        continue;
+                        // Parse "packageId@version" format
+                        var parts = packageRef.Split('@', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length != 2)
+                        {
+                            _logger.LogWarning(
+                                "Invalid package reference format for tenant {TenantId}: '{PackageRef}'. Expected format: 'packageId@version'",
+                                tenant.TenantId,
+                                packageRef);
+                            continue;
+                        }
+
+                        var packageId = parts[0].Trim();
+                        var version = parts[1].Trim();
+                        packagesToLoad.Add((packageId, version));
                     }
-
-                    var packageId = parts[0].Trim();
-                    var version = parts[1].Trim();
-                    packagesToLoad.Add((packageId, version));
                 }
-            }
 
-            // Skip if no packages to load
-            if (packagesToLoad.Count == 0)
-            {
-                _logger.LogDebug(
-                    "Tenant {TenantId} ({DisplayName}) has no packages to preload",
+                // Skip if no packages to load
+                if (packagesToLoad.Count == 0)
+                {
+                    _logger.LogDebug(
+                        "Tenant {TenantId} ({DisplayName}) has no packages to preload",
+                        tenant.TenantId,
+                        tenant.DisplayName);
+                    return;
+                }
+
+                _logger.LogInformation(
+                    "Preloading {Count} package(s) for tenant {TenantId} ({DisplayName})",
+                    packagesToLoad.Count,
                     tenant.TenantId,
                     tenant.DisplayName);
-                return;
-            }
 
-            _logger.LogInformation(
-                "Preloading {Count} package(s) for tenant {TenantId} ({DisplayName})",
-                packagesToLoad.Count,
-                tenant.TenantId,
-                tenant.DisplayName);
+                // Create a new scope for this tenant (thread safety)
+                using var tenantScope = _serviceProvider.CreateScope();
+                var mediator = tenantScope.ServiceProvider.GetRequiredService<IMediator>();
 
-            // Create a new scope for this tenant (thread safety)
-            using var tenantScope = _serviceProvider.CreateScope();
-            var mediator = tenantScope.ServiceProvider.GetRequiredService<IMediator>();
-
-            // Load all packages for this tenant (sequential within tenant to avoid NPM rate limits)
-            foreach (var (packageId, version) in packagesToLoad)
-            {
-                try
+                // Load all packages for this tenant (sequential within tenant to avoid NPM rate limits)
+                foreach (var (packageId, version) in packagesToLoad)
                 {
-                    using (startupTiming.StartPhase($"PackageLoad.T{tenant.TenantId}.{packageId}@{version}"))
+                    try
                     {
-                        _logger.LogInformation(
-                            "Loading package {PackageId}@{Version} for tenant {TenantId}",
+                        using (startupTiming.StartPhase($"PackageLoad.T{tenant.TenantId}.{packageId}@{version}"))
+                        {
+                            _logger.LogInformation(
+                                "Loading package {PackageId}@{Version} for tenant {TenantId}",
+                                packageId,
+                                version,
+                                tenant.TenantId);
+
+                            var command = new LoadPackageCommand(tenant.TenantId.ToString(), packageId, version);
+                            var result = await mediator.SendAsync(command, ct);
+
+                            _logger.LogInformation(
+                                "Successfully loaded {PackageId}@{Version} for tenant {TenantId}. Imported {Count} resources",
+                                packageId,
+                                version,
+                                tenant.TenantId,
+                                result.ImportedResources);
+
+                            Interlocked.Add(ref totalResourcesImported, result.ImportedResources);
+                        }
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("already loaded", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogDebug(
+                            "Package {PackageId}@{Version} already loaded for tenant {TenantId}",
                             packageId,
                             version,
                             tenant.TenantId);
-
-                        var command = new LoadPackageCommand(tenant.TenantId.ToString(), packageId, version);
-                        var result = await mediator.SendAsync(command, ct);
-
-                        _logger.LogInformation(
-                            "Successfully loaded {PackageId}@{Version} for tenant {TenantId}. Imported {Count} resources",
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Package {PackageId}@{Version} not found in NPM registry for tenant {TenantId}. Skipping.",
                             packageId,
                             version,
-                            tenant.TenantId,
-                            result.ImportedResources);
-
-                        Interlocked.Add(ref totalResourcesImported, result.ImportedResources);
+                            tenant.TenantId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Error loading package {PackageId}@{Version} for tenant {TenantId}. Continuing with next package.",
+                            packageId,
+                            version,
+                            tenant.TenantId);
                     }
                 }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("already loaded", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogDebug(
-                        "Package {PackageId}@{Version} already loaded for tenant {TenantId}",
-                        packageId,
-                        version,
-                        tenant.TenantId);
-                }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogWarning(
-                        ex,
-                        "Package {PackageId}@{Version} not found in NPM registry for tenant {TenantId}. Skipping.",
-                        packageId,
-                        version,
-                        tenant.TenantId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Error loading package {PackageId}@{Version} for tenant {TenantId}. Continuing with next package.",
-                        packageId,
-                        version,
-                        tenant.TenantId);
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to load packages for tenant {TenantId}. Continuing with other tenants.",
+                    tenant.TenantId);
             }
         });
 

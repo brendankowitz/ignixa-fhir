@@ -37,6 +37,8 @@ param appServicePlanSku string = 'B2'
 param appServicePlanTier string = 'Basic'
 
 @description('Number of tenant databases to create (1-50)')
+@minValue(1)
+@maxValue(50)
 param tenantCount int = 1
 
 @description('FHIR version for all tenants (e.g., 4.0, 5.0)')
