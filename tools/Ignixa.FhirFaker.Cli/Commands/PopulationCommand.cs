@@ -87,7 +87,8 @@ internal static class PopulationCommand
                 {
                     var context = contexts[i];
                     var id = Guid.NewGuid().ToString();
-                    var filename = $"bundle-population-{state.Replace(" ", "")}-{count}-{i + 1}-{id}.json";
+                    var sanitizedState = SanitizeFileName(state);
+                    var filename = $"bundle-population-{sanitizedState}-{count}-{i + 1}-{id}.json";
 
                     var bundle = context.ToBatchBundle();
                     var json = JsonSerializer.Serialize(bundle.MutableNode, options);
@@ -104,8 +105,16 @@ internal static class PopulationCommand
             else
             {
                 // Generate a single large transaction bundle with all patients
+                // Check if we have any contexts
+                if (contexts.Count == 0)
+                {
+                    Console.WriteLine("✗ No patients were generated");
+                    return;
+                }
+
                 var id = Guid.NewGuid().ToString();
-                var filename = $"bundle-population-{state.Replace(" ", "")}-{count}-{id}.json";
+                var sanitizedState = SanitizeFileName(state);
+                var filename = $"bundle-population-{sanitizedState}-{count}-{id}.json";
 
                 // Combine all contexts into a single bundle
                 var allResources = contexts.SelectMany(c => c.AllResources).ToList();
@@ -144,5 +153,11 @@ internal static class PopulationCommand
             Console.WriteLine($"✗ Error: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
         }
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        return string.Join("", fileName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries));
     }
 }

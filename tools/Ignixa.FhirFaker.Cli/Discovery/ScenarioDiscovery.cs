@@ -71,9 +71,9 @@ public static class ScenarioDiscovery
                 var result = scenarioInfo.Method.Invoke(null, args);
                 return result as ScenarioContext;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"Error creating scenario: {ex.Message}");
+                // Return null if invocation fails - the caller will handle the null
                 return null;
             }
         }
