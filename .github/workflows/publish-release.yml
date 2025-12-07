@@ -111,8 +111,9 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git tag ${{ steps.version.outputs.release_version }}
-          git push origin ${{ steps.version.outputs.release_version }}
+          # Git tags use release/ prefix (e.g., release/1.0.0)
+          git tag release/${{ steps.version.outputs.release_version }}
+          git push origin release/${{ steps.version.outputs.release_version }}
 
       # --- 6. Generate AI Release Notes ---
       - name: Generate Smart Release Notes
@@ -122,8 +123,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          # Use the tag we just created
-          CURRENT_TAG=${{ steps.version.outputs.release_version }}
+          # Use the tag we just created (release/X.X.X format)
+          CURRENT_TAG=release/${{ steps.version.outputs.release_version }}
           PREV_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG"^ 2>/dev/null || echo "")
 
           echo "Generating release notes for $CURRENT_TAG (comparing to $PREV_TAG)..."
@@ -190,7 +191,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.release_version }}
+          tag_name: release/${{ steps.version.outputs.release_version }}
           name: Release ${{ steps.version.outputs.release_version }}
           body_path: release_notes.md
           files: ./nuget-packages/*.nupkg
