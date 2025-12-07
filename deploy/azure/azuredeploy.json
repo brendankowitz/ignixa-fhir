@@ -16,9 +16,9 @@
     },
     "dockerRegistryUrl": {
       "type": "string",
-      "defaultValue": "https://ignixa.azurecr.io",
+      "defaultValue": "https://ghcr.io/brendankowitz/ignixa-fhir",
       "metadata": {
-        "description": "Docker registry URL (e.g., https://ignixa.azurecr.io or https://index.docker.io for Docker Hub)"
+        "description": "Docker registry URL (e.g., https://[myacr].azurecr.io or https://index.docker.io for Docker Hub)"
       }
     },
     "dockerImage": {
