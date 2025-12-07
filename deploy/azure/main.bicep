@@ -42,6 +42,9 @@ param tenantCount int = 1
 @description('FHIR version for all tenants (e.g., 4.0, 5.0)')
 param fhirVersion string = '4.0'
 
+@description('Enable Network Security Perimeter for PaaS resources')
+param enableNetworkSecurityPerimeter bool = true
+
 // Deploy monitoring (Application Insights + Log Analytics) - needed early for app service
 module monitoring './modules/monitoring.bicep' = {
   name: 'monitoring-deployment'
@@ -115,19 +118,22 @@ module appService './modules/app-service.bicep' = {
     uamiResourceId: sqlAuthIdentity.outputs.identityResourceId
     uamiClientId: sqlAuthIdentity.outputs.clientId
     sqlServerFqdn: sqlServer.outputs.sqlServerFqdn
+    storageAccountName: storage.outputs.storageAccountName
     tenantCount: tenantCount
     fhirVersion: fhirVersion
   }
 }
 
-// Deploy Key Vault (with RBAC-only authorization)
-module keyVault './modules/key-vault.bicep' = {
-  name: 'keyvault-deployment'
+// Deploy Network Security Perimeter (associates Storage, SQL, and Log Analytics in learning/audit mode)
+module networkSecurityPerimeter './modules/network-security-perimeter.bicep' = if (enableNetworkSecurityPerimeter) {
+  name: 'network-security-perimeter-deployment'
   params: {
-    keyVaultName: '${appName}-kv'
+    nspName: '${appName}-nsp'
     location: location
-    tenantId: subscription().tenantId
-    appServicePrincipalId: appService.outputs.managedIdentityPrincipalId
+    environment: environment
+    storageAccountId: storage.outputs.storageAccountResourceId
+    sqlServerId: sqlServer.outputs.sqlServerResourceId
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
   }
 }
 
@@ -139,5 +145,4 @@ output sqlServerFqdn string = sqlServer.outputs.sqlServerFqdn
 output sqlServerName string = sqlServer.outputs.sqlServerName
 output tenantDatabases array = tenantDatabases.outputs.databaseNames
 output storageAccountName string = storage.outputs.storageAccountName
-output keyVaultUri string = keyVault.outputs.keyVaultUri
 output appInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString

@@ -49,14 +49,18 @@ param uamiClientId string = ''
 @description('SQL Server FQDN (for tenant connection strings)')
 param sqlServerFqdn string = ''
 
+@description('Storage account name (for DurableTask background jobs)')
+param storageAccountName string = ''
+
 @description('Number of tenant databases to configure (1-50)')
 param tenantCount int = 1
 
 @description('FHIR version for all tenants (e.g., 4.0, 5.0)')
 param fhirVersion string = '4.0'
 
-// Construct full Docker image reference
-var dockerImageFull = '${dockerImage}:${dockerImageTag}'
+// Construct full Docker image reference (with registry host for linuxFxVersion)
+var registryHost = replace(dockerRegistryUrl, 'https://', '')
+var dockerImageFull = '${registryHost}/${dockerImage}:${dockerImageTag}'
 var useDockerAuth = !empty(dockerRegistryUsername) && !empty(dockerRegistryPassword)
 
 // Generate dynamic tenant configurations (returns array of arrays, will be flattened when concatenated)
@@ -140,6 +144,10 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
           value: '80'
         }
         {
+          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
+          value: '600' // 10 minutes for heavy initialization (search parameters, schema)
+        }
+        {
           name: 'DOCKER_REGISTRY_SERVER_URL'
           value: dockerRegistryUrl
         }
@@ -182,6 +190,40 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'XDT_MicrosoftApplicationInsights_Mode'
           value: 'default'
+        }
+        // DurableTask configuration for background job processing (import/export)
+        {
+          name: 'DurableTask__Provider'
+          value: 'AzureStorage'
+        }
+        {
+          name: 'DurableTask__AzureStorage__UseManagedIdentity'
+          value: 'true'
+        }
+        {
+          name: 'DurableTask__AzureStorage__StorageAccountName'
+          value: storageAccountName
+        }
+        {
+          name: 'DurableTask__AzureStorage__TaskHubName'
+          value: 'ignixa'
+        }
+        // BlobStorage configuration for FHIR import/export data files
+        {
+          name: 'BlobStorage__Provider'
+          value: 'Azure'
+        }
+        {
+          name: 'BlobStorage__UseManagedIdentity'
+          value: 'true'
+        }
+        {
+          name: 'BlobStorage__StorageAccountUri'
+          value: 'https://${storageAccountName}.blob.${az.environment().suffixes.storage}'
+        }
+        {
+          name: 'BlobStorage__ContainerName'
+          value: 'fhir-exports'
         }
         // System Partition (Tenant 0) - always required
         {
