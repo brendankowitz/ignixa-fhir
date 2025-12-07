@@ -39,7 +39,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download Latest NuGet Artifacts
-        uses: dawidd6/action-download-artifact@v3
+        uses: dawidd6/action-download-artifact@v6
         with:
           workflow: ci.yml
           name: nuget-packages
