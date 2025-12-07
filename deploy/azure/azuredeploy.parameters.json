@@ -6,10 +6,10 @@
       "value": "ignixa-fhir-demo"
     },
     "dockerRegistryUrl": {
-      "value": "https://ignixa.azurecr.io"
+      "value": "https://ghcr.io"
     },
     "dockerImage": {
-      "value": "ignixa-fhir"
+      "value": "brendankowitz/ignixa-fhir"
     },
     "dockerImageTag": {
       "value": "latest"

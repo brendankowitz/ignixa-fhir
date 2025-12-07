@@ -43,13 +43,10 @@ This separation allows you to build on every commit but release only when intent
     3. Add to GitHub secrets as `GEMINI_API_KEY`
   - Cost: Free tier includes generous limits (subject to Google's terms)
 
-### Azure Container Registry (Optional)
-For Docker image publishing to Azure:
-- **`AZURE_CLIENT_ID`** (Azure Service Principal Client ID)
-- **`AZURE_TENANT_ID`** (Azure Tenant ID)
-- **`AZURE_SUBSCRIPTION_ID`** (Azure Subscription ID)
+### Docker Registry (GitHub Container Registry)
+Docker images are published to **GitHub Container Registry (GHCR)** as public images.
 
-These are only needed if you enable the `build-and-push-container` job with Azure registry integration.
+**No secrets required** - `GITHUB_TOKEN` is automatically provided by GitHub Actions for GHCR authentication.
 
 ## Setting Up Secrets
 
@@ -65,7 +62,7 @@ These are only needed if you enable the `build-and-push-container` job with Azur
 You can test if secrets are properly configured by:
 
 1. **NuGet API Key**:
-   - Trigger the **Publish Release** workflow manually with a test version
+   - Trigger the **Publish Release** workflow manually
    - Monitor the `Publish to NuGet.org` step logs
    - Should complete without authentication errors
 
@@ -73,6 +70,11 @@ You can test if secrets are properly configured by:
    - Trigger the **Publish Release** workflow manually
    - Monitor the `Generate Smart Release Notes` step logs
    - Should complete without API authentication errors
+
+3. **Docker Registry (GHCR)**:
+   - Docker images are automatically pushed on every commit
+   - Verify at: https://github.com/brendankowitz/fhir-server-contrib/pkgs/container/ignixa-fhir
+   - Images should appear with tags: `main`, `latest`, `release`, version tags
 
 ## Publishing a Release
 

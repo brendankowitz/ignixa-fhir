@@ -11,7 +11,7 @@ The deployment uses **Bicep templates** or **ARM JSON templates** with **Managed
 - **Blob Storage (2 accounts)**: FHIR data storage + DurableTask orchestration backend
 - **Application Insights**: Application monitoring and logging
 - **Log Analytics**: Centralized logging workspace
-- **Docker/ACR Support**: Configured to pull Docker images from Azure Container Registry or any Docker registry
+- **Docker/GHCR Support**: Configured to pull Docker images from GitHub Container Registry (public, no credentials needed)
 
 ## Deployment Options
 
@@ -120,10 +120,10 @@ Edit `azuredeploy.parameters.json` with your values:
       "value": "ignixa-fhir-demo"  // Must be globally unique (3-24 chars)
     },
     "dockerRegistryUrl": {
-      "value": "https://ignixa.azurecr.io"  // Your ACR URL
+      "value": "https://ghcr.io"  // GitHub Container Registry (public, no auth needed)
     },
     "dockerImage": {
-      "value": "ignixa-fhir"  // Docker image name
+      "value": "brendankowitz/ignixa-fhir"  // GitHub repo path
     },
     "dockerImageTag": {
       "value": "latest"  // Image tag (e.g., latest, v1.0.0, main)
@@ -181,56 +181,38 @@ cd scripts
 
 Deployment takes approximately **5-10 minutes**.
 
-### 5. Configure ACR Authentication
+### 5. Configure GHCR Authentication
 
-Choose one of the authentication methods:
+The Docker image is hosted on **GitHub Container Registry (GHCR)** as a public image.
 
-**Option 1: Public ACR with Anonymous Pull (Recommended)**
+**No authentication required** - Leave `dockerRegistryUsername` and `dockerRegistryPassword` empty in the parameters file:
 
-Enable anonymous pull on your ACR - no credentials needed:
-
-```bash
-az acr update --name ignixa --anonymous-pull-enabled true
-```
-
-Leave `dockerRegistryUsername` and `dockerRegistryPassword` empty in parameters.
-
-**Option 2: Username/Password for Private Registries**
-
-Enable admin credentials and provide them in the parameters file:
-
-```bash
-# Enable admin account on ACR
-az acr update --name ignixa --admin-enabled true
-
-# Get credentials
-az acr credential show --name ignixa
-```
-
-Then update `azuredeploy.parameters.json`:
 ```json
 "dockerRegistryUsername": {
-  "value": "ignixa"
+  "value": ""
 },
 "dockerRegistryPassword": {
-  "value": "your-acr-admin-password"
+  "value": ""
 }
 ```
 
-### 6. Build and Push Docker Image
+The public image is automatically pulled without credentials.
 
-Build your Docker image and push to ACR:
+### 6. Use Pre-Built Docker Image from GHCR
+
+The Docker image is automatically pulled from GitHub Container Registry during deployment:
 
 ```bash
-# Build the Docker image
-docker build -t ignixa.azurecr.io/ignixa-fhir:latest .
-
-# Login to ACR
-az acr login --name ignixa
-
-# Push the image
-docker push ignixa.azurecr.io/ignixa-fhir:latest
+# The image is pulled from: ghcr.io/brendankowitz/ignixa-fhir:TAG
+# No build/push steps needed for deployment!
 ```
+
+The public image is built and pushed automatically by GitHub Actions on every commit. You can find the latest image at:
+- **Repository**: https://github.com/brendankowitz/fhir-server-contrib
+- **Image**: `ghcr.io/brendankowitz/ignixa-fhir`
+- **Available tags**: `latest`, `release`, version tags (e.g., `v1.0.0`)
+
+To use a different image tag, update `dockerImageTag` in your parameters file.
 
 ### 7. Restart App Service (to pull new image)
 
@@ -401,32 +383,17 @@ The deployment creates **two Managed Identities** with different purposes:
 
 ### Docker Container Registry Authentication
 
-**Option 1: Public ACR with Anonymous Pull (Recommended)**
+GHCR is a **public registry** - no authentication needed.
 
-Enable anonymous pull on your ACR:
+The image `ghcr.io/brendankowitz/ignixa-fhir` is publicly accessible without credentials. Leave `dockerRegistryUsername` and `dockerRegistryPassword` empty in your parameters.
 
-```bash
-az acr update --name ignixa --anonymous-pull-enabled true
-```
+**To use a private GHCR image** (if you fork the repo and make it private):
 
-No authentication parameters needed - leave username/password empty.
+Generate a GitHub Personal Access Token (PAT) with `read:packages` scope and provide in parameters:
 
-**Option 2: Username/Password for Private Registries**
-
-Enable admin credentials and provide username/password in parameters:
-
-```bash
-# Enable admin account on ACR
-az acr update --name ignixa --admin-enabled true
-
-# Get credentials
-az acr credential show --name ignixa
-```
-
-Then update parameters:
 ```json
-"dockerRegistryUsername": { "value": "ignixa" },
-"dockerRegistryPassword": { "value": "password-from-above" }
+"dockerRegistryUsername": { "value": "your-github-username" },
+"dockerRegistryPassword": { "value": "your-github-pat" }
 ```
 
 ### Connection Strings
@@ -542,8 +509,8 @@ Pre-configured alerts trigger when:
 | Storage Accounts (2) | Standard LRS | ~$2-10 |
 | Application Insights | PAYG | ~$5-20 |
 | Log Analytics | PAYG (1GB) | ~$5-10 |
-| ACR (optional) | Basic | ~$5 |
-| **Total** | | **~$70-100** |
+| Docker Registry | GHCR (free) | **$0** |
+| **Total** | | **~$65-95** |
 
 ### Cost Optimization
 
@@ -589,17 +556,16 @@ az role assignment list \
 
 ### Docker Image Pull Failed
 
-**Solution**: Verify ACR access or credentials:
+**Solution**: Verify GHCR access. For public images, no credentials are needed:
 
-For Public ACR:
 ```bash
-# Verify anonymous pull is enabled
-az acr show --name ignixa --query anonymousPullEnabled
+# Verify the image is publicly accessible
+docker pull ghcr.io/brendankowitz/ignixa-fhir:latest
 ```
 
-For Private ACR:
+If using a **private GHCR image**, verify credentials are set:
 ```bash
-# Verify credentials are set correctly
+# Check credentials in App Service
 az webapp config appsettings list \
   --resource-group ignixa-fhir-rg \
   --name ignixa-fhir-demo \

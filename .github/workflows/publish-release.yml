@@ -50,22 +50,19 @@ jobs:
           echo "Release Version: $RELEASE_VERSION"
           echo "Commit SHA: $COMMIT_SHA"
 
-      # --- 2. Authenticate with Azure ---
-      - name: Log in to Azure
-        uses: azure/login@v2
+      # --- 2. Authenticate with GitHub Container Registry ---
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Log in to Azure Container Registry
-        run: az acr login --name ignixa
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # --- 3. Promote Docker Image ---
       - name: Promote Docker Image to Release
         env:
-          IMAGE_REGISTRY: ignixa.azurecr.io
-          IMAGE_NAME: ignixa-fhir
+          IMAGE_REGISTRY: ghcr.io
+          IMAGE_NAMESPACE: ${{ github.repository }}
         run: |
           # Extract short SHA for tag lookup (format: main-{short-sha})
           SHORT_SHA=$(echo "${{ steps.version.outputs.commit_sha }}" | cut -c1-7)
@@ -73,23 +70,23 @@ jobs:
           RELEASE_TAG="release"
           VERSION_TAG="${{ steps.version.outputs.release_version }}"
 
-          IMAGE_URL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_URL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAMESPACE }}"
 
           echo "Promoting Docker image..."
           echo "Source: ${IMAGE_URL}:${SOURCE_TAG}"
           echo "To: ${IMAGE_URL}:${RELEASE_TAG}"
           echo "To: ${IMAGE_URL}:${VERSION_TAG}"
 
-          # Pull the image
-          docker pull "${IMAGE_URL}:${SOURCE_TAG}"
+          # Pull the image (using lowercase for GHCR)
+          docker pull "${IMAGE_URL,,}:${SOURCE_TAG}"
 
           # Retag with release and version
-          docker tag "${IMAGE_URL}:${SOURCE_TAG}" "${IMAGE_URL}:${RELEASE_TAG}"
-          docker tag "${IMAGE_URL}:${SOURCE_TAG}" "${IMAGE_URL}:${VERSION_TAG}"
+          docker tag "${IMAGE_URL,,}:${SOURCE_TAG}" "${IMAGE_URL,,}:${RELEASE_TAG}"
+          docker tag "${IMAGE_URL,,}:${SOURCE_TAG}" "${IMAGE_URL,,}:${VERSION_TAG}"
 
           # Push the new tags
-          docker push "${IMAGE_URL}:${RELEASE_TAG}"
-          docker push "${IMAGE_URL}:${VERSION_TAG}"
+          docker push "${IMAGE_URL,,}:${RELEASE_TAG}"
+          docker push "${IMAGE_URL,,}:${VERSION_TAG}"
 
           echo "✅ Docker image promoted successfully"
 
@@ -212,8 +209,8 @@ jobs:
           done
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Docker Image" >> $GITHUB_STEP_SUMMARY
-          echo "- \`ignixa.azurecr.io/ignixa-fhir:release\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`ignixa.azurecr.io/ignixa-fhir:${{ steps.version.outputs.release_version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ github.repository }}:release\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ github.repository }}:${{ steps.version.outputs.release_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Actions" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Promoted Docker image to release" >> $GITHUB_STEP_SUMMARY
