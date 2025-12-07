@@ -16,23 +16,23 @@
     },
     "dockerRegistryUrl": {
       "type": "string",
-      "defaultValue": "https://ghcr.io/brendankowitz/ignixa-fhir",
+      "defaultValue": "https://ghcr.io",
       "metadata": {
-        "description": "Docker registry URL (e.g., https://[myacr].azurecr.io or https://index.docker.io for Docker Hub)"
+        "description": "Docker registry URL (login server, e.g., https://ghcr.io)"
       }
     },
     "dockerImage": {
       "type": "string",
-      "defaultValue": "ignixa-fhir",
+      "defaultValue": "brendankowitz/ignixa-fhir",
       "metadata": {
-        "description": "Docker image name (e.g., ignixa-fhir)"
+        "description": "Docker image name (e.g., brendankowitz/ignixa-fhir)"
       }
     },
     "dockerImageTag": {
       "type": "string",
-      "defaultValue": "latest",
+      "defaultValue": "release",
       "metadata": {
-        "description": "Docker image tag (e.g., latest, v1.0.0, main)"
+        "description": "Docker image tag (e.g., release, 1.0.0, main)"
       }
     },
     "dockerRegistryUsername": {

@@ -33,7 +33,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
     accessTier: 'Hot'
     allowBlobPublicAccess: false
     allowSharedKeyAccess: !disableLocalAuth // Disable shared key (local auth)
-    httpsTrafficOnlyEnabled: true
+    supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     publicNetworkAccess: 'Enabled'
     networkAcls: {
@@ -82,7 +82,8 @@ resource importContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
 
 // Assign Storage Blob Data Contributor role to App Service Managed Identity
 // This allows the App Service to read/write blobs in the storage account
-resource storageBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// Only create role assignment if principalId is provided (storage deployed after app service)
+resource storageBlobContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
   scope: storageAccount
   name: guid(storageAccount.id, principalId, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor role
   properties: {

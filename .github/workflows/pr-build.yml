@@ -8,6 +8,9 @@ on:
       - 'test/**'
       - 'bench/**'
       - 'All.sln'
+      - 'Directory.Packages.props'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/pr-build.yml'
@@ -81,18 +84,17 @@ jobs:
             -Q "SELECT @@VERSION" -b
         timeout-minutes: 2
 
-      - name: Restore dependencies
-        run: dotnet restore All.sln
+      - name: Restore E2E test project
+        run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
 
-      - name: Build solution
-        run: dotnet build All.sln --configuration Release --no-restore
+      - name: Build E2E test project
+        run: dotnet build test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj --configuration Release --no-restore
 
       - name: Run E2E tests
         run: |
-          dotnet test All.sln \
+          dotnet test test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj \
             --configuration Release \
             --no-build \
-            --filter "FullyQualifiedName~E2ETests" \
             --logger "trx;LogFileName=e2e-test-results.trx" \
             --verbosity normal
         env:
