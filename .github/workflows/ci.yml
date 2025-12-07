@@ -78,18 +78,17 @@ jobs:
             -Q "SELECT @@VERSION" -b
         timeout-minutes: 2
 
-      - name: Restore dependencies
-        run: dotnet restore All.sln
+      - name: Restore E2E test project
+        run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
 
-      - name: Build solution
-        run: dotnet build All.sln --configuration Release --no-restore
+      - name: Build E2E test project
+        run: dotnet build test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj --configuration Release --no-restore
 
       - name: Run E2E tests
         run: |
-          dotnet test All.sln \
+          dotnet test test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj \
             --configuration Release \
             --no-build \
-            --filter "FullyQualifiedName~E2ETests" \
             --logger "trx;LogFileName=e2e-test-results.trx" \
             --verbosity normal
         env:
@@ -201,9 +200,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # NOTE: Version tags (0.0.68, release) are created by publish-release.yml
+          # CI only creates branch/sha/latest tags to avoid duplicate version tags
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.gitversion.outputs.semVer }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.gitversion.outputs.semVer }}
             type=ref,event=branch
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
@@ -286,7 +285,7 @@ jobs:
 
       - name: Save version and commit SHA for release
         run: |
-          echo "v${{ steps.gitversion.outputs.semVer }}" > ./packages/version.txt
+          echo "${{ steps.gitversion.outputs.semVer }}" > ./packages/version.txt
           echo "${{ github.sha }}" > ./packages/commit-sha.txt
           echo "Version: $(cat ./packages/version.txt)"
           echo "Commit SHA: $(cat ./packages/commit-sha.txt)"

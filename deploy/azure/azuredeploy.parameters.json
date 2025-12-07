@@ -12,7 +12,7 @@
       "value": "brendankowitz/ignixa-fhir"
     },
     "dockerImageTag": {
-      "value": "latest"
+      "value": "release"
     },
     "dockerRegistryUsername": {
       "value": ""

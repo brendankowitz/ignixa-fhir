@@ -101,6 +101,13 @@ builder.Services.Configure<HostFilteringOptions>(options =>
     }
 });
 
+// Configure BackgroundService resilience - prevent one failing service from stopping the host
+// This allows the FHIR server to remain available even if DurableTask or other background services fail
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
+
 // Configure blob storage options
 builder.Services.Configure<Ignixa.DataLayer.BlobStorage.Infrastructure.LocalFileBlobStorageOptions>(
     builder.Configuration.GetSection("LocalFileBlobStorage"));
