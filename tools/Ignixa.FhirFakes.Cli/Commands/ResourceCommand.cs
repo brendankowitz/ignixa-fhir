@@ -24,6 +24,7 @@ internal static class ResourceCommand
         var firstnameOption = new Option<string?>("--firstname", "Patient first name");
         var surnameOption = new Option<string?>("--surname", "Patient surname");
         var fromOption = new Option<string?>("--from", "City to generate from");
+        var validateOption = new Option<bool>("--validate", () => false, "Validate generated resource against schema");
 
         resourceCommand.AddArgument(resourceTypeArg);
         resourceCommand.AddArgument(stateNameArg);
@@ -31,11 +32,12 @@ internal static class ResourceCommand
         resourceCommand.AddOption(firstnameOption);
         resourceCommand.AddOption(surnameOption);
         resourceCommand.AddOption(fromOption);
+        resourceCommand.AddOption(validateOption);
 
-        resourceCommand.SetHandler(async (resourceType, stateName, outFolder, firstname, surname, from) =>
+        resourceCommand.SetHandler(async (resourceType, stateName, outFolder, firstname, surname, from, validate) =>
         {
-            await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder, firstname, surname, from);
-        }, resourceTypeArg, stateNameArg, outOption, firstnameOption, surnameOption, fromOption);
+            await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder, firstname, surname, from, validate);
+        }, resourceTypeArg, stateNameArg, outOption, firstnameOption, surnameOption, fromOption, validateOption);
 
         return resourceCommand;
     }
@@ -48,7 +50,8 @@ internal static class ResourceCommand
         string outFolder,
         string? firstname,
         string? surname,
-        string? from)
+        string? from,
+        bool validate)
     {
         try
         {
@@ -94,6 +97,21 @@ internal static class ResourceCommand
                 await File.WriteAllTextAsync(outputPath, json);
 
                 Console.WriteLine($"✓ Generated Patient: {outputPath}");
+
+                // Validate the generated resource
+                if (validate)
+                {
+                    var validationResult = ValidationHelper.ValidateResource(patient.MutableNode, schemaProvider);
+                    if (!validationResult.IsValid)
+                    {
+                        Console.WriteLine($"\n⚠️  Validation Issues Detected:");
+                        ValidationHelper.DisplayResults(validationResult, "Patient", fhirVersion, verbose: false);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"✓ Validation passed");
+                    }
+                }
             }
             else if (resourceType.Equals("Observation", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(stateName))
             {
@@ -134,6 +152,21 @@ internal static class ResourceCommand
                     await File.WriteAllTextAsync(outputPath, json);
 
                     Console.WriteLine($"✓ Generated Observation ({stateName}): {outputPath}");
+
+                    // Validate the generated resource
+                    if (validate)
+                    {
+                        var validationResult = ValidationHelper.ValidateResource(observation.MutableNode, schemaProvider);
+                        if (!validationResult.IsValid)
+                        {
+                            Console.WriteLine($"\n⚠️  Validation Issues Detected:");
+                            ValidationHelper.DisplayResults(validationResult, "Observation", fhirVersion, verbose: false);
+                        }
+                        else
+                        {
+                            Console.WriteLine($"✓ Validation passed");
+                        }
+                    }
                 }
             }
             else

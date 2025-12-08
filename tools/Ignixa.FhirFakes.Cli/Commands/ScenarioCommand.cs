@@ -18,15 +18,17 @@ internal static class ScenarioCommand
         var scenarioNameArg = new Argument<string>("scenarioName", "The scenario name (e.g., DiabeticPatient)");
         var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
         var resolvedReferencesOption = new Option<bool>("--resolved-references", "Create a batch bundle instead of references");
+        var validateOption = new Option<bool>("--validate", () => false, "Validate generated resources against schema");
 
         scenarioCommand.AddArgument(scenarioNameArg);
         scenarioCommand.AddOption(outOption);
         scenarioCommand.AddOption(resolvedReferencesOption);
+        scenarioCommand.AddOption(validateOption);
 
-        scenarioCommand.SetHandler(async (scenarioName, outFolder, resolvedReferences) =>
+        scenarioCommand.SetHandler(async (scenarioName, outFolder, resolvedReferences, validate) =>
         {
-            await HandleScenarioCommand(schemaProvider, fhirVersion, scenarioName, outFolder, resolvedReferences);
-        }, scenarioNameArg, outOption, resolvedReferencesOption);
+            await HandleScenarioCommand(schemaProvider, fhirVersion, scenarioName, outFolder, resolvedReferences, validate);
+        }, scenarioNameArg, outOption, resolvedReferencesOption, validateOption);
 
         return scenarioCommand;
     }
@@ -36,7 +38,8 @@ internal static class ScenarioCommand
         string fhirVersion,
         string scenarioName,
         string outFolder,
-        bool resolvedReferences)
+        bool resolvedReferences,
+        bool validate)
     {
         try
         {
@@ -81,6 +84,39 @@ internal static class ScenarioCommand
             var bundleType = resolvedReferences ? "batch" : "transaction";
             Console.WriteLine($"✓ Generated scenario bundle ({bundleType}): {outputPath}");
             Console.WriteLine($"  Resources: {context.AllResources.Count}");
+
+            // Validate each resource in the scenario if requested
+            if (validate)
+            {
+                Console.WriteLine("\n───────────────────────────────────────────────────────────────");
+                Console.WriteLine("Validating generated resources...");
+                Console.WriteLine("───────────────────────────────────────────────────────────────");
+
+                var validationResults = new Dictionary<string, Ignixa.Validation.ValidationResult>();
+                foreach (var resource in context.AllResources)
+                {
+                    var resourceType = resource.MutableNode["resourceType"]?.ToString() ?? "Unknown";
+                    var resourceId = resource.MutableNode["id"]?.ToString() ?? "unknown";
+                    var key = $"{resourceType}/{resourceId}";
+
+                    var result = ValidationHelper.ValidateResource(resource.MutableNode, schemaProvider);
+                    validationResults[key] = result;
+
+                    var summary = ValidationHelper.GetSummary(result);
+                    Console.WriteLine($"  {key}: {summary}");
+                }
+
+                // Show summary of validation results
+                var invalidCount = validationResults.Count(r => !r.Value.IsValid);
+                if (invalidCount > 0)
+                {
+                    Console.WriteLine($"\n⚠️  {invalidCount} resource(s) have validation issues");
+                }
+                else
+                {
+                    Console.WriteLine($"\n✓ All {context.AllResources.Count} resource(s) passed validation");
+                }
+            }
         }
         catch (Exception ex)
         {
