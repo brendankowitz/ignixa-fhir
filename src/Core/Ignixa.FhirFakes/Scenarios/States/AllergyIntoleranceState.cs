@@ -96,7 +96,8 @@ public sealed class AllergyIntoleranceState : ScenarioState
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
 
-        // Set clinical status
+        // Set clinical status (required in R4+, optional in STU3)
+        // Always set it for completeness, but note the requirement difference
         node["clinicalStatus"] = new JsonObject
         {
             ["coding"] = new JsonArray
@@ -110,7 +111,8 @@ public sealed class AllergyIntoleranceState : ScenarioState
             }
         };
 
-        // Set verification status
+        // Set verification status (required in R4+, optional in STU3)
+        // Always set it for completeness, but note the requirement difference
         node["verificationStatus"] = new JsonObject
         {
             ["coding"] = new JsonArray

@@ -90,20 +90,31 @@ public sealed class MedicationOrderState : ScenarioState
         node["status"] = Status;
         node["intent"] = Intent;
 
-        // Set medication code
-        node["medicationCodeableConcept"] = new JsonObject
+        // Set medication code using version-appropriate field name
+        // medication[x] can be medicationCodeableConcept or medicationReference
+        var medicationField = faker.SchemaProvider.GetChoiceFieldName(
+            "MedicationRequest",
+            "medication",
+            "CodeableConcept",  // Preferred: inline code
+            "Reference"         // Fallback: reference to Medication resource
+        );
+
+        if (medicationField is not null)
         {
-            ["coding"] = new JsonArray
+            node[medicationField] = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["system"] = Code.System,
-                    ["code"] = Code.Code,
-                    ["display"] = Code.Display
-                }
-            },
-            ["text"] = Code.Display
-        };
+                    new JsonObject
+                    {
+                        ["system"] = Code.System,
+                        ["code"] = Code.Code,
+                        ["display"] = Code.Display
+                    }
+                },
+                ["text"] = Code.Display
+            };
+        }
 
         // Set patient reference
         node["subject"] = new JsonObject

@@ -718,6 +718,113 @@ public class CrossVersionCompatibilityTests
 
     #endregion
 
+    #region MedicationRequest Compatibility Tests
+
+    [Fact]
+    public void GivenMedicationRequest_WhenGeneratedAcrossAllVersions_ThenAllSucceed()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing MedicationRequest with {schema.Version} ({schema.FullVersion})");
+
+            // Act
+            var exception = Record.Exception(() =>
+            {
+                var scenario = new ScenarioBuilder(schema)
+                    .WithPatient()
+                    .AddEncounter("Medication visit")
+                    .AddMedicationOrder(MedicationOrderState.Metformin500mg())
+                    .Build();
+
+                // Assert basic structure
+                scenario.Medications.Should().HaveCount(1);
+                scenario.Medications[0].ResourceType.Should().Be("MedicationRequest");
+                scenario.Medications[0].Id.Should().NotBeNullOrEmpty();
+            });
+
+            exception.Should().BeNull($"MedicationRequest should work with {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenMedicationRequest_WhenGeneratedAcrossAllVersions_ThenHasRequiredFields()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing MedicationRequest required fields with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddEncounter("Medication visit")
+                .AddMedicationOrder(MedicationOrderState.Lisinopril10mg())
+                .Build();
+
+            var medicationRequest = scenario.Medications[0];
+
+            // Assert - Common required fields across all versions
+            medicationRequest.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
+            medicationRequest.MutableNode["intent"].Should().NotBeNull($"intent is required in {schema.Version}");
+            medicationRequest.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
+        }
+    }
+
+    [Fact]
+    public void GivenMedicationRequest_WhenGeneratedAcrossAllVersions_ThenUsesMedicationField()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing MedicationRequest medication[x] field with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddMedicationOrder(MedicationOrderState.Atorvastatin20mg())
+                .Build();
+
+            var medicationRequest = scenario.Medications[0];
+
+            // Assert - Should have either medicationCodeableConcept or medicationReference
+            var hasMedicationCodeableConcept = medicationRequest.MutableNode["medicationCodeableConcept"] != null;
+            var hasMedicationReference = medicationRequest.MutableNode["medicationReference"] != null;
+
+            (hasMedicationCodeableConcept || hasMedicationReference)
+                .Should().BeTrue($"should have medication field in {schema.Version}");
+
+            // If using CodeableConcept, verify structure
+            if (hasMedicationCodeableConcept)
+            {
+                var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
+                coding.Should().NotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
+                coding?["code"]?.GetValue<string>().Should().NotBeNullOrEmpty($"should have medication code in {schema.Version}");
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenMedicationRequestWithDosage_WhenGeneratedAcrossAllVersions_ThenHasDosageInstruction()
+    {
+        foreach (var schema in _schemaProviders)
+        {
+            _output.WriteLine($"Testing MedicationRequest dosageInstruction with {schema.Version}");
+
+            // Act
+            var scenario = new ScenarioBuilder(schema)
+                .WithPatient()
+                .AddMedicationOrder(MedicationOrderState.Albuterol())
+                .Build();
+
+            var medicationRequest = scenario.Medications[0];
+
+            // Assert - dosageInstruction should exist across all versions
+            var dosageInstruction = medicationRequest.MutableNode["dosageInstruction"] as JsonArray;
+            dosageInstruction.Should().NotBeNull($"dosageInstruction should exist in {schema.Version}");
+            dosageInstruction!.Count.Should().BeGreaterThan(0, $"should have dosage entries in {schema.Version}");
+        }
+    }
+
+    #endregion
+
     #region Version-Specific Issue Detection Tests
 
     [Fact]

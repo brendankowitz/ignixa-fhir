@@ -94,4 +94,109 @@ internal static class FhirVersionHelper
         // STU3 doesn't have a specific field for series doses - it's implied by the series name
         return schemaProvider.IsStu3() ? null : "seriesDosesPositiveInt";
     }
+
+    /// <summary>
+    /// Gets the correct field name for a choice type (e.g., medication[x], value[x], performed[x]).
+    /// Tries each preferred suffix in order and returns the first match found in the schema.
+    /// If no preferred suffix matches, returns any field starting with the base property name.
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider.</param>
+    /// <param name="resourceType">The resource type name (e.g., "MedicationRequest", "Observation").</param>
+    /// <param name="basePropertyName">The base property name without suffix (e.g., "medication", "value", "performed").</param>
+    /// <param name="preferredSuffixes">Ordered list of preferred suffixes to try (e.g., "CodeableConcept", "Reference").</param>
+    /// <returns>The version-appropriate field name, or null if no matching field exists.</returns>
+    /// <example>
+    /// <code>
+    /// // Get medication field for MedicationRequest, preferring CodeableConcept over Reference
+    /// var field = schemaProvider.GetChoiceFieldName("MedicationRequest", "medication", 
+    ///     "CodeableConcept", "Reference");
+    /// // Returns "medicationCodeableConcept" if available, otherwise "medicationReference"
+    /// </code>
+    /// </example>
+    public static string? GetChoiceFieldName(
+        this IFhirSchemaProvider schemaProvider,
+        string resourceType,
+        string basePropertyName,
+        params string[] preferredSuffixes)
+    {
+        ArgumentNullException.ThrowIfNull(schemaProvider);
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(basePropertyName);
+
+        var typeDefinition = schemaProvider.GetTypeDefinition(resourceType);
+        if (typeDefinition is null)
+        {
+            return null;
+        }
+
+        // Try each preferred suffix in order
+        foreach (var suffix in preferredSuffixes)
+        {
+            var fieldName = $"{basePropertyName}{suffix}";
+            if (typeDefinition.Children.Any(c => c.Info.Name == fieldName))
+            {
+                return fieldName;
+            }
+        }
+
+        // Fall back to any field starting with basePropertyName
+        return typeDefinition.Children
+            .FirstOrDefault(c => c.Info.Name.StartsWith(basePropertyName, StringComparison.OrdinalIgnoreCase))
+            ?.Info.Name;
+    }
+
+    /// <summary>
+    /// Checks if a specific property is required in a resource type definition.
+    /// Useful for conditionally setting fields based on version requirements.
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider.</param>
+    /// <param name="resourceType">The resource type name (e.g., "AllergyIntolerance", "Observation").</param>
+    /// <param name="propertyName">The property name to check (e.g., "clinicalStatus", "verificationStatus").</param>
+    /// <returns>True if the property is required in the schema, false otherwise.</returns>
+    /// <example>
+    /// <code>
+    /// // Check if clinicalStatus is required (it is in R4+ but not STU3)
+    /// if (schemaProvider.IsRequired("AllergyIntolerance", "clinicalStatus"))
+    /// {
+    ///     node["clinicalStatus"] = ...;
+    /// }
+    /// </code>
+    /// </example>
+    public static bool IsRequired(
+        this IFhirSchemaProvider schemaProvider,
+        string resourceType,
+        string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(schemaProvider);
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(propertyName);
+
+        var typeDefinition = schemaProvider.GetTypeDefinition(resourceType);
+        var element = typeDefinition?.Children
+            .FirstOrDefault(c => c.Info.Name == propertyName);
+        return element?.IsRequired ?? false;
+    }
+
+    /// <summary>
+    /// Checks if a specific property is marked as being in the summary.
+    /// Summary elements are considered core/important elements that should typically be populated.
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider.</param>
+    /// <param name="resourceType">The resource type name.</param>
+    /// <param name="propertyName">The property name to check.</param>
+    /// <returns>True if the property is in the summary, false otherwise.</returns>
+    public static bool IsInSummary(
+        this IFhirSchemaProvider schemaProvider,
+        string resourceType,
+        string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(schemaProvider);
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(propertyName);
+
+        var typeDefinition = schemaProvider.GetTypeDefinition(resourceType);
+        var element = typeDefinition?.Children
+            .FirstOrDefault(c => c.Info.Name == propertyName);
+        return element?.InSummary ?? false;
+    }
 }
