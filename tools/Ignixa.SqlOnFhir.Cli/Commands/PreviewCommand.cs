@@ -125,8 +125,8 @@ internal static class PreviewCommand
             Console.WriteLine($"=== Sample Rows ({sampleRows.Count}) ===");
             Console.WriteLine();
 
-            // Display rows in a formatted table
-            var columns = columnSchemas.Select(c => c.Name).ToList();
+            // Display rows in a formatted table (using same order as schema output)
+            var columns = columnSchemas.OrderBy(c => c.Name).Select(c => c.Name).ToList();
             DisplayTable(sampleRows, columns);
 
             Console.WriteLine();
