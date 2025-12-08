@@ -20,10 +20,10 @@ internal static class VersionFieldOverrides
     private static readonly Dictionary<(FhirVersion, string, string), string> Overrides = new()
     {
         // STU3-specific overrides (R4+ field names remain the same)
-        // Format: (FhirVersion.Stu3, "ResourceType", "normativeFieldName") -> "stu3FieldName"
+        // Format: { (FhirVersion.Stu3, "ResourceType", "normativeFieldName"), "stu3FieldName" }
 
-        // Add overrides here as needed:
-        // Example: (FhirVersion.Stu3, "Observation", "effectiveDateTime") -> "effectiveDateTime",
+        // MedicationRequest: STU3 uses bare "medication" field instead of choice types
+        { (FhirVersion.Stu3, "MedicationRequest", "medicationCodeableConcept"), "medication" },
     };
 
     /// <summary>
