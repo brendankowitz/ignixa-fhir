@@ -132,14 +132,23 @@ public sealed class ObservationState : ScenarioState
             };
         }
 
-        // Set effective date
-        node["effectiveDateTime"] = context.CurrentTime.ToString("o");
+        // Set effective date using version-appropriate field name (R4+ normative is "effectiveDateTime")
+        var effectiveField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Observation",
+            "effectiveDateTime");
+        node[effectiveField] = context.CurrentTime.ToString("o");
 
         // Set value
         if (Components is { Count: > 0 })
         {
             // Multi-component observation (e.g., blood pressure)
             var componentArray = new JsonArray();
+            var componentValueField = VersionFieldOverrides.GetFieldName(
+                faker.SchemaProvider.Version,
+                "Observation",
+                "valueQuantity");
+
             foreach (var component in Components)
             {
                 var compValue = component.ValueFromContext?.Invoke(context)
@@ -162,7 +171,7 @@ public sealed class ObservationState : ScenarioState
                             }
                         }
                     },
-                    ["valueQuantity"] = new JsonObject
+                    [componentValueField] = new JsonObject
                     {
                         ["value"] = compValue,
                         ["unit"] = component.Unit ?? "mmHg",
@@ -175,14 +184,19 @@ public sealed class ObservationState : ScenarioState
         }
         else
         {
-            // Simple value
+            // Simple value using version-appropriate field name (R4+ normative is "valueQuantity")
             var observationValue = ValueFromContext?.Invoke(context)
                 ?? Value
                 ?? (ValueRangeMin.HasValue && ValueRangeMax.HasValue
                     ? _faker.Random.Decimal(ValueRangeMin.Value, ValueRangeMax.Value)
                     : 0);
 
-            node["valueQuantity"] = new JsonObject
+            var valueField = VersionFieldOverrides.GetFieldName(
+                faker.SchemaProvider.Version,
+                "Observation",
+                "valueQuantity");
+
+            node[valueField] = new JsonObject
             {
                 ["value"] = observationValue,
                 ["unit"] = Unit ?? "unit",
