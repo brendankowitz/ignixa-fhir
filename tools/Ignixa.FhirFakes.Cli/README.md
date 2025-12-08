@@ -89,10 +89,17 @@ Generate multiple patients from a specific location:
 ignixa-fakes r4 population --out ./output --from Seattle --count 100 --resolved-references
 ```
 
+Generate populations in ndjson format (useful for `$import` operations):
+
+```bash
+ignixa-fakes r4 population --out ./output --from Seattle --count 100 --ndjson
+```
+
 ## Options
 
 - `--out <folder>` - **Required** - Output folder for generated files (will be created if it doesn't exist)
 - `--resolved-references` - Creates a batch bundle instead of references (for scenario and population commands)
+- `--ndjson` - Write ndjson files instead of bundles (implies --resolved-references, only available for population command)
 - `--firstname <name>` - Set patient first name
 - `--surname <name>` - Set patient surname
 - `--from <city>` - Generate from a specific city
@@ -103,7 +110,8 @@ ignixa-fakes r4 population --out ./output --from Seattle --count 100 --resolved-
 All commands generate JSON files in the specified output directory with the format:
 - Single resources: `{resource}-{name}-{id}.json` or `patient-{id}.json`
 - Scenarios: `bundle-{scenario}-{id}.json`
-- Populations: `bundle-population-{city}-{count}-{id}.json`
+- Populations (bundles): `bundle-population-{city}-{count}-{id}.json`
+- Populations (ndjson): `{version}-population-{city}-{ResourceType}-{count}-{id}.ndjson`
 
 ## Examples
 
@@ -114,8 +122,11 @@ ignixa-fakes r4 resource Patient --out ./output --firstname Alice --surname John
 # Generate a diabetic patient scenario using R4
 ignixa-fakes r4 scenario DiabeticPatient --out ./output --resolved-references
 
-# Generate 50 patients from Boston using R4
+# Generate 50 patients from Boston using R4 as bundles
 ignixa-fakes r4 population --out ./output --from Boston --count 50 --resolved-references
+
+# Generate 50 patients from Boston using R4 as ndjson files (for $import)
+ignixa-fakes r4 population --out ./output --from Boston --count 50 --ndjson
 
 # Generate a blood glucose observation using R4
 ignixa-fakes r4 resource Observation BloodGlucose --out ./output

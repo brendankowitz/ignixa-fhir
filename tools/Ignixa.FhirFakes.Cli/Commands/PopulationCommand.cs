@@ -20,16 +20,18 @@ internal static class PopulationCommand
         var fromOption = new Option<string?>("--from", "City or state to generate from");
         var countOption = new Option<int>("--count", () => 10, "Number of patients to generate");
         var resolvedReferencesOption = new Option<bool>("--resolved-references", "Create batch bundles instead of references");
+        var ndjsonOption = new Option<bool>("--ndjson", "Write ndjson files instead of bundles (implies --resolved-references)");
 
         populationCommand.AddOption(outOption);
         populationCommand.AddOption(fromOption);
         populationCommand.AddOption(countOption);
         populationCommand.AddOption(resolvedReferencesOption);
+        populationCommand.AddOption(ndjsonOption);
 
-        populationCommand.SetHandler(async (outFolder, from, count, resolvedReferences) =>
+        populationCommand.SetHandler(async (outFolder, from, count, resolvedReferences, ndjson) =>
         {
-            await HandlePopulationCommand(schemaProvider, fhirVersion, outFolder, from, count, resolvedReferences);
-        }, outOption, fromOption, countOption, resolvedReferencesOption);
+            await HandlePopulationCommand(schemaProvider, fhirVersion, outFolder, from, count, resolvedReferences, ndjson);
+        }, outOption, fromOption, countOption, resolvedReferencesOption, ndjsonOption);
 
         return populationCommand;
     }
@@ -41,12 +43,19 @@ internal static class PopulationCommand
         string outFolder,
         string? from,
         int count,
-        bool resolvedReferences)
+        bool resolvedReferences,
+        bool ndjson)
     {
         try
         {
             // Ensure output directory exists
             Directory.CreateDirectory(outFolder);
+
+            // ndjson implies resolved references
+            if (ndjson)
+            {
+                resolvedReferences = true;
+            }
 
             var generator = new PopulationGenerator(schemaProvider);
             
@@ -88,7 +97,12 @@ internal static class PopulationCommand
 
             var contexts = generator.Generate(state, count).ToList();
 
-            if (resolvedReferences)
+            if (ndjson)
+            {
+                // Generate ndjson files - one file per resource type per patient
+                await WriteNdjsonFiles(schemaProvider, fhirVersion, outFolder, state, count, contexts);
+            }
+            else if (resolvedReferences)
             {
                 // Generate separate bundle files for each patient
                 for (int i = 0; i < contexts.Count; i++)
@@ -167,6 +181,57 @@ internal static class PopulationCommand
             Console.WriteLine($"✗ Error: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
         }
+    }
+
+    private static async Task WriteNdjsonFiles(
+        IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
+        string outFolder,
+        string state,
+        int count,
+        List<ScenarioContext> contexts)
+    {
+        JsonSerializerOptions options = new()
+        {
+            WriteIndented = false // ndjson should not be indented
+        };
+
+        // Rewrite references for all contexts to resolved format
+        foreach (var context in contexts)
+        {
+            context.RewriteReferences(schemaProvider.ReferenceMetadataProvider, ReferenceFormat.Resolved);
+        }
+
+        // Group all resources by type across all patients
+        var allResourcesByType = contexts
+            .SelectMany(c => c.AllResources)
+            .GroupBy(r => r.ResourceType)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        int totalResources = 0;
+
+        // Write one ndjson file per resource type
+        foreach (var (resourceType, resources) in allResourcesByType)
+        {
+            var id = Guid.NewGuid().ToString();
+            var sanitizedState = SanitizeFileName(state);
+            var filename = $"{fhirVersion}-population-{sanitizedState}-{resourceType}-{count}-{id}.ndjson";
+            var outputPath = Path.Combine(outFolder, filename);
+
+            // Write resources as newline-delimited JSON
+            await using var writer = new StreamWriter(outputPath);
+            foreach (var resource in resources)
+            {
+                var json = JsonSerializer.Serialize(resource.MutableNode, options);
+                await writer.WriteLineAsync(json);
+                totalResources++;
+            }
+
+            Console.WriteLine($"  Written {resources.Count} {resourceType} resources to {Path.GetFileName(outputPath)}");
+        }
+
+        Console.WriteLine($"✓ Generated {count} patients in ndjson format from {state}");
+        Console.WriteLine($"  Total resources: {totalResources}");
     }
 
     private static string SanitizeFileName(string fileName)
