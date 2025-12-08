@@ -143,7 +143,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirFaker.Cli", "tools\Ignixa.FhirFaker.Cli\Ignixa.FhirFaker.Cli.csproj", "{84867122-AFA7-44D7-BCF2-41610208FC42}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirFaker.Cli.Tests", "tools\Ignixa.FhirFaker.Cli.Tests\Ignixa.FhirFaker.Cli.Tests.csproj", "{2A65D560-F51D-4589-AA05-B4EDEAD544F6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirFaker.Cli.Tests", "test\Ignixa.FhirFaker.Cli.Tests\Ignixa.FhirFaker.Cli.Tests.csproj", "{2A65D560-F51D-4589-AA05-B4EDEAD544F6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
