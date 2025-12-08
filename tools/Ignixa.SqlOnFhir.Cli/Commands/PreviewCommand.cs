@@ -8,6 +8,7 @@ using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
+using Ignixa.SqlOnFhir.Cli.Helpers;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Writers;
 
@@ -86,7 +87,7 @@ internal static class PreviewCommand
             }
 
             // Detect FHIR version from first resource
-            var schemaProvider = await DetectFhirVersionAsync(inputPath);
+            var schemaProvider = await FhirVersionDetector.DetectFhirVersionAsync(inputPath);
             if (schemaProvider == null)
             {
                 Console.WriteLine("✗ Could not detect FHIR version from input file");
@@ -230,27 +231,5 @@ internal static class PreviewCommand
                 yield return row;
             }
         }
-    }
-
-    private static async Task<IFhirSchemaProvider?> DetectFhirVersionAsync(string inputPath)
-    {
-        await foreach (var line in File.ReadLinesAsync(inputPath))
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            var resourceNode = JsonSourceNodeFactory.Parse(line);
-            if (resourceNode == null)
-            {
-                continue;
-            }
-
-            // For simplicity, default to R4
-            return new Specification.Generated.R4CoreSchemaProvider();
-        }
-
-        return null;
     }
 }
