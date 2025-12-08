@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>Writers for SQL on FHIR - Parquet and CSV output formats</Description>
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Parquet.Net" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
+</Project>
