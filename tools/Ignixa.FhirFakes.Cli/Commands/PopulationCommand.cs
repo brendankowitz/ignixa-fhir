@@ -144,36 +144,43 @@ internal static class PopulationCommand
                 var filename = $"{fhirVersion}-bundle-population-{sanitizedState}-{count}-{id}.json";
                 var outputPath = Path.Combine(outFolder, filename);
 
-                // Combine all contexts into a single bundle
-                var allResources = contexts.SelectMany(c => c.AllResources).ToList();
-                
-                // Create a transaction bundle with all resources
-                var firstContext = contexts[0];
-                var combinedBundle = firstContext.ToBundle();
-                
-                // Replace entries with all resources
-                var entries = new System.Text.Json.Nodes.JsonArray();
-                foreach (var resource in allResources)
+                // Rewrite all contexts' references to urn:uuid format for transaction bundle
+                foreach (var context in contexts)
                 {
-                    var entry = new System.Text.Json.Nodes.JsonObject
-                    {
-                        ["resource"] = resource.MutableNode,
-                        ["request"] = new System.Text.Json.Nodes.JsonObject
-                        {
-                            ["method"] = "POST",
-                            ["url"] = resource.ResourceType
-                        }
-                    };
-                    entries.Add(entry);
+                    context.RewriteReferences(schemaProvider.ReferenceMetadataProvider, ReferenceFormat.UrnUuid);
                 }
-                
-                combinedBundle.MutableNode["entry"] = entries;
-                
-                var json = JsonSerializer.Serialize(combinedBundle.MutableNode, options);
+
+                // Combine all contexts into a single transaction bundle
+                var entries = new System.Text.Json.Nodes.JsonArray();
+                int totalResources = 0;
+
+                foreach (var context in contexts)
+                {
+                    var bundle = context.ToBundle();
+                    if (bundle.MutableNode["entry"] is System.Text.Json.Nodes.JsonArray bundleEntries)
+                    {
+                        foreach (var entry in bundleEntries)
+                        {
+                            entries.Add(entry?.DeepClone());
+                            totalResources++;
+                        }
+                    }
+                }
+
+                // Create combined bundle
+                var combinedBundle = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["resourceType"] = "Bundle",
+                    ["id"] = id,
+                    ["type"] = "transaction",
+                    ["entry"] = entries
+                };
+
+                var json = JsonSerializer.Serialize(combinedBundle, options);
                 await File.WriteAllTextAsync(outputPath, json);
 
                 Console.WriteLine($"✓ Generated population bundle: {outputPath}");
-                Console.WriteLine($"  Total resources: {allResources.Count}");
+                Console.WriteLine($"  Total resources: {totalResources}");
             }
         }
         catch (Exception ex)
