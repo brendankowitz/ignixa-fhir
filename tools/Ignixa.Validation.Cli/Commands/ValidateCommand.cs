@@ -50,18 +50,21 @@ internal static class ValidateCommand
             if (string.IsNullOrEmpty(inputFile) && string.IsNullOrEmpty(jsonString))
             {
                 Console.WriteLine("✗ Error: Either --input or --json must be specified");
+                Environment.ExitCode = 1;
                 return;
             }
 
             if (!string.IsNullOrEmpty(inputFile) && !string.IsNullOrEmpty(jsonString))
             {
                 Console.WriteLine("✗ Error: Cannot specify both --input and --json");
+                Environment.ExitCode = 1;
                 return;
             }
 
             if (!consoleOutput && string.IsNullOrEmpty(outputFile))
             {
                 Console.WriteLine("✗ Error: Either --console or --out must be specified");
+                Environment.ExitCode = 1;
                 return;
             }
 
@@ -72,6 +75,7 @@ internal static class ValidateCommand
                 if (!File.Exists(inputFile))
                 {
                     Console.WriteLine($"✗ Error: File not found: {inputFile}");
+                    Environment.ExitCode = 1;
                     return;
                 }
                 jsonContent = await File.ReadAllTextAsync(inputFile);
@@ -89,12 +93,14 @@ internal static class ValidateCommand
                 if (jsonNode == null)
                 {
                     Console.WriteLine("✗ Error: Invalid JSON - parsed to null");
+                    Environment.ExitCode = 1;
                     return;
                 }
             }
             catch (JsonException ex)
             {
                 Console.WriteLine($"✗ Error: Invalid JSON - {ex.Message}");
+                Environment.ExitCode = 1;
                 return;
             }
 
@@ -105,6 +111,7 @@ internal static class ValidateCommand
             if (string.IsNullOrEmpty(resourceType))
             {
                 Console.WriteLine("✗ Error: Could not determine resource type from JSON");
+                Environment.ExitCode = 1;
                 return;
             }
 
@@ -117,6 +124,7 @@ internal static class ValidateCommand
             if (schema == null)
             {
                 Console.WriteLine($"✗ Error: Validation schema not found for resource type '{resourceType}'");
+                Environment.ExitCode = 1;
                 return;
             }
 
