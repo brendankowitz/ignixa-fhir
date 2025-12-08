@@ -339,7 +339,8 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             var sqlMergeRepository = new SqlMergeRepository(
                 dbContext,
                 compressor,
-                _loggerFactory.CreateLogger<SqlMergeRepository>());
+                _loggerFactory.CreateLogger<SqlMergeRepository>(),
+                searchIndexCache);
 
             return new SqlEntityFrameworkRepository(
                 dbContext,
