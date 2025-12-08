@@ -41,9 +41,3 @@ foreach (var row in rows)
 
 await writer.FlushAsync(cancellationToken);
 ```
-
-## Schema Extraction
-
-```csharp
-var schema = SchemaExtractor.ExtractSchema(viewDefinitionNode);
-```
