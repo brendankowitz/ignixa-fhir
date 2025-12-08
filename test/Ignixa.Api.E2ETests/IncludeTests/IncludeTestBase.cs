@@ -398,5 +398,57 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
         return bundle.Entry.Count(e => e.Search?.Mode == mode);
     }
 
+    /// <summary>
+    /// Creates a MedicationRequest resource with a tag and patient reference.
+    /// Uses helper methods for cleaner JSON construction.
+    /// </summary>
+    protected ResourceJsonNode CreateMedicationRequest(string tag, string patientId)
+    {
+        var medRequest = new ResourceJsonNode
+        {
+            ResourceType = "MedicationRequest",
+            Id = Guid.NewGuid().ToString()
+        };
+        medRequest.MutableNode["meta"] = CreateMetaTagJson(tag);
+        medRequest.MutableNode["status"] = "completed";
+        medRequest.MutableNode["intent"] = "order";
+        medRequest.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
+        medRequest.MutableNode["medicationCodeableConcept"] = CreateCodeableConceptJson("http://snomed.info/sct", "16590-619-30");
+
+        return medRequest;
+    }
+
+    /// <summary>
+    /// Creates a MedicationDispense resource with a tag, patient reference, and optional whenPrepared date.
+    /// Uses helper methods for cleaner JSON construction.
+    /// </summary>
+    protected ResourceJsonNode CreateMedicationDispense(string tag, string patientId, string? whenPrepared, string? medicationRequestId)
+    {
+        var medDispense = new ResourceJsonNode
+        {
+            ResourceType = "MedicationDispense",
+            Id = Guid.NewGuid().ToString()
+        };
+        medDispense.MutableNode["meta"] = CreateMetaTagJson(tag);
+        medDispense.MutableNode["status"] = "in-progress";
+        medDispense.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
+        medDispense.MutableNode["medicationCodeableConcept"] = CreateCodeableConceptJson("http://snomed.info/sct", "108505002");
+
+        if (whenPrepared is not null)
+        {
+            medDispense.MutableNode["whenPrepared"] = whenPrepared;
+        }
+
+        if (medicationRequestId is not null)
+        {
+            medDispense.MutableNode["authorizingPrescription"] = new JsonArray
+            {
+                CreateReferenceJson("MedicationRequest", medicationRequestId)
+            };
+        }
+
+        return medDispense;
+    }
+
     #endregion
 }
