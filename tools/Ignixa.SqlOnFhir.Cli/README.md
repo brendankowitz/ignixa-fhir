@@ -105,8 +105,4 @@ ignixa-sqlonfhir preview \
 
 ## FHIR Version Support
 
-The tool automatically detects the FHIR version from the input resources and uses the appropriate schema provider. Supported versions:
-- FHIR R4
-- FHIR R4B
-- FHIR R5
-- FHIR STU3
+The tool currently defaults to FHIR R4 for all resources. Future versions will include automatic detection of FHIR versions (STU3, R4, R4B, R5, R6) from resource metadata.
