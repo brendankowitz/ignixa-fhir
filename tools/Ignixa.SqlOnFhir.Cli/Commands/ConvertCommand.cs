@@ -8,7 +8,6 @@ using System.Diagnostics;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
-using Ignixa.SqlOnFhir.Cli.Helpers;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Writers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,37 +19,45 @@ namespace Ignixa.SqlOnFhir.Cli.Commands;
 /// </summary>
 internal static class ConvertCommand
 {
-    public static Command Create()
+    public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
         var convertCommand = new Command("convert", "Convert FHIR resources using a ViewDefinition");
 
         var viewDefinitionOption = new Option<string>("--viewdefinition", "Path to ViewDefinition JSON file") { IsRequired = true };
         var inputOption = new Option<string>("--input", "Path to input NDJSON file containing FHIR resources") { IsRequired = true };
-        var outputOption = new Option<string>("--out", "Path to output file") { IsRequired = true };
-        var formatOption = new Option<string>("--format", () => "parquet", "Output format: parquet or csv");
+        var outputOption = new Option<string>("--out", "Path to output file (extension determines format: .parquet or .csv)") { IsRequired = true };
 
         convertCommand.AddOption(viewDefinitionOption);
         convertCommand.AddOption(inputOption);
         convertCommand.AddOption(outputOption);
-        convertCommand.AddOption(formatOption);
 
-        convertCommand.SetHandler(async (viewDefinitionPath, inputPath, outputPath, format) =>
+        convertCommand.SetHandler(async (viewDefinitionPath, inputPath, outputPath) =>
         {
-            await HandleConvertCommand(viewDefinitionPath, inputPath, outputPath, format);
-        }, viewDefinitionOption, inputOption, outputOption, formatOption);
+            await HandleConvertCommand(schemaProvider, fhirVersion, viewDefinitionPath, inputPath, outputPath);
+        }, viewDefinitionOption, inputOption, outputOption);
 
         return convertCommand;
     }
 
     private static async Task HandleConvertCommand(
+        IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
         string viewDefinitionPath,
         string inputPath,
-        string outputPath,
-        string format)
+        string outputPath)
     {
         try
         {
             var stopwatch = Stopwatch.StartNew();
+
+            // Detect format from file extension
+            var format = DetectFormatFromExtension(outputPath);
+            if (format == null)
+            {
+                Console.WriteLine($"✗ Unsupported output file extension. Use .parquet or .csv");
+                Environment.ExitCode = 1;
+                return;
+            }
 
             // Validate input files exist
             if (!File.Exists(viewDefinitionPath))
@@ -83,16 +90,8 @@ internal static class ConvertCommand
             var (schema, columnTypeMap) = SchemaExtractor.ExtractParquetSchema(viewDefNavigator);
             Console.WriteLine($"✓ Extracted schema with {schema.Fields.Count} columns");
 
-            // Detect FHIR version from first resource
-            var schemaProvider = await FhirVersionDetector.DetectFhirVersionAsync(inputPath);
-            if (schemaProvider == null)
-            {
-                Console.WriteLine("✗ Could not detect FHIR version from input file");
-                Environment.ExitCode = 1;
-                return;
-            }
-
-            Console.WriteLine($"✓ Detected FHIR version: {schemaProvider.GetType().Name}");
+            // Use the provided schema provider from the command-line argument
+            Console.WriteLine($"✓ Using FHIR version: {fhirVersion.ToUpperInvariant()}");
 
             // Create evaluator
             var evaluator = new SqlOnFhirEvaluator();
@@ -199,5 +198,16 @@ internal static class ConvertCommand
             }
         }
         return count;
+    }
+
+    private static string? DetectFormatFromExtension(string outputPath)
+    {
+        var extension = Path.GetExtension(outputPath).ToUpperInvariant();
+        return extension switch
+        {
+            ".PARQUET" => "parquet",
+            ".CSV" => "csv",
+            _ => null
+        };
     }
 }

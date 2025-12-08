@@ -10,12 +10,14 @@ dotnet tool install -g Ignixa.SqlOnFhir.Cli
 
 ## Usage
 
+All commands require specifying the FHIR version first (stu3, r4, r4b, r5, or r6), followed by the operation.
+
 ### Convert FHIR Resources to Parquet
 
-Convert FHIR resources from NDJSON to Parquet format using a ViewDefinition:
+Convert FHIR resources from NDJSON to Parquet format using a ViewDefinition. The output format is automatically detected from the file extension (.parquet or .csv):
 
 ```bash
-ignixa-sqlonfhir convert --viewdefinition myview.json --input mypatients.ndjson --out myparquetfile.parquet --format parquet
+ignixa-sqlonfhir r4 convert --viewdefinition myview.json --input mypatients.ndjson --out myparquetfile.parquet
 ```
 
 ### Convert FHIR Resources to CSV
@@ -23,7 +25,7 @@ ignixa-sqlonfhir convert --viewdefinition myview.json --input mypatients.ndjson 
 Convert FHIR resources from NDJSON to CSV format using a ViewDefinition:
 
 ```bash
-ignixa-sqlonfhir convert --viewdefinition myview.json --input mypatients.ndjson --out mycsvfile.csv --format csv
+ignixa-sqlonfhir r4 convert --viewdefinition myview.json --input mypatients.ndjson --out mycsvfile.csv
 ```
 
 ### Preview Schema and Sample Data
@@ -31,7 +33,7 @@ ignixa-sqlonfhir convert --viewdefinition myview.json --input mypatients.ndjson 
 Extract schema from a ViewDefinition and show a preview of converted rows:
 
 ```bash
-ignixa-sqlonfhir preview --viewdefinition myview.json --input mypatients.ndjson
+ignixa-sqlonfhir r4 preview --viewdefinition myview.json --input mypatients.ndjson
 ```
 
 This displays:
@@ -43,7 +45,7 @@ This displays:
 Validate a ViewDefinition file for correctness:
 
 ```bash
-ignixa-sqlonfhir validate --viewdefinition myview.json
+ignixa-sqlonfhir r4 validate --viewdefinition myview.json
 ```
 
 ## Examples
@@ -88,21 +90,44 @@ Create a file `patient-view.json`:
 ### Convert to Parquet
 
 ```bash
-ignixa-sqlonfhir convert \
+ignixa-sqlonfhir r4 convert \
   --viewdefinition patient-view.json \
   --input patients.ndjson \
-  --out patients.parquet \
-  --format parquet
+  --out patients.parquet
+```
+
+### Convert to CSV
+
+```bash
+ignixa-sqlonfhir r4 convert \
+  --viewdefinition patient-view.json \
+  --input patients.ndjson \
+  --out patients.csv
 ```
 
 ### Preview Results
 
 ```bash
-ignixa-sqlonfhir preview \
+ignixa-sqlonfhir r4 preview \
   --viewdefinition patient-view.json \
   --input patients.ndjson
 ```
 
 ## FHIR Version Support
 
-The tool currently defaults to FHIR R4 for all resources. Future versions will include automatic detection of FHIR versions (STU3, R4, R4B, R5, R6) from resource metadata.
+The tool supports multiple FHIR versions through explicit version selection:
+- **stu3** - FHIR STU3 specification
+- **r4** - FHIR R4 specification (most common)
+- **r4b** - FHIR R4B specification
+- **r5** - FHIR R5 specification
+- **r6** - FHIR R6 specification
+
+Specify the version as the first argument to any command.
+
+## Output Format Detection
+
+The convert command automatically detects the output format based on the file extension:
+- `.parquet` - Parquet format (columnar, compressed)
+- `.csv` - CSV format (comma-separated values)
+
+Invalid extensions will be rejected with an error message.
