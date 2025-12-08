@@ -99,7 +99,7 @@ internal static class PopulationCommand
 
             if (ndjson)
             {
-                // Generate ndjson files - one file per resource type per patient
+                // Generate ndjson files - one file per resource type across all patients
                 await WriteNdjsonFiles(schemaProvider, fhirVersion, outFolder, state, count, contexts);
             }
             else if (resolvedReferences)
