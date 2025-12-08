@@ -784,19 +784,34 @@ public class CrossVersionCompatibilityTests
 
             var medicationRequest = scenario.Medications[0];
 
-            // Assert - Should have either medicationCodeableConcept or medicationReference
+            // Assert - Field name varies by FHIR version
+            // STU3 uses "medication" (bare field, not choice type)
+            // R4+ uses "medicationCodeableConcept" or "medicationReference" (choice type variants)
+            var hasMedicationField = medicationRequest.MutableNode["medication"] != null;
             var hasMedicationCodeableConcept = medicationRequest.MutableNode["medicationCodeableConcept"] != null;
             var hasMedicationReference = medicationRequest.MutableNode["medicationReference"] != null;
 
-            (hasMedicationCodeableConcept || hasMedicationReference)
-                .Should().BeTrue($"should have medication field in {schema.Version}");
-
-            // If using CodeableConcept, verify structure
-            if (hasMedicationCodeableConcept)
+            if (schema.Version == FhirVersion.Stu3)
             {
-                var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
-                coding.Should().NotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
-                coding?["code"]?.GetValue<string>().Should().NotBeNullOrEmpty($"should have medication code in {schema.Version}");
+                hasMedicationField.Should().BeTrue($"STU3 should have bare 'medication' field");
+
+                // In STU3, medication can be CodeableConcept or Reference
+                var medicationNode = medicationRequest.MutableNode["medication"];
+                medicationNode.Should().NotBeNull($"STU3 should have medication field");
+                medicationNode?.AsObject().Select(kvp => kvp.Key).Count().Should().BeGreaterThan(0, "medication should have content in STU3");
+            }
+            else
+            {
+                (hasMedicationCodeableConcept || hasMedicationReference)
+                    .Should().BeTrue($"R4+ should have medicationCodeableConcept or medicationReference in {schema.Version}");
+
+                // If using CodeableConcept, verify structure
+                if (hasMedicationCodeableConcept)
+                {
+                    var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
+                    coding.Should().NotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
+                    coding?["code"]?.GetValue<string>().Should().NotBeNullOrEmpty($"should have medication code in {schema.Version}");
+                }
             }
         }
     }

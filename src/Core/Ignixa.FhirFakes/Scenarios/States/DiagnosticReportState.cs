@@ -136,8 +136,12 @@ public sealed class DiagnosticReportState : ScenarioState
             };
         }
 
-        // Set effective date
-        node["effectiveDateTime"] = context.CurrentTime.ToString("o");
+        // Set effective date using version-appropriate field name (R4+ normative is "effectiveDateTime")
+        var effectiveField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "DiagnosticReport",
+            "effectiveDateTime");
+        node[effectiveField] = context.CurrentTime.ToString("o");
 
         // Set issued date (when report was made available)
         node["issued"] = context.CurrentTime.AddMinutes(_faker.Random.Int(5, 120)).ToString("o");
@@ -306,11 +310,19 @@ public sealed class DiagnosticReportState : ScenarioState
             };
         }
 
-        // Set effective date
-        node["effectiveDateTime"] = context.CurrentTime.ToString("o");
+        // Set effective date using version-appropriate field name (R4+ normative is "effectiveDateTime")
+        var effectiveField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Observation",
+            "effectiveDateTime");
+        node[effectiveField] = context.CurrentTime.ToString("o");
 
-        // Set value
-        node["valueQuantity"] = new JsonObject
+        // Set value using version-appropriate field name (R4+ normative is "valueQuantity")
+        var valueField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Observation",
+            "valueQuantity");
+        node[valueField] = new JsonObject
         {
             ["value"] = value,
             ["unit"] = unit,

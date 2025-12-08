@@ -135,8 +135,12 @@ public sealed class ConditionOnsetState : ScenarioState
             };
         }
 
-        // Set onset date
-        node["onsetDateTime"] = context.CurrentTime.ToString("o");
+        // Set onset date using version-appropriate field name (R4+ normative is "onsetDateTime")
+        var onsetField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Condition",
+            "onsetDateTime");
+        node[onsetField] = context.CurrentTime.ToString("o");
 
         // Set recorded date
         node["recordedDate"] = context.CurrentTime.ToString("o");

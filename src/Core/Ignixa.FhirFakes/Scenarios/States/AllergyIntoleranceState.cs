@@ -167,9 +167,13 @@ public sealed class AllergyIntoleranceState : ScenarioState
             };
         }
 
-        // Set onset date
+        // Set onset date using version-appropriate field name (R4+ normative is "onsetDateTime")
         var onsetDateTime = OnsetDate ?? context.CurrentTime.AddYears(-_faker.Random.Int(1, 20));
-        node["onsetDateTime"] = onsetDateTime.ToString("o");
+        var onsetField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "AllergyIntolerance",
+            "onsetDateTime");
+        node[onsetField] = onsetDateTime.ToString("o");
 
         // Set recorded date
         var recordedDateTime = RecordedDate ?? context.CurrentTime;
@@ -302,7 +306,7 @@ public sealed class AllergyIntoleranceState : ScenarioState
         {
             var manifestationCode = MapReactionToCode(reaction);
 
-            reactions.Add(new JsonObject
+            var reactionNode = new JsonObject
             {
                 ["manifestation"] = new JsonArray
                 {
@@ -320,9 +324,13 @@ public sealed class AllergyIntoleranceState : ScenarioState
                         ["text"] = reaction
                     }
                 },
-                ["severity"] = Severity,
-                ["onset"] = _faker.Date.Recent(365).ToString("o")
-            });
+                ["severity"] = Severity
+            };
+
+            // Note: AllergyIntolerance.reaction.onset[x] has onsetDateTime as the R4+ normative
+            // For now we set as a simple string representation for cross-version compatibility
+            reactionNode["onset"] = _faker.Date.Recent(365).ToString("o");
+            reactions.Add(reactionNode);
         }
 
         return reactions;
