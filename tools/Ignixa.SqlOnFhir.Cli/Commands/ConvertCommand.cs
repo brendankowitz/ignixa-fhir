@@ -8,6 +8,7 @@ using System.Diagnostics;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
+using Ignixa.SqlOnFhir.Cli.Helpers;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Writers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -83,7 +84,7 @@ internal static class ConvertCommand
             Console.WriteLine($"✓ Extracted schema with {schema.Fields.Count} columns");
 
             // Detect FHIR version from first resource
-            var schemaProvider = await DetectFhirVersionAsync(inputPath);
+            var schemaProvider = await FhirVersionDetector.DetectFhirVersionAsync(inputPath);
             if (schemaProvider == null)
             {
                 Console.WriteLine("✗ Could not detect FHIR version from input file");
@@ -185,29 +186,6 @@ internal static class ConvertCommand
                 yield return row;
             }
         }
-    }
-
-    private static async Task<IFhirSchemaProvider?> DetectFhirVersionAsync(string inputPath)
-    {
-        await foreach (var line in File.ReadLinesAsync(inputPath))
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            var resourceNode = JsonSourceNodeFactory.Parse(line);
-            if (resourceNode == null)
-            {
-                continue;
-            }
-
-            // Try to detect version from meta.versionId or just use R4 as default
-            // For simplicity, we'll default to R4
-            return new Specification.Generated.R4CoreSchemaProvider();
-        }
-
-        return null;
     }
 
     private static async Task<int> CountResourcesAsync(string inputPath)
