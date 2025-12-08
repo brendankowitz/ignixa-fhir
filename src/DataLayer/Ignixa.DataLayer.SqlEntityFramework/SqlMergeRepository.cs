@@ -68,7 +68,7 @@ public class SqlMergeRepository
         // Initialize row generators (will be injected in Phase 3 via DI container)
         _resourceRowGenerator = new ResourceRowGenerator(compressor);
         _resourceWriteClaimRowGenerator = new ResourceWriteClaimRowGenerator();
-        _tokenRowGenerator = new TokenSearchParameterRowGenerator();
+        _tokenRowGenerator = new TokenSearchParameterRowGenerator(referenceDataCache.SystemMappings);
         _referenceRowGenerator = new ReferenceSearchParameterRowGenerator();
         _stringRowGenerator = new StringSearchParameterRowGenerator();
         _numberRowGenerator = new NumberSearchParameterRowGenerator();

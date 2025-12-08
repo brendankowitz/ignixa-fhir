@@ -69,6 +69,12 @@ public class FhirDbContext : DbContext
     public DbSet<TokenSearchParamEntity> TokenSearchParams { get; set; } = null!;
 
     /// <summary>
+    /// Gets or sets the TokenText table (display text for token search parameters).
+    /// Used for :text modifier searches.
+    /// </summary>
+    public DbSet<TokenTextEntity> TokenTexts { get; set; } = null!;
+
+    /// <summary>
     /// Gets or sets the NumberSearchParams table (numeric search parameters).
     /// </summary>
     public DbSet<NumberSearchParamEntity> NumberSearchParams { get; set; } = null!;
@@ -420,6 +426,11 @@ public class FhirDbContext : DbContext
         // UriSearchParam
         var uriEntity = modelBuilder.Entity<UriSearchParamEntity>();
         uriEntity.HasKey(u => new { u.ResourceTypeId, u.ResourceSurrogateId, u.SearchParamId, u.Uri });
+
+        // TokenText (display text for :text modifier searches)
+        var tokenTextEntity = modelBuilder.Entity<TokenTextEntity>();
+        tokenTextEntity.HasKey(t => new { t.ResourceTypeId, t.ResourceSurrogateId, t.SearchParamId, t.Text });
+        tokenTextEntity.Property(t => t.IsHistory).HasDefaultValue(false);
 
         // Composite search parameter tables
         ConfigureCompositeSearchParamEntities(modelBuilder);

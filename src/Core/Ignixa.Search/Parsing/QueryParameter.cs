@@ -22,10 +22,12 @@ public record QueryParameter(string Name, string Value)
         // Extract base parameter name (before any modifiers like :iterate, :recurse)
         // Examples: "_include:iterate" → "_include", "_revinclude:recurse" → "_revinclude"
         string baseName = name;
+        bool hasModifier = false;
         int colonIndex = name.IndexOf(':', StringComparison.Ordinal);
         if (colonIndex > 0)
         {
             baseName = name.Substring(0, colonIndex);
+            hasModifier = true;
         }
 
         return baseName switch
@@ -41,7 +43,8 @@ public record QueryParameter(string Name, string Value)
             "_include" => ParameterCategory.Include,
             "_revinclude" => ParameterCategory.RevInclude,
             "_elements" => ParameterCategory.Elements,
-            "_type" => ParameterCategory.Type,
+            // _type without modifier is a type filter; _type:not is a search parameter (NOT semantics)
+            "_type" => hasModifier ? ParameterCategory.Search : ParameterCategory.Type,
             "_format" or "_pretty" => ParameterCategory.Formatting,
             "_contained" or "_containedType" => ParameterCategory.Control,
 

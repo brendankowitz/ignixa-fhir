@@ -18,6 +18,17 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
+    private readonly IReadOnlyDictionary<string, int> _systemMappings;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TokenSearchParameterRowGenerator"/> class.
+    /// </summary>
+    /// <param name="systemMappings">Mapping of system URIs to their database IDs.</param>
+    public TokenSearchParameterRowGenerator(IReadOnlyDictionary<string, int> systemMappings)
+    {
+        _systemMappings = systemMappings ?? throw new ArgumentNullException(nameof(systemMappings));
+    }
+
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
@@ -63,8 +74,22 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
 
-                // SystemId lookup (placeholder using hash)
-                record.SetInt32(3, string.IsNullOrEmpty(tokenValue.System) ? 0 : tokenValue.System.GetHashCode(StringComparison.Ordinal));
+                // SystemId lookup from the system mappings cache
+                // When no system is specified, set to DBNull so it can be matched with |code pattern
+                if (string.IsNullOrEmpty(tokenValue.System))
+                {
+                    record.SetDBNull(3);
+                }
+                else if (_systemMappings.TryGetValue(tokenValue.System, out var systemId))
+                {
+                    record.SetInt32(3, systemId);
+                }
+                else
+                {
+                    // System not found in cache - this shouldn't happen if cache is properly initialized
+                    // Skip this record to avoid data inconsistency
+                    continue;
+                }
 
                 // Handle code overflow for very long codes
                 // Code is guaranteed to be non-null here due to guard at line 55

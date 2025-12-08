@@ -307,6 +307,12 @@ public class SearchParameterQueryGenerator
             return await ProcessResourceIdMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
         }
 
+        // Handle NotExpression for _id:not modifier
+        if (expr is NotExpression notExpr)
+        {
+            return await ProcessResourceIdNotExpressionAsync(resourceTypeId, notExpr, ct);
+        }
+
         throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for _id parameter query generation");
     }
 
@@ -378,6 +384,30 @@ public class SearchParameterQueryGenerator
 
             return Task.FromResult(result);
         }
+    }
+
+    /// <summary>
+    /// Processes _id:not parameter expressions by excluding specified resource IDs.
+    /// Gets all resources EXCEPT those with the specified IDs.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceIdNotExpressionAsync(
+        short? resourceTypeId,
+        NotExpression notExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing _id:not parameter expression");
+
+        // Process the inner expression to get matching resource IDs
+        var innerMatchingIds = await ProcessResourceIdExpressionAsync(resourceTypeId, notExpr.Expression, ct);
+
+        // Get all resources (non-history, non-deleted)
+        // When resourceTypeId is specified, only consider that type; otherwise all types
+        var allResourceIds = _context.Resources
+            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value) && !r.IsHistory && !r.IsDeleted)
+            .Select(r => r.ResourceSurrogateId);
+
+        // Use EXCEPT to get all resources NOT in the inner matching set
+        return allResourceIds.Except(innerMatchingIds);
     }
 
     /// <summary>
@@ -578,6 +608,12 @@ public class SearchParameterQueryGenerator
             return await ProcessResourceTypeMultiaryExpressionAsync(multiaryExpr, ct);
         }
 
+        // Handle NotExpression for _type:not modifier
+        if (expr is NotExpression notExpr)
+        {
+            return await ProcessResourceTypeNotExpressionAsync(resourceTypeId, notExpr, ct);
+        }
+
         throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported for _type parameter query generation");
     }
 
@@ -617,6 +653,30 @@ public class SearchParameterQueryGenerator
         return _context.Resources
             .Where(r => resourceTypeIds.Contains(r.ResourceTypeId) && !r.IsHistory && !r.IsDeleted)
             .Select(r => r.ResourceSurrogateId);
+    }
+
+    /// <summary>
+    /// Processes _type:not parameter expressions by excluding specified resource types.
+    /// Gets all resources EXCEPT those with the specified resource types.
+    /// </summary>
+    private async Task<IQueryable<long>> ProcessResourceTypeNotExpressionAsync(
+        short? resourceTypeId,
+        NotExpression notExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Processing _type:not parameter expression");
+
+        // Process the inner expression to get matching resource type IDs
+        var innerMatchingIds = await ProcessResourceTypeExpressionAsync(resourceTypeId, notExpr.Expression, ct);
+
+        // Get all resources (non-history, non-deleted)
+        // When resourceTypeId is specified, only consider that type; otherwise all types
+        var allResourceIds = _context.Resources
+            .Where(r => (!resourceTypeId.HasValue || r.ResourceTypeId == resourceTypeId.Value) && !r.IsHistory && !r.IsDeleted)
+            .Select(r => r.ResourceSurrogateId);
+
+        // Use EXCEPT to get all resources NOT in the inner matching set
+        return allResourceIds.Except(innerMatchingIds);
     }
 
     private async Task<IQueryable<long>> ProcessExpressionAsync(
@@ -725,6 +785,14 @@ public class SearchParameterQueryGenerator
             IsQuantityAndExpression(multiaryExpr))
         {
             return await GenerateQuantityAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
+        }
+
+        // Special handling for Token AND expressions - all filters (system, code, missing system) must apply to the SAME row
+        // This handles patterns like "|code" which generates: And(Missing(TokenSystem), StringEquals(TokenCode, "code"))
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
+            IsTokenAndExpression(multiaryExpr))
+        {
+            return await GenerateTokenAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
         }
 
         // Process each sub-expression
@@ -1007,6 +1075,100 @@ public class SearchParameterQueryGenerator
         return query.Select(sp => sp.ResourceSurrogateId);
     }
 
+    /// <summary>
+    /// Checks if a MultiaryExpression contains Token field expressions (system, code, missing system).
+    /// </summary>
+    private static bool IsTokenAndExpression(MultiaryExpression multiaryExpr)
+    {
+        // A Token AND expression will contain some combination of:
+        // - StringExpression with FieldName.TokenSystem
+        // - StringExpression with FieldName.TokenCode
+        // - MissingFieldExpression with FieldName.TokenSystem (for |code pattern)
+        return multiaryExpr.Expressions.Any(e =>
+            (e is StringExpression se && (se.FieldName == FieldName.TokenSystem || se.FieldName == FieldName.TokenCode)) ||
+            (e is MissingFieldExpression mfe && mfe.FieldName == FieldName.TokenSystem));
+    }
+
+    /// <summary>
+    /// Generates a single Token query with all filters (system, code, missing system) applied to the SAME row.
+    /// This is essential for correctness - each condition must match the same indexed token value.
+    /// Handles patterns like:
+    /// - "|code" (empty system): MissingFieldExpression(TokenSystem) AND StringExpression(TokenCode)
+    /// - "system|code" (full token): StringExpression(TokenSystem) AND StringExpression(TokenCode)
+    /// </summary>
+    private async Task<IQueryable<long>> GenerateTokenAndQueryAsync(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Using optimized Token AND query generation");
+
+        // Extract the components from the AND expression
+        string? system = null;
+        string? code = null;
+        bool requireMissingSystem = false;
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            if (expr is StringExpression stringExpr)
+            {
+                switch (stringExpr.FieldName)
+                {
+                    case FieldName.TokenSystem:
+                        system = stringExpr.Value;
+                        break;
+                    case FieldName.TokenCode:
+                        code = stringExpr.Value;
+                        break;
+                }
+            }
+            else if (expr is MissingFieldExpression missingExpr && missingExpr.FieldName == FieldName.TokenSystem)
+            {
+                // |code pattern: system must be null/missing
+                requireMissingSystem = true;
+            }
+        }
+
+        // Build base query with resource type and search param filters
+        var query = _context.TokenSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        // Add system filter if specified
+        if (!string.IsNullOrEmpty(system))
+        {
+            var systemId = await _cache.GetOrCreateSystemIdAsync(system);
+            if (!systemId.HasValue)
+            {
+                _logger.LogDebug("Token system not found: {System}", system);
+                return Enumerable.Empty<long>().AsQueryable();
+            }
+            query = query.Where(sp => sp.SystemId == systemId.Value);
+        }
+        else if (requireMissingSystem)
+        {
+            // |code pattern: require that SystemId is null
+            query = query.Where(sp => sp.SystemId == null);
+        }
+
+        // Add code filter if specified
+        // FHIR Spec: Token searches are case-insensitive for the code portion.
+        // Use case-insensitive collation since the Code column uses Latin1_General_100_CS_AS (case-sensitive).
+        if (!string.IsNullOrEmpty(code))
+        {
+            query = query.Where(sp => EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code);
+        }
+
+        _logger.LogDebug(
+            "Token AND query: System={System}, Code={Code}, RequireMissingSystem={RequireMissingSystem}",
+            system,
+            code,
+            requireMissingSystem);
+
+        return query.Select(sp => sp.ResourceSurrogateId);
+    }
+
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
         short? resourceTypeId,
         short? searchParamId,
@@ -1020,6 +1182,7 @@ public class SearchParameterQueryGenerator
             FieldName.Uri => GenerateUriQuery(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator),
             FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, null, stringExpr.Value, ct),
             FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, null, ct),
+            FieldName.TokenText => GenerateTokenTextQuery(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator),
             FieldName.ReferenceResourceId => await GenerateReferenceQueryByIdAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
             FieldName.ReferenceResourceType => await GenerateReferenceQueryByTypeAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
             FieldName.QuantitySystem => await GenerateQuantitySystemQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, ct),
@@ -1115,14 +1278,47 @@ public class SearchParameterQueryGenerator
 
         // When resourceTypeId is null (system-wide search), don't filter by resource type
         // Filter by SearchParamId to only match values indexed for this specific parameter (e.g., _tag, identifier, etc.)
+        // FHIR Spec: Token searches are case-insensitive for the code portion.
+        // Use case-insensitive collation since the Code column uses Latin1_General_100_CS_AS (case-sensitive).
         var query = _context.TokenSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
-                && (code == null || sp.Code == code)
+                && (code == null || EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
                 && (systemId == null || sp.SystemId == systemId))
             .Select(sp => sp.ResourceSurrogateId);
 
         return query;
+    }
+
+    /// <summary>
+    /// Generates a query against the TokenText table for :text modifier searches.
+    /// Searches in the display text (CodeableConcept.text, Coding.display) of token values.
+    /// </summary>
+    private IQueryable<long> GenerateTokenTextQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        string text,
+        StringOperator stringOperator)
+    {
+        // When resourceTypeId is null (system-wide search), don't filter by resource type
+        // Filter by SearchParamId to only match values indexed for this specific parameter
+        // Filter on current resources (not history)
+        var query = _context.TokenTexts
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
+                && !sp.IsHistory);
+
+        // Apply string comparison based on operator (typically StartsWith for :text modifier)
+        query = stringOperator switch
+        {
+            StringOperator.StartsWith => query.Where(sp => sp.Text.StartsWith(text)),
+            StringOperator.Contains => query.Where(sp => sp.Text.Contains(text)),
+            StringOperator.EndsWith => query.Where(sp => sp.Text.EndsWith(text)),
+            StringOperator.Equals => query.Where(sp => sp.Text == text),
+            _ => query.Where(sp => sp.Text.StartsWith(text)) // Default to StartsWith for :text
+        };
+
+        return query.Select(sp => sp.ResourceSurrogateId);
     }
 
     private IQueryable<long> GenerateNumberQuery(short? resourceTypeId, short? searchParamId, BinaryExpression binaryExpr)
