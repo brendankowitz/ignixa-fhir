@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFaker.Cli.Commands;
@@ -63,6 +64,13 @@ internal static class ScenarioCommand
             {
                 WriteIndented = true
             };
+
+            // Rewrite references if using batch bundle (resolved references)
+            // Transaction bundles use urn:uuid by default, batch bundles need Patient/id format
+            if (resolvedReferences)
+            {
+                context.RewriteReferences(schemaProvider.ReferenceMetadataProvider, ReferenceFormat.Resolved);
+            }
 
             // Create a transaction bundle (default behavior)
             // Use ToBatchBundle if resolved references is requested

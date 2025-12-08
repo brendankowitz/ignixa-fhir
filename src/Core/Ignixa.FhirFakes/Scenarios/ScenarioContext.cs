@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -656,5 +657,25 @@ public sealed class ScenarioContext
     {
         ArgumentException.ThrowIfNullOrEmpty(stateId);
         return _stateResources.TryGetValue(stateId, out var resource) ? resource : null;
+    }
+
+    /// <summary>
+    /// Rewrites all references in the scenario resources to the specified format.
+    /// This is useful when the scenario was built with one reference format but needs to be
+    /// output in a different format (e.g., for transaction vs batch bundles).
+    /// </summary>
+    /// <param name="metadataProvider">Provider for reference field metadata.</param>
+    /// <param name="targetFormat">Target reference format.</param>
+    public void RewriteReferences(IReferenceMetadataProvider metadataProvider, ReferenceFormat targetFormat)
+    {
+        ArgumentNullException.ThrowIfNull(metadataProvider);
+        
+        if (_registry == null)
+        {
+            return; // No registry, can't rewrite
+        }
+
+        var rewriter = new ReferenceRewriterService(metadataProvider);
+        rewriter.RewriteReferences(_allResources, _registry.All, targetFormat);
     }
 }

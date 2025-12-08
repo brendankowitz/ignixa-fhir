@@ -1743,15 +1743,14 @@ public sealed class ScenarioBuilder
             state.Execute(context, _faker);
         }
 
-        // Rewrite references if not using default urnuuid format
-        if (_referenceFormat != ReferenceFormat.UrnUuid)
-        {
-            var rewriter = new ReferenceRewriterService(_schemaProvider.ReferenceMetadataProvider);
-            rewriter.RewriteReferences(
-                context.AllResources,
-                _registry.All,
-                _referenceFormat);
-        }
+        // Always rewrite references to match the desired format
+        // Resources are created with ResourceType/id format by default
+        // and need to be rewritten to either urn:uuid or resolved format
+        var rewriter = new ReferenceRewriterService(_schemaProvider.ReferenceMetadataProvider);
+        rewriter.RewriteReferences(
+            context.AllResources,
+            _registry.All,
+            _referenceFormat);
 
         return context;
     }

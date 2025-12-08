@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Ignixa.FhirFakes.Population;
+using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Specification;
 
 namespace Ignixa.FhirFaker.Cli.Commands;
@@ -93,6 +94,10 @@ internal static class PopulationCommand
                 for (int i = 0; i < contexts.Count; i++)
                 {
                     var context = contexts[i];
+                    
+                    // Rewrite references for batch bundle (resolved format)
+                    context.RewriteReferences(schemaProvider.ReferenceMetadataProvider, ReferenceFormat.Resolved);
+                    
                     var id = Guid.NewGuid().ToString();
                     var sanitizedState = SanitizeFileName(state);
                     var filename = $"{fhirVersion}-bundle-population-{sanitizedState}-{count}-{i + 1}-{id}.json";
