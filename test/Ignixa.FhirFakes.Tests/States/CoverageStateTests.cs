@@ -97,7 +97,7 @@ public class CoverageStateTests
         // Assert
         var coverage = scenario.Coverages[0];
         var beneficiaryRef = coverage.MutableNode["beneficiary"]?["reference"]?.GetValue<string>();
-        beneficiaryRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        beneficiaryRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class CoverageStateTests
         // Assert
         var coverage = scenario.Coverages[0];
         var policyHolderRef = coverage.MutableNode["policyHolder"]?["reference"]?.GetValue<string>();
-        policyHolderRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        policyHolderRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class CoverageStateTests
         // Assert
         var coverage = scenario.Coverages[0];
         var subscriberRef = coverage.MutableNode["subscriber"]?["reference"]?.GetValue<string>();
-        subscriberRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subscriberRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     #endregion

@@ -324,7 +324,7 @@ public class ScenarioBuilderPatientBuilderTests
         scenario.Conditions.Should().HaveCount(1);
         var condition = scenario.Conditions[0];
         var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     #endregion

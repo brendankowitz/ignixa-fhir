@@ -266,12 +266,12 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         foreach (var observation in context.Observations)
         {
-            observation.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+            observation.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"urn:uuid:{patientId}");
         }
 
         foreach (var medication in context.Medications)
         {
-            medication.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+            medication.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"urn:uuid:{patientId}");
         }
     }
 
@@ -284,7 +284,7 @@ public sealed class UrinaryTractInfectionScenarioTests
         // Assert
         var conditionId = context.Conditions.Single().Id;
         var medication = context.Medications.Single();
-        medication.MutableNode["reasonReference"]?[0]?["reference"]?.GetValue<string>().Should().Be($"Condition/{conditionId}");
+        medication.MutableNode["reasonReference"]?[0]?["reference"]?.GetValue<string>().Should().Be($"urn:uuid:{conditionId}");
     }
 
     #endregion

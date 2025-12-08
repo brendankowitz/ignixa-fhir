@@ -99,7 +99,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var subjectRef = serviceRequest.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var encounterRef = serviceRequest.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var requesterRef = serviceRequest.MutableNode["requester"]?["reference"]?.GetValue<string>();
-        requesterRef.Should().Be($"Practitioner/{scenario.CurrentPractitioner!.Id}");
+        requesterRef.Should().Be($"urn:uuid:{scenario.CurrentPractitioner!.Id}");
     }
 
     #endregion
@@ -452,7 +452,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var performerRef = serviceRequest.MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
-        performerRef.Should().Be($"Organization/{scenario.CurrentOrganization!.Id}");
+        performerRef.Should().Be($"urn:uuid:{scenario.CurrentOrganization!.Id}");
     }
 
     [Fact]

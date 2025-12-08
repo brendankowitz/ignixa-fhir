@@ -128,7 +128,10 @@ public class ScenarioGeneratorTests
             var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
             if (encounterRef is not null)
             {
-                var refId = encounterRef.Replace("Encounter/", string.Empty, StringComparison.Ordinal);
+                // Handle both urn:uuid: and Encounter/ formats
+                var refId = encounterRef
+                    .Replace("urn:uuid:", string.Empty, StringComparison.Ordinal)
+                    .Replace("Encounter/", string.Empty, StringComparison.Ordinal);
                 encounterIds.Should().Contain(refId, "observation should reference a valid encounter");
             }
         }

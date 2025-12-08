@@ -98,7 +98,7 @@ public class CarePlanStateTests
         // Assert
         var carePlan = scenario.CarePlans[0];
         var subjectRef = carePlan.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -269,7 +269,7 @@ public class CarePlanStateTests
         goalArray!.Count.Should().Be(1);
 
         var goalRef = goalArray[0]?["reference"]?.GetValue<string>();
-        goalRef.Should().Be($"Goal/{scenario.Goals[0].Id}");
+        goalRef.Should().Be($"urn:uuid:{scenario.Goals[0].Id}");
     }
 
     [Fact]
@@ -524,7 +524,7 @@ public class CarePlanStateTests
         // Assert
         var carePlan = scenario.CarePlans[0];
         var encounterRef = carePlan.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion
@@ -582,7 +582,7 @@ public class CarePlanStateTests
         // Assert
         var carePlan = scenario.CarePlans[0];
         var authorRef = carePlan.MutableNode["author"]?["reference"]?.GetValue<string>();
-        authorRef.Should().Be($"Practitioner/{scenario.Practitioners[0].Id}");
+        authorRef.Should().Be($"urn:uuid:{scenario.Practitioners[0].Id}");
     }
 
     #endregion
@@ -634,15 +634,15 @@ public class CarePlanStateTests
 
         // CarePlan references the patient
         var subjectRef = carePlan.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
 
         // CarePlan references the encounter
         var encounterRef = carePlan.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
 
         // CarePlan references the practitioner as author
         var authorRef = carePlan.MutableNode["author"]?["reference"]?.GetValue<string>();
-        authorRef.Should().Be($"Practitioner/{scenario.Practitioners[0].Id}");
+        authorRef.Should().Be($"urn:uuid:{scenario.Practitioners[0].Id}");
 
         // CarePlan references all goals
         var goalArray = carePlan.MutableNode["goal"] as System.Text.Json.Nodes.JsonArray;

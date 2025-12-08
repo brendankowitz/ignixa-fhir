@@ -82,7 +82,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var subjectRef = goal.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
