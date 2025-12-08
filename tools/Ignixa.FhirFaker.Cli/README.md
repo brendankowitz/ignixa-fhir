@@ -22,24 +22,24 @@ Use the built-in help command to discover available options:
 
 ```bash
 # General help
-fhir-faker help
+ignixa-faker help
 
 # List all available scenarios
-fhir-faker help scenarios
+ignixa-faker help scenarios
 
 # List all available observation states
-fhir-faker help states
+ignixa-faker help states
 
 # List all available cities
-fhir-faker help cities
+ignixa-faker help cities
 
 # Show supported FHIR versions
-fhir-faker help versions
+ignixa-faker help versions
 
 # Command-specific help
-fhir-faker r4 resource --help
-fhir-faker r4 scenario --help
-fhir-faker r4 population --help
+ignixa-faker r4 resource --help
+ignixa-faker r4 scenario --help
+ignixa-faker r4 population --help
 ```
 
 ## Usage
@@ -47,7 +47,7 @@ fhir-faker r4 population --help
 All commands start with a FHIR version and require an output folder:
 
 ```bash
-fhir-faker <version> <command> --out <folder> [options]
+ignixa-faker <version> <command> --out <folder> [options]
 ```
 
 Available FHIR versions: `stu3`, `r4`, `r4b`, `r5`, `r6`
@@ -57,13 +57,13 @@ Available FHIR versions: `stu3`, `r4`, `r4b`, `r5`, `r6`
 Generate a Patient resource with specific attributes:
 
 ```bash
-fhir-faker r4 resource Patient --out ./output --firstname Bob --surname Smith --from Seattle
+ignixa-faker r4 resource Patient --out ./output --firstname Bob --surname Smith --from Seattle
 ```
 
 Generate an Observation using a predefined state:
 
 ```bash
-fhir-faker r4 resource Observation BloodGlucose --out ./output
+ignixa-faker r4 resource Observation BloodGlucose --out ./output
 ```
 
 ### Generate Predefined Scenarios
@@ -71,7 +71,7 @@ fhir-faker r4 resource Observation BloodGlucose --out ./output
 Generate a complete patient scenario with related resources:
 
 ```bash
-fhir-faker r4 scenario DiabeticPatient --out ./output --resolved-references
+ignixa-faker r4 scenario DiabeticPatient --out ./output --resolved-references
 ```
 
 Available scenarios include:
@@ -86,7 +86,7 @@ Available scenarios include:
 Generate multiple patients from a specific location:
 
 ```bash
-fhir-faker r4 population --out ./output --from Seattle --count 100 --resolved-references
+ignixa-faker r4 population --out ./output --from Seattle --count 100 --resolved-references
 ```
 
 ## Options
@@ -109,16 +109,16 @@ All commands generate JSON files in the specified output directory with the form
 
 ```bash
 # Generate a single patient from R4
-fhir-faker r4 resource Patient --out ./output --firstname Alice --surname Johnson
+ignixa-faker r4 resource Patient --out ./output --firstname Alice --surname Johnson
 
 # Generate a diabetic patient scenario using R4
-fhir-faker r4 scenario DiabeticPatient --out ./output --resolved-references
+ignixa-faker r4 scenario DiabeticPatient --out ./output --resolved-references
 
 # Generate 50 patients from Boston using R4
-fhir-faker r4 population --out ./output --from Boston --count 50 --resolved-references
+ignixa-faker r4 population --out ./output --from Boston --count 50 --resolved-references
 
 # Generate a blood glucose observation using R4
-fhir-faker r4 resource Observation BloodGlucose --out ./output
+ignixa-faker r4 resource Observation BloodGlucose --out ./output
 ```
 
 ## FHIR Versions
