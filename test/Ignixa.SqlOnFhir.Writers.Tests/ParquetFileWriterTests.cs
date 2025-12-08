@@ -6,6 +6,8 @@
 using Ignixa.Serialization;
 using Ignixa.SqlOnFhir.Writers;
 using Microsoft.Extensions.Logging.Abstractions;
+using Parquet.Data;
+using Parquet.Schema;
 
 namespace Ignixa.SqlOnFhir.Writers.Tests;
 
@@ -32,7 +34,7 @@ public sealed class ParquetFileWriterTests : IDisposable
     {
         // Arrange
         var outputPath = Path.Combine(_tempDir, "test.parquet");
-        var schema = SchemaExtractorTests.CreateSimpleParquetSchema();
+        var schema = CreateSimpleParquetSchema();
         var columnTypeMap = new Dictionary<string, string>
         {
             ["id"] = "STRING",
@@ -73,7 +75,7 @@ public sealed class ParquetFileWriterTests : IDisposable
     {
         // Arrange
         var outputPath = Path.Combine(_tempDir, "batch-test.parquet");
-        var schema = SchemaExtractorTests.CreateSimpleParquetSchema();
+        var schema = CreateSimpleParquetSchema();
         var columnTypeMap = new Dictionary<string, string>
         {
             ["id"] = "STRING",
@@ -98,5 +100,17 @@ public sealed class ParquetFileWriterTests : IDisposable
         // Assert
         File.Exists(outputPath).Should().BeTrue();
         writer.BytesWritten.Should().BeGreaterThan(0);
+    }
+
+    private static ParquetSchema CreateSimpleParquetSchema()
+    {
+        var fields = new DataField[]
+        {
+            new DataField<string>("id"),
+            new DataField<string>("name"),
+            new DataField<int?>("age")
+        };
+
+        return new ParquetSchema(fields);
     }
 }
