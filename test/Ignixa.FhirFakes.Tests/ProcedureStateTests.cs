@@ -87,7 +87,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var subjectRef = procedure.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var encounterRef = procedure.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion

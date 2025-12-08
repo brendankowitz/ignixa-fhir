@@ -121,7 +121,7 @@ public class StateIdPatternTests
         scenario.Observations.Should().HaveCount(1, "should not create duplicate observations");
         var report = scenario.DiagnosticReports[0];
         var resultRef = report.MutableNode["result"]![0]!["reference"]!.GetValue<string>();
-        resultRef.Should().Be($"Observation/{scenario.Observations[0].Id}");
+        resultRef.Should().Be($"urn:uuid:{scenario.Observations[0].Id}");
     }
 
     [Fact]

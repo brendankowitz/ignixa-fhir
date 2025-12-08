@@ -98,7 +98,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var patientRef = allergy.MutableNode["patient"]?["reference"]?.GetValue<string>();
-        patientRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        patientRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var encounterRef = allergy.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion

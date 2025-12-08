@@ -103,7 +103,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var subjectRef = report.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var encounterRef = report.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion

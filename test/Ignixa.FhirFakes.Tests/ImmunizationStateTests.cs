@@ -84,7 +84,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var patientRef = immunization.MutableNode["patient"]?["reference"]?.GetValue<string>();
-        patientRef.Should().Be($"Patient/{scenario.Patient!.Id}");
+        patientRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var encounterRef = immunization.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{scenario.Encounters[0].Id}");
+        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion

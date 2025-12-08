@@ -261,7 +261,7 @@ public sealed class UrinaryTractInfectionScenarioTests
 
         foreach (var condition in context.Conditions)
         {
-            condition.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+            condition.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"urn:uuid:{patientId}");
         }
 
         foreach (var observation in context.Observations)

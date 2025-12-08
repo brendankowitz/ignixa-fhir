@@ -493,21 +493,21 @@ public class ScenarioGeneratorTests
         foreach (var observation in scenario.Observations)
         {
             var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"Patient/{patientId}", "observation should reference the patient");
+            subjectRef.Should().Be($"urn:uuid:{patientId}", "observation should reference the patient");
         }
 
         // Check all conditions reference the patient
         foreach (var condition in scenario.Conditions)
         {
             var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"Patient/{patientId}", "condition should reference the patient");
+            subjectRef.Should().Be($"urn:uuid:{patientId}", "condition should reference the patient");
         }
 
         // Check all medications reference the patient
         foreach (var medication in scenario.Medications)
         {
             var subjectRef = medication.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"Patient/{patientId}", "medication should reference the patient");
+            subjectRef.Should().Be($"urn:uuid:{patientId}", "medication should reference the patient");
         }
     }
 
