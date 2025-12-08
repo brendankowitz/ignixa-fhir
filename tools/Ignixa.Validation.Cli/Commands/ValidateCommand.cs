@@ -16,24 +16,24 @@ internal static class ValidateCommand
 {
     public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
-        var validateCommand = new Command("validate", "Validate a FHIR resource");
+        var command = new Command("validate", "Validate a FHIR resource");
 
         var inputOption = new Option<string?>("--input", "Path to JSON file to validate");
         var jsonOption = new Option<string?>("--json", "JSON string to validate");
         var outOption = new Option<string?>("--out", "Output file for validation results (OperationOutcome JSON)");
         var consoleOption = new Option<bool>("--console", () => false, "Display formatted validation results in console");
 
-        validateCommand.AddOption(inputOption);
-        validateCommand.AddOption(jsonOption);
-        validateCommand.AddOption(outOption);
-        validateCommand.AddOption(consoleOption);
+        command.AddOption(inputOption);
+        command.AddOption(jsonOption);
+        command.AddOption(outOption);
+        command.AddOption(consoleOption);
 
-        validateCommand.SetHandler(async (input, json, output, console) =>
+        command.SetHandler(async (input, json, output, console) =>
         {
             await HandleValidateCommand(schemaProvider, fhirVersion, input, json, output, console);
         }, inputOption, jsonOption, outOption, consoleOption);
 
-        return validateCommand;
+        return command;
     }
 
     private static async Task HandleValidateCommand(
