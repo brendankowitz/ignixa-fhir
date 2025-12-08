@@ -88,10 +88,12 @@ public class IterateProcessor
                     .Select(r => (r.ResourceType, r.ResourceId))
                     .ToList();
 
+                // Pass forIteration: true to process iterate expressions (not filter them out)
                 var forwardIncludes = await _includeProcessor.ProcessIncludesAsync(
                     resourceIdentities,
                     forwardIterates,
-                    ct);
+                    ct,
+                    forIteration: true);
 
                 foreach (var resource in forwardIncludes)
                 {
@@ -114,10 +116,12 @@ public class IterateProcessor
                     .Select(r => (r.ResourceType, r.ResourceId))
                     .ToList();
 
+                // Pass forIteration: true to process iterate expressions (not filter them out)
                 var reverseIncludes = await _revIncludeProcessor.ProcessRevIncludesAsync(
                     resourceIdentities,
                     reverseIterates,
-                    ct);
+                    ct,
+                    forIteration: true);
 
                 foreach (var resource in reverseIncludes)
                 {

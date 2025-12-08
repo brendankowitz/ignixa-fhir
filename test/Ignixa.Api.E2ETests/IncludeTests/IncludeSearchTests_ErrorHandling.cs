@@ -52,17 +52,22 @@ public class IncludeSearchTests_ErrorHandling : IncludeTestBase
     }
 
     /// <summary>
-    /// Tests that _revinclude:iterate without target type returns error.
-    /// Ported from: GivenARevIncludeIterateSearchExpressionWithMultipleResultsSetsWithoutSpecificRevIncludeIterateTargetType_WhenSearched_ShouldThrowBadRequestExceptionWithIssue
+    /// Tests that _revinclude:iterate without explicit target type uses the search parameter's target types.
+    /// Note: Unlike the original Microsoft FHIR server implementation which threw BadRequest,
+    /// our implementation allows unspecified target types and uses the search parameter's
+    /// TargetResourceTypes to determine which resources to look for in the iteration batch.
+    /// Original test: GivenARevIncludeIterateSearchExpressionWithMultipleResultsSetsWithoutSpecificRevIncludeIterateTargetType_WhenSearched_ShouldThrowBadRequestExceptionWithIssue
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
-    public async Task GivenARevIncludeIterateSearchExpressionWithoutSpecificTargetType_WhenSearched_ShouldReturnBadRequest()
+    [Fact]
+    public async Task GivenARevIncludeIterateSearchExpressionWithoutSpecificTargetType_WhenSearched_ShouldSucceed()
     {
-        // Act
+        // Act - _revinclude:iterate=Patient:general-practitioner without explicit target type
+        // The general-practitioner search parameter targets: Organization | Practitioner | PractitionerRole
+        // Our implementation will look for any of these types in the iteration batch
         var response = await Client.GetAsync(
             "/MedicationDispense?_include=MedicationDispense:performer:Practitioner&_include=MedicationDispense:prescription&_include:iterate=MedicationRequest:requester:Practitioner&_revinclude:iterate=Patient:general-practitioner");
 
-        // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        // Assert - should succeed (not BadRequest) as we now support unspecified target types
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 }

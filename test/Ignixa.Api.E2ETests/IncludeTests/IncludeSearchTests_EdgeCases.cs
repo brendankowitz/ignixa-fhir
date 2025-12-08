@@ -63,7 +63,7 @@ public class IncludeSearchTests_EdgeCases : IncludeTestBase
     /// Tests _include:iterate with circular references (executes once).
     /// Ported from: GivenAnIncludeIterateSearchExpressionWithCircularReference_WhenSearched_SingleIterationIsExecutedAndInformationalIssueIsAdded
     /// </summary>
-    [Fact(Skip = "Waiting for _include:iterate support")]
+    [Fact]
     public async Task GivenAnIncludeIterateSearchExpressionWithCircularReference_WhenSearched_SingleIterationIsExecutedAndInformationalIssueIsAdded()
     {
         // Arrange
@@ -104,7 +104,7 @@ public class IncludeSearchTests_EdgeCases : IncludeTestBase
     /// Tests _revinclude:iterate with circular references (executes once).
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithCircularReference_WhenSearched_SingleIterationIsExecutedAndInformationalIssueIsAdded
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithCircularReference_WhenSearched_SingleIterationIsExecutedAndInformationalIssueIsAdded()
     {
         // Similar to above but with revinclude

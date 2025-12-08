@@ -49,24 +49,29 @@ public class RevIncludeProcessor
     /// <param name="targetResourceIdentities">The resource identities (type + id) to find reverse references to.</param>
     /// <param name="revIncludeExpressions">The revinclude expressions to process.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="forIteration">When true, processes iterate expressions instead of filtering them out.
+    /// Used by IterateProcessor to process :iterate modifiers.</param>
     /// <returns>A list of resources that reference the target resources.</returns>
     public async Task<List<SearchEntryResult>> ProcessRevIncludesAsync(
         IReadOnlyList<(string ResourceType, string ResourceId)> targetResourceIdentities,
         IReadOnlyList<IncludeExpression> revIncludeExpressions,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool forIteration = false)
     {
         if (targetResourceIdentities.Count == 0 || revIncludeExpressions.Count == 0)
         {
             return new List<SearchEntryResult>();
         }
 
-        _logger.LogDebug("Processing {Count} _revinclude expressions for {ResultCount} main results",
-            revIncludeExpressions.Count, targetResourceIdentities.Count);
+        _logger.LogDebug("Processing {Count} _revinclude expressions for {ResultCount} main results (forIteration={ForIteration})",
+            revIncludeExpressions.Count, targetResourceIdentities.Count, forIteration);
 
         var revIncludedResources = new List<SearchEntryResult>();
         var processedResourceKeys = new HashSet<string>(); // Track to avoid duplicates
 
-        foreach (var revIncludeExpr in revIncludeExpressions.Where(e => !e.Iterate && e.Reversed))
+        // When forIteration is true, process iterate expressions; otherwise filter them out
+        // Both modes require Reversed = true (this is for _revinclude)
+        foreach (var revIncludeExpr in revIncludeExpressions.Where(e => e.Iterate == forIteration && e.Reversed))
         {
             var revIncludes = await ProcessSingleRevIncludeAsync(targetResourceIdentities, revIncludeExpr, ct);
 

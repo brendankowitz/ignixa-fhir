@@ -127,8 +127,10 @@ public class ExpressionParser : IExpressionParser
             refSearchParameter = _searchParameterDefinitionManager.GetSearchParameter(originalType.ToString(), searchParam.ToString());
         }
 
-        // For reverse includes without explicit target type, default to main search resource type
-        if (isReversed && targetType == null && resourceTypes.Length > 0)
+        // For non-iterate reverse includes without explicit target type, default to main search resource type.
+        // For iterate expressions, don't default - let the processor determine target from search param's TargetResourceTypes.
+        // This is because iterate expressions work on results from previous iterations, not the main search results.
+        if (isReversed && !iterate && targetType == null && resourceTypes.Length > 0)
         {
             targetType = resourceTypes[0];
         }

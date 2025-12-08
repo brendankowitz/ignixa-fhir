@@ -50,24 +50,29 @@ public class IncludeProcessor
     /// <param name="sourceResourceIdentities">The resource identities (type + id) to find references from.</param>
     /// <param name="includeExpressions">The include expressions to process.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="forIteration">When true, processes iterate expressions instead of filtering them out.
+    /// Used by IterateProcessor to process :iterate modifiers.</param>
     /// <returns>A list of included resources with raw bytes.</returns>
     public async Task<List<SearchEntryResult>> ProcessIncludesAsync(
         IReadOnlyList<(string ResourceType, string ResourceId)> sourceResourceIdentities,
         IReadOnlyList<IncludeExpression> includeExpressions,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool forIteration = false)
     {
         if (sourceResourceIdentities.Count == 0 || includeExpressions.Count == 0)
         {
             return new List<SearchEntryResult>();
         }
 
-        _logger.LogDebug("Processing {Count} _include expressions for {ResultCount} main results",
-            includeExpressions.Count, sourceResourceIdentities.Count);
+        _logger.LogDebug("Processing {Count} _include expressions for {ResultCount} main results (forIteration={ForIteration})",
+            includeExpressions.Count, sourceResourceIdentities.Count, forIteration);
 
         var includedResources = new List<SearchEntryResult>();
         var processedResourceKeys = new HashSet<string>(); // Track to avoid duplicates
 
-        foreach (var includeExpr in includeExpressions.Where(e => !e.Iterate && !e.Reversed))
+        // When forIteration is true, process iterate expressions; otherwise filter them out
+        // Both modes filter out reversed expressions (those are handled by RevIncludeProcessor)
+        foreach (var includeExpr in includeExpressions.Where(e => e.Iterate == forIteration && !e.Reversed))
         {
             var includes = await ProcessSingleIncludeAsync(sourceResourceIdentities, includeExpr, ct);
 

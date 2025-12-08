@@ -140,21 +140,33 @@ public class SqlEntityFrameworkSearchService : ISearchService
             options.ResourceType,
             query.ToQueryString());
 
-        // Phase 1: Stream main results (NO buffering - zero memory for large result sets)
+        // Check if any iterate expressions exist - they require buffering results
+        var hasIterateExpressions = options.Include.Any(e => e.Iterate) || options.RevInclude.Any(e => e.Iterate);
+
+        // Phase 1: Stream main results (buffer if iterate expressions exist)
+        var mainResults = new List<SearchEntryResult>();
         await foreach (var entity in query
             .Include(x => x.Transaction)
             .AsAsyncEnumerable().WithCancellation(ct))
         {
             var searchResult = MapResourceEntityToSearchResult(entity, options.ResourceType);
+            if (hasIterateExpressions)
+            {
+                mainResults.Add(searchResult);
+            }
             yield return searchResult;  // Stream immediately to client
         }
 
-        // Phase 2: Stream included resources (if _include parameters exist)
-        if (options.Include.Count > 0)
-        {
-            _logger.LogDebug("Processing {IncludeCount} _include expressions", options.Include.Count);
+        // Phase 2: Process included resources (non-iterate only in streaming mode)
+        // Filter to non-iterate expressions for first-level processing
+        var nonIterateIncludes = options.Include.Where(e => !e.Iterate).ToList();
+        var allFirstLevelIncludes = new List<SearchEntryResult>();
 
-            foreach (var includeExpr in options.Include)
+        if (nonIterateIncludes.Count > 0)
+        {
+            _logger.LogDebug("Processing {IncludeCount} non-iterate _include expressions", nonIterateIncludes.Count);
+
+            foreach (var includeExpr in nonIterateIncludes)
             {
                 var includeQuery = BuildIncludeQuery(options, includeExpr, resourceTypeId.Value);
 
@@ -173,6 +185,10 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
                     var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
                     searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
+                    if (hasIterateExpressions)
+                    {
+                        allFirstLevelIncludes.Add(searchResult);
+                    }
                     yield return searchResult;
                 }
             }
@@ -180,12 +196,15 @@ public class SqlEntityFrameworkSearchService : ISearchService
             _logger.LogDebug("Include processing completed");
         }
 
-        // Phase 3: Stream reverse-included resources (if _revinclude parameters exist)
-        if (options.RevInclude.Count > 0)
-        {
-            _logger.LogDebug("Processing {RevIncludeCount} _revinclude expressions", options.RevInclude.Count);
+        // Phase 3: Process reverse-included resources (non-iterate only in streaming mode)
+        // Filter to non-iterate expressions for first-level processing
+        var nonIterateRevIncludes = options.RevInclude.Where(e => !e.Iterate).ToList();
 
-            foreach (var revIncludeExpr in options.RevInclude)
+        if (nonIterateRevIncludes.Count > 0)
+        {
+            _logger.LogDebug("Processing {RevIncludeCount} non-iterate _revinclude expressions", nonIterateRevIncludes.Count);
+
+            foreach (var revIncludeExpr in nonIterateRevIncludes)
             {
                 var revIncludeQuery = BuildRevIncludeQuery(options, revIncludeExpr, resourceTypeId.Value);
 
@@ -206,11 +225,41 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
                     var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
                     searchResult = searchResult with { SearchMode = SearchEntryMode.Include };
+                    if (hasIterateExpressions)
+                    {
+                        allFirstLevelIncludes.Add(searchResult);
+                    }
                     yield return searchResult;
                 }
             }
 
             _logger.LogDebug("RevInclude processing completed");
+        }
+
+        // Phase 4: Process :iterate expressions (recursive includes/revincludes)
+        if (hasIterateExpressions)
+        {
+            var allIterateExpressions = options.Include
+                .Concat(options.RevInclude)
+                .Where(e => e.Iterate)
+                .ToList();
+
+            _logger.LogDebug("Processing {IterateCount} :iterate expressions", allIterateExpressions.Count);
+
+            // Combine main results and first-level includes as starting point for iteration
+            var iterationStartingPoint = mainResults.Concat(allFirstLevelIncludes).ToList();
+
+            var iteratedResources = await _iterateProcessor.ProcessIteratesAsync(
+                iterationStartingPoint,
+                allIterateExpressions,
+                ct);
+
+            foreach (var resource in iteratedResources)
+            {
+                yield return resource with { SearchMode = SearchEntryMode.Include };
+            }
+
+            _logger.LogDebug("Added {IteratedCount} iterated resources", iteratedResources.Count);
         }
     }
 
@@ -423,26 +472,28 @@ public class SqlEntityFrameworkSearchService : ISearchService
             .Select(r => (r.ResourceType, r.ResourceId))
             .ToList();
 
-        // Process _include expressions
-        if (options.Include.Count > 0)
+        // Process _include expressions (non-iterate only)
+        var nonIterateIncludes = options.Include.Where(e => !e.Iterate).ToList();
+        if (nonIterateIncludes.Count > 0)
         {
-            _logger.LogDebug("Processing {IncludeCount} _include expressions", options.Include.Count);
+            _logger.LogDebug("Processing {IncludeCount} _include expressions", nonIterateIncludes.Count);
             var included = await _includeProcessor.ProcessIncludesAsync(
                 resourceIdentities,
-                options.Include,
+                nonIterateIncludes,
                 ct);
 
             allIncluded.AddRange(included);
             _logger.LogDebug("Added {IncludedCount} included resources", included.Count);
         }
 
-        // Process _revinclude expressions
-        if (options.RevInclude.Count > 0)
+        // Process _revinclude expressions (non-iterate only)
+        var nonIterateRevIncludes = options.RevInclude.Where(e => !e.Iterate).ToList();
+        if (nonIterateRevIncludes.Count > 0)
         {
-            _logger.LogDebug("Processing {RevIncludeCount} _revinclude expressions", options.RevInclude.Count);
+            _logger.LogDebug("Processing {RevIncludeCount} non-iterate _revinclude expressions", nonIterateRevIncludes.Count);
             var revIncluded = await _revIncludeProcessor.ProcessRevIncludesAsync(
                 resourceIdentities,
-                options.RevInclude,
+                nonIterateRevIncludes,
                 ct);
 
             allIncluded.AddRange(revIncluded);
@@ -458,8 +509,12 @@ public class SqlEntityFrameworkSearchService : ISearchService
         if (allIterateExpressions.Count > 0)
         {
             _logger.LogDebug("Processing {IterateCount} :iterate expressions", allIterateExpressions.Count);
+
+            // Combine main results and first-level includes as starting point for iteration
+            var iterationStartingPoint = mainResults.Concat(allIncluded).ToList();
+
             var iteratedResources = await _iterateProcessor.ProcessIteratesAsync(
-                allIncluded.Count > 0 ? allIncluded : mainResults,
+                iterationStartingPoint,
                 allIterateExpressions,
                 ct);
 

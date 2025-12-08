@@ -131,7 +131,7 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
     /// Tests _revinclude:iterate with _sort parameter (ascending).
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithSingleIteration_WhenSearchedAndSorted_TheIterativeResultsShouldBeAddedToTheBundleAsc
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate and _sort support")]
+    [Fact(Skip = "Waiting for _sort support with _revinclude:iterate")]
     public async Task GivenARevIncludeIterateSearchExpressionWithSort_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundleAsc()
     {
         // This test validates that _sort works correctly with _revinclude:iterate

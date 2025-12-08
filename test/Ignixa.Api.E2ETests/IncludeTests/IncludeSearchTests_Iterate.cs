@@ -28,7 +28,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _include:iterate for single-level iteration.
     /// Ported from: GivenAnIncludeIterateSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _include:iterate support")]
+    [Fact]
     public async Task GivenAnIncludeIterateSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // Arrange
@@ -122,7 +122,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _include:iterate with wildcard.
     /// Ported from: GivenAnIncludeSearchExpressionWithIncludeWildcardAndIncludeIterateWildcard_WhenSearched_ThenCorrectBundleShouldBeReturned
     /// </summary>
-    [Fact(Skip = "Waiting for _include:iterate support")]
+    [Fact]
     public async Task GivenAnIncludeSearchExpressionWithIncludeWildcardAndIncludeIterateWildcard_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // This test validates that wildcards work with iterate
@@ -138,7 +138,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude:iterate for single-level iteration.
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // Arrange
@@ -238,7 +238,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _include:iterate with CareTeam multi-type references.
     /// Ported from: GivenAnIncludeIterateSearchExpressionWithMultitypeArrayReference_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _include:iterate support")]
+    [Fact]
     public async Task GivenAnIncludeIterateSearchExpressionWithMultitypeArrayReference_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // Arrange
@@ -293,7 +293,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _include:iterate with specific target type for CareTeam.
     /// Ported from: GivenAnIncludeIterateSearchExpressionWithSpecificTargetType_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _include:iterate support")]
+    [Fact]
     public async Task GivenAnIncludeIterateSearchExpressionWithSpecificTargetType_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // Arrange
@@ -343,7 +343,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude:iterate with multi-type reference and specified target.
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithMultiTypeReferenceSpecifiedTarget_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithMultiTypeReferenceSpecifiedTarget_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // This test validates _revinclude:iterate with MedicationRequest:subject:Patient target type
@@ -354,7 +354,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude:iterate with multi-type array reference.
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithMultitypeArrayReference_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithMultitypeArrayReference_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // This test validates _revinclude:iterate with CareTeam:participant:Patient
@@ -369,7 +369,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _include:iterate with multiple result sets.
     /// Ported from: GivenAnIncludeIterateSearchExpressionWithMultipleResultsSets_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _include:iterate support")]
+    [Fact]
     public async Task GivenAnIncludeIterateSearchExpressionWithMultipleResultsSets_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // This test validates include:iterate with multiple result sets from different include paths
@@ -380,7 +380,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude:iterate with multiple result sets.
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithMultipleResultsSets_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithMultipleResultsSets_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // This test validates revinclude:iterate with multiple result sets
@@ -395,7 +395,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude with wildcard and _revinclude:iterate wildcard (iterate wildcard should be ignored).
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithRevIncludeWildcardAndRevIncludeIterateWildcard_WhenSearched_TheIterateWildcardShouldBeIgnored
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithRevIncludeWildcardAndRevIncludeIterateWildcard_WhenSearched_TheIterateWildcardShouldBeIgnored()
     {
         // According to the old test, iterate wildcards should be ignored
@@ -406,7 +406,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude:iterate with wildcard search parameter (should be ignored).
     /// Ported from: GivenARevIncludeIterateSearchExpressionWithRevIncludeIterateWildCard_WhenSearched_TheIterateWildcardShouldBeIgnored
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:iterate support")]
+    [Fact]
     public async Task GivenARevIncludeIterateSearchExpressionWithRevIncludeIterateWildCard_WhenSearched_TheIterateWildcardShouldBeIgnored()
     {
         // According to the old test, _revinclude:iterate with wildcard parameter should be ignored
@@ -421,7 +421,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _include:recurse (alias for :iterate).
     /// Ported from: GivenAnIncludeRecurseSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _include:recurse support")]
+    [Fact]
     public async Task GivenAnIncludeRecurseSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // :recurse is an alias for :iterate
@@ -432,7 +432,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
     /// Tests _revinclude:recurse (alias for :iterate).
     /// Ported from: GivenARevIncludeRecurseSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle
     /// </summary>
-    [Fact(Skip = "Waiting for _revinclude:recurse support")]
+    [Fact]
     public async Task GivenARevIncludeRecurseSearchExpressionWithSingleIteration_WhenSearched_TheIterativeResultsShouldBeAddedToTheBundle()
     {
         // :recurse is an alias for :iterate

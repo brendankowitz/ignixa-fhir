@@ -19,7 +19,16 @@ public record QueryParameter(string Name, string Value)
 
     private static ParameterCategory ClassifyParameter(string name)
     {
-        return name switch
+        // Extract base parameter name (before any modifiers like :iterate, :recurse)
+        // Examples: "_include:iterate" → "_include", "_revinclude:recurse" → "_revinclude"
+        string baseName = name;
+        int colonIndex = name.IndexOf(':', StringComparison.Ordinal);
+        if (colonIndex > 0)
+        {
+            baseName = name.Substring(0, colonIndex);
+        }
+
+        return baseName switch
         {
             // Continuation token for paging (ct = legacy, after = new standard)
             "ct" or "after" => ParameterCategory.ContinuationToken,
@@ -42,10 +51,10 @@ public record QueryParameter(string Name, string Value)
             "_lastUpdated" => ParameterCategory.Search,
             "_filter" => ParameterCategory.Search,
             "_list" => ParameterCategory.Search,
-            _ when name.StartsWith("_has", StringComparison.Ordinal) => ParameterCategory.Search,
+            _ when baseName.StartsWith("_has", StringComparison.Ordinal) => ParameterCategory.Search,
 
             // Other underscore parameters are control parameters
-            _ when name.StartsWith('_') => ParameterCategory.Control,
+            _ when baseName.StartsWith('_') => ParameterCategory.Control,
 
             // Everything else is a search parameter
             _ => ParameterCategory.Search,

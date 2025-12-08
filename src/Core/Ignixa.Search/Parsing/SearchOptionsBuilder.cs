@@ -65,8 +65,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 1: Categorize parameters
         var searchExpressions = new List<Expression>();
         var sortParameters = new List<string>();
-        var includeParameters = new List<string>();
-        var revIncludeParameters = new List<string>();
+        var includeParameters = new List<(string ParameterName, string Value)>();
+        var revIncludeParameters = new List<(string ParameterName, string Value)>();
         var elementsParameters = new List<string>();
         var unsupportedParameters = new List<string>();
         var typeFilterParameters = new List<string>();
@@ -148,11 +148,11 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.Include:
-                        includeParameters.Add(param.Value);
+                        includeParameters.Add((param.Name, param.Value));
                         break;
 
                     case ParameterCategory.RevInclude:
-                        revIncludeParameters.Add(param.Value);
+                        revIncludeParameters.Add((param.Name, param.Value));
                         break;
 
                     case ParameterCategory.Elements:
@@ -375,15 +375,25 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         return sortExpressions;
     }
 
-    private IReadOnlyList<IncludeExpression> ParseIncludeParameters(string[] resourceTypes, List<string> includeParameters, bool isReversed)
+    private IReadOnlyList<IncludeExpression> ParseIncludeParameters(
+        string[] resourceTypes,
+        List<(string ParameterName, string Value)> includeParameters,
+        bool isReversed)
     {
         var includeExpressions = new List<IncludeExpression>();
 
-        foreach (string includeParam in includeParameters)
+        foreach (var (parameterName, includeValue) in includeParameters)
         {
+            // Detect :iterate or :recurse modifier in parameter name
+            // Examples: "_include:iterate" → iterate: true
+            //           "_include:recurse" → iterate: true
+            //           "_include" → iterate: false
+            bool iterate = parameterName.Contains(":iterate", StringComparison.OrdinalIgnoreCase)
+                        || parameterName.Contains(":recurse", StringComparison.OrdinalIgnoreCase);
+
             // Use ExpressionParser to parse include expressions
             // Note: InvalidSearchOperationException will propagate to caller and result in 400 Bad Request
-            IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeParam, isReversed, iterate: false);
+            IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeValue, isReversed, iterate);
             includeExpressions.Add(includeExpr);
         }
 
