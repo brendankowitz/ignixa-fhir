@@ -1176,22 +1176,16 @@ public class SqlEntityFrameworkSearchService : ISearchService
     /// Builds a CTE-based revinclude query that finds resources referencing the main results.
     /// Uses SQL Common Table Expression (CTE) pattern.
     /// Implements DISTINCT to deduplicate resources that reference multiple main results.
-    /// Supports both specific search parameter revincludes and wildcard revincludes (_revinclude=Type:*).
+    /// Supports three patterns:
+    /// - Specific: _revinclude=Type:param (specific source type and search parameter)
+    /// - Wildcard param: _revinclude=Type:* (specific source type, any search parameter)
+    /// - Wildcard source: _revinclude=*:* (any source type, any search parameter)
     /// </summary>
     private IQueryable<ResourceEntity> BuildRevIncludeQuery(
         SearchOptions options,
         IncludeExpression revIncludeExpr,
         short resourceTypeId)
     {
-        // Get source resource type ID (e.g., Encounter for _revinclude=Encounter:subject)
-        short? sourceResourceTypeId = GetResourceTypeIdAsync(revIncludeExpr.SourceResourceType, CancellationToken.None)
-            .AsTask().GetAwaiter().GetResult();
-        if (!sourceResourceTypeId.HasValue)
-        {
-            _logger.LogWarning("Source resource type not found for revinclude: {SourceType}", revIncludeExpr.SourceResourceType);
-            return _context.Resources.Where(r => false);  // Return empty
-        }
-
         // Build main query using BuildQueryAsync (filters, sorting, AND pagination)
         // Revinclude should only include resources that reference the CURRENT PAGE of results per FHIR spec
         // Use forIncludeProcessing=true to avoid the +1 hasMore detection (only need exact pageSize)
@@ -1212,38 +1206,64 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         IQueryable<long> referencingRsps;
 
-        if (revIncludeExpr.WildCard)
+        // Check for wildcard source type (*:*) - find ALL resources of ANY type that reference main results
+        bool isWildcardSource = revIncludeExpr.SourceResourceType == "*";
+
+        if (isWildcardSource)
         {
-            // Wildcard revinclude: find ALL resources of the source type that reference main results
-            // using ANY reference search parameter
-            _logger.LogDebug("Building wildcard revinclude query for source type {SourceType}", revIncludeExpr.SourceResourceType);
+            // Wildcard source revinclude (_revinclude=*:*): find ALL resources of ANY type that reference main results
+            // This is the most inclusive pattern - no filtering by source resource type or search parameter
+            _logger.LogDebug("Building wildcard source revinclude query (*:*) for main results");
 
             referencingRsps = _context.ReferenceSearchParams
-                .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
-                              mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+                .Where(rsp => mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
                 .Select(rsp => rsp.ResourceSurrogateId)
                 .Distinct();
         }
         else
         {
-            // Specific search parameter revinclude
-            // Get SearchParamId from the reference search parameter (handles OverridesUrl for IG parameters like US Core)
-            short searchParamId = GetSearchParamIdFromSearchParameter(revIncludeExpr.ReferenceSearchParameter);
-            if (searchParamId == 0)
+            // Get source resource type ID (e.g., Encounter for _revinclude=Encounter:subject)
+            short? sourceResourceTypeId = GetResourceTypeIdAsync(revIncludeExpr.SourceResourceType, CancellationToken.None)
+                .AsTask().GetAwaiter().GetResult();
+            if (!sourceResourceTypeId.HasValue)
             {
-                _logger.LogWarning("Search parameter not found for revinclude: {Parameter}", revIncludeExpr.ReferenceSearchParameter?.Code);
+                _logger.LogWarning("Source resource type not found for revinclude: {SourceType}", revIncludeExpr.SourceResourceType);
                 return _context.Resources.Where(r => false);  // Return empty
             }
 
-            // Find resources that reference these main results using a subquery
-            // Filter by source resource type (e.g., Encounter), search parameter, and reference target
-            // This keeps everything in the database query (no client-side materialization)
-            referencingRsps = _context.ReferenceSearchParams
-                .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
-                              rsp.SearchParamId == searchParamId &&
-                              mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
-                .Select(rsp => rsp.ResourceSurrogateId)
-                .Distinct();
+            if (revIncludeExpr.WildCard)
+            {
+                // Wildcard param revinclude (_revinclude=Type:*): find ALL resources of the source type that reference main results
+                // using ANY reference search parameter
+                _logger.LogDebug("Building wildcard param revinclude query for source type {SourceType}", revIncludeExpr.SourceResourceType);
+
+                referencingRsps = _context.ReferenceSearchParams
+                    .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
+                                  mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+                    .Select(rsp => rsp.ResourceSurrogateId)
+                    .Distinct();
+            }
+            else
+            {
+                // Specific search parameter revinclude
+                // Get SearchParamId from the reference search parameter (handles OverridesUrl for IG parameters like US Core)
+                short searchParamId = GetSearchParamIdFromSearchParameter(revIncludeExpr.ReferenceSearchParameter);
+                if (searchParamId == 0)
+                {
+                    _logger.LogWarning("Search parameter not found for revinclude: {Parameter}", revIncludeExpr.ReferenceSearchParameter?.Code);
+                    return _context.Resources.Where(r => false);  // Return empty
+                }
+
+                // Find resources that reference these main results using a subquery
+                // Filter by source resource type (e.g., Encounter), search parameter, and reference target
+                // This keeps everything in the database query (no client-side materialization)
+                referencingRsps = _context.ReferenceSearchParams
+                    .Where(rsp => rsp.ResourceTypeId == sourceResourceTypeId.Value &&
+                                  rsp.SearchParamId == searchParamId &&
+                                  mainResultIdentifiers.Any(mr => mr.ResourceTypeId == rsp.ReferenceResourceTypeId && mr.ResourceId == rsp.ReferenceResourceId))
+                    .Select(rsp => rsp.ResourceSurrogateId)
+                    .Distinct();
+            }
         }
 
         // Get the actual resources using subquery containment
