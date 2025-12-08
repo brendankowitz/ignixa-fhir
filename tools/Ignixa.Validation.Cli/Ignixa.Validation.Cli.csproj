@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ignixa.Validation.Cli</RootNamespace>
+    <AssemblyName>fhir-validation</AssemblyName>
+    <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310</NoWarn>
+  </PropertyGroup>
+
+  <!-- NuGet Package & Tool Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>fhir-validation</ToolCommandName>
+    <PackageId>Ignixa.Validation.Cli</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Description>CLI tool for validating FHIR resources using the Ignixa.Validation library. Supports file input, JSON string input, and formatted console output.</Description>
+    <PackageTags>$(PackageTags);fhir;cli;tool;validation;validator</PackageTags>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+  </PropertyGroup>
+
+  <!-- Include README in NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+  </ItemGroup>
+
+</Project>
