@@ -1,12 +1,12 @@
 using System.CommandLine;
 using System.Text.Json;
-using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Cli.Discovery;
 using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 
-namespace Ignixa.FhirFaker.Cli.Commands;
+namespace Ignixa.FhirFakes.Cli.Commands;
 
 /// <summary>
 /// Command for generating single FHIR resources.

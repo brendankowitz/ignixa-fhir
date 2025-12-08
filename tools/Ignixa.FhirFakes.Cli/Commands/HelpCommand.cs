@@ -1,7 +1,7 @@
 using System.CommandLine;
-using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Cli.Discovery;
 
-namespace Ignixa.FhirFaker.Cli.Commands;
+namespace Ignixa.FhirFakes.Cli.Commands;
 
 /// <summary>
 /// Command for displaying context-specific help.

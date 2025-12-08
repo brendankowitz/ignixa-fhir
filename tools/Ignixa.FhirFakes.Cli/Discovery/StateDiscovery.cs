@@ -3,7 +3,7 @@ using System.Reflection;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.States;
 
-namespace Ignixa.FhirFaker.Cli.Discovery;
+namespace Ignixa.FhirFakes.Cli.Discovery;
 
 /// <summary>
 /// Discovers available ObservationState factory methods and cities.

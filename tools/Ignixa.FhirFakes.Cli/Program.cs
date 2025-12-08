@@ -1,9 +1,9 @@
 using System.CommandLine;
-using Ignixa.FhirFaker.Cli.Commands;
+using Ignixa.FhirFakes.Cli.Commands;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 
-namespace Ignixa.FhirFaker.Cli;
+namespace Ignixa.FhirFakes.Cli;
 
 /// <summary>
 /// Entry point for the FHIR Faker CLI tool.

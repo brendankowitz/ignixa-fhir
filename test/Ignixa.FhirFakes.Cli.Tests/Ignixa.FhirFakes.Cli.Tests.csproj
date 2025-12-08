@@ -22,7 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirFakes\Ignixa.FhirFakes.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
-    <ProjectReference Include="..\..\tools\Ignixa.FhirFaker.Cli\Ignixa.FhirFaker.Cli.csproj" />
+    <ProjectReference Include="..\..\tools\Ignixa.FhirFakes.Cli\Ignixa.FhirFakes.Cli.csproj" />
   </ItemGroup>
 
 </Project>

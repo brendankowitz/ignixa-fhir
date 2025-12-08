@@ -4,7 +4,7 @@ using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification;
 
-namespace Ignixa.FhirFaker.Cli.Discovery;
+namespace Ignixa.FhirFakes.Cli.Discovery;
 
 /// <summary>
 /// Discovers available predefined scenario methods by convention.

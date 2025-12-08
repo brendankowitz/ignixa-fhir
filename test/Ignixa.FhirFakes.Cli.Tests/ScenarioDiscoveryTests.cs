@@ -1,8 +1,8 @@
 using FluentAssertions;
-using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Cli.Discovery;
 using Ignixa.Specification.Generated;
 
-namespace Ignixa.FhirFaker.Cli.Tests;
+namespace Ignixa.FhirFakes.Cli.Tests;
 
 public class ScenarioDiscoveryTests
 {

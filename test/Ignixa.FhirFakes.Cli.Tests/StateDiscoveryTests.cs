@@ -1,7 +1,7 @@
 using FluentAssertions;
-using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Cli.Discovery;
 
-namespace Ignixa.FhirFaker.Cli.Tests;
+namespace Ignixa.FhirFakes.Cli.Tests;
 
 public class StateDiscoveryTests
 {
