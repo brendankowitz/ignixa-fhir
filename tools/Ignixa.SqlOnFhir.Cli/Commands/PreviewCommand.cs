@@ -8,7 +8,6 @@ using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
-using Ignixa.SqlOnFhir.Cli.Helpers;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Writers;
 
@@ -19,7 +18,7 @@ namespace Ignixa.SqlOnFhir.Cli.Commands;
 /// </summary>
 internal static class PreviewCommand
 {
-    public static Command Create()
+    public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
         var previewCommand = new Command("preview", "Preview schema and sample rows from a ViewDefinition");
 
@@ -33,13 +32,15 @@ internal static class PreviewCommand
 
         previewCommand.SetHandler(async (viewDefinitionPath, inputPath, rows) =>
         {
-            await HandlePreviewCommand(viewDefinitionPath, inputPath, rows);
+            await HandlePreviewCommand(schemaProvider, fhirVersion, viewDefinitionPath, inputPath, rows);
         }, viewDefinitionOption, inputOption, rowsOption);
 
         return previewCommand;
     }
 
     private static async Task HandlePreviewCommand(
+        IFhirSchemaProvider schemaProvider,
+        string fhirVersion,
         string viewDefinitionPath,
         string inputPath,
         int maxRows)
@@ -86,14 +87,9 @@ internal static class PreviewCommand
                 Console.WriteLine($"  {column.PadRight(maxColumnNameLength)}  {type}");
             }
 
-            // Detect FHIR version from first resource
-            var schemaProvider = await FhirVersionDetector.DetectFhirVersionAsync(inputPath);
-            if (schemaProvider == null)
-            {
-                Console.WriteLine("✗ Could not detect FHIR version from input file");
-                Environment.ExitCode = 1;
-                return;
-            }
+            // Use the provided schema provider from the command-line argument
+            Console.WriteLine();
+            Console.WriteLine($"Using FHIR version: {fhirVersion.ToUpperInvariant()}");
 
             // Create evaluator
             var evaluator = new SqlOnFhirEvaluator();

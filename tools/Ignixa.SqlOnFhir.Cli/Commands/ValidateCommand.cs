@@ -5,6 +5,7 @@
 
 using System.CommandLine;
 using Ignixa.Serialization;
+using Ignixa.Specification;
 using Ignixa.SqlOnFhir.Parsing;
 
 namespace Ignixa.SqlOnFhir.Cli.Commands;
@@ -14,7 +15,7 @@ namespace Ignixa.SqlOnFhir.Cli.Commands;
 /// </summary>
 internal static class ValidateCommand
 {
-    public static Command Create()
+    public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
         var validateCommand = new Command("validate", "Validate a ViewDefinition file");
 
