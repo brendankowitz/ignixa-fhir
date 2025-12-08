@@ -5,8 +5,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Ignixa.FhirFaker.Cli</RootNamespace>
-    <AssemblyName>ignixa-faker</AssemblyName>
+    <RootNamespace>Ignixa.FhirFakes.Cli</RootNamespace>
+    <AssemblyName>ignixa-fakes</AssemblyName>
     <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310</NoWarn>
   </PropertyGroup>
 
@@ -14,10 +14,10 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>ignixa-faker</ToolCommandName>
-    <PackageId>Ignixa.FhirFaker.Cli</PackageId>
+    <ToolCommandName>ignixa-fakes</ToolCommandName>
+    <PackageId>Ignixa.FhirFakes.Cli</PackageId>
     <Version>0.1.0-preview</Version>
-    <Description>CLI tool for generating FHIR test data using the FhirFaker library. Supports single resources, scenarios, and population generation.</Description>
+    <Description>CLI tool for generating FHIR test data using the FhirFakes library. Supports single resources, scenarios, and population generation.</Description>
     <PackageTags>$(PackageTags);fhir;cli;tool;test-data;fake-data</PackageTags>
     <PackageOutputPath>./nupkg</PackageOutputPath>
   </PropertyGroup>

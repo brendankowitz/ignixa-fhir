@@ -1,7 +1,7 @@
-using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Cli.Discovery;
 using Xunit.Abstractions;
 
-namespace Ignixa.FhirFaker.Cli.Tests;
+namespace Ignixa.FhirFakes.Cli.Tests;
 
 public class StateDiscoveryDebugTests
 {

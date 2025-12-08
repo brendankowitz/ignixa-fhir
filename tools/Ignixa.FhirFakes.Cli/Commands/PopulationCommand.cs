@@ -5,7 +5,7 @@ using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.Specification;
 
-namespace Ignixa.FhirFaker.Cli.Commands;
+namespace Ignixa.FhirFakes.Cli.Commands;
 
 /// <summary>
 /// Command for generating FHIR patient populations.

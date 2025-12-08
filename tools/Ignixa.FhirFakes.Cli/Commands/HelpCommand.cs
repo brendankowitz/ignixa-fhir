@@ -1,7 +1,7 @@
 using System.CommandLine;
-using Ignixa.FhirFaker.Cli.Discovery;
+using Ignixa.FhirFakes.Cli.Discovery;
 
-namespace Ignixa.FhirFaker.Cli.Commands;
+namespace Ignixa.FhirFakes.Cli.Commands;
 
 /// <summary>
 /// Command for displaying context-specific help.
@@ -65,23 +65,23 @@ internal static class HelpCommand
 
     private static void ShowGeneralHelp()
     {
-        Console.WriteLine("FHIR Faker - Generate realistic FHIR test data");
+        Console.WriteLine("FHIR Fakes - Generate realistic FHIR test data");
         Console.WriteLine();
         Console.WriteLine("Available help topics:");
-        Console.WriteLine("  fhir-faker help scenarios    - List all available predefined scenarios");
-        Console.WriteLine("  fhir-faker help states        - List all available observation states");
-        Console.WriteLine("  fhir-faker help cities        - List all available cities for population generation");
-        Console.WriteLine("  fhir-faker help versions      - Show supported FHIR versions");
+        Console.WriteLine("  ignixa-fakes help scenarios    - List all available predefined scenarios");
+        Console.WriteLine("  ignixa-fakes help states        - List all available observation states");
+        Console.WriteLine("  ignixa-fakes help cities        - List all available cities for population generation");
+        Console.WriteLine("  ignixa-fakes help versions      - Show supported FHIR versions");
         Console.WriteLine();
         Console.WriteLine("For command-specific help, use:");
-        Console.WriteLine("  fhir-faker r4 resource --help");
-        Console.WriteLine("  fhir-faker r4 scenario --help");
-        Console.WriteLine("  fhir-faker r4 population --help");
+        Console.WriteLine("  ignixa-fakes r4 resource --help");
+        Console.WriteLine("  ignixa-fakes r4 scenario --help");
+        Console.WriteLine("  ignixa-fakes r4 population --help");
         Console.WriteLine();
         Console.WriteLine("Examples:");
-        Console.WriteLine("  fhir-faker r4 resource Patient --out ./output --firstname Bob");
-        Console.WriteLine("  fhir-faker r5 scenario DiabeticPatient --out ./output --resolved-references");
-        Console.WriteLine("  fhir-faker r4 population --out ./output --from Seattle --count 100");
+        Console.WriteLine("  ignixa-fakes r4 resource Patient --out ./output --firstname Bob");
+        Console.WriteLine("  ignixa-fakes r5 scenario DiabeticPatient --out ./output --resolved-references");
+        Console.WriteLine("  ignixa-fakes r4 population --out ./output --from Seattle --count 100");
     }
 
     private static void ShowScenarios()
@@ -101,10 +101,10 @@ internal static class HelpCommand
         
         Console.WriteLine();
         Console.WriteLine("Usage:");
-        Console.WriteLine($"  fhir-faker r4 scenario <ScenarioName> --out <folder> [--resolved-references]");
+        Console.WriteLine($"  ignixa-fakes r4 scenario <ScenarioName> --out <folder> [--resolved-references]");
         Console.WriteLine();
         Console.WriteLine("Example:");
-        Console.WriteLine("  fhir-faker r4 scenario DiabeticPatient --out ./output --resolved-references");
+        Console.WriteLine("  ignixa-fakes r4 scenario DiabeticPatient --out ./output --resolved-references");
     }
 
     private static void ShowObservationStates()
@@ -124,10 +124,10 @@ internal static class HelpCommand
         
         Console.WriteLine();
         Console.WriteLine("Usage:");
-        Console.WriteLine($"  fhir-faker r4 resource Observation <StateName> --out <folder>");
+        Console.WriteLine($"  ignixa-fakes r4 resource Observation <StateName> --out <folder>");
         Console.WriteLine();
         Console.WriteLine("Example:");
-        Console.WriteLine("  fhir-faker r4 resource Observation BloodGlucose --out ./output");
+        Console.WriteLine("  ignixa-fakes r4 resource Observation BloodGlucose --out ./output");
     }
 
     private static void ShowCities()
@@ -153,10 +153,10 @@ internal static class HelpCommand
         }
         
         Console.WriteLine("Usage:");
-        Console.WriteLine($"  fhir-faker r4 population --out <folder> --from <city|state> --count <number>");
+        Console.WriteLine($"  ignixa-fakes r4 population --out <folder> --from <city|state> --count <number>");
         Console.WriteLine();
         Console.WriteLine("Example:");
-        Console.WriteLine("  fhir-faker r4 population --out ./output --from Seattle --count 100");
+        Console.WriteLine("  ignixa-fakes r4 population --out ./output --from Seattle --count 100");
     }
 
     private static void ShowVersions()
@@ -170,11 +170,11 @@ internal static class HelpCommand
         Console.WriteLine("  • r6    - FHIR R6 (v6.0.0)");
         Console.WriteLine();
         Console.WriteLine("Usage:");
-        Console.WriteLine("  fhir-faker <version> <command> --out <folder> [options]");
+        Console.WriteLine("  ignixa-fakes <version> <command> --out <folder> [options]");
         Console.WriteLine();
         Console.WriteLine("Examples:");
-        Console.WriteLine("  fhir-faker r4 resource Patient --out ./output");
-        Console.WriteLine("  fhir-faker r5 scenario WellnessVisit --out ./output");
-        Console.WriteLine("  fhir-faker r6 population --out ./output --from Boston --count 50");
+        Console.WriteLine("  ignixa-fakes r4 resource Patient --out ./output");
+        Console.WriteLine("  ignixa-fakes r5 scenario WellnessVisit --out ./output");
+        Console.WriteLine("  ignixa-fakes r6 population --out ./output --from Boston --count 50");
     }
 }

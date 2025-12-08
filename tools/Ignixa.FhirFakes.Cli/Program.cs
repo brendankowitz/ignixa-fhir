@@ -1,19 +1,19 @@
 using System.CommandLine;
-using Ignixa.FhirFaker.Cli.Commands;
+using Ignixa.FhirFakes.Cli.Commands;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 
-namespace Ignixa.FhirFaker.Cli;
+namespace Ignixa.FhirFakes.Cli;
 
 /// <summary>
-/// Entry point for the FHIR Faker CLI tool.
+/// Entry point for the FHIR Fakes CLI tool.
 /// </summary>
 class Program
 {
     static async Task<int> Main(string[] args)
     {
         // Create root command
-        var rootCommand = new RootCommand("FHIR Faker - Generate and model FHIR test data");
+        var rootCommand = new RootCommand("FHIR Fakes - Generate and model FHIR test data");
 
         // Add help command for discoverability
         rootCommand.AddCommand(HelpCommand.Create());
