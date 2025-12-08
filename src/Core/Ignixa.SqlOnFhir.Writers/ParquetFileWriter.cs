@@ -121,7 +121,7 @@ public class ParquetFileWriter : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error flushing Parquet writer");
+            _logger.LogError(ex, "Error flushing Parquet file to: {OutputPath}", _outputPath);
             throw;
         }
     }
@@ -139,7 +139,8 @@ public class ParquetFileWriter : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error during final flush on dispose");
+            _logger.LogError(ex, "Error disposing Parquet writer for: {OutputPath}", _outputPath);
+            throw;
         }
         finally
         {
@@ -166,7 +167,7 @@ public class ParquetFileWriter : IAsyncDisposable
             // Initialize writer on first batch
             if (_parquetWriter == null)
             {
-                InitializeWriter();
+                await InitializeWriterAsync(cancellationToken);
             }
 
             // Write row group
@@ -185,18 +186,18 @@ public class ParquetFileWriter : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error flushing Parquet batch");
+            _logger.LogError(ex, "Error flushing Parquet batch to: {OutputPath}", _outputPath);
             throw;
         }
     }
 
-    private void InitializeWriter()
+    private async Task InitializeWriterAsync(CancellationToken cancellationToken)
     {
         // Create file stream
         _fileStream = File.Create(_outputPath);
 
         // Create Parquet writer
-        _parquetWriter = ParquetWriter.CreateAsync(_schema, _fileStream).GetAwaiter().GetResult();
+        _parquetWriter = await ParquetWriter.CreateAsync(_schema, _fileStream, cancellationToken: cancellationToken);
 
         _logger.LogDebug("Initialized Parquet writer for file: {OutputPath}", _outputPath);
     }
@@ -325,17 +326,12 @@ public class ParquetFileWriter : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
+            _logger.LogError(
                 ex,
-                "Failed to write column {ColumnName} as type {SqlType}, falling back to string",
+                "Error writing column {ColumnName} as type {SqlType}. Parquet schema is immutable and cannot fallback to different type.",
                 columnName,
                 sqlType);
-
-            // Fallback to string
-            var dataField = (DataField<string>)field;
-            var stringValues = rawValues.Select(v => v?.ToString()).ToArray();
-            var column = new DataColumn(dataField, stringValues);
-            await groupWriter.WriteColumnAsync(column, cancellationToken);
+            throw;
         }
     }
 
