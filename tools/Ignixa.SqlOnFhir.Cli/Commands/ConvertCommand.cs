@@ -9,8 +9,11 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 using Ignixa.SqlOnFhir.Evaluation;
+using Ignixa.SqlOnFhir.Parsing;
 using Ignixa.SqlOnFhir.Writers;
 using Microsoft.Extensions.Logging.Abstractions;
+using Parquet.Data;
+using Parquet.Schema;
 
 namespace Ignixa.SqlOnFhir.Cli.Commands;
 
@@ -86,8 +89,15 @@ internal static class ConvertCommand
 
             var viewDefNavigator = viewDefNode.ToSourceNavigator();
 
-            // Extract schema
-            var (schema, columnTypeMap) = SchemaExtractor.ExtractParquetSchema(viewDefNavigator);
+            // Parse ViewDefinition expression
+            var viewDefExpression = ViewDefinitionExpressionParser.Parse(viewDefNavigator);
+
+            // Extract schema using SqlOnFhirSchemaEvaluator
+            var schemaEvaluator = new SqlOnFhirSchemaEvaluator();
+            var columnSchemas = schemaEvaluator.GetSchema(viewDefExpression);
+            
+            // Build Parquet schema and column type map from extracted schema
+            var (schema, columnTypeMap) = BuildParquetSchema(columnSchemas);
             Console.WriteLine($"✓ Extracted schema with {schema.Fields.Count} columns");
 
             // Use the provided schema provider from the command-line argument
@@ -208,6 +218,50 @@ internal static class ConvertCommand
             ".PARQUET" => "parquet",
             ".CSV" => "csv",
             _ => null
+        };
+    }
+
+    private static (ParquetSchema Schema, Dictionary<string, string> ColumnTypeMap) BuildParquetSchema(
+        IReadOnlyList<ColumnSchema> columnSchemas)
+    {
+        var fields = new List<DataField>();
+        var columnTypeMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var column in columnSchemas)
+        {
+            var columnName = column.Name;
+            var sqlType = (column.Type ?? "STRING").ToUpperInvariant();
+
+            // Map SQL type to Parquet DataField
+            var field = MapSqlTypeToParquetField(columnName, sqlType);
+            fields.Add(field);
+
+            // Store type mapping for later use
+            columnTypeMap[columnName] = sqlType;
+        }
+
+        // If no columns defined, create a minimal schema
+        if (fields.Count == 0)
+        {
+            fields.Add(new DataField<string>("id"));
+            columnTypeMap["id"] = "STRING";
+        }
+
+        var schema = new ParquetSchema(fields);
+        return (schema, columnTypeMap);
+    }
+
+    private static DataField MapSqlTypeToParquetField(string columnName, string sqlType)
+    {
+        return sqlType switch
+        {
+            "STRING" => new DataField<string>(columnName),
+            "BOOLEAN" => new DataField<bool?>(columnName),
+            "INTEGER" => new DataField<int?>(columnName),
+            "DECIMAL" => new DataField<decimal?>(columnName),
+            "DATE" => new DataField<DateTime?>(columnName),
+            "DATETIME" => new DataField<DateTimeOffset?>(columnName),
+            _ => new DataField<string>(columnName) // Default to string for unknown types
         };
     }
 }

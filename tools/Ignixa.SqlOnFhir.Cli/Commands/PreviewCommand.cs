@@ -9,7 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Specification;
 using Ignixa.SqlOnFhir.Evaluation;
-using Ignixa.SqlOnFhir.Writers;
+using Ignixa.SqlOnFhir.Parsing;
 
 namespace Ignixa.SqlOnFhir.Cli.Commands;
 
@@ -74,17 +74,26 @@ internal static class PreviewCommand
 
             var viewDefNavigator = viewDefNode.ToSourceNavigator();
 
-            // Extract schema
-            var columnTypeMap = SchemaExtractor.ExtractColumnTypes(viewDefNavigator);
+            // Parse ViewDefinition expression
+            var viewDefExpression = ViewDefinitionExpressionParser.Parse(viewDefNavigator);
+
+            // Extract schema using SqlOnFhirSchemaEvaluator
+            var schemaEvaluator = new SqlOnFhirSchemaEvaluator();
+            var columnSchemas = schemaEvaluator.GetSchema(viewDefExpression);
             
             Console.WriteLine();
             Console.WriteLine("=== Schema ===");
             Console.WriteLine();
             
-            var maxColumnNameLength = columnTypeMap.Keys.Max(k => k.Length);
-            foreach (var (column, type) in columnTypeMap.OrderBy(kvp => kvp.Key))
+            if (columnSchemas.Count > 0)
             {
-                Console.WriteLine($"  {column.PadRight(maxColumnNameLength)}  {type}");
+                var maxColumnNameLength = columnSchemas.Max(c => c.Name.Length);
+                foreach (var column in columnSchemas.OrderBy(c => c.Name))
+                {
+                    var typeStr = column.Type ?? "inferred";
+                    var collectionStr = column.Collection ? " (collection)" : "";
+                    Console.WriteLine($"  {column.Name.PadRight(maxColumnNameLength)}  {typeStr}{collectionStr}");
+                }
             }
 
             // Use the provided schema provider from the command-line argument
@@ -117,7 +126,8 @@ internal static class PreviewCommand
             Console.WriteLine();
 
             // Display rows in a formatted table
-            DisplayTable(sampleRows, columnTypeMap.Keys.ToList());
+            var columns = columnSchemas.Select(c => c.Name).ToList();
+            DisplayTable(sampleRows, columns);
 
             Console.WriteLine();
             Console.WriteLine($"✓ Preview completed with {sampleRows.Count} sample rows");
