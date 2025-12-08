@@ -21,7 +21,7 @@ dotnet tool install Ignixa.Validation.Cli
 All commands start with a FHIR version:
 
 ```bash
-fhir-validation <version> [options]
+ignixa-validator <version> [options]
 ```
 
 Available FHIR versions: `stu3`, `r4`, `r4b`, `r5`, `r6`
@@ -35,7 +35,7 @@ The tool supports three different usage modes:
 Validate a FHIR resource from a file and save the validation results (as an OperationOutcome resource):
 
 ```bash
-fhir-validation r4 --input patient.json --out validation-results.json
+ignixa-validator r4 --input patient.json --out validation-results.json
 ```
 
 #### 2. Validate a JSON string
@@ -44,16 +44,16 @@ Validate a FHIR resource from a JSON string (useful for CI/CD pipelines):
 
 **Bash/Linux/macOS:**
 ```bash
-fhir-validation r4 --json '{"resourceType":"Patient","id":"example"}' --console
+ignixa-validator r4 --json '{"resourceType":"Patient","id":"example"}' --console
 ```
 
 **PowerShell:**
 ```powershell
 # Use here-string for complex JSON
-fhir-validation r4 --json '{"resourceType":"Patient","id":"example"}' --console
+ignixa-validator r4 --json '{"resourceType":"Patient","id":"example"}' --console
 
 # Or escape quotes
-fhir-validation r4 --json '{\"resourceType\":\"Patient\",\"id\":\"example\"}' --console
+ignixa-validator r4 --json '{\"resourceType\":\"Patient\",\"id\":\"example\"}' --console
 ```
 
 **Note:** When using PowerShell, storing JSON in a variable can cause quoting issues. Use the JSON directly in the command or escape inner quotes properly.
@@ -63,13 +63,13 @@ fhir-validation r4 --json '{\"resourceType\":\"Patient\",\"id\":\"example\"}' --
 Validate and display nicely formatted results in the console:
 
 ```bash
-fhir-validation r4 --input patient.json --console
+ignixa-validator r4 --input patient.json --console
 ```
 
 You can also combine `--out` and `--console` to get both file output and console display:
 
 ```bash
-fhir-validation r4 --input patient.json --out results.json --console
+ignixa-validator r4 --input patient.json --out results.json --console
 ```
 
 ## Output Formats
@@ -117,20 +117,20 @@ Validation Issues:
 
 ```bash
 # Validate an R4 Patient resource with console output
-fhir-validation r4 --input patient.json --console
+ignixa-validator r4 --input patient.json --console
 
 # Validate and save OperationOutcome to file
-fhir-validation r4 --input observation.json --out validation.json
+ignixa-validator r4 --input observation.json --out validation.json
 
 # Validate a JSON string (bash)
-fhir-validation r4 --json '{"resourceType":"Patient","id":"test"}' --console
+ignixa-validator r4 --json '{"resourceType":"Patient","id":"test"}' --console
 
 # Validate using different FHIR versions
-fhir-validation stu3 --input patient-stu3.json --console
-fhir-validation r5 --input patient-r5.json --console
+ignixa-validator stu3 --input patient-stu3.json --console
+ignixa-validator r5 --input patient-r5.json --console
 
 # Both file and console output
-fhir-validation r4 --input bundle.json --out results.json --console
+ignixa-validator r4 --input bundle.json --out results.json --console
 ```
 
 ## Exit Codes
