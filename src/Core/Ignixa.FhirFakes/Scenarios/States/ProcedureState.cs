@@ -150,12 +150,16 @@ public sealed class ProcedureState : ScenarioState
             };
         }
 
-        // Set performed period
+        // Set performed period using version-appropriate field name (R4+ normative is "performedPeriod")
         var startTime = context.CurrentTime;
         var duration = Duration ?? InferDuration();
         var endTime = startTime.Add(duration);
 
-        node["performedPeriod"] = new JsonObject
+        var performedField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Procedure",
+            "performedPeriod");
+        node[performedField] = new JsonObject
         {
             ["start"] = startTime.ToString("o"),
             ["end"] = endTime.ToString("o")

@@ -98,8 +98,12 @@ public sealed class ConditionEndState : ScenarioState
             }
         };
 
-        // Set abatement date
-        condition.MutableNode["abatementDateTime"] = context.CurrentTime.ToString("o");
+        // Set abatement date using version-appropriate field name (R4+ normative is "abatementDateTime")
+        var abatementField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Condition",
+            "abatementDateTime");
+        condition.MutableNode[abatementField] = context.CurrentTime.ToString("o");
 
         // Get condition display name for logging
         var displayName = AttributeName ?? ConditionCode?.Display ?? "Unknown";
