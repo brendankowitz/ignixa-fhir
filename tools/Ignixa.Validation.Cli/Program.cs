@@ -1,3 +1,8 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
 using System.CommandLine;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -15,36 +20,25 @@ class Program
         // Create root command
         var rootCommand = new RootCommand("FHIR Validation - Validate FHIR resources against specifications");
 
-        // Add STU3 support
-        var stu3Command = ValidateCommand.Create(new STU3CoreSchemaProvider(), "stu3");
-        stu3Command.Name = "stu3";
-        stu3Command.Description = "Validate using FHIR STU3 specification";
-        rootCommand.AddCommand(stu3Command);
-
-        // Add R4 support
-        var r4Command = ValidateCommand.Create(new R4CoreSchemaProvider(), "r4");
-        r4Command.Name = "r4";
-        r4Command.Description = "Validate using FHIR R4 specification";
-        rootCommand.AddCommand(r4Command);
-
-        // Add R4B support
-        var r4bCommand = ValidateCommand.Create(new R4BCoreSchemaProvider(), "r4b");
-        r4bCommand.Name = "r4b";
-        r4bCommand.Description = "Validate using FHIR R4B specification";
-        rootCommand.AddCommand(r4bCommand);
-
-        // Add R5 support
-        var r5Command = ValidateCommand.Create(new R5CoreSchemaProvider(), "r5");
-        r5Command.Name = "r5";
-        r5Command.Description = "Validate using FHIR R5 specification";
-        rootCommand.AddCommand(r5Command);
-
-        // Add R6 support
-        var r6Command = ValidateCommand.Create(new R6CoreSchemaProvider(), "r6");
-        r6Command.Name = "r6";
-        r6Command.Description = "Validate using FHIR R6 specification";
-        rootCommand.AddCommand(r6Command);
+        // Add version-specific commands
+        AddFhirVersionCommands(rootCommand, "stu3", new STU3CoreSchemaProvider());
+        AddFhirVersionCommands(rootCommand, "r4", new R4CoreSchemaProvider());
+        AddFhirVersionCommands(rootCommand, "r4b", new R4BCoreSchemaProvider());
+        AddFhirVersionCommands(rootCommand, "r5", new R5CoreSchemaProvider());
+        AddFhirVersionCommands(rootCommand, "r6", new R6CoreSchemaProvider());
 
         return await rootCommand.InvokeAsync(args);
+    }
+
+    /// <summary>
+    /// Adds FHIR version-specific commands to the root command.
+    /// Reduces code duplication by centralizing command setup logic.
+    /// </summary>
+    private static void AddFhirVersionCommands(RootCommand root, string versionCode, IFhirSchemaProvider schemaProvider)
+    {
+        var command = ValidateCommand.Create(schemaProvider, versionCode);
+        command.Name = versionCode;
+        command.Description = $"Validate using FHIR {versionCode.ToUpperInvariant()} specification";
+        root.AddCommand(command);
     }
 }
