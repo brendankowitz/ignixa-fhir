@@ -130,8 +130,12 @@ public sealed class ImmunizationState : ScenarioState
             };
         }
 
-        // Set occurrence date
-        node["occurrenceDateTime"] = context.CurrentTime.ToString("o");
+        // Set occurrence date using version-appropriate field name (R4+ normative is "occurrenceDateTime")
+        var occurrenceField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Immunization",
+            "occurrenceDateTime");
+        node[occurrenceField] = context.CurrentTime.ToString("o");
 
         // Set primary source (true = data was recorded by administering provider)
         node["primarySource"] = true;
