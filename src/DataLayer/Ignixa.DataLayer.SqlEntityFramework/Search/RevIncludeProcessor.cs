@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
@@ -248,6 +249,8 @@ public class RevIncludeProcessor
     {
         _logger.LogDebug("Processing wildcard source revinclude (*:*) for {Count} target resources", targetResourceIdentities.Count);
 
+        var stopwatch = Stopwatch.StartNew();
+
         if (targetResourceIdentities.Count == 0)
         {
             return [];
@@ -278,18 +281,27 @@ public class RevIncludeProcessor
         }
 
         // Get surrogate IDs for all target resources
+        // OPTIMIZATION: Batch queries by resource type (one query per type instead of per resource)
         var targetSurrogateIds = new List<long>();
-        foreach (var (typeId, resourceId) in targetTypeIdPairs)
+        foreach (var group in targetTypeIdPairs.GroupBy(p => p.ResourceTypeId))
         {
+            var typeId = group.Key;
+            var resourceIds = group.Select(p => p.ResourceId).ToList();
+
             var surrogateIds = await _context.Resources
                 .Where(r => r.ResourceTypeId == typeId
-                    && r.ResourceId == resourceId
+                    && resourceIds.Contains(r.ResourceId)
                     && !r.IsHistory
                     && !r.IsDeleted)
                 .Select(r => r.ResourceSurrogateId)
                 .ToListAsync(ct);
+
             targetSurrogateIds.AddRange(surrogateIds);
         }
+
+        _logger.LogDebug("Fetched {Count} target surrogate IDs in {ElapsedMs}ms",
+            targetSurrogateIds.Count,
+            stopwatch.ElapsedMilliseconds);
 
         if (targetSurrogateIds.Count == 0)
         {
@@ -311,11 +323,13 @@ public class RevIncludeProcessor
 
         if (referencingResourceIds.Count == 0)
         {
-            _logger.LogDebug("No wildcard reverse references found");
+            _logger.LogDebug("No wildcard reverse references found after {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
             return [];
         }
 
-        _logger.LogDebug("Found {Count} unique wildcard reverse references", referencingResourceIds.Count);
+        _logger.LogDebug("Found {Count} unique wildcard reverse references in {ElapsedMs}ms",
+            referencingResourceIds.Count,
+            stopwatch.ElapsedMilliseconds);
 
         // Fetch the full referencing resource entities
         // IMPORTANT: Include ResourceType navigation for accurate type resolution
@@ -326,6 +340,11 @@ public class RevIncludeProcessor
             .Include(r => r.Transaction)
             .Include(r => r.ResourceType)
             .ToListAsync(ct);
+
+        stopwatch.Stop();
+        _logger.LogInformation("Wildcard revinclude completed: {ResultCount} resources in {ElapsedMs}ms",
+            referencingEntities.Count,
+            stopwatch.ElapsedMilliseconds);
 
         // Map entities to SearchEntryResult using the ResourceType navigation property
         return MapEntitiesToSearchResults(referencingEntities, sourceResourceType: null);
