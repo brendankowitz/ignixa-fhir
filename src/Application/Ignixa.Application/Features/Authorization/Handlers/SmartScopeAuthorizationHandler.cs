@@ -10,8 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.Features.Authorization.Handlers;
 
 /// <summary>
-/// Authorization handler that checks SMART on FHIR scopes.
-/// Applies patient compartment filtering for patient/*.* scopes.
+/// Authorization handler that checks SMART on FHIR v2 scopes.
+/// Applies patient/practitioner compartment filtering for context-scoped requests.
 /// Priority: 40 (runs after RBAC).
 /// </summary>
 public class SmartScopeAuthorizationHandler : IAuthorizationHandler
@@ -40,7 +40,7 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
 
         var scopes = context.SmartContext.Scopes;
         var resourceType = context.ResourceType;
-        var interaction = context.Interaction.ToSmartPermission();
+        var interaction = context.Interaction.ToFhirCode();
 
         _logger.LogDebug(
             "SMART scope check: Checking {ScopeCount} scopes for {ResourceType}.{Interaction}",
@@ -48,10 +48,10 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
             resourceType ?? "system",
             interaction);
 
-        // Find matching scope
+        // Find matching scope using SMART v2 matching
         var matchingScope = scopes.FirstOrDefault(scope =>
             scope.MatchesResource(resourceType) &&
-            scope.MatchesPermission(interaction));
+            scope.MatchesInteraction(interaction));
 
         if (matchingScope == null)
         {
@@ -66,32 +66,76 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
         }
 
         _logger.LogDebug(
-            "SMART scope check: Matched scope {Scope} for {ResourceType}.{Interaction}",
+            "SMART scope check: Matched scope {Scope} (permissions: {Permissions}) for {ResourceType}.{Interaction}",
             matchingScope.OriginalScope,
+            matchingScope.PermissionString,
             resourceType ?? "system",
             interaction);
 
-        // Build data filter for patient-scoped requests
+        // Build data filter for context-scoped requests
         FhirAuthorizationFilter? filter = null;
 
-        if (matchingScope.Type == SmartScopeType.Patient)
+        switch (matchingScope.Type)
         {
-            var patientId = context.SmartContext.PatientContext;
-            if (string.IsNullOrEmpty(patientId))
-            {
-                _logger.LogWarning(
-                    "SMART scope check: Request denied - patient scope {Scope} requires patient context",
-                    matchingScope.OriginalScope);
+            case SmartScopeType.Patient:
+                var patientId = context.SmartContext.PatientContext;
+                if (string.IsNullOrEmpty(patientId))
+                {
+                    _logger.LogWarning(
+                        "SMART scope check: Request denied - patient scope {Scope} requires patient context",
+                        matchingScope.OriginalScope);
 
-                return ValueTask.FromResult(AuthorizationResult.Denied(
-                    "Patient scope requires patient context"));
-            }
+                    return ValueTask.FromResult(AuthorizationResult.Denied(
+                        "Patient scope requires patient context"));
+                }
 
-            _logger.LogDebug(
-                "SMART scope check: Applying patient compartment filter for patient {PatientId}",
-                patientId);
+                _logger.LogDebug(
+                    "SMART scope check: Applying patient compartment filter for patient {PatientId}",
+                    patientId);
 
-            filter = FhirAuthorizationFilter.ForPatient(patientId);
+                filter = FhirAuthorizationFilter.ForPatient(patientId);
+
+                // Apply search constraints if present (SMART v2 feature)
+                if (matchingScope.SearchConstraints != null && matchingScope.SearchConstraints.Count > 0)
+                {
+                    filter = filter with
+                    {
+                        SearchFilters = new Dictionary<string, string>(matchingScope.SearchConstraints)
+                    };
+                }
+                break;
+
+            case SmartScopeType.Practitioner:
+                var practitionerId = context.SmartContext.UserContext;
+                if (string.IsNullOrEmpty(practitionerId))
+                {
+                    _logger.LogWarning(
+                        "SMART scope check: Request denied - practitioner scope {Scope} requires practitioner context",
+                        matchingScope.OriginalScope);
+
+                    return ValueTask.FromResult(AuthorizationResult.Denied(
+                        "Practitioner scope requires practitioner context (fhirUser claim)"));
+                }
+
+                _logger.LogDebug(
+                    "SMART scope check: Applying practitioner compartment filter for {PractitionerId}",
+                    practitionerId);
+
+                filter = FhirAuthorizationFilter.ForPractitioner(practitionerId);
+                break;
+
+            case SmartScopeType.User:
+            case SmartScopeType.System:
+                // User and system scopes don't require compartment filtering
+                // but may have search constraints
+                if (matchingScope.SearchConstraints != null && matchingScope.SearchConstraints.Count > 0)
+                {
+                    filter = new FhirAuthorizationFilter
+                    {
+                        SearchFilters = new Dictionary<string, string>(matchingScope.SearchConstraints)
+                    };
+                }
+                break;
         }
 
         return ValueTask.FromResult(filter != null

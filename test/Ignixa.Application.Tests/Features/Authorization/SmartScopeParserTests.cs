@@ -11,16 +11,18 @@ namespace Ignixa.Application.Tests.Features.Authorization;
 public class SmartScopeParserTests
 {
     [Theory]
-    [InlineData("patient/Observation.read", SmartScopeType.Patient, "Observation", "READ")]
-    [InlineData("user/Patient.write", SmartScopeType.User, "Patient", "WRITE")]
-    [InlineData("system/Observation.*", SmartScopeType.System, "Observation", "*")]
-    [InlineData("patient/*.read", SmartScopeType.Patient, "*", "READ")]
-    [InlineData("user/*.*", SmartScopeType.User, "*", "*")]
-    public void ParseScope_ValidScopes_ReturnsCorrectSmartScope(
+    [InlineData("patient/Observation.rs", SmartScopeType.Patient, "Observation", "RS", SmartPermissions.Read | SmartPermissions.Search)]
+    [InlineData("user/Patient.cruds", SmartScopeType.User, "Patient", "CRUDS", SmartPermissions.All)]
+    [InlineData("system/Observation.r", SmartScopeType.System, "Observation", "R", SmartPermissions.Read)]
+    [InlineData("patient/*.rs", SmartScopeType.Patient, "*", "RS", SmartPermissions.Read | SmartPermissions.Search)]
+    [InlineData("user/*.cud", SmartScopeType.User, "*", "CUD", SmartPermissions.Create | SmartPermissions.Update | SmartPermissions.Delete)]
+    [InlineData("practitioner/Schedule.rs", SmartScopeType.Practitioner, "Schedule", "RS", SmartPermissions.Read | SmartPermissions.Search)]
+    public void ParseScope_ValidSmartV2Scopes_ReturnsCorrectSmartScope(
         string scopeString,
         SmartScopeType expectedType,
         string expectedResource,
-        string expectedPermission)
+        string expectedPermissionString,
+        SmartPermissions expectedPermissions)
     {
         // Act
         var result = SmartScopeParser.ParseScope(scopeString);
@@ -29,7 +31,8 @@ public class SmartScopeParserTests
         result.Should().NotBeNull();
         result!.Type.Should().Be(expectedType);
         result.ResourceType.Should().Be(expectedResource);
-        result.Permission.Should().Be(expectedPermission);
+        result.PermissionString.Should().Be(expectedPermissionString);
+        result.Permissions.Should().Be(expectedPermissions);
         result.OriginalScope.Should().Be(scopeString);
     }
 
@@ -38,8 +41,10 @@ public class SmartScopeParserTests
     [InlineData("   ")]
     [InlineData("invalid")]
     [InlineData("patient/Observation")]
-    [InlineData("patient.read")]
-    [InlineData("foo/Observation.read")]
+    [InlineData("patient.rs")]
+    [InlineData("foo/Observation.rs")]
+    [InlineData("patient/Observation.sr")] // Wrong order - should be rs
+    [InlineData("patient/Observation.dc")] // Wrong order - should be cd
     public void ParseScope_InvalidScopes_ReturnsNull(string scopeString)
     {
         // Act
@@ -52,8 +57,8 @@ public class SmartScopeParserTests
     [Fact]
     public void ParseScopes_SpaceSeparatedString_ReturnsAllValidScopes()
     {
-        // Arrange
-        var scopeString = "patient/Observation.read user/Patient.write invalid system/*.read";
+        // Arrange - SMART v2 format
+        var scopeString = "patient/Observation.rs user/Patient.cruds invalid system/*.r";
 
         // Act
         var result = SmartScopeParser.ParseScopes(scopeString);
@@ -86,8 +91,10 @@ public class SmartScopeParserTests
     }
 
     [Theory]
-    [InlineData("patient/Observation.read", true)]
+    [InlineData("patient/Observation.rs", true)]
+    [InlineData("patient/Observation.cruds", true)]
     [InlineData("invalid", false)]
+    [InlineData("patient/Observation.read", false)] // v1 format not supported
     public void IsValidSmartScope_ReturnsCorrectResult(string scope, bool expected)
     {
         // Act
@@ -95,5 +102,56 @@ public class SmartScopeParserTests
 
         // Assert
         result.Should().Be(expected);
+    }
+
+    [Fact]
+    public void ParseScope_WithSearchConstraints_ParsesCorrectly()
+    {
+        // Arrange - SMART v2 with search constraints
+        var scopeString = "patient/Observation.rs?category=http://terminology.hl7.org/CodeSystem/observation-category|laboratory";
+
+        // Act
+        var result = SmartScopeParser.ParseScope(scopeString);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Type.Should().Be(SmartScopeType.Patient);
+        result.ResourceType.Should().Be("Observation");
+        result.Permissions.Should().Be(SmartPermissions.Read | SmartPermissions.Search);
+        result.SearchConstraints.Should().NotBeNull();
+        result.SearchConstraints!["category"].Should().Be("http://terminology.hl7.org/CodeSystem/observation-category|laboratory");
+    }
+
+    [Fact]
+    public void BuildScope_CreatesValidSmartV2Scope()
+    {
+        // Act
+        var scope = SmartScopeParser.BuildScope(
+            SmartScopeType.Patient,
+            "Observation",
+            SmartPermissions.Read | SmartPermissions.Search);
+
+        // Assert
+        scope.Should().Be("patient/Observation.rs");
+    }
+
+    [Fact]
+    public void BuildScope_WithConstraints_CreatesValidScope()
+    {
+        // Arrange
+        var constraints = new Dictionary<string, string>
+        {
+            ["category"] = "laboratory"
+        };
+
+        // Act
+        var scope = SmartScopeParser.BuildScope(
+            SmartScopeType.Patient,
+            "Observation",
+            SmartPermissions.Read | SmartPermissions.Search,
+            constraints);
+
+        // Assert
+        scope.Should().Be("patient/Observation.rs?category=laboratory");
     }
 }

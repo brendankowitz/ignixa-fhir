@@ -99,6 +99,7 @@ public static class FhirInteractionExtensions
 {
     /// <summary>
     /// Converts FhirInteraction to the FHIR specification interaction code.
+    /// These codes are used in CapabilityStatement and SMART v2 scope matching.
     /// </summary>
     /// <param name="interaction">The interaction to convert.</param>
     /// <returns>The FHIR specification interaction code string.</returns>
@@ -123,23 +124,6 @@ public static class FhirInteractionExtensions
             FhirInteraction.OperationType => "operation-type",
             FhirInteraction.OperationSystem => "operation-system",
             _ => throw new ArgumentOutOfRangeException(nameof(interaction), interaction, "Unknown FHIR interaction")
-        };
-    }
-
-    /// <summary>
-    /// Maps a FhirInteraction to a SMART on FHIR permission type.
-    /// </summary>
-    /// <param name="interaction">The interaction to map.</param>
-    /// <returns>The SMART permission type (read, create, update, delete, or *).</returns>
-    public static string ToSmartPermission(this FhirInteraction interaction)
-    {
-        return interaction switch
-        {
-            FhirInteraction.Read or FhirInteraction.VRead or FhirInteraction.SearchType or FhirInteraction.SearchSystem => "read",
-            FhirInteraction.Create => "create",
-            FhirInteraction.Update or FhirInteraction.Patch => "update",
-            FhirInteraction.Delete => "delete",
-            _ => "*"
         };
     }
 

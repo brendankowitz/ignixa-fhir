@@ -7,21 +7,29 @@ namespace Ignixa.Application.Features.Authorization.Models;
 
 /// <summary>
 /// Data filtering rules applied by authorization to restrict query results.
-/// Used to implement patient compartment filtering for SMART on FHIR scopes.
+/// Used to implement compartment filtering for SMART on FHIR v2 scopes.
 /// </summary>
 public record FhirAuthorizationFilter
 {
     /// <summary>
     /// Patient ID for patient compartment filtering.
     /// When set, search results are filtered to only include resources in this patient's compartment.
-    /// Used for patient/*.read scopes.
+    /// Used for patient/*.rs scopes.
     /// </summary>
     public string? PatientFilter { get; init; }
+
+    /// <summary>
+    /// Practitioner ID for practitioner compartment filtering.
+    /// When set, search results are filtered to only include resources in this practitioner's compartment.
+    /// Used for practitioner/*.rs scopes (SMART v2).
+    /// </summary>
+    public string? PractitionerFilter { get; init; }
 
     /// <summary>
     /// Custom search parameter filters to apply to all queries.
     /// Key: search parameter name, Value: search parameter value.
     /// Example: { "patient": "Patient/123" } automatically adds patient=Patient/123 to all searches.
+    /// Also used for SMART v2 search constraints (e.g., category=laboratory).
     /// </summary>
     public Dictionary<string, string>? SearchFilters { get; init; }
 
@@ -49,6 +57,23 @@ public record FhirAuthorizationFilter
             SearchFilters = new Dictionary<string, string>
             {
                 ["patient"] = patientId
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates a practitioner compartment filter (SMART v2).
+    /// </summary>
+    /// <param name="practitionerId">The practitioner reference (e.g., "Practitioner/123").</param>
+    /// <returns>A filter configured for practitioner compartment.</returns>
+    public static FhirAuthorizationFilter ForPractitioner(string practitionerId)
+    {
+        return new FhirAuthorizationFilter
+        {
+            PractitionerFilter = practitionerId,
+            SearchFilters = new Dictionary<string, string>
+            {
+                ["practitioner"] = practitionerId
             }
         };
     }
@@ -87,6 +112,7 @@ public record FhirAuthorizationFilter
         return new FhirAuthorizationFilter
         {
             PatientFilter = other.PatientFilter ?? PatientFilter,
+            PractitionerFilter = other.PractitionerFilter ?? PractitionerFilter,
             EncounterFilter = other.EncounterFilter ?? EncounterFilter,
             SearchFilters = mergedSearchFilters.Count > 0 ? mergedSearchFilters : null
         };

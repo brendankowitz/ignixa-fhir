@@ -55,7 +55,7 @@ public class RbacAuthorizationHandler : IAuthorizationHandler
             cancellationToken);
 
         // Build required permission from request
-        var requiredPermission = context.GetRequiredPermission();
+        var requiredPermission = context.RequiredPermission;
 
         _logger.LogDebug(
             "RBAC check: User {UserId} with roles [{Roles}] requesting {ResourceType}.{Interaction}",

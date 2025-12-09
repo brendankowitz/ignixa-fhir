@@ -29,21 +29,21 @@ public class RbacAuthorizationHandlerTests
     [Fact]
     public async Task HandleAsync_SmartScopesPresent_SkipsRbacCheck()
     {
-        // Arrange
+        // Arrange - SMART v2 format
         var httpContext = Substitute.For<HttpContext>();
         var smartContext = new SmartAuthorizationContext
         {
             TokenClaims = new SmartTokenClaims
             {
-                ScopeString = "patient/Patient.read",
+                ScopeString = "patient/Patient.rs",
                 Scopes = new List<SmartScope>
                 {
-                    new() { Type = SmartScopeType.Patient, ResourceType = "Patient", Permission = "READ", OriginalScope = "patient/Patient.read" }
+                    new() { Type = SmartScopeType.Patient, ResourceType = "Patient", Permissions = SmartPermissions.Read | SmartPermissions.Search, PermissionString = "RS", OriginalScope = "patient/Patient.rs" }
                 }
             },
             Scopes = new List<SmartScope>
             {
-                new() { Type = SmartScopeType.Patient, ResourceType = "Patient", Permission = "READ", OriginalScope = "patient/Patient.read" }
+                new() { Type = SmartScopeType.Patient, ResourceType = "Patient", Permissions = SmartPermissions.Read | SmartPermissions.Search, PermissionString = "RS", OriginalScope = "patient/Patient.rs" }
             }
         };
 

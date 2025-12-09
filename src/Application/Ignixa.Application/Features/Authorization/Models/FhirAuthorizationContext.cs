@@ -101,9 +101,8 @@ public record FhirAuthorizationContext
         Roles?.Contains(role, StringComparer.OrdinalIgnoreCase) == true;
 
     /// <summary>
-    /// Gets the required permission for this request.
+    /// Gets the required permission for this request as a ResourceGrant.
     /// </summary>
-    /// <returns>A ResourceGrant representing what this request needs.</returns>
-    public ResourceGrant GetRequiredPermission() =>
-        new(ResourceType ?? "*", Interaction.ToSmartPermission());
+    public ResourceGrant RequiredPermission =>
+        new(ResourceType ?? "*", Interaction.ToFhirCode());
 }
