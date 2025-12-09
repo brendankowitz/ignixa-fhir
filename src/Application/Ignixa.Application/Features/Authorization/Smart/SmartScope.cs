@@ -95,20 +95,28 @@ public record SmartScope
         }
 
         // "write" grants create, update, and delete
-        if (string.Equals(Permission, "write", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(Permission, "WRITE", StringComparison.OrdinalIgnoreCase))
         {
             return permission is "create" or "update" or "delete";
         }
 
         // SMART v2 granular permissions
-        return Permission.ToUpperInvariant() switch
+        var upperPermission = Permission.ToUpperInvariant();
+        var upperRequired = permission.ToUpperInvariant();
+
+        return upperPermission switch
         {
-            "C" => string.Equals(permission, "create", StringComparison.OrdinalIgnoreCase),
-            "R" => string.Equals(permission, "read", StringComparison.OrdinalIgnoreCase),
-            "U" => string.Equals(permission, "update", StringComparison.OrdinalIgnoreCase),
-            "D" => string.Equals(permission, "delete", StringComparison.OrdinalIgnoreCase),
-            "S" => string.Equals(permission, "read", StringComparison.OrdinalIgnoreCase), // search = read
-            "CRU" or "CRUD" or "CRUDS" => true, // Combined permissions
+            "C" => upperRequired == "CREATE",
+            "R" => upperRequired == "READ",
+            "U" => upperRequired == "UPDATE",
+            "D" => upperRequired == "DELETE",
+            "S" => upperRequired == "READ", // search = read
+            // Combined permissions - check if the required permission letter is in the combination
+            "CR" => upperRequired is "CREATE" or "READ",
+            "CRU" => upperRequired is "CREATE" or "READ" or "UPDATE",
+            "CRUD" => upperRequired is "CREATE" or "READ" or "UPDATE" or "DELETE",
+            "CRUDS" => upperRequired is "CREATE" or "READ" or "UPDATE" or "DELETE",
+            "RS" => upperRequired == "READ", // read + search
             _ => false
         };
     }

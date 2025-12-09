@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Authorization.Smart;
@@ -99,16 +100,16 @@ public class FhirAuthorizationFilter : IEndpointFilter
     private Task<FhirAuthorizationContext> BuildAuthorizationContextAsync(HttpContext httpContext)
     {
         // Extract user/tenant from claims
-        var userId = httpContext.User.FindFirst("sub")?.Value ??
-                    httpContext.User.FindFirst("oid")?.Value ??
-                    httpContext.User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+        var userId = httpContext.User.FindFirst(FhirClaimTypes.Subject)?.Value ??
+                    httpContext.User.FindFirst(FhirClaimTypes.ObjectId)?.Value ??
+                    httpContext.User.FindFirst(FhirClaimTypes.NameIdentifier)?.Value;
 
-        var tenantId = httpContext.User.FindFirst("tenant_id")?.Value ??
-                      httpContext.User.FindFirst("extension_TenantId")?.Value;
+        var tenantId = httpContext.User.FindFirst(FhirClaimTypes.TenantId)?.Value ??
+                      httpContext.User.FindFirst(FhirClaimTypes.ExtensionTenantId)?.Value;
 
-        var roles = httpContext.User.FindAll("role")
-            .Concat(httpContext.User.FindAll("roles"))
-            .Concat(httpContext.User.FindAll("http://schemas.microsoft.com/ws/2008/06/identity/claims/role"))
+        var roles = httpContext.User.FindAll(FhirClaimTypes.Role)
+            .Concat(httpContext.User.FindAll(FhirClaimTypes.Roles))
+            .Concat(httpContext.User.FindAll(FhirClaimTypes.WsFederationRole))
             .Select(c => c.Value)
             .Distinct()
             .ToList();
@@ -122,21 +123,21 @@ public class FhirAuthorizationFilter : IEndpointFilter
 
         // Extract SMART context if present
         SmartAuthorizationContext? smartContext = null;
-        var scopeClaim = httpContext.User.FindFirst("scope")?.Value ??
-                        httpContext.User.FindFirst("scp")?.Value;
+        var scopeClaim = httpContext.User.FindFirst(FhirClaimTypes.Scope)?.Value ??
+                        httpContext.User.FindFirst(FhirClaimTypes.Scp)?.Value;
 
         if (!string.IsNullOrEmpty(scopeClaim))
         {
             var scopes = SmartScopeParser.ParseScopes(scopeClaim);
             if (scopes.Count > 0)
             {
-                var patientClaim = httpContext.User.FindFirst("patient")?.Value ??
-                                  httpContext.User.FindFirst("launch_context_patient")?.Value;
+                var patientClaim = httpContext.User.FindFirst(FhirClaimTypes.Patient)?.Value ??
+                                  httpContext.User.FindFirst(FhirClaimTypes.LaunchContextPatient)?.Value;
 
-                var encounterClaim = httpContext.User.FindFirst("encounter")?.Value ??
-                                    httpContext.User.FindFirst("launch_context_encounter")?.Value;
+                var encounterClaim = httpContext.User.FindFirst(FhirClaimTypes.Encounter)?.Value ??
+                                    httpContext.User.FindFirst(FhirClaimTypes.LaunchContextEncounter)?.Value;
 
-                var fhirUserClaim = httpContext.User.FindFirst("fhirUser")?.Value;
+                var fhirUserClaim = httpContext.User.FindFirst(FhirClaimTypes.FhirUser)?.Value;
 
                 var tokenClaims = new SmartTokenClaims
                 {
@@ -145,8 +146,8 @@ public class FhirAuthorizationFilter : IEndpointFilter
                     PatientId = patientClaim,
                     EncounterId = encounterClaim,
                     FhirUser = fhirUserClaim,
-                    ClientId = httpContext.User.FindFirst("client_id")?.Value ??
-                              httpContext.User.FindFirst("azp")?.Value
+                    ClientId = httpContext.User.FindFirst(FhirClaimTypes.ClientId)?.Value ??
+                              httpContext.User.FindFirst(FhirClaimTypes.AuthorizedParty)?.Value
                 };
 
                 smartContext = new SmartAuthorizationContext

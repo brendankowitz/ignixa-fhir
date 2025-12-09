@@ -116,13 +116,9 @@ public class CapabilityEnforcementHandler : IAuthorizationHandler
     {
         var cache = new Services.CapabilityInteractionCache();
 
-        // Get FHIR version from tenant or default
+        // Get FHIR version - default to R4 for now
+        // TODO: Look up tenant configuration to get correct FHIR version when multi-version support is needed
         var fhirVersion = FhirVersion.R4;
-        if (int.TryParse(context.TenantId, out var tenantId))
-        {
-            // Could look up tenant configuration here, but for now default to R4
-            fhirVersion = FhirVersion.R4;
-        }
 
         var capabilityContext = new CapabilityContext(
             FhirVersion: fhirVersion,
