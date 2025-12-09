@@ -686,8 +686,16 @@ public sealed class ScenarioContext
             var map = new Dictionary<string, ResourceIdentity>();
             foreach (var resource in _allResources)
             {
+                // Skip resources without valid IDs - they cannot be referenced
+                if (string.IsNullOrEmpty(resource.Id))
+                {
+                    continue;
+                }
+
                 var identity = new ResourceIdentity(resource.ResourceType, resource.Id, null);
-                map[resource.Id] = identity;
+
+                // Use TryAdd to avoid overwriting duplicate IDs
+                map.TryAdd(resource.Id, identity);
             }
             identities = map;
         }

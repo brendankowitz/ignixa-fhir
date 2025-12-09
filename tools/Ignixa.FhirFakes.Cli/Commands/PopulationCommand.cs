@@ -161,8 +161,11 @@ internal static class PopulationCommand
                     {
                         foreach (var entry in bundleEntries)
                         {
-                            entries.Add(entry?.DeepClone());
-                            totalResources++;
+                            if (entry is not null)
+                            {
+                                entries.Add(entry.DeepClone());
+                                totalResources++;
+                            }
                         }
                     }
                 }
