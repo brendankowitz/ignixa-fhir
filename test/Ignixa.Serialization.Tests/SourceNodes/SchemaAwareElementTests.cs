@@ -409,6 +409,69 @@ public class SchemaAwareElementTests
         Assert.Equal("CodeableConcept", codeChildren[0].InstanceType);
     }
 
+    /// <summary>
+    /// Test that navigating to 'effective' matches 'effectiveDateTime' element.
+    /// This is the specific case causing date search indexing failures.
+    /// </summary>
+    [Fact]
+    public void GivenObservationWithEffectiveDateTime_WhenNavigatingToEffective_ThenReturnsEffectiveDateTimeElement()
+    {
+        // Arrange
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs-date",
+          "status": "final",
+          "code": { "text": "test" },
+          "effectiveDateTime": "1980-05-11"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var effectiveChildren = typedElement.Children("effective").ToList();
+
+        // Assert
+        Assert.Single(effectiveChildren);
+        Assert.Equal("effectiveDateTime", effectiveChildren[0].Name);
+        Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
+        Assert.Equal("1980-05-11", effectiveChildren[0].Value);
+    }
+
+    /// <summary>
+    /// Test that navigating to 'effective' matches 'effectivePeriod' element.
+    /// </summary>
+    [Fact]
+    public void GivenObservationWithEffectivePeriod_WhenNavigatingToEffective_ThenReturnsEffectivePeriodElement()
+    {
+        // Arrange
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs-period",
+          "status": "final",
+          "code": { "text": "test" },
+          "effectivePeriod": {
+            "start": "1980-05-16",
+            "end": "1980-05-17"
+          }
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var effectiveChildren = typedElement.Children("effective").ToList();
+
+        // Assert
+        Assert.Single(effectiveChildren);
+        Assert.Equal("effectivePeriod", effectiveChildren[0].Name);
+        Assert.Equal("Period", effectiveChildren[0].InstanceType);
+    }
+
     #endregion
 
     #region Edge Cases

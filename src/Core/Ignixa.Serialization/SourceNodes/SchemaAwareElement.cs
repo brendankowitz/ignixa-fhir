@@ -357,32 +357,46 @@ internal class SchemaAwareElement : IElement
     }
 
     /// <summary>
-    /// Normalizes FHIR type names extracted from choice elements to match FHIRPath conventions.
-    /// Primitive type names are lowercase (e.g., "String" → "string", "Integer" → "integer"),
+    /// Normalizes FHIR type names extracted from choice elements to match FHIR/FHIRPath conventions.
+    /// Primitive type names use FHIR's exact casing (e.g., "String" → "string", "DateTime" → "dateTime"),
     /// while complex types remain capitalized (e.g., "Quantity", "CodeableConcept").
     /// </summary>
     /// <param name="typeName">The type name extracted from the choice element suffix (e.g., "String", "Quantity").</param>
-    /// <returns>The normalized type name per FHIRPath conventions.</returns>
+    /// <returns>The normalized type name per FHIR conventions.</returns>
     private static string NormalizeFhirPathTypeName(string typeName)
     {
-        // FHIR primitive types that should be lowercase in FHIRPath
-        // Reference: http://hl7.org/fhir/datatypes.html and FHIRPath specification
-        var primitiveLowercase = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        // FHIR primitive types with their canonical casing
+        // Reference: http://hl7.org/fhir/datatypes.html
+        // Note: These are case-sensitive lookups that return the correctly-cased type name
+        var primitiveTypeMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            "string", "integer", "boolean", "decimal",
-            "date", "dateTime", "time", "code",
-            "uri", "url", "canonical", "uuid", "oid", "id",
-            "markdown", "base64Binary", "instant",
-            "unsignedInt", "positiveInt", "integer64"
+            { "string", "string" },
+            { "integer", "integer" },
+            { "boolean", "boolean" },
+            { "decimal", "decimal" },
+            { "date", "date" },
+            { "dateTime", "dateTime" },
+            { "time", "time" },
+            { "code", "code" },
+            { "uri", "uri" },
+            { "url", "url" },
+            { "canonical", "canonical" },
+            { "uuid", "uuid" },
+            { "oid", "oid" },
+            { "id", "id" },
+            { "markdown", "markdown" },
+            { "base64Binary", "base64Binary" },
+            { "instant", "instant" },
+            { "unsignedInt", "unsignedInt" },
+            { "positiveInt", "positiveInt" },
+            { "integer64", "integer64" }
         };
 
-        // If it's a primitive type, return lowercase version
-        // FHIRPath type names for primitives are lowercase per specification, ToLowerInvariant is intentional
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        return primitiveLowercase.Contains(typeName)
-            ? typeName.ToLowerInvariant()
-            : typeName; // Keep complex types as-is (Quantity, CodeableConcept, etc.)
-#pragma warning restore CA1308 // Normalize strings to uppercase
+        // If it's a primitive type, return the canonical casing
+        // Otherwise keep complex types as-is (Quantity, CodeableConcept, etc.)
+        return primitiveTypeMapping.TryGetValue(typeName, out var canonicalName)
+            ? canonicalName
+            : typeName;
     }
 
     /// <summary>

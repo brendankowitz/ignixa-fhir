@@ -37,14 +37,33 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
         if (_modifier != null) ThrowModifierNotSupported();
 
         // Based on spec here: http://hl7.org/fhir/search.html#prefix
+        // FHIR spec says: eq = "the range of the search value fully contains the range of the target value"
+        // However, Microsoft FHIR Server (and this implementation) uses a practical interpretation:
+        // eq matches when target range OVERLAPS with or CONTAINS the search range.
+        // This means wider-precision values match narrower searches:
+        //   - date=1980-05-11 matches obs with "1980" (year precision) because the year contains the day
+        //   - date=1980-05-11 matches obs with "1980-05" (month) because the month contains the day
+        //   - date=1980-05-11 matches obs with "1980-05-11" (day) - exact match
+        // This is the intuitive behavior for date searches.
+        //
+        // ne (not equals) uses strict FHIR spec: "target is NOT fully contained within search range"
+        // This means ne matches when target extends outside the search boundaries:
+        //   - date=ne1980-05-11 matches obs with "1980" because the year extends beyond May 11
+        //   - date=ne1980-05-11 matches obs with "1980-05" because the month extends beyond May 11
+        //   - date=ne1980-05-11 does NOT match obs with "1980-05-11" because it's fully contained
         switch (_comparator)
         {
             case SearchComparator.Eq:
+                // Match if ranges overlap: target.Start <= search.End AND target.End >= search.Start
+                // This includes exact matches, target containing search, and search containing target
                 _outputExpression = Expression.And(
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
-                    Expression.LessThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
+                    Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
+                    Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
                 break;
             case SearchComparator.Ne:
+                // ne = target is NOT fully contained within search range
+                // NOT (target.Start >= search.Start AND target.End <= search.End)
+                // = target.Start < search.Start OR target.End > search.End
                 _outputExpression = Expression.Or(
                     Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
                     Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
