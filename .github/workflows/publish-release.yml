@@ -231,18 +231,30 @@ jobs:
           if [ "$TAG_SKIPPED" == "true" ]; then
             echo "⚠️ Tag skipped - using HEAD for release notes generation (TEST MODE)"
             CURRENT_REF="HEAD"
-            PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "")
+            # For test mode, find the most recent release tag
+            PREV_TAG=$(git tag -l 'release/*' --sort=-version:refname | head -1)
           else
             CURRENT_REF="$CURRENT_TAG"
-            PREV_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG"^ 2>/dev/null || echo "")
+            # Find the immediately preceding release tag by version sort
+            # This gets all release tags sorted newest-first, finds current tag, then takes the next one
+            PREV_TAG=$(git tag -l 'release/*' --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
+
+            # Fallback: if current tag not found in list (shouldn't happen but be defensive)
+            # get the most recent tag that's not the current one
+            if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" == "$CURRENT_TAG" ]; then
+              echo "⚠️ grep method failed, using fallback to find previous tag"
+              PREV_TAG=$(git tag -l 'release/*' --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -1)
+            fi
           fi
 
           echo "Generating release notes for $CURRENT_REF (comparing to $PREV_TAG)..."
 
           # Get Commits
           if [ -z "$PREV_TAG" ]; then
+            echo "⚠️ No previous release tag found - generating notes from all commits (this should only happen for first release)"
             COMMITS=$(git log "$CURRENT_REF" --pretty=format:"HASH:%h | AUTHOR:%an | SUBJECT:%s | BODY:%b")
           else
+            echo "📝 Comparing $PREV_TAG..$CURRENT_REF"
             COMMITS=$(git log "$PREV_TAG..$CURRENT_REF" --pretty=format:"HASH:%h | AUTHOR:%an | SUBJECT:%s | BODY:%b")
           fi
 
