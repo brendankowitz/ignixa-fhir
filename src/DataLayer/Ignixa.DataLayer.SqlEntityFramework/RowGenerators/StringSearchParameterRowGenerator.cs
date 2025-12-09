@@ -17,9 +17,22 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// String search parameters store text values with optional overflow for very long strings.
 /// Supports min/max flags for sorting optimization.
 /// </summary>
+/// <remarks>
+/// Text storage strategy for FHIR string search:
+/// - Text column stores first 256 chars of ORIGINAL case text (for :exact modifier support)
+/// - TextOverflow stores remaining chars for strings longer than 256 chars
+/// - Query-time collation is used for case-sensitivity:
+///   - No modifier / :contains: Latin1_General_100_CI_AI (case-insensitive, accent-insensitive)
+///   - :exact: Latin1_General_100_CS_AS (case-sensitive, accent-sensitive)
+///
+/// This design enables proper :exact modifier support while maintaining efficient
+/// case-insensitive search via SQL collation functions at query time.
+/// </remarks>
 public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    private const int StringColumnMaxLength = 128;
+    // Text column max length matches the database column definition (256 chars)
+    // TextOverflow (nvarchar(max)) handles any additional characters
+    private const int StringColumnMaxLength = 256;
 
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
@@ -62,7 +75,9 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
 
-                var textValue = stringValue.String?.ToUpperInvariant();
+                // Store text in ORIGINAL case for :exact modifier support
+                // Case-insensitive search is handled via query-time collation (Latin1_General_100_CI_AI)
+                var textValue = stringValue.String;
                 if (textValue != null && textValue.Length > StringColumnMaxLength)
                 {
                     record.SetString(3, textValue.Substring(0, StringColumnMaxLength));

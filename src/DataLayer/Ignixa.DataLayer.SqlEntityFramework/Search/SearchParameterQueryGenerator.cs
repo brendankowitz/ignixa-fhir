@@ -1178,7 +1178,7 @@ public class SearchParameterQueryGenerator
         // Determine which table to query based on FieldName
         return stringExpr.FieldName switch
         {
-            FieldName.String => await GenerateStringQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator, ct),
+            FieldName.String => await GenerateStringQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator, stringExpr.IgnoreCase, ct),
             FieldName.Uri => GenerateUriQuery(resourceTypeId, searchParamId, stringExpr.Value, stringExpr.StringOperator),
             FieldName.TokenCode => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, null, stringExpr.Value, ct),
             FieldName.TokenSystem => await GenerateTokenQueryAsync(resourceTypeId, searchParamId, stringExpr.Value, null, ct),
@@ -1236,28 +1236,110 @@ public class SearchParameterQueryGenerator
         short? searchParamId,
         string searchText,
         StringOperator stringOperator,
+        bool ignoreCase,
         CancellationToken ct)
     {
-        // Normalize search text to uppercase for case-insensitive matching
-        var normalizedText = searchText.ToUpperInvariant();
-
-        // Build the LIKE pattern based on StringOperator
-        var pattern = stringOperator switch
-        {
-            StringOperator.StartsWith => $"{normalizedText}%",
-            StringOperator.EndsWith => $"%{normalizedText}",
-            StringOperator.Contains => $"%{normalizedText}%",
-            StringOperator.Equals => normalizedText,
-            _ => throw new NotSupportedException($"StringOperator {stringOperator} is not supported")
-        };
-
-        // When resourceTypeId is null (system-wide search), don't filter by resource type
-        // Filter by SearchParamId to only match values indexed for this specific parameter
-        var query = _context.StringSearchParams
+        // Base query filters by resource type and search param
+        var baseQuery = _context.StringSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
-                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value)
-                && EF.Functions.Like(sp.Text, pattern))
-            .Select(sp => sp.ResourceSurrogateId);
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        // FHIR String Search Rules:
+        // - No modifier (starts-with): case-insensitive, accent-insensitive
+        // - :exact: case-sensitive, accent-sensitive (must match exactly)
+        // - :contains: case-insensitive, accent-insensitive
+        //
+        // Implementation approach:
+        // - Text column stores ORIGINAL case text (first 256 chars)
+        // - TextOverflow stores remaining chars for strings > 256 chars
+        // - Query-time collation handles case-sensitivity:
+        //   - Case-insensitive: Latin1_General_100_CI_AI
+        //   - Case-sensitive (:exact): Latin1_General_100_CS_AS
+
+        IQueryable<long> query;
+
+        // Collation to use based on case-sensitivity requirement
+        // CI_AI = Case-Insensitive, Accent-Insensitive (FHIR default for string search)
+        // CS_AS = Case-Sensitive, Accent-Sensitive (FHIR :exact modifier)
+        var collation = ignoreCase ? "Latin1_General_100_CI_AI" : "Latin1_General_100_CS_AS";
+
+        // For long strings (those with TextOverflow), we need to search the combined text
+        // Text contains first 256 chars, TextOverflow contains the rest
+        switch (stringOperator)
+        {
+            case StringOperator.StartsWith:
+                {
+                    // Build starts-with pattern
+                    var pattern = $"{searchText}%";
+
+                    if (searchText.Length > 256)
+                    {
+                        // Search value is longer than 256 chars - need to match against concatenated text
+                        query = baseQuery
+                            .Where(sp => sp.TextOverflow != null &&
+                                EF.Functions.Like(
+                                    EF.Functions.Collate(sp.Text + sp.TextOverflow, collation),
+                                    pattern))
+                            .Select(sp => sp.ResourceSurrogateId);
+                    }
+                    else
+                    {
+                        // Short search value - Text column is sufficient for starts-with
+                        query = baseQuery
+                            .Where(sp => EF.Functions.Like(
+                                EF.Functions.Collate(sp.Text, collation),
+                                pattern))
+                            .Select(sp => sp.ResourceSurrogateId);
+                    }
+                    break;
+                }
+
+            case StringOperator.Contains:
+                {
+                    // Build contains pattern
+                    var pattern = $"%{searchText}%";
+
+                    // For contains, we need to search the full text including overflow
+                    query = baseQuery
+                        .Where(sp => EF.Functions.Like(
+                            EF.Functions.Collate(
+                                sp.TextOverflow != null ? sp.Text + sp.TextOverflow : sp.Text,
+                                collation),
+                            pattern))
+                        .Select(sp => sp.ResourceSurrogateId);
+                    break;
+                }
+
+            case StringOperator.EndsWith:
+                {
+                    // Build ends-with pattern
+                    var pattern = $"%{searchText}";
+
+                    // For ends-with, we need to search the full text including overflow
+                    query = baseQuery
+                        .Where(sp => EF.Functions.Like(
+                            EF.Functions.Collate(
+                                sp.TextOverflow != null ? sp.Text + sp.TextOverflow : sp.Text,
+                                collation),
+                            pattern))
+                        .Select(sp => sp.ResourceSurrogateId);
+                    break;
+                }
+
+            case StringOperator.Equals:
+                {
+                    // For exact match, compare full concatenated text with collation
+                    query = baseQuery
+                        .Where(sp => EF.Functions.Collate(
+                            sp.TextOverflow != null ? sp.Text + sp.TextOverflow : sp.Text,
+                            collation) == searchText)
+                        .Select(sp => sp.ResourceSurrogateId);
+                    break;
+                }
+
+            default:
+                throw new NotSupportedException($"StringOperator {stringOperator} is not supported");
+        }
 
         return await Task.FromResult(query);
     }
