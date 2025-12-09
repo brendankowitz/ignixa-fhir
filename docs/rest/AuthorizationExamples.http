@@ -1,0 +1,363 @@
+### =============================================================================
+### FHIR Authorization Testing Examples
+### =============================================================================
+### This file demonstrates RBAC authorization, SMART on FHIR scopes,
+### and capability statement enforcement.
+###
+### Requirements:
+### 1. Start the FHIR server: dotnet run --project src/Application/Ignixa.Api
+### 2. Use VS Code REST Client extension
+### =============================================================================
+
+@hostname = https://localhost:7058
+@tenantId = 1
+
+### =============================================================================
+### SECTION 1: Token Generation (OpenIddict - Development)
+### =============================================================================
+### These examples show how to get test tokens for different scenarios.
+### In development, OpenIddict provides a local OAuth server at /connect/token.
+
+### 1.1 Get Admin Token (Full Access)
+# @name adminToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=fhir-admin-client
+&client_secret=dev-secret
+&scope=system/*.read system/*.write
+
+### 1.2 Get Clinician Token (User Scope)
+# @name clinicianToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password
+&username=clinician@example.com
+&password=Clinician123!
+&scope=user/Patient.read user/Observation.read user/Observation.write
+
+### 1.3 Get Patient Token (Patient-Scoped SMART)
+# @name patientToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password
+&username=patient@example.com
+&password=Patient123!
+&scope=patient/Observation.read patient/MedicationRequest.read
+&patient_id=patient-123
+
+### 1.4 Get ReadOnly Token
+# @name readOnlyToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=readonly-client
+&client_secret=readonly-secret
+&scope=system/*.read
+
+### =============================================================================
+### SECTION 2: Unauthenticated Requests
+### =============================================================================
+### Only /metadata should be accessible without authentication
+
+### 2.1 Get CapabilityStatement (Should Succeed - No Auth Required)
+GET {{hostname}}/tenant/{{tenantId}}/metadata
+Accept: application/fhir+json
+
+### 2.2 Search Patients Without Auth (Should Fail - 401 Unauthorized)
+GET {{hostname}}/tenant/{{tenantId}}/Patient
+Accept: application/fhir+json
+
+### 2.3 Get Patient Without Auth (Should Fail - 401 Unauthorized)
+GET {{hostname}}/tenant/{{tenantId}}/Patient/example
+Accept: application/fhir+json
+
+### =============================================================================
+### SECTION 3: RBAC Authorization (Role-Based)
+### =============================================================================
+### Tests role-based permissions configured in appsettings.json
+
+### 3.1 Admin - Search Patients (Should Succeed)
+GET {{hostname}}/tenant/{{tenantId}}/Patient?name=Smith
+Authorization: Bearer {{adminToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 3.2 Admin - Create Patient (Should Succeed)
+POST {{hostname}}/tenant/{{tenantId}}/Patient
+Authorization: Bearer {{adminToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "name": [
+    {
+      "family": "TestAuth",
+      "given": ["AdminCreated"]
+    }
+  ],
+  "gender": "male"
+}
+
+### 3.3 Admin - Delete Patient (Should Succeed)
+DELETE {{hostname}}/tenant/{{tenantId}}/Patient/test-delete-123
+Authorization: Bearer {{adminToken.response.body.access_token}}
+
+### 3.4 ReadOnly - Search Patients (Should Succeed - Has Read Permission)
+GET {{hostname}}/tenant/{{tenantId}}/Patient?name=Smith
+Authorization: Bearer {{readOnlyToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 3.5 ReadOnly - Create Patient (Should Fail - 403 No Create Permission)
+POST {{hostname}}/tenant/{{tenantId}}/Patient
+Authorization: Bearer {{readOnlyToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "name": [
+    {
+      "family": "TestAuth",
+      "given": ["ShouldFail"]
+    }
+  ]
+}
+
+### 3.6 ReadOnly - Delete Patient (Should Fail - 403 No Delete Permission)
+DELETE {{hostname}}/tenant/{{tenantId}}/Patient/test-delete-456
+Authorization: Bearer {{readOnlyToken.response.body.access_token}}
+
+### 3.7 Clinician - Create Observation (Should Succeed)
+POST {{hostname}}/tenant/{{tenantId}}/Observation
+Authorization: Bearer {{clinicianToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "status": "final",
+  "code": {
+    "coding": [{
+      "system": "http://loinc.org",
+      "code": "8867-4",
+      "display": "Heart rate"
+    }]
+  },
+  "subject": { "reference": "Patient/patient-123" },
+  "valueQuantity": {
+    "value": 80,
+    "unit": "beats/minute",
+    "system": "http://unitsofmeasure.org",
+    "code": "/min"
+  }
+}
+
+### =============================================================================
+### SECTION 4: SMART on FHIR Scopes (Patient Compartment Filtering)
+### =============================================================================
+### Tests SMART scope enforcement and patient compartment filtering
+
+### 4.1 Patient Scope - Search Own Observations (Should Succeed - Filtered)
+### Results should only include observations for patient-123
+GET {{hostname}}/tenant/{{tenantId}}/Observation?code=8867-4
+Authorization: Bearer {{patientToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 4.2 Patient Scope - Search All Observations (Should Be Filtered)
+### Even without patient parameter, results filtered to patient-123
+GET {{hostname}}/tenant/{{tenantId}}/Observation
+Authorization: Bearer {{patientToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 4.3 Patient Scope - Search Another Patient's Data (Should Return Empty)
+### Request another patient's observations - should get empty bundle
+GET {{hostname}}/tenant/{{tenantId}}/Observation?patient=patient-456
+Authorization: Bearer {{patientToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 4.4 Patient Scope - Read Own MedicationRequest (Should Succeed)
+GET {{hostname}}/tenant/{{tenantId}}/MedicationRequest?patient=patient-123
+Authorization: Bearer {{patientToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 4.5 Patient Scope - Write Observation (Should Fail - No Write Scope)
+PUT {{hostname}}/tenant/{{tenantId}}/Observation/obs-123
+Authorization: Bearer {{patientToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "obs-123",
+  "status": "amended",
+  "code": {
+    "coding": [{
+      "system": "http://loinc.org",
+      "code": "8867-4",
+      "display": "Heart rate"
+    }]
+  }
+}
+
+### 4.6 User Scope (Clinician) - Search All Patients (Should Succeed - No Filter)
+GET {{hostname}}/tenant/{{tenantId}}/Patient
+Authorization: Bearer {{clinicianToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### =============================================================================
+### SECTION 5: Capability Statement Enforcement
+### =============================================================================
+### Tests that server respects its CapabilityStatement
+### Operations not in CapabilityStatement should return 403
+
+### 5.1 Update AuditEvent (Should Fail - CapabilityStatement Doesn't Allow)
+### AuditEvent typically only supports read/create, not update
+PUT {{hostname}}/tenant/{{tenantId}}/AuditEvent/audit-123
+Authorization: Bearer {{adminToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "AuditEvent",
+  "id": "audit-123",
+  "type": {
+    "system": "http://terminology.hl7.org/CodeSystem/audit-event-type",
+    "code": "rest",
+    "display": "RESTful Operation"
+  },
+  "recorded": "2024-01-15T10:00:00Z",
+  "agent": [{
+    "who": { "display": "Test Agent" }
+  }],
+  "source": {
+    "observer": { "display": "Test Source" }
+  }
+}
+
+### 5.2 Delete AuditEvent (Should Fail - CapabilityStatement Doesn't Allow)
+DELETE {{hostname}}/tenant/{{tenantId}}/AuditEvent/audit-456
+Authorization: Bearer {{adminToken.response.body.access_token}}
+
+### 5.3 Read AuditEvent (Should Succeed - CapabilityStatement Allows)
+GET {{hostname}}/tenant/{{tenantId}}/AuditEvent?date=ge2024-01-01
+Authorization: Bearer {{adminToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### =============================================================================
+### SECTION 6: Tenant Isolation
+### =============================================================================
+### Tests that users can only access their assigned tenant
+
+### 6.1 Access Own Tenant (Should Succeed)
+GET {{hostname}}/tenant/1/Patient
+Authorization: Bearer {{clinicianToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### 6.2 Access Different Tenant (Should Fail - 403 Tenant Isolation)
+GET {{hostname}}/tenant/999/Patient
+Authorization: Bearer {{clinicianToken.response.body.access_token}}
+Accept: application/fhir+json
+
+### =============================================================================
+### SECTION 7: Bundle/Transaction Authorization
+### =============================================================================
+### Tests that bundle entries go through same authorization as direct calls
+
+### 7.1 Transaction Bundle - Mixed Permissions (Should Fail if Any Entry Fails)
+### Clinician can create Patient and Observation, entire transaction should succeed
+POST {{hostname}}/tenant/{{tenantId}}
+Authorization: Bearer {{clinicianToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "request": { "method": "POST", "url": "Patient" },
+      "resource": {
+        "resourceType": "Patient",
+        "name": [{ "family": "BundleTest", "given": ["Transaction"] }]
+      }
+    },
+    {
+      "request": { "method": "POST", "url": "Observation" },
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4" }] },
+        "subject": { "reference": "Patient/bundle-patient" }
+      }
+    }
+  ]
+}
+
+### 7.2 Batch Bundle - Individual Entry Authorization
+### Each entry authorized separately; failures don't affect other entries
+POST {{hostname}}/tenant/{{tenantId}}
+Authorization: Bearer {{readOnlyToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Bundle",
+  "type": "batch",
+  "entry": [
+    {
+      "request": { "method": "GET", "url": "Patient/example" }
+    },
+    {
+      "request": { "method": "POST", "url": "Patient" },
+      "resource": {
+        "resourceType": "Patient",
+        "name": [{ "family": "ShouldFail", "given": ["NoWritePermission"] }]
+      }
+    }
+  ]
+}
+
+### =============================================================================
+### SECTION 8: SMART Discovery Endpoints
+### =============================================================================
+### Tests SMART on FHIR discovery per HL7 specification
+
+### 8.1 Get CapabilityStatement with Security Extension
+### Should include rest.security with oauth-uris extension
+GET {{hostname}}/tenant/{{tenantId}}/metadata
+Accept: application/fhir+json
+
+### 8.2 SMART Configuration Discovery
+### Returns OAuth endpoints and supported capabilities
+GET {{hostname}}/.well-known/smart-configuration
+Accept: application/json
+
+### =============================================================================
+### SECTION 9: Error Response Validation
+### =============================================================================
+### Validates proper OperationOutcome responses for authorization failures
+
+### 9.1 Expected 401 Unauthorized Response
+GET {{hostname}}/tenant/{{tenantId}}/Patient
+Accept: application/fhir+json
+### Expected: 401 with OperationOutcome containing "Authentication required"
+
+### 9.2 Expected 403 Forbidden Response (RBAC)
+POST {{hostname}}/tenant/{{tenantId}}/Patient
+Authorization: Bearer {{readOnlyToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Patient",
+  "name": [{ "family": "Test" }]
+}
+### Expected: 403 with OperationOutcome containing "No permission grants"
+
+### 9.3 Expected 403 Forbidden Response (Capability)
+PUT {{hostname}}/tenant/{{tenantId}}/AuditEvent/test
+Authorization: Bearer {{adminToken.response.body.access_token}}
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "AuditEvent",
+  "id": "test"
+}
+### Expected: 403 with OperationOutcome containing "Server does not support"
