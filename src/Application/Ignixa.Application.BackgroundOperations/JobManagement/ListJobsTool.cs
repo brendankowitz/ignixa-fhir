@@ -5,6 +5,7 @@
 
 using System.ComponentModel;
 using System.Text.Json;
+using Ignixa.Application.Features.Mcp.Authorization;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
@@ -17,6 +18,7 @@ namespace Ignixa.Application.BackgroundOperations.JobManagement;
 /// <summary>
 /// MCP tool for listing import/export jobs.
 /// Returns summary information for all jobs belonging to a tenant.
+/// Requires Mcp or Contributor role with read permission.
 /// </summary>
 [McpServerToolType]
 public class ListJobsTool : TenantAwareMcpTool
@@ -28,8 +30,9 @@ public class ListJobsTool : TenantAwareMcpTool
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IBackgroundJobRepository<ImportJobDefinition> importRepository,
-        IBackgroundJobRepository<ExportJobDefinition> exportRepository)
-        : base(fhirRequestContextAccessor, tenantStore)
+        IBackgroundJobRepository<ExportJobDefinition> exportRepository,
+        IMcpAuthorizationService? mcpAuthorizationService = null)
+        : base(fhirRequestContextAccessor, tenantStore, mcpAuthorizationService)
     {
         _importRepository = importRepository ?? throw new ArgumentNullException(nameof(importRepository));
         _exportRepository = exportRepository ?? throw new ArgumentNullException(nameof(exportRepository));
@@ -39,6 +42,7 @@ public class ListJobsTool : TenantAwareMcpTool
     [Description(@"List all import and export jobs for a tenant.
 Returns summary information including status, progress, and timestamps.
 Optionally filter by job type (Import/Export) or status.
+Requires Mcp or Contributor role with read permission.
 Example: jobType='Import', status='Running'")]
     public async Task<List<JobSummaryDto>> ListJobsAsync(
         [Description("Filter by job type: 'Import', 'Export', or leave empty for all")]
@@ -52,6 +56,9 @@ Example: jobType='Import', status='Running'")]
 
         CancellationToken cancellationToken = default)
     {
+        // Validate MCP access and read permission
+        await EnsureOperationAuthorizedAsync(McpOperationType.Read, resourceType: null, cancellationToken);
+
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 

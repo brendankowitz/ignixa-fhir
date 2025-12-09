@@ -5,6 +5,7 @@
 
 using System.ComponentModel;
 using Ignixa.Application.BackgroundOperations.Jobs;
+using Ignixa.Application.Features.Mcp.Authorization;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
@@ -17,6 +18,7 @@ namespace Ignixa.Application.BackgroundOperations.JobManagement;
 /// <summary>
 /// MCP tool for getting the status of import/export jobs.
 /// Polls DurableTask orchestration state and updates job metadata.
+/// Requires Mcp or Contributor role with read permission.
 /// </summary>
 [McpServerToolType]
 public class GetJobStatusTool : TenantAwareMcpTool
@@ -26,8 +28,9 @@ public class GetJobStatusTool : TenantAwareMcpTool
     public GetJobStatusTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
-        : base(fhirRequestContextAccessor, tenantStore)
+        IMediator mediator,
+        IMcpAuthorizationService? mcpAuthorizationService = null)
+        : base(fhirRequestContextAccessor, tenantStore, mcpAuthorizationService)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
     }
@@ -35,6 +38,7 @@ public class GetJobStatusTool : TenantAwareMcpTool
     [McpServerTool(Name = "get_job_status")]
     [Description(@"Get the current status of an import or export job.
 Returns detailed progress, completion status, and results.
+Requires Mcp or Contributor role with read permission.
 Example: jobId='abc123', jobType='Import'")]
     public async Task<JobStatusDto> GetJobStatusAsync(
         [Description("Job ID returned from start_import_job or start_export_job")]
@@ -48,6 +52,9 @@ Example: jobId='abc123', jobType='Import'")]
 
         CancellationToken cancellationToken = default)
     {
+        // Validate MCP access and read permission
+        await EnsureOperationAuthorizedAsync(McpOperationType.Read, resourceType: null, cancellationToken);
+
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 

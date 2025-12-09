@@ -5,6 +5,7 @@
 
 using System.ComponentModel;
 using Ignixa.Application.BackgroundOperations.Import;
+using Ignixa.Application.Features.Mcp.Authorization;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
@@ -19,6 +20,7 @@ namespace Ignixa.Application.BackgroundOperations.JobManagement;
 /// <summary>
 /// MCP tool for starting FHIR bulk import jobs.
 /// Supports NDJSON file import with configurable batch processing.
+/// Requires Mcp or Contributor role with create permission.
 /// </summary>
 [McpServerToolType]
 public class StartImportJobTool : TenantAwareMcpTool
@@ -30,8 +32,9 @@ public class StartImportJobTool : TenantAwareMcpTool
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
         IMediator mediator,
-        IConfiguration configuration)
-        : base(fhirRequestContextAccessor, tenantStore)
+        IConfiguration configuration,
+        IMcpAuthorizationService? mcpAuthorizationService = null)
+        : base(fhirRequestContextAccessor, tenantStore, mcpAuthorizationService)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
@@ -41,6 +44,7 @@ public class StartImportJobTool : TenantAwareMcpTool
     [Description(@"Start a FHIR bulk import job from NDJSON files.
 Supports both InitialLoad (clean slate) and IncrementalLoad (merge) modes.
 Returns job ID for tracking progress via get_job_status tool.
+Requires Mcp or Contributor role with create permission.
 Example: inputFiles=[{type='Patient', url='https://...'}], mode='IncrementalLoad'")]
     public async Task<JobSummaryDto> StartImportJobAsync(
         [Description("Input files to import. Array of {type, url, etag} objects. Type is the FHIR resource type.")]
@@ -57,6 +61,9 @@ Example: inputFiles=[{type='Patient', url='https://...'}], mode='IncrementalLoad
 
         CancellationToken cancellationToken = default)
     {
+        // Validate MCP access and create permission (import creates resources)
+        await EnsureOperationAuthorizedAsync(McpOperationType.Create, resourceType: null, cancellationToken);
+
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 

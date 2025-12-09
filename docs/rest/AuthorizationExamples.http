@@ -395,3 +395,176 @@ Content-Type: application/fhir+json
   "id": "test"
 }
 ### Expected: 403 with OperationOutcome containing "Server does not support"
+
+### =============================================================================
+### SECTION 10: MCP Authorization (Model Context Protocol)
+### =============================================================================
+### Tests MCP tool access control requiring Mcp or Contributor roles.
+### Jobs correspond to their operation type:
+###   - import_job → requires create permission
+###   - export_job → requires read permission
+###   - list_jobs/get_job_status → requires read permission
+
+### 10.1 Get MCP/Contributor Token (Full MCP Access)
+# @name mcpToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=mcp-client
+&client_secret=mcp-secret
+&scope=system/*.cruds
+
+### 10.2 Get Contributor Token (Full MCP Access)
+# @name contributorToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password
+&username=contributor@example.com
+&password=Contributor123!
+&scope=system/*.cruds
+
+### 10.3 Start Import Job (Requires create permission)
+### Should succeed with Mcp or Contributor role
+POST {{hostname}}/mcp
+Authorization: Bearer {{mcpToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "start_import_job",
+    "arguments": {
+      "inputFiles": [
+        {
+          "type": "Patient",
+          "url": "https://example.com/patients.ndjson"
+        }
+      ],
+      "mode": "IncrementalLoad",
+      "tenantId": 1
+    }
+  },
+  "id": 1
+}
+
+### 10.4 Start Export Job (Requires read permission)
+### Should succeed with Mcp or Contributor role
+POST {{hostname}}/mcp
+Authorization: Bearer {{mcpToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "start_export_job",
+    "arguments": {
+      "resourceTypes": ["Patient", "Observation"],
+      "tenantId": 1
+    }
+  },
+  "id": 2
+}
+
+### 10.5 List Jobs (Requires read permission)
+POST {{hostname}}/mcp
+Authorization: Bearer {{mcpToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "list_jobs",
+    "arguments": {
+      "tenantId": 1
+    }
+  },
+  "id": 3
+}
+
+### 10.6 Get Job Status (Requires read permission)
+POST {{hostname}}/mcp
+Authorization: Bearer {{mcpToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "get_job_status",
+    "arguments": {
+      "jobId": "job-123",
+      "jobType": "Import",
+      "tenantId": 1
+    }
+  },
+  "id": 4
+}
+
+### 10.7 MCP Access with ReadOnly Role (Should Fail - No MCP Access)
+### ReadOnly role doesn't have McpAccess enabled
+POST {{hostname}}/mcp
+Authorization: Bearer {{readOnlyToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "start_import_job",
+    "arguments": {
+      "inputFiles": [
+        {
+          "type": "Patient",
+          "url": "https://example.com/patients.ndjson"
+        }
+      ]
+    }
+  },
+  "id": 5
+}
+### Expected: 403 with "MCP access denied. Required role: Admin, SystemAdmin, Mcp, or Contributor."
+
+### 10.8 MCP Access with Clinician Role (Should Fail - No MCP Access)
+### Clinician role doesn't have McpAccess enabled
+POST {{hostname}}/mcp
+Authorization: Bearer {{clinicianToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "list_jobs",
+    "arguments": {
+      "tenantId": 1
+    }
+  },
+  "id": 6
+}
+### Expected: 403 with "MCP access denied"
+
+### 10.9 Search FHIR Resources via MCP (Requires read permission)
+POST {{hostname}}/mcp
+Authorization: Bearer {{mcpToken.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "search_fhir_resources",
+    "arguments": {
+      "resourceType": "Patient",
+      "searchParams": {
+        "name": "Smith"
+      },
+      "tenantId": 1
+    }
+  },
+  "id": 7
+}

@@ -5,6 +5,7 @@
 
 using System.ComponentModel;
 using Ignixa.Application.BackgroundOperations.Export;
+using Ignixa.Application.Features.Mcp.Authorization;
 using Ignixa.Application.Features.Mcp.Dtos;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
@@ -18,6 +19,7 @@ namespace Ignixa.Application.BackgroundOperations.JobManagement;
 /// <summary>
 /// MCP tool for starting FHIR bulk export jobs.
 /// Exports resources to NDJSON files in blob storage.
+/// Requires Mcp or Contributor role with read permission.
 /// </summary>
 [McpServerToolType]
 public class StartExportJobTool : TenantAwareMcpTool
@@ -27,8 +29,9 @@ public class StartExportJobTool : TenantAwareMcpTool
     public StartExportJobTool(
         IFhirRequestContextAccessor fhirRequestContextAccessor,
         ITenantConfigurationStore tenantStore,
-        IMediator mediator)
-        : base(fhirRequestContextAccessor, tenantStore)
+        IMediator mediator,
+        IMcpAuthorizationService? mcpAuthorizationService = null)
+        : base(fhirRequestContextAccessor, tenantStore, mcpAuthorizationService)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
     }
@@ -37,6 +40,7 @@ public class StartExportJobTool : TenantAwareMcpTool
     [Description(@"Start a FHIR bulk export job to NDJSON files.
 Exports all data or filtered by resource types and date range.
 Returns job ID for tracking progress via get_job_status tool.
+Requires Mcp or Contributor role with read permission.
 Example: resourceTypes=['Patient', 'Observation'], since='2024-01-01T00:00:00Z'")]
     public async Task<JobSummaryDto> StartExportJobAsync(
         [Description("Resource types to export (e.g., ['Patient', 'Observation']). Leave empty to export all types.")]
@@ -53,6 +57,9 @@ Example: resourceTypes=['Patient', 'Observation'], since='2024-01-01T00:00:00Z'"
 
         CancellationToken cancellationToken = default)
     {
+        // Validate MCP access and read permission (export reads resources)
+        await EnsureOperationAuthorizedAsync(McpOperationType.Read, resourceType: null, cancellationToken);
+
         // Resolve tenant using base class logic
         var resolvedTenantId = await ResolveTenantIdAsync(tenantId, cancellationToken);
 
