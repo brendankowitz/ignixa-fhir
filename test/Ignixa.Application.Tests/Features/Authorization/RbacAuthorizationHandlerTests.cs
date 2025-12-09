@@ -1,0 +1,152 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using FluentAssertions;
+using Ignixa.Application.Features.Authorization.Handlers;
+using Ignixa.Application.Features.Authorization.Models;
+using Ignixa.Application.Features.Authorization.Smart;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+
+namespace Ignixa.Application.Tests.Features.Authorization;
+
+public class RbacAuthorizationHandlerTests
+{
+    private readonly IRolePermissionStore _permissionStore;
+    private readonly RbacAuthorizationHandler _handler;
+
+    public RbacAuthorizationHandlerTests()
+    {
+        _permissionStore = Substitute.For<IRolePermissionStore>();
+        _handler = new RbacAuthorizationHandler(
+            _permissionStore,
+            NullLogger<RbacAuthorizationHandler>.Instance);
+    }
+
+    [Fact]
+    public async Task HandleAsync_SmartScopesPresent_SkipsRbacCheck()
+    {
+        // Arrange
+        var httpContext = Substitute.For<HttpContext>();
+        var smartContext = new SmartAuthorizationContext
+        {
+            TokenClaims = new SmartTokenClaims
+            {
+                ScopeString = "patient/Patient.read",
+                Scopes = new List<SmartScope>
+                {
+                    new() { Type = SmartScopeType.Patient, ResourceType = "Patient", Permission = "READ", OriginalScope = "patient/Patient.read" }
+                }
+            },
+            Scopes = new List<SmartScope>
+            {
+                new() { Type = SmartScopeType.Patient, ResourceType = "Patient", Permission = "READ", OriginalScope = "patient/Patient.read" }
+            }
+        };
+
+        var context = new FhirAuthorizationContext
+        {
+            UserId = "user123",
+            Roles = new List<string> { "Clinician" },
+            SmartContext = smartContext,
+            Interaction = FhirInteraction.Read,
+            ResourceType = "Patient",
+            HttpContext = httpContext,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        // Act
+        var result = await _handler.HandleAsync(context, CancellationToken.None);
+
+        // Assert
+        result.Allowed.Should().BeTrue();
+        await _permissionStore.DidNotReceive().GetPermissionsAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleAsync_NoRoles_PassesToNextHandler()
+    {
+        // Arrange
+        var httpContext = Substitute.For<HttpContext>();
+        var context = new FhirAuthorizationContext
+        {
+            UserId = "user123",
+            Interaction = FhirInteraction.Read,
+            ResourceType = "Patient",
+            HttpContext = httpContext,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        // Act
+        var result = await _handler.HandleAsync(context, CancellationToken.None);
+
+        // Assert
+        result.Allowed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HandleAsync_MatchingPermission_ReturnsSuccess()
+    {
+        // Arrange
+        var httpContext = Substitute.For<HttpContext>();
+        var context = new FhirAuthorizationContext
+        {
+            UserId = "user123",
+            TenantId = "1",
+            Roles = new List<string> { "Clinician" },
+            Interaction = FhirInteraction.Read,
+            ResourceType = "Patient",
+            HttpContext = httpContext,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        _permissionStore.GetPermissionsAsync("1", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ResourceGrant> { new("Patient", "*") });
+
+        // Act
+        var result = await _handler.HandleAsync(context, CancellationToken.None);
+
+        // Assert
+        result.Allowed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HandleAsync_NoMatchingPermission_ReturnsDenied()
+    {
+        // Arrange
+        var httpContext = Substitute.For<HttpContext>();
+        var context = new FhirAuthorizationContext
+        {
+            UserId = "user123",
+            TenantId = "1",
+            Roles = new List<string> { "ReadOnly" },
+            Interaction = FhirInteraction.Delete,
+            ResourceType = "Patient",
+            HttpContext = httpContext,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        _permissionStore.GetPermissionsAsync("1", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ResourceGrant> { new("*", "read") });
+
+        // Act
+        var result = await _handler.HandleAsync(context, CancellationToken.None);
+
+        // Assert
+        result.Allowed.Should().BeFalse();
+        result.DenialReason.Should().Contain("No permission grants");
+    }
+
+    [Fact]
+    public void Priority_Is30()
+    {
+        // Assert
+        _handler.Priority.Should().Be(30);
+    }
+}
