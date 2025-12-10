@@ -156,6 +156,7 @@ The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** 
 
 | Package | Feature |
 |---------|---------|
+| **[Ignixa.Specification](src/Core/Ignixa.Specification)** | **FHIR structure definitions** and auto-generated providers for R4/R4B/R5/R6/STU3. |
 | **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **Zero-copy JSON serialization** optimized for high-throughput streaming. |
 | **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
 | **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine** that outperforms standard interpreters. |
