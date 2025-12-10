@@ -1,3 +1,12 @@
+# -------------------------------------------------------------------------------------------------
+# IGNIXA FHIR SERVER - PRODUCTION DOCKER COMPOSE
+#
+# Configuration:
+# This file relies on environment variables from a '.env' file.
+# 1. Copy '.env.example' to '.env'
+# 2. Set SQL_SA_PASSWORD (Required)
+# 3. Set IGNIXA_IMAGE_TAG (Optional, defaults to 'release')
+# -------------------------------------------------------------------------------------------------
 services:
   ignixa-fhir:
     image: ghcr.io/brendankowitz/ignixa-fhir:${IGNIXA_IMAGE_TAG:-release}
@@ -11,7 +20,7 @@ services:
       # Configure Tenant 1 to use SQL Server
       # Note: Tenant 0 (System) inherits this connection string automatically
       Tenants__Configurations__1__Storage__Type: SqlEntityFramework
-      Tenants__Configurations__1__Storage__ConnectionString: "Server=sqlserver;Database=IgnixaFhir;User Id=sa;Password=${SQL_SA_PASSWORD:-YourStrong!Passw0rd};TrustServerCertificate=True;"
+      Tenants__Configurations__1__Storage__ConnectionString: "Server=sqlserver;Database=IgnixaFhir;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;"
       
       # Configure Logging
       Logging__LogLevel__Default: Information
@@ -24,14 +33,14 @@ services:
     container_name: ignixa-sql
     environment:
       ACCEPT_EULA: Y
-      SA_PASSWORD: "${SQL_SA_PASSWORD:-YourStrong!Passw0rd}"
+      SA_PASSWORD: "${SQL_SA_PASSWORD}"
       MSSQL_PID: Developer
     ports:
       - "1433:1433"
     volumes:
       - sqlserver-data:/var/opt/mssql
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -C -U sa -P "${SQL_SA_PASSWORD:-YourStrong!Passw0rd}" -Q "SELECT 1" -b -o /dev/null
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -C -U sa -P "${SQL_SA_PASSWORD}" -Q "SELECT 1" -b -o /dev/null
       interval: 5s
       timeout: 10s
       retries: 20
