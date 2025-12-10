@@ -73,8 +73,8 @@ public static class PatchEndpoints
 
         // PATCH /{resourceType}/{id} - Direct Patch
         tenantGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, int tenantId, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
-            HandlePatchResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
+            HandlePatchResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, loggerFactory, ct))
             .WithName("PatchResource")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -111,8 +111,8 @@ public static class PatchEndpoints
 
         // PATCH /{resourceType}/{id} - Direct Patch (agnostic)
         agnosticGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
-            HandlePatchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
+            HandlePatchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, memoryStreamManager, loggerFactory, ct))
             .WithName("PatchResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
@@ -133,9 +133,10 @@ public static class PatchEndpoints
         string id,
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger<IgnixaApiMarker> logger,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(PatchEndpoints).FullName!);
         logger.LogInformation("PATCH /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
 
         // Validate resource type

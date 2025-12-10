@@ -265,52 +265,99 @@ jobs:
       - name: Build solution
         run: dotnet build All.sln --configuration Release --no-restore /p:Version=${{ steps.gitversion.outputs.nuGetVersion }}
 
-      - name: Pack Core projects
+      - name: Create package output directories
         run: |
-          dotnet pack src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.Search/Ignixa.Search.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.SqlOnFhir.Writers/Ignixa.SqlOnFhir.Writers.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Ignixa.Extensions.FirelySdk5.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack tools/Ignixa.FhirFakes.Cli/Ignixa.FhirFakes.Cli.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack tools/Ignixa.Validation.Cli/Ignixa.Validation.Cli.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
-          dotnet pack tools/Ignixa.SqlOnFhir.Cli/Ignixa.SqlOnFhir.Cli.csproj --configuration Release --no-build --output ./packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          mkdir -p ./core-packages
+          mkdir -p ./internal-packages
 
-      - name: List packages
-        run: ls -lh ./packages/
+      - name: Pack Core projects (public - NuGet.org)
+        run: |
+          # Core libraries (src/Core/)
+          dotnet pack src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Search/Ignixa.Search.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Specification/Ignixa.Specification.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.SqlOnFhir.Writers/Ignixa.SqlOnFhir.Writers.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          # Extensions
+          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Ignixa.Extensions.FirelySdk5.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          # CLI tools
+          dotnet pack tools/Ignixa.FhirFakes.Cli/Ignixa.FhirFakes.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack tools/Ignixa.Validation.Cli/Ignixa.Validation.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack tools/Ignixa.SqlOnFhir.Cli/Ignixa.SqlOnFhir.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+
+      - name: Pack Application projects (internal - GitHub Packages)
+        run: |
+          # Application layer (src/Application/)
+          dotnet pack src/Application/Ignixa.Api/Ignixa.Api.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Application/Ignixa.Application/Ignixa.Application.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/Application/Ignixa.Domain/Ignixa.Domain.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          # DataLayer (src/DataLayer/)
+          dotnet pack src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/DataLayer/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/DataLayer/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+          dotnet pack src/DataLayer/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.gitversion.outputs.nuGetVersion }}
+
+      - name: List Core packages
+        run: |
+          echo "Core packages (public - NuGet.org):"
+          ls -lh ./core-packages/
+
+      - name: List Internal packages
+        run: |
+          echo "Internal packages (GitHub Packages):"
+          ls -lh ./internal-packages/
 
       - name: Save version and commit SHA for release
         run: |
-          echo "${{ steps.gitversion.outputs.semVer }}" > ./packages/version.txt
-          echo "${{ github.sha }}" > ./packages/commit-sha.txt
-          echo "Version: $(cat ./packages/version.txt)"
-          echo "Commit SHA: $(cat ./packages/commit-sha.txt)"
+          echo "${{ steps.gitversion.outputs.semVer }}" > ./core-packages/version.txt
+          echo "${{ github.sha }}" > ./core-packages/commit-sha.txt
+          cp ./core-packages/version.txt ./internal-packages/version.txt
+          cp ./core-packages/commit-sha.txt ./internal-packages/commit-sha.txt
+          echo "Version: $(cat ./core-packages/version.txt)"
+          echo "Commit SHA: $(cat ./core-packages/commit-sha.txt)"
 
-      - name: Upload packages as artifacts
+      - name: Upload Core packages as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nuget-packages
+          name: nuget-packages-core
           path: |
-            ./packages/*.nupkg
-            ./packages/version.txt
-            ./packages/commit-sha.txt
+            ./core-packages/*.nupkg
+            ./core-packages/version.txt
+            ./core-packages/commit-sha.txt
+          retention-days: 30
+
+      - name: Upload Internal packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-internal
+          path: |
+            ./internal-packages/*.nupkg
+            ./internal-packages/version.txt
+            ./internal-packages/commit-sha.txt
           retention-days: 30
 
       - name: Package summary
         run: |
           echo "## 📦 NuGet Packages Ready for Release" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following packages are ready to be published:" >> $GITHUB_STEP_SUMMARY
+          echo "### Core Packages (Public - NuGet.org)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          for pkg in ./packages/*.nupkg; do
+          for pkg in ./core-packages/*.nupkg; do
+            basename "$pkg" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Internal Packages (GitHub Packages)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for pkg in ./internal-packages/*.nupkg; do
             basename "$pkg" >> $GITHUB_STEP_SUMMARY
           done
           echo "" >> $GITHUB_STEP_SUMMARY

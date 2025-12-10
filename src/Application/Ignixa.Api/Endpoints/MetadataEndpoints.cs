@@ -66,9 +66,10 @@ public static class MetadataEndpoints
         HttpContext context,
         [FromServices] IMediator mediator,
         [FromServices] ITenantConfigurationStore configStore,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(MetadataEndpoints).FullName!);
         logger.LogInformation("GET /metadata (tenant-agnostic)");
 
         // Validate Accept header for content negotiation
@@ -101,9 +102,10 @@ public static class MetadataEndpoints
         HttpContext context,
         int tenantId,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(MetadataEndpoints).FullName!);
         logger.LogInformation("GET /tenant/{TenantId}/metadata", tenantId);
 
         // Validate Accept header for content negotiation

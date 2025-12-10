@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Application\Ignixa.Api\Ignixa.Api.csproj" />
+    <ProjectReference Include="..\Ignixa.Api\Ignixa.Api.csproj" />
   </ItemGroup>
 
 </Project>

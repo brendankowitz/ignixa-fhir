@@ -32,9 +32,10 @@ public static class HealthCheckEndpoints
     /// </summary>
     private static IResult HandleHealthCheck(
         HttpContext context,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(HealthCheckEndpoints).FullName!);
         logger.LogDebug("GET /health/check");
 
         try

@@ -54,9 +54,10 @@ public static class AdminPackageEndpoints
         string tenantId,
         [FromBody] LoadPackageRequest request,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(AdminPackageEndpoints).FullName!);
         logger.LogInformation("POST /tenant/{TenantId}/admin/packages/load - {PackageId}@{Version}", tenantId, request.PackageId, request.Version);
 
         try
@@ -115,9 +116,10 @@ public static class AdminPackageEndpoints
     private static async Task<IResult> HandleListPackages(
         string tenantId,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(AdminPackageEndpoints).FullName!);
         logger.LogDebug("GET /tenant/{TenantId}/admin/packages", tenantId);
 
         try
@@ -158,9 +160,10 @@ public static class AdminPackageEndpoints
         string packageId,
         string version,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(AdminPackageEndpoints).FullName!);
         logger.LogInformation("DELETE /tenant/{TenantId}/admin/packages/{PackageId}/{Version}", tenantId, packageId, version);
 
         try

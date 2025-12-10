@@ -38,20 +38,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download Latest NuGet Artifacts
+      - name: Download Core NuGet Artifacts
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: ci.yml
-          name: nuget-packages
-          path: ./nuget-packages
+          name: nuget-packages-core
+          path: ./core-packages
+          workflow_conclusion: success
+          branch: main
+
+      - name: Download Internal NuGet Artifacts
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: ci.yml
+          name: nuget-packages-internal
+          path: ./internal-packages
           workflow_conclusion: success
           branch: main
 
       - name: Read Release Version and Commit SHA
         id: version
         run: |
-          RELEASE_VERSION=$(cat ./nuget-packages/version.txt)
-          COMMIT_SHA=$(cat ./nuget-packages/commit-sha.txt)
+          RELEASE_VERSION=$(cat ./core-packages/version.txt)
+          COMMIT_SHA=$(cat ./core-packages/commit-sha.txt)
 
           if [ -z "$RELEASE_VERSION" ]; then
             echo "❌ Error: Failed to read release version from artifact"
@@ -67,11 +76,18 @@ jobs:
           echo "Release Version: $RELEASE_VERSION"
           echo "Commit SHA: $COMMIT_SHA"
 
-      - name: Upload NuGet packages for later jobs
+      - name: Upload Core packages for later jobs
         uses: actions/upload-artifact@v4
         with:
-          name: release-packages
-          path: ./nuget-packages/*.nupkg
+          name: release-packages-core
+          path: ./core-packages/*.nupkg
+          retention-days: 1
+
+      - name: Upload Internal packages for later jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages-internal
+          path: ./internal-packages/*.nupkg
           retention-days: 1
 
   # =============================================================================
@@ -124,29 +140,30 @@ jobs:
           echo "✅ Docker image promoted successfully"
 
   # =============================================================================
-  # Stage 2b: Publish NuGet Packages (runs in parallel with Docker)
+  # Stage 2b: Publish Core NuGet Packages to NuGet.org (runs in parallel with Docker)
   # =============================================================================
-  publish-nuget:
-    name: 📦 Publish NuGet
+  publish-nuget-core:
+    name: 📦 Publish Core to NuGet.org
     runs-on: ubuntu-latest
     needs: prepare-release
     if: ${{ !inputs.skip_nuget }}
 
     steps:
-      - name: Download NuGet packages
+      - name: Download Core NuGet packages
         uses: actions/download-artifact@v4
         with:
-          name: release-packages
-          path: ./nuget-packages
+          name: release-packages-core
+          path: ./core-packages
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
-      - name: Publish to NuGet.org
+      - name: Publish Core packages to NuGet.org
         run: |
-          dotnet nuget push ./nuget-packages/*.nupkg \
+          echo "Publishing Core packages to NuGet.org..."
+          dotnet nuget push ./core-packages/*.nupkg \
             --api-key ${{ secrets.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
@@ -154,17 +171,49 @@ jobs:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
   # =============================================================================
+  # Stage 2c: Publish Internal NuGet Packages to GitHub Packages (runs in parallel)
+  # =============================================================================
+  publish-nuget-internal:
+    name: 📦 Publish Internal to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    if: ${{ !inputs.skip_nuget }}
+
+    steps:
+      - name: Download Internal NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages-internal
+          path: ./internal-packages
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish Internal packages to GitHub Packages
+        run: |
+          echo "Publishing Internal packages to GitHub Packages..."
+          dotnet nuget push ./internal-packages/*.nupkg \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --skip-duplicate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # =============================================================================
   # Stage 3: Create Git Tag (after Docker + NuGet succeed or are skipped)
   # =============================================================================
   create-git-tag:
     name: 🏷️ Create Git Tag
     runs-on: ubuntu-latest
-    needs: [prepare-release, publish-docker, publish-nuget]
-    # Run if: not skipped AND (both succeeded OR were skipped)
+    needs: [prepare-release, publish-docker, publish-nuget-core, publish-nuget-internal]
+    # Run if: not skipped AND (all publishing jobs succeeded OR were skipped)
     if: |
       !inputs.skip_tag &&
       (needs.publish-docker.result == 'success' || needs.publish-docker.result == 'skipped') &&
-      (needs.publish-nuget.result == 'success' || needs.publish-nuget.result == 'skipped')
+      (needs.publish-nuget-core.result == 'success' || needs.publish-nuget-core.result == 'skipped') &&
+      (needs.publish-nuget-internal.result == 'success' || needs.publish-nuget-internal.result == 'skipped')
 
     steps:
       - name: Checkout Code
@@ -210,11 +259,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download NuGet packages
+      - name: Download Core NuGet packages
         uses: actions/download-artifact@v4
         with:
-          name: release-packages
-          path: ./nuget-packages
+          name: release-packages-core
+          path: ./core-packages
+
+      - name: Download Internal NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages-internal
+          path: ./internal-packages
 
       - name: Generate AI Release Notes
         id: ai_notes
@@ -434,7 +489,9 @@ jobs:
           tag_name: release/${{ needs.prepare-release.outputs.release_version }}
           name: Release ${{ needs.prepare-release.outputs.release_version }}
           body_path: release_notes.md
-          files: ./nuget-packages/*.nupkg
+          files: |
+            ./core-packages/*.nupkg
+            ./internal-packages/*.nupkg
           draft: false
           prerelease: false
 
@@ -444,7 +501,7 @@ jobs:
   release-summary:
     name: 📋 Release Summary
     runs-on: ubuntu-latest
-    needs: [prepare-release, publish-docker, publish-nuget, create-git-tag, create-github-release]
+    needs: [prepare-release, publish-docker, publish-nuget-core, publish-nuget-internal, create-git-tag, create-github-release]
     if: always()
 
     steps:
@@ -452,7 +509,8 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.release_version }}
           DOCKER_RESULT: ${{ needs.publish-docker.result }}
-          NUGET_RESULT: ${{ needs.publish-nuget.result }}
+          NUGET_CORE_RESULT: ${{ needs.publish-nuget-core.result }}
+          NUGET_INTERNAL_RESULT: ${{ needs.publish-nuget-internal.result }}
           TAG_RESULT: ${{ needs.create-git-tag.result }}
           RELEASE_RESULT: ${{ needs.create-github-release.result }}
         run: |
@@ -476,15 +534,20 @@ jobs:
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Docker Publish | $(result_emoji $DOCKER_RESULT) $DOCKER_RESULT |" >> $GITHUB_STEP_SUMMARY
-          echo "| NuGet Publish | $(result_emoji $NUGET_RESULT) $NUGET_RESULT |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet Core (NuGet.org) | $(result_emoji $NUGET_CORE_RESULT) $NUGET_CORE_RESULT |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet Internal (GitHub Packages) | $(result_emoji $NUGET_INTERNAL_RESULT) $NUGET_INTERNAL_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "| Git Tag | $(result_emoji $TAG_RESULT) $TAG_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "| GitHub Release | $(result_emoji $RELEASE_RESULT) $RELEASE_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "$DOCKER_RESULT" == "success" ] && [ "$NUGET_RESULT" == "success" ] && [ "$TAG_RESULT" == "success" ] && [ "$RELEASE_RESULT" == "success" ]; then
+          if [ "$DOCKER_RESULT" == "success" ] && [ "$NUGET_CORE_RESULT" == "success" ] && [ "$NUGET_INTERNAL_RESULT" == "success" ] && [ "$TAG_RESULT" == "success" ] && [ "$RELEASE_RESULT" == "success" ]; then
             echo "### 🎉 All stages completed successfully!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Docker**: \`ghcr.io/${{ github.repository }}:release\` and \`ghcr.io/${{ github.repository }}:${RELEASE_VERSION}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**NuGet Core Packages**: Published to [NuGet.org](https://www.nuget.org/profiles/${{ github.repository_owner }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**NuGet Internal Packages**: Published to [GitHub Packages](https://github.com/${{ github.repository }}/packages)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Git Tag**: \`release/${RELEASE_VERSION}\`" >> $GITHUB_STEP_SUMMARY
           else

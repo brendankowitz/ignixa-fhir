@@ -110,9 +110,10 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(CompartmentEndpoints).FullName!);
         logger.LogInformation(
             "GET /{CompartmentType}/{CompartmentId}/{ResourceType} (tenant-agnostic)",
             compartmentType,
@@ -142,7 +143,7 @@ public static class CompartmentEndpoints
             queryParser,
             searchOptionsBuilderFactory,
             fhirContextAccessor,
-            logger,
+            loggerFactory,
             cancellationToken);
     }
 
@@ -160,9 +161,10 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(CompartmentEndpoints).FullName!);
         logger.LogInformation(
             "GET /tenant/{TenantId}/{CompartmentType}/{CompartmentId}/{ResourceType}",
             tenantId,
@@ -180,7 +182,7 @@ public static class CompartmentEndpoints
             queryParser,
             searchOptionsBuilderFactory,
             fhirContextAccessor,
-            logger,
+            loggerFactory,
             cancellationToken);
     }
 
@@ -199,9 +201,10 @@ public static class CompartmentEndpoints
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         IFhirRequestContextAccessor fhirContextAccessor,
-        ILogger<IgnixaApiMarker> logger,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(CompartmentEndpoints).FullName!);
         // Validate compartment type (must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter)
         var validCompartmentTypes = new[] { "Patient", "Practitioner", "RelatedPerson", "Device", "Encounter" };
         if (!validCompartmentTypes.Contains(compartmentType, StringComparer.OrdinalIgnoreCase))
@@ -281,9 +284,10 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(CompartmentEndpoints).FullName!);
         logger.LogInformation(
             "GET /{CompartmentType}/{CompartmentId}/* (tenant-agnostic wildcard)",
             compartmentType,
@@ -312,7 +316,7 @@ public static class CompartmentEndpoints
             queryParser,
             searchOptionsBuilderFactory,
             fhirContextAccessor,
-            logger,
+            loggerFactory,
             cancellationToken);
     }
 
@@ -329,9 +333,10 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<IgnixaApiMarker> logger,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(CompartmentEndpoints).FullName!);
         logger.LogInformation(
             "GET /tenant/{TenantId}/{CompartmentType}/{CompartmentId}/* (wildcard)",
             tenantId,
@@ -348,7 +353,7 @@ public static class CompartmentEndpoints
             queryParser,
             searchOptionsBuilderFactory,
             fhirContextAccessor,
-            logger,
+            loggerFactory,
             cancellationToken);
     }
 }
