@@ -2,7 +2,7 @@
   <img src="docs/assets/ignixa_transparent_enhanced.png" alt="Ignixa Logo" width="350"/>
   <h1>Ignixa FHIR Server</h1>
   <p>
-    <b>High-Performance, Multi-Tenant, Cloud-Native FHIR Server for dotne</b>
+    <b>High-Performance, Multi-Tenant, Cloud-Native FHIR Server for dotnet</b>
   </p>
 
 [![dotnet](https://img.shields.io/badge/dotnet-9.0-512BD4)](https://dotnet.microsoft.com/) 
@@ -42,7 +42,7 @@ Designed for the cloud, Ignixa supports **multi-tenancy** out of the box, with d
 
 ## 📦 Deployment
 
-### Azure (One-Click)
+### Azure
 
 Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This provisions a complete, secure environment with:
 - **App Service (Linux)** for hosting the container.
@@ -50,7 +50,11 @@ Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This p
 - **Storage Accounts** for FHIR data and DurableTask orchestration.
 - **Managed Identity** for zero-trust, passwordless security.
 
-**Single-Tenant Deployment:**
+**Single-Tenant Deployment (One-Click):**
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
+
+Or use the CLI:
 ```bash
 az deployment group create \
   --resource-group ignixa-dev \
@@ -58,7 +62,7 @@ az deployment group create \
   --parameters appName=ignixa-demo
 ```
 
-**Multi-Tenant Deployment (e.g., 10 tenants):**
+**Advanced: Bicep Templates for Multi-Tenant Deployment (e.g., 10 tenants):**
 ```bash
 az deployment group create \
   --resource-group ignixa-prod \
@@ -157,9 +161,9 @@ The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** 
 | Package | Feature |
 |---------|---------|
 | **[Ignixa.Specification](src/Core/Ignixa.Specification)** | **FHIR structure definitions** and auto-generated providers for R4/R4B/R5/R6/STU3. |
-| **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **Zero-copy JSON serialization** optimized for high-throughput streaming. |
+| **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **System.Text.Json** based serialization optimized for high-throughput. |
 | **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
-| **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine** that outperforms standard interpreters. |
+| **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine**. |
 | **[Ignixa.Validation](src/Core/Ignixa.Validation)** | **Three-tier validation engine** (Fast, Spec, Profile) for robust data integrity. |
 | **[Ignixa.FhirMappingLanguage](src/Core/Ignixa.FhirMappingLanguage)** | **FHIR Mapping Language (FML)** parser and StructureMap engine. |
 | **[Ignixa.SqlOnFhir](src/Core/Ignixa.SqlOnFhir)** | Implementation of the **SQL on FHIR v2** specification for data transformation. |
