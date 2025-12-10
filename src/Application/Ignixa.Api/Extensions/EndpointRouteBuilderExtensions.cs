@@ -57,6 +57,9 @@ public static class EndpointRouteBuilderExtensions
         // Metadata endpoints (CapabilityStatement)
         app.MapMetadataEndpoints();
 
+        // SMART on FHIR discovery endpoints (/.well-known/smart-configuration)
+        app.MapSmartDiscoveryEndpoints();
+
         // MCP endpoints (conditional)
         var mcpEnabled = configuration.GetValue<bool>("Mcp:Enabled", true);
         if (mcpEnabled)

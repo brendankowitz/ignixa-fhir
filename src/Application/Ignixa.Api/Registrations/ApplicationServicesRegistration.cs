@@ -95,6 +95,9 @@ public static class ApplicationServicesRegistration
         // Event handlers
         RegisterEventHandlers(builder, configuration);
 
+        // Authorization services
+        RegisterAuthorizationServices(builder);
+
         return builder;
     }
 
@@ -371,6 +374,10 @@ public static class ApplicationServicesRegistration
             .As<ICapabilitySegment>()
             .InstancePerLifetimeScope();
 
+        builder.RegisterType<SecurityCapabilitySegment>()
+            .As<ICapabilitySegment>()
+            .SingleInstance();
+
         // CapabilityStatement service and handler
         builder.RegisterType<CapabilityStatementService>()
             .AsSelf()
@@ -492,5 +499,44 @@ public static class ApplicationServicesRegistration
             .InstancePerDependency();
 
         return builder;
+    }
+
+    private static void RegisterAuthorizationServices(ContainerBuilder builder)
+    {
+        // Authorization handlers
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.AuthenticationHandler>()
+            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.TenantIsolationHandler>()
+            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.RbacAuthorizationHandler>()
+            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.SmartScopeAuthorizationHandler>()
+            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
+            .InstancePerLifetimeScope();
+
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.CapabilityEnforcementHandler>()
+            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
+            .InstancePerLifetimeScope();
+
+        // Role permission store
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.InMemoryRolePermissionStore>()
+            .As<Ignixa.Application.Features.Authorization.Handlers.IRolePermissionStore>()
+            .SingleInstance();
+
+        // Authorization service
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Services.FhirAuthorizationService>()
+            .As<Ignixa.Application.Features.Authorization.Services.IFhirAuthorizationService>()
+            .InstancePerLifetimeScope();
+
+        // MCP authorization service
+        builder.RegisterType<Ignixa.Application.Features.Mcp.Authorization.McpAuthorizationService>()
+            .As<Ignixa.Application.Features.Mcp.Authorization.IMcpAuthorizationService>()
+            .InstancePerLifetimeScope();
     }
 }

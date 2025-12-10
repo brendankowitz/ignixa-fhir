@@ -35,6 +35,15 @@ public static class MiddlewareRegistration
             app.UseForwardedHeaders();
         }
 
+        // Authentication/Authorization middleware
+        // Must be added BEFORE tenant resolution to populate HttpContext.User.Claims
+        var authEnabled = configuration.GetValue<bool>("Authorization:Enabled", true);
+        if (authEnabled)
+        {
+            app.UseAuthentication();
+            app.UseAuthorization();
+        }
+
         // Multi-tenancy middleware (extracts tenantId from route)
         app.UseMiddleware<TenantResolutionMiddleware>();
 

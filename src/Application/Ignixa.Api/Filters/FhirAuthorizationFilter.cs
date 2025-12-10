@@ -3,13 +3,16 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Authorization.Smart;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Filters;
 
@@ -33,12 +36,15 @@ public class FhirAuthorizationFilter : IEndpointFilter
 {
     private readonly IFhirAuthorizationService _authzService;
     private readonly ILogger<FhirAuthorizationFilter> _logger;
+    private readonly AuthorizationOptions _authzOptions;
 
     public FhirAuthorizationFilter(
         IFhirAuthorizationService authzService,
+        IOptions<AuthorizationOptions> authzOptions,
         ILogger<FhirAuthorizationFilter> logger)
     {
         _authzService = authzService ?? throw new ArgumentNullException(nameof(authzService));
+        _authzOptions = authzOptions?.Value ?? throw new ArgumentNullException(nameof(authzOptions));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -47,6 +53,12 @@ public class FhirAuthorizationFilter : IEndpointFilter
         EndpointFilterInvocationContext context,
         EndpointFilterDelegate next)
     {
+        // Skip authorization if disabled in configuration
+        if (!_authzOptions.Enabled)
+        {
+            return await next(context);
+        }
+
         var httpContext = context.HttpContext;
 
         // Build authorization context from route + request + user claims
@@ -74,7 +86,10 @@ public class FhirAuthorizationFilter : IEndpointFilter
                 Diagnostics = result.DenialReason ?? "Access denied"
             });
 
-            return Results.Json(outcome, statusCode: StatusCodes.Status403Forbidden);
+            return Results.Content(
+                outcome.SerializeToString(),
+                KnownContentTypes.ApplicationFhirJson,
+                statusCode: StatusCodes.Status403Forbidden);
         }
 
         // Store filter in HttpContext for query layer (patient compartment filtering)
