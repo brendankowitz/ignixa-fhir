@@ -349,3 +349,6 @@ ThirdParty/
 patient-*.json
 observation-*.json
 bundle-*.json
+
+# Local Environment variables
+.env

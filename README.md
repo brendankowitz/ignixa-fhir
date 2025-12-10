@@ -90,6 +90,8 @@ docker compose up -d
 
 The server will be available at `http://localhost:8080/metadata`.
 
+> **Configuration**: You can customize the image tag and SQL password by creating a `.env` file (see `.env.example`). Default password is `YourStrong!Passw0rd`.
+
 ## 🛠️ Quick Start (Local Development)
 
 ### Prerequisites
