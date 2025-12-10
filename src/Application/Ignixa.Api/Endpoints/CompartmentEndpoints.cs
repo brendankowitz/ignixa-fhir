@@ -110,7 +110,7 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -160,7 +160,7 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -199,7 +199,7 @@ public static class CompartmentEndpoints
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         IFhirRequestContextAccessor fhirContextAccessor,
-        ILogger<Program> logger,
+        ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         // Validate compartment type (must be one of: Patient, Practitioner, RelatedPerson, Device, Encounter)
@@ -281,7 +281,7 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -329,7 +329,7 @@ public static class CompartmentEndpoints
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(

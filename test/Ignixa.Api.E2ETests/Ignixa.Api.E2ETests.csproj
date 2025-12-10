@@ -30,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Application/Ignixa.Api/Ignixa.Api.csproj" />
+    <ProjectReference Include="../../src/Ignixa.Web/Ignixa.Web.csproj" />
     <ProjectReference Include="../../src/Application/Ignixa.Application/Ignixa.Application.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.FhirFakes/Ignixa.FhirFakes.csproj" />

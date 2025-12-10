@@ -66,7 +66,7 @@ public static class MetadataEndpoints
         HttpContext context,
         [FromServices] IMediator mediator,
         [FromServices] ITenantConfigurationStore configStore,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("GET /metadata (tenant-agnostic)");
@@ -101,7 +101,7 @@ public static class MetadataEndpoints
         HttpContext context,
         int tenantId,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("GET /tenant/{TenantId}/metadata", tenantId);

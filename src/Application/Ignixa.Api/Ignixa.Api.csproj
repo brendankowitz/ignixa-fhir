@@ -1,16 +1,39 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Enable ASP.NET Core implicit usings for web types (IResult, etc.) -->
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <NoWarn>$(NoWarn);NU1900</NoWarn>
+    
+    <!-- Enable packaging for internal GitHub Packages feed -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Ignixa.Api</PackageId>
+    <Description>FHIR API endpoints and middleware for Ignixa FHIR Server</Description>
+    <PackageTags>FHIR;HL7;Healthcare;API</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Expose internal types (including implicit Program class) to compatibility tests -->
+    <!-- Reference ASP.NET Core framework for web types -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Add ASP.NET Core implicit usings -->
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Expose internal types to compatibility and E2E tests -->
     <InternalsVisibleTo Include="Ignixa.Tests.Compatibility.E2E" />
     <InternalsVisibleTo Include="Ignixa.Api.E2ETests" />
+    <!-- Expose internal types to Ignixa.Web hosting layer -->
+    <InternalsVisibleTo Include="Ignixa.Web" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,10 +49,7 @@
     <PackageReference Include="Polly.Extensions.Http" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="fhir-data\" />
-    <Folder Include="fhir-data\tenants\" />
-  </ItemGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />

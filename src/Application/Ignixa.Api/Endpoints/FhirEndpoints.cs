@@ -91,7 +91,7 @@ public static class FhirEndpoints
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
         tenantGroup.MapPut("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-            [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleConditionalUpdateResourceExplicit(context, tenantId, resourceType, mediator, memoryStreamManager, logger, ct))
             .WithName("ConditionalUpdateResourceExplicit")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -124,7 +124,7 @@ public static class FhirEndpoints
         // GET /{resourceType} - Search resources
         tenantGroup.MapGet("/{resourceType}", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("SearchResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -133,7 +133,7 @@ public static class FhirEndpoints
         // POST /{resourceType}/_search - Search with form-urlencoded
         tenantGroup.MapPost("/{resourceType}/_search", (HttpContext context, int tenantId, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePostSearchResource(context, tenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("PostSearchResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -155,7 +155,7 @@ public static class FhirEndpoints
         // GET / - Base-level search (system-wide search across all resource types)
         tenantGroup.MapGet("/", (HttpContext context, int tenantId,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleBaseSearchResource(context, tenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("BaseSearchResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -164,7 +164,7 @@ public static class FhirEndpoints
         // POST /_search - Base-level search with form-urlencoded (system-wide search)
         tenantGroup.MapPost("/_search", (HttpContext context, int tenantId,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePostBaseSearchResource(context, tenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("PostBaseSearchResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -191,7 +191,7 @@ public static class FhirEndpoints
 
         // GET /{resourceType}/{id} - Read resource (agnostic)
         agnosticGroup.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleGetResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, logger, ct))
             .WithName("GetResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -202,7 +202,7 @@ public static class FhirEndpoints
         // IMPORTANT: Must be registered BEFORE PUT /{resourceType}/{id} to match correctly
         agnosticGroup.MapPut("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleConditionalUpdateResource(context, resourceType, mediator, memoryStreamManager, fhirContextAccessor, logger, ct))
             .WithName("ConditionalUpdateResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -214,7 +214,7 @@ public static class FhirEndpoints
         // PUT /{resourceType}/{id} - Create or update resource (agnostic)
         agnosticGroup.MapPut("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePutResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, memoryStreamManager, fhirContextAccessor, logger, ct))
             .WithName("PutResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -236,7 +236,7 @@ public static class FhirEndpoints
 
         // DELETE /{resourceType}/{id} - Delete resource (agnostic)
         agnosticGroup.MapDelete("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleDeleteResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, logger, ct))
             .WithName("DeleteResourceAgnostic")
             .Produces(StatusCodes.Status204NoContent)
@@ -246,7 +246,7 @@ public static class FhirEndpoints
         // GET /{resourceType} - Search resources (agnostic)
         agnosticGroup.MapGet("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("SearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -255,7 +255,7 @@ public static class FhirEndpoints
         // POST /{resourceType}/_search - Search with form-urlencoded (agnostic)
         agnosticGroup.MapPost("/{resourceType}/_search", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePostSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("PostSearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -264,7 +264,7 @@ public static class FhirEndpoints
         // POST /{resourceType} - Create resource with server-assigned ID (agnostic)
         agnosticGroup.MapPost("/{resourceType}", (HttpContext context, string resourceType,
             [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
-            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePostResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, memoryStreamManager, fhirContextAccessor, logger, ct))
             .WithName("PostResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -273,7 +273,7 @@ public static class FhirEndpoints
 
         // POST / - Transaction/Batch bundle (agnostic)
         agnosticGroup.MapPost("/", (HttpContext context, [FromServices] BundleProcessor bundleProcessor,
-            [FromServices] StreamingBundleParser streamingParser, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] StreamingBundleParser streamingParser, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleBundle(context, fhirContextAccessor.RequestContext!.TenantId, bundleProcessor, streamingParser, logger, ct))
             .WithName("BundleAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -284,7 +284,7 @@ public static class FhirEndpoints
         // GET / - Base-level search (agnostic, system-wide search across all resource types)
         agnosticGroup.MapGet("/", (HttpContext context,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandleBaseSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("BaseSearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -293,7 +293,7 @@ public static class FhirEndpoints
         // POST /_search - Base-level search with form-urlencoded (agnostic, system-wide search)
         agnosticGroup.MapPost("/_search", (HttpContext context,
             [FromServices] IMediator mediator, [FromServices] IQueryParameterParser queryParser,
-            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePostBaseSearchResource(context, fhirContextAccessor.RequestContext!.TenantId, mediator, queryParser, searchOptionsBuilderFactory, versionContext, fhirContextAccessor, logger, ct))
             .WithName("PostBaseSearchResourceAgnostic")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -312,7 +312,7 @@ public static class FhirEndpoints
         [FromRoute] string resourceType,
         [FromRoute] string id,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
@@ -404,7 +404,7 @@ public static class FhirEndpoints
         [FromServices] IMediator mediator,
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("PUT /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
@@ -564,7 +564,7 @@ public static class FhirEndpoints
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("GET /tenant/{TenantId}/{ResourceType}?{QueryString}", tenantId, resourceType, context.Request.QueryString);
@@ -633,7 +633,7 @@ public static class FhirEndpoints
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}/_search", tenantId, resourceType);
@@ -720,7 +720,7 @@ public static class FhirEndpoints
         [FromServices] IMediator mediator,
         [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("POST /tenant/{TenantId}/{ResourceType}", tenantId, resourceType);
@@ -994,7 +994,7 @@ public static class FhirEndpoints
         [FromRoute] string resourceType,
         [FromRoute] string id,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("DELETE /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);
@@ -1023,7 +1023,7 @@ public static class FhirEndpoints
         [FromRoute] int tenantId,
         [FromServices] BundleProcessor bundleProcessor,
         [FromServices] StreamingBundleParser streamingParser,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("POST /tenant/{TenantId} (Bundle)", tenantId);
@@ -1157,7 +1157,7 @@ public static class FhirEndpoints
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
         IFhirRequestContextAccessor fhirContextAccessor,
-        ILogger<Program> logger,
+        ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         var tenantId = fhirContextAccessor.RequestContext!.TenantId;
@@ -1177,7 +1177,7 @@ public static class FhirEndpoints
         string resourceType,
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger<Program> logger,
+        ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         // Extract query string (search criteria)
@@ -1414,7 +1414,7 @@ public static class FhirEndpoints
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         IFhirVersionContext versionContext,
         IFhirRequestContextAccessor fhirContextAccessor,
-        ILogger<Program> logger,
+        ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("GET /?{QueryString} (base-level search)", context.Request.QueryString);
@@ -1481,7 +1481,7 @@ public static class FhirEndpoints
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         IFhirVersionContext versionContext,
         IFhirRequestContextAccessor fhirContextAccessor,
-        ILogger<Program> logger,
+        ILogger<IgnixaApiMarker> logger,
         CancellationToken ct)
     {
         logger.LogInformation("POST /_search (base-level search)");

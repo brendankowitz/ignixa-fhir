@@ -54,7 +54,7 @@ public static class AdminPackageEndpoints
         string tenantId,
         [FromBody] LoadPackageRequest request,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("POST /tenant/{TenantId}/admin/packages/load - {PackageId}@{Version}", tenantId, request.PackageId, request.Version);
@@ -115,7 +115,7 @@ public static class AdminPackageEndpoints
     private static async Task<IResult> HandleListPackages(
         string tenantId,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogDebug("GET /tenant/{TenantId}/admin/packages", tenantId);
@@ -158,7 +158,7 @@ public static class AdminPackageEndpoints
         string packageId,
         string version,
         [FromServices] IMediator mediator,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("DELETE /tenant/{TenantId}/admin/packages/{PackageId}/{Version}", tenantId, packageId, version);

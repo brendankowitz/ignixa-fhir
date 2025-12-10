@@ -73,7 +73,7 @@ public static class PatchEndpoints
 
         // PATCH /{resourceType}/{id} - Direct Patch
         tenantGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, int tenantId, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePatchResource(context, tenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResource")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -111,7 +111,7 @@ public static class PatchEndpoints
 
         // PATCH /{resourceType}/{id} - Direct Patch (agnostic)
         agnosticGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<Program> logger, CancellationToken ct) =>
+            [FromServices] IMediator mediator, [FromServices] RecyclableMemoryStreamManager memoryStreamManager, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILogger<IgnixaApiMarker> logger, CancellationToken ct) =>
             HandlePatchResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, memoryStreamManager, logger, ct))
             .WithName("PatchResourceAgnostic")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
@@ -133,7 +133,7 @@ public static class PatchEndpoints
         string id,
         IMediator mediator,
         RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger<Program> logger,
+        ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("PATCH /tenant/{TenantId}/{ResourceType}/{Id}", tenantId, resourceType, id);

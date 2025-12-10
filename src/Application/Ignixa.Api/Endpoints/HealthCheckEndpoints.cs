@@ -32,7 +32,7 @@ public static class HealthCheckEndpoints
     /// </summary>
     private static IResult HandleHealthCheck(
         HttpContext context,
-        [FromServices] ILogger<Program> logger,
+        [FromServices] ILogger<IgnixaApiMarker> logger,
         CancellationToken cancellationToken)
     {
         logger.LogDebug("GET /health/check");
