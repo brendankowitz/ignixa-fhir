@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
@@ -31,3 +31,4 @@
   </PropertyGroup>
 
 </Project>
+

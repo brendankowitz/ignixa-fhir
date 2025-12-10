@@ -22,11 +22,6 @@
     <PackageOutputPath>./nupkg</PackageOutputPath>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
@@ -38,3 +33,4 @@
   </ItemGroup>
 
 </Project>
+

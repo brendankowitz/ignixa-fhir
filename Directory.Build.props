@@ -62,5 +62,8 @@
     </When>
   </Choose>
 
+  <ItemGroup Condition="Exists('README.md')">
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

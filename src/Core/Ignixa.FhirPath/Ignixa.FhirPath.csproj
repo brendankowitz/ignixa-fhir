@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -11,11 +11,6 @@
     <IsPackable>true</IsPackable>
     <Description>FHIRPath expression evaluation engine for FHIR resources</Description>
   </PropertyGroup>
-
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Fhir.Metrics" />
@@ -31,3 +26,4 @@
   </ItemGroup>
 
 </Project>
+

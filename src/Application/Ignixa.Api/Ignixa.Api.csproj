@@ -30,11 +30,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Include README in package -->
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- Expose internal types to compatibility and E2E tests -->
     <InternalsVisibleTo Include="Ignixa.Tests.Compatibility.E2E" />
     <InternalsVisibleTo Include="Ignixa.Api.E2ETests" />
@@ -75,3 +70,4 @@
   </ItemGroup>
 
 </Project>
+

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -12,11 +12,6 @@
     <Description>NPM package management for FHIR Implementation Guides</Description>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
   </ItemGroup>
@@ -29,3 +24,4 @@
   </ItemGroup>
 
 </Project>
+

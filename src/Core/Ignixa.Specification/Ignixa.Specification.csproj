@@ -14,14 +14,6 @@
     <Description>FHIR specification data and structure providers (R4/R4B/R5/STU3)</Description>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
-  <ItemGroup>
-  </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
@@ -32,3 +24,4 @@
   </ItemGroup>
 
 </Project>
+

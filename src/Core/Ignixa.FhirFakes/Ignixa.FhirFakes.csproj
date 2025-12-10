@@ -17,11 +17,6 @@
     <!-- <GenerateDocumentationFile>true</GenerateDocumentationFile> -->
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.FhirFakes.Tests" />
   </ItemGroup>
@@ -36,3 +31,4 @@
   </ItemGroup>
 
 </Project>
+

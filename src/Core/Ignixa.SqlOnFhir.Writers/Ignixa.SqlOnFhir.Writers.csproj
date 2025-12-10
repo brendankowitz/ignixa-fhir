@@ -12,11 +12,6 @@
     <Description>Writers for SQL on FHIR - Parquet and CSV output formats</Description>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Parquet.Net" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
@@ -29,3 +24,4 @@
   </ItemGroup>
 
 </Project>
+

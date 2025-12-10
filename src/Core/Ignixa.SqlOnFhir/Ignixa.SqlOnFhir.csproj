@@ -12,11 +12,6 @@
     <Description>SQL on FHIR implementation for analytics queries</Description>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
@@ -33,3 +28,4 @@
   </ItemGroup>
 
 </Project>
+

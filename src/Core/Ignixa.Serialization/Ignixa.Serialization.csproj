@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -16,11 +16,6 @@
     <Description>High-performance FHIR JSON serialization</Description>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Ensure.That" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
@@ -32,3 +27,4 @@
   </ItemGroup>
 
 </Project>
+

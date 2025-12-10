@@ -15,11 +15,6 @@
     <Description>FHIR search parameter indexing and query infrastructure</Description>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
@@ -48,3 +43,4 @@
   </ItemGroup>
 
 </Project>
+

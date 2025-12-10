@@ -14,11 +14,6 @@
     <PackageTags>FHIR;HL7;Healthcare;Firely;Interop;Adapter</PackageTags>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <ItemGroup>
     <!-- Ignixa abstractions with new interfaces -->
     <ProjectReference Include="..\..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
@@ -31,3 +26,4 @@
     <PackageReference Include="Hl7.Fhir.Base" />
   </ItemGroup>
 </Project>
+

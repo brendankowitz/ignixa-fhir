@@ -16,11 +16,6 @@
     <PackageTags>FHIR;HL7;Healthcare;Firely;Interop;Adapter;SDK5</PackageTags>
   </PropertyGroup>
 
-  <!-- Include README in NuGet package -->
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
   <!-- Link all source files from FirelySdk6 project (zero duplication) -->
   <ItemGroup>
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\FirelySdkExtensions.cs" Link="FirelySdkExtensions.cs" />
@@ -42,3 +37,4 @@
     <PackageReference Include="Hl7.Fhir.Base" />
   </ItemGroup>
 </Project>
+
