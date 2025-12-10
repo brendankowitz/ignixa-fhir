@@ -21,6 +21,30 @@ public record SmartTokenClaims
     public required IReadOnlyList<SmartScope> Scopes { get; init; }
 
     /// <summary>
+    /// Parsed special (non-FHIR resource) scopes from the token.
+    /// Includes OpenID Connect, offline access, and launch scopes.
+    /// </summary>
+    public IReadOnlyList<SpecialScope> SpecialScopes { get; init; } = Array.Empty<SpecialScope>();
+
+    /// <summary>
+    /// Indicates if the token includes the openid scope.
+    /// Required for OpenID Connect authentication flows.
+    /// </summary>
+    public bool HasOpenIdScope { get; init; }
+
+    /// <summary>
+    /// Indicates if the token includes the offline_access scope.
+    /// When true, the client may request refresh tokens.
+    /// </summary>
+    public bool HasOfflineAccess { get; init; }
+
+    /// <summary>
+    /// Launch context type from launch scopes.
+    /// Returns "patient" for launch/patient, "encounter" for launch/encounter, or null for standalone launch.
+    /// </summary>
+    public string? LaunchContext { get; init; }
+
+    /// <summary>
     /// Patient ID from the launch context (if present).
     /// Required for patient/*.* scopes.
     /// </summary>

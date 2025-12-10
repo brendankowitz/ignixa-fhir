@@ -59,6 +59,8 @@ public static class PatchEndpoints
         // Create a route group with the filter applied to all endpoints
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // PATCH /{resourceType} - Conditional Patch
@@ -96,6 +98,8 @@ public static class PatchEndpoints
         // Create a route group with the filter applied to all endpoints
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // PATCH /{resourceType} - Conditional Patch (agnostic)

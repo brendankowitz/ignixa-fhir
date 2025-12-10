@@ -126,48 +126,4 @@ public static class FhirInteractionExtensions
             _ => throw new ArgumentOutOfRangeException(nameof(interaction), interaction, "Unknown FHIR interaction")
         };
     }
-
-    /// <summary>
-    /// Parses an HTTP method and path pattern to determine the FhirInteraction.
-    /// </summary>
-    /// <param name="httpMethod">The HTTP method (GET, PUT, POST, DELETE, PATCH).</param>
-    /// <param name="hasResourceId">Whether a resource ID is present in the path.</param>
-    /// <param name="isSearchEndpoint">Whether this is a _search endpoint.</param>
-    /// <param name="isHistoryEndpoint">Whether this is a _history endpoint.</param>
-    /// <param name="isOperationEndpoint">Whether this is an operation endpoint (starts with $).</param>
-    /// <returns>The corresponding FhirInteraction.</returns>
-    public static FhirInteraction FromHttpRequest(
-        string httpMethod,
-        bool hasResourceId,
-        bool isSearchEndpoint = false,
-        bool isHistoryEndpoint = false,
-        bool isOperationEndpoint = false)
-    {
-        return (httpMethod.ToUpperInvariant(), hasResourceId, isSearchEndpoint, isHistoryEndpoint, isOperationEndpoint) switch
-        {
-            // Operation endpoints
-            (_, true, _, _, true) => FhirInteraction.OperationInstance,
-            (_, false, _, _, true) when hasResourceId == false => FhirInteraction.OperationType,
-
-            // History endpoints
-            ("GET", true, _, true, _) => FhirInteraction.HistoryInstance,
-            ("GET", false, _, true, _) => FhirInteraction.HistoryType,
-
-            // Search endpoints
-            (_, _, true, _, _) => FhirInteraction.SearchType,
-            ("GET", false, _, _, _) => FhirInteraction.SearchType,
-
-            // CRUD operations
-            ("GET", true, _, _, _) => FhirInteraction.Read,
-            ("PUT", true, _, _, _) => FhirInteraction.Update,
-            ("PUT", false, _, _, _) => FhirInteraction.Update, // Conditional update
-            ("POST", false, _, _, _) => FhirInteraction.Create,
-            ("DELETE", true, _, _, _) => FhirInteraction.Delete,
-            ("DELETE", false, _, _, _) => FhirInteraction.Delete, // Conditional delete
-            ("PATCH", true, _, _, _) => FhirInteraction.Patch,
-            ("PATCH", false, _, _, _) => FhirInteraction.Patch, // Conditional patch
-
-            _ => throw new ArgumentException($"Cannot determine FHIR interaction from HTTP method: {httpMethod}, hasResourceId: {hasResourceId}")
-        };
-    }
 }

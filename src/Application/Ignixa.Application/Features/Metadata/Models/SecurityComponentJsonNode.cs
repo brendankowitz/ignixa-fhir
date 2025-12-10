@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Application.Features.Metadata.Models;
@@ -43,6 +44,9 @@ public class SecurityComponentJsonNode : BaseJsonNode
 
     [JsonIgnore]
     public MutableJsonList<CodeableConceptJsonNode> Service => GetListProperty<CodeableConceptJsonNode>("service");
+
+    [JsonIgnore]
+    public MutableJsonList<ExtensionJsonNode> Extension => GetListProperty<ExtensionJsonNode>("extension");
 }
 
 /// <summary>

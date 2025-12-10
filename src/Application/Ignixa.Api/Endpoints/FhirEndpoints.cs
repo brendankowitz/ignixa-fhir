@@ -80,6 +80,8 @@ public static class FhirEndpoints
         // Create a route group with the filter applied to all endpoints
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource
@@ -188,6 +190,8 @@ public static class FhirEndpoints
         // Create a route group with the filter applied to all endpoints
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource (agnostic)

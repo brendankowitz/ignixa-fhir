@@ -127,6 +127,10 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // Disable authentication for E2E tests
                 ["Authentication:Enabled"] = "false",
 
+                // Disable authorization for E2E tests (allows unauthenticated access)
+                ["Authorization:Enabled"] = "false",
+                ["Authorization:RequireAuthentication"] = "false",
+
                 // Use in-memory index for search
                 ["Search:IndexType"] = "InMemory",
 

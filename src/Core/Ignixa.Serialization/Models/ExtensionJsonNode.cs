@@ -25,6 +25,7 @@ public class ExtensionJsonNode : BaseJsonNode
         : base(jsonObject, fhirVersion)
     {
     }
+
     [SuppressMessage("Design", "CA1056:URI-like properties should not be strings", Justification = "This is a POCO.")]
     [JsonIgnore]
     public string Url
@@ -32,4 +33,22 @@ public class ExtensionJsonNode : BaseJsonNode
         get => GetProperty<string>("url");
         set => SetProperty("url", value);
     }
+
+    [SuppressMessage("Design", "CA1056:URI-like properties should not be strings", Justification = "FHIR valueUri is a string.")]
+    [JsonIgnore]
+    public string? ValueUri
+    {
+        get => GetProperty<string>("valueUri");
+        set => SetProperty("valueUri", value);
+    }
+
+    [JsonIgnore]
+    public string? ValueString
+    {
+        get => GetProperty<string>("valueString");
+        set => SetProperty("valueString", value);
+    }
+
+    [JsonIgnore]
+    public MutableJsonList<ExtensionJsonNode> Extension => GetListProperty<ExtensionJsonNode>("extension");
 }

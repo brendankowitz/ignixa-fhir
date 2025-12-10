@@ -56,6 +56,8 @@ public static class OperationEndpoints
         // Create a route group for operations with tenant ID validation
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // POST /{resourceType}/$validate - Type-level validation

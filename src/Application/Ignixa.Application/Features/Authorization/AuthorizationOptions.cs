@@ -41,36 +41,15 @@ public class AuthorizationOptions
     public bool EnforceCapabilities { get; set; } = true;
 
     /// <summary>
-    /// Handler configurations.
-    /// </summary>
-    public Collection<HandlerConfiguration> Handlers { get; } = new();
-
-    /// <summary>
     /// Default role permissions.
     /// Maps role names to arrays of permissions.
     /// </summary>
     public Dictionary<string, RolePermissions> DefaultRoles { get; } = new();
-}
-
-/// <summary>
-/// Configuration for an individual authorization handler.
-/// </summary>
-public class HandlerConfiguration
-{
-    /// <summary>
-    /// Handler type name.
-    /// </summary>
-    public required string Type { get; set; }
 
     /// <summary>
-    /// Handler priority (lower = earlier execution).
+    /// SMART on FHIR configuration options.
     /// </summary>
-    public int Priority { get; set; }
-
-    /// <summary>
-    /// Whether this handler is enabled.
-    /// </summary>
-    public bool Enabled { get; set; } = true;
+    public SmartOptions SmartOnFhir { get; set; } = new();
 }
 
 /// <summary>
@@ -82,6 +61,12 @@ public class RolePermissions
     /// List of permissions granted to this role.
     /// </summary>
     public Collection<PermissionEntry> Permissions { get; } = new();
+
+    /// <summary>
+    /// Whether this role grants access to MCP (Model Context Protocol) tools.
+    /// When true, users with this role can access MCP endpoints for AI/automation.
+    /// </summary>
+    public bool McpAccess { get; set; }
 }
 
 /// <summary>

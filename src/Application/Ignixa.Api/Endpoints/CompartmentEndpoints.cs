@@ -46,6 +46,8 @@ public static class CompartmentEndpoints
         // Create a route group with the filter for resource-type-specific routes
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // Tenant-explicit route: GET /{compartmentType}/{compartmentId}/{resourceType}
@@ -78,6 +80,8 @@ public static class CompartmentEndpoints
         // Create a route group with the filter for resource-type-specific routes
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}

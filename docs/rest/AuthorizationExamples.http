@@ -298,7 +298,7 @@ Accept: application/fhir+json
 ### Tests that bundle entries go through same authorization as direct calls
 
 ### 7.1 Transaction Bundle - Mixed Permissions (Should Fail if Any Entry Fails)
-### Clinician can create Patient and Observation, entire transaction should succeed
+### Note: This will fail because clinicianToken only has Patient.rs (read+search), not create permission
 POST {{hostname}}/tenant/{{tenantId}}
 Authorization: Bearer {{clinicianToken.response.body.access_token}}
 Content-Type: application/fhir+json

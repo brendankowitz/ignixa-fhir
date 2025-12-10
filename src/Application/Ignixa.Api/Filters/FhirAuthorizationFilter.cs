@@ -32,16 +32,13 @@ namespace Ignixa.Api.Filters;
 public class FhirAuthorizationFilter : IEndpointFilter
 {
     private readonly IFhirAuthorizationService _authzService;
-    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<FhirAuthorizationFilter> _logger;
 
     public FhirAuthorizationFilter(
         IFhirAuthorizationService authzService,
-        IFhirRequestContextAccessor contextAccessor,
         ILogger<FhirAuthorizationFilter> logger)
     {
         _authzService = authzService ?? throw new ArgumentNullException(nameof(authzService));
-        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 

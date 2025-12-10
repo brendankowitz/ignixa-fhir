@@ -50,6 +50,8 @@ public static class HistoryEndpoints
         // Create a route group with the filter for resource-type-specific routes
         var tenantGroup = endpoints
             .MapGroup("/tenant/{tenantId:int}")
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history
@@ -83,6 +85,8 @@ public static class HistoryEndpoints
         // Create a route group with the filter for resource-type-specific routes
         var agnosticGroup = endpoints
             .MapGroup(string.Empty)
+            .AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)

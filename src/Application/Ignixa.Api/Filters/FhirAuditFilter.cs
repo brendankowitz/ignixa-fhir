@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Http;
 
@@ -22,14 +23,10 @@ namespace Ignixa.Api.Filters;
 /// </summary>
 public class FhirAuditFilter : IEndpointFilter
 {
-    private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<FhirAuditFilter> _logger;
 
-    public FhirAuditFilter(
-        IFhirRequestContextAccessor contextAccessor,
-        ILogger<FhirAuditFilter> logger)
+    public FhirAuditFilter(ILogger<FhirAuditFilter> logger)
     {
-        _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -78,8 +75,9 @@ public class FhirAuditFilter : IEndpointFilter
     {
         try
         {
-            var userId = httpContext.User.FindFirst("sub")?.Value ??
-                        httpContext.User.FindFirst("oid")?.Value ??
+            var userId = httpContext.User.FindFirst(FhirClaimTypes.Subject)?.Value ??
+                        httpContext.User.FindFirst(FhirClaimTypes.ObjectId)?.Value ??
+                        httpContext.User.FindFirst(FhirClaimTypes.NameIdentifier)?.Value ??
                         "anonymous";
 
             var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
