@@ -29,6 +29,9 @@ outputs:
   informational-version:
     description: 'Full informational version with metadata'
     value: ${{ steps.gitversion.outputs.informationalVersion }}
+  nuget-version:
+    description: 'NuGet version'
+    value: ${{ steps.gitversion.outputs.nuGetVersion }}
 
 runs:
   using: 'composite'
@@ -49,6 +52,7 @@ runs:
         echo "SemVer: ${{ steps.gitversion.outputs.semVer }}"
         echo "AssemblySemVer: ${{ steps.gitversion.outputs.assemblySemVer }}"
         echo "InformationalVersion: ${{ steps.gitversion.outputs.informationalVersion }}"
+        echo "NuGetVersion: ${{ steps.gitversion.outputs.nuGetVersion }}"
       shell: bash
 
     - name: Setup .NET
@@ -61,7 +65,7 @@ runs:
       shell: bash
 
     - name: Build solution
-      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal
+      run: dotnet build "${{ inputs.solution-file }}" --configuration ${{ inputs.build-configuration }} --no-restore --verbosity minimal /p:Version=${{ steps.gitversion.outputs.nuGetVersion }}
       shell: bash
 
     - name: Run unit tests
