@@ -44,9 +44,29 @@ Designed for the cloud, Ignixa supports **multi-tenancy** out of the box, with d
 
 ### Azure (One-Click)
 
-Deploy the complete infrastructure (App Service, SQL, Storage, Key Vault) directly to Azure:
+Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This provisions a complete, secure environment with:
+- **App Service (Linux)** for hosting the container.
+- **SQL Server** with auto-provisioned tenant databases.
+- **Storage Accounts** for FHIR data and DurableTask orchestration.
+- **Managed Identity** for zero-trust, passwordless security.
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
+**Single-Tenant Deployment:**
+```bash
+az deployment group create \
+  --resource-group ignixa-dev \
+  --template-file deploy/azure/azuredeploy.json \
+  --parameters appName=ignixa-demo
+```
+
+**Multi-Tenant Deployment (e.g., 10 tenants):**
+```bash
+az deployment group create \
+  --resource-group ignixa-prod \
+  --template-file deploy/azure/main.bicep \
+  --parameters appName=ignixa-prod tenantCount=10
+```
+
+[**📚 View Complete Azure Deployment Guide**](deploy/azure/README.md)
 
 ### Docker
 
