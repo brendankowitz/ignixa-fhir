@@ -1,483 +1,166 @@
-
 <div align="center">
   <img src="docs/assets/ignixa_transparent_enhanced.png" alt="Ignixa Logo" width="350"/>
-</div>
+  <h1>Ignixa FHIR Server</h1>
+  <p>
+    <b>High-Performance, Multi-Tenant, Cloud-Native FHIR Server for dotne</b>
+  </p>
 
-# Ignixa
- A blazing-fast multi-FHIR, multi-tenant, multi-database, request and response streaming reference implementation FHIR Server built in dotnet.
-
-[![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
-[![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20R6%20%7C%20STU3-orange)](https://hl7.org/fhir/)
-[![NuGet](https://img.shields.io/badge/NuGet-Ignixa_Core-004880?logo=nuget)](https://www.nuget.org/packages?q=Ignixa)
+[![dotnet](https://img.shields.io/badge/dotnet-9.0-512BD4)](https://dotnet.microsoft.com/) 
+[![FHIR](https://img.shields.io/badge/FHIR-R4%20%7C%20R4B%20%7C%20R5%20%7C%20R6%20%7C%20STU3-orange)](https://hl7.org/fhir/) 
+[![NuGet](https://img.shields.io/badge/NuGet-Ignixa_Core-004880?logo=nuget)](https://www.nuget.org/packages?q=Ignixa) 
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker)](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir) 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Overview
+</div>
 
-Ignixa is a next-generation FHIR server implementation built from the ground up with modern .NET patterns and clean architecture principles. It provides a high-performance, extensible platform for healthcare data interoperability.
+---
 
-### Key Features
+## 🚀 Overview
 
-**Core FHIR Capabilities**
-- **Multi-Version FHIR Support**: R4, R4B, R5, R6-Ballot2, and STU3 with version-aware search parameters
-- **Complete RESTful API**: CRUD operations, search, transactions, history, patch, bulk operations
-- **FHIRPath Patch Operations**: Complex path expressions (`.where()`, `.first()`, etc.) with in-place mutation
-- **FHIR Validation**: Three-tier validation system (Fast, Spec, Profile) with OperationOutcome support
-- **Search Parameters**: Full search parameter support with indexing (token, string, date, quantity, reference, etc.)
+**Ignixa** is an enterprise-grade, reference implementation of a FHIR Server, engineered for high performance and scalability. Built on **dotnet** and **Clean Architecture** principles, it offers a robust foundation for healthcare data interoperability.
 
-**High Performance**
-- **Zero-Copy Serialization**: Direct JSON → HTTP response without intermediate POCO objects
-- **Streaming Responses**: Bundle responses stream results without loading entire dataset into memory
-- **Memory Efficiency**: Optimized memory for bulk operations
-- **Minimal API Pattern**: Faster than MVC Controllers
+Designed for the cloud, Ignixa supports **multi-tenancy** out of the box, with data isolation and configurable storage backends including **SQL Server** and **Azure Blob Storage**.
 
-**Architecture & Design**
-- **Clean Architecture**: Strict layer separation (Domain → Application → DataLayer → API)
-- **CQRS Pattern**: Medino-based handlers for Commands/Queries with cross-cutting concerns
-- **Factory Pattern**: Tenant-scoped repository and search service factories
-- **Strategy Pattern**: Pluggable partition strategies and operation executors (PATCH operations, partition location, query execution strategies)
+## ✨ Key Features
 
-**Multi-Tenancy**
-- **Multi-Tenant Data Partitioning**: Isolation mode with per-tenant file systems or SQL databases
-- **Partition 0 Protection**: System partition reserved for transactions and global IDs (API access blocked)
-- **Tenant-Explicit & Agnostic Routes**: Both `/tenant/{id}/...` and `/{resourceType}/...` (auto-detect in single-tenant)
-- **Multi-Storage Support**: File system, SQL Server, Blob Storage, with extensible factory pattern
+### 🏥 Core FHIR Capabilities
+*   **Multi-Version Support**: Seamlessly handles **R4, R4B, R5, R6-Ballot2, and STU3**.
+*   **Comprehensive API**: Full CRUD, Search, History, Batch/Transaction Bundles, and Patch (FHIRPath Patch).
+*   **Advanced Validation**: Three-tier validation engine (Fast, Spec, Profile) ensuring data integrity.
+*   **Extensive Search**: Support for standard and advanced search parameters, including chaining and includes.
 
-**Background & Async Processing**
-- **DurableTask Integration**: Reliable async orchestration for $export and $import with fault recovery
-- **Transaction Watcher**: Automatic detection and recovery of stalled transactions across all tenants
+### ⚡ Performance & Scalability
+*   **Streaming-First**: Zero-copy serialization and response streaming minimize memory footprint, even for large datasets.
+*   **High Throughput**: Built on ASP.NET Core Minimal APIs for the lowest overhead.
+*   **Background Processing**: Integrated **DurableTask** framework for reliable, asynchronous bulk `$export` and `$import` operations.
 
-**Developer Experience**
-- **Generated Code**: Structure providers auto-generated from official FHIR packages (R4/R4B/R5/R6/STU3)
-- **Comprehensive Documentation**: CLAUDE.md development guide, ADRs, investigation documents
-- **Multiple Storage Backends**: File system (prototype), SQL Server (production)
-- **Extensive Test Coverage**: Test projects with xUnit framework and BDD naming
+### 🏢 Enterprise Ready
+*   **Multi-Tenancy**: Built-in tenant isolation (Physical partitioning).
+*   **Production Storage**: robust **SQL Server (EF Core)** provider with optimized indexing.
+*   **Cloud Native**: Container-ready with Azure integration (App Service, SQL Database, Storage).
+*   **Clean Architecture**: Strict separation of concerns (Domain, Application, Infrastructure, API) facilitates maintenance and extension.
 
-## Deploy to Azure
+## 📦 Deployment
 
-Deploy the complete Ignixa FHIR Server infrastructure to Azure with one click:
+### Azure (One-Click)
+
+Deploy the complete infrastructure (App Service, SQL, Storage, Key Vault) directly to Azure:
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fbrendankowitz%2Fignixa-fhir%2Fmain%2Fdeploy%2Fazure%2Fazuredeploy.json)
 
-**What gets deployed:**
-- ✅ App Service (Linux) configured for Docker containers
-- ✅ Azure SQL Database with encryption
-- ✅ Azure Storage (FHIR data + DurableTask orchestration)
-- ✅ Application Insights for monitoring
-- ✅ All configured with Managed Identity (no passwords)
-- ✅ Docker/ACR integration with optional Managed Identity
+### Docker
 
-**Auto-configured on first run:**
-- ✅ Tenant 1 connected to Azure SQL Database
-- ✅ Database schema auto-initialized
-- ✅ DurableTask backend connected to Azure Storage
-- ✅ Export/Import connected to Azure Blob Storage
-
-**Requirements:**
-- Docker image must be built and pushed to Azure Container Registry (ACR)
-- Grant App Service Managed Identity the `AcrPull` role on your ACR
-- See [deployment guide](deploy/azure/README.md) for complete instructions
-
-## Container Image
-
-The Ignixa FHIR Server is available as a Docker container image on GitHub Container Registry:
-
-**GitHub Container Registry**: [ghcr.io/brendankowitz/ignixa-fhir](https://github.com/users/brendankowitz/packages/container/package/ignixa-fhir)
-
-## Quick Start
-
-### Prerequisites
-
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- Windows, Linux, or macOS
-
-### Running the Server
+The official image is available on GitHub Container Registry:
 
 ```bash
-# Build the solution
+docker pull ghcr.io/brendankowitz/ignixa-fhir:release
+```
+
+#### Production Mode (SQL Server) 🚀
+
+For a complete, high-performance experience with **SQL Server**, use Docker Compose. This enables full ACID transactions, advanced indexing, and concurrency support.
+
+```bash
+docker compose up -d
+```
+
+The server will be available at `http://localhost:8080/metadata`.
+
+## 🛠️ Quick Start (Local Development)
+
+### Prerequisites
+*   [dotnet 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+*   Docker (optional, for SQL Server tests)
+
+### Build & Run
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/brendankowitz/ignixa-fhir.git
+cd ignixa-fhir
+
+# 2. Build the solution
 dotnet build All.sln
 
-# Run the API
+# 3. Run the API (defaults to File System storage for dev)
 cd src/Ignixa.Api
 dotnet run
 ```
 
-The server will start at `https://localhost:5001` (or `http://localhost:5000`).
+Access the metadata endpoint at `https://localhost:5001/metadata`.
 
-### Try It Out
+### Configuration
 
-```bash
-# Get the capability statement
-curl https://localhost:5001/metadata
+Ignixa uses standard `appsettings.json` for configuration.
 
-# Create a Patient resource
-curl -X PUT https://localhost:5001/Patient/example-123 \
-  -H "Content-Type: application/fhir+json" \
-  -d '{
-    "resourceType": "Patient",
-    "id": "example-123",
-    "name": [{"family": "Smith", "given": ["John"]}]
-  }'
-
-# Retrieve the Patient
-curl https://localhost:5001/Patient/example-123
-
-# Search for Patients
-curl "https://localhost:5001/Patient?name=Smith"
-```
-
-## Architecture
-
-Ignixa follows a **layered architecture** with clear separation of concerns:
-
-```
-┌─────────────────────────────────────┐
-│         Ignixa.Api                  │  ← HTTP endpoints, middleware
-├─────────────────────────────────────┤
-│      Ignixa.Application             │  ← Business logic, CQRS handlers
-├─────────────────────────────────────┤
-│        Ignixa.Domain                │  ← Domain models, abstractions
-├─────────────────────────────────────┤
-│    Ignixa.DataLayer.*               │  ← Storage implementations
-│  • FileSystem  • BlobStorage        │
-│  • SqlEntityFramework • InMemoryIndex      │
-└─────────────────────────────────────┘
-```
-
-### Supporting Libraries
-
-- **Ignixa.Extensions**: FHIR extensions, value sets, schema helpers
-- **Ignixa.Search**: Search parameter definitions, indexing, search values
-- **Ignixa.Specification**: Structure definitions, generated providers
-- **Ignixa.Validation**: Fast validation engine with SourceNode support
-- **Ignixa.FhirPath**: A fast FHIRPath parser and evaluator built on Superpower
-- **Ignixa.SourceNodeSerialization**: Zero-copy JSON serialization
-
-## Current Status
-
-### Fully Implemented Endpoints
-
-**Resource CRUD**
-- ✅ `PUT /{resourceType}/{id}` - Create or update resource
-- ✅ `GET /{resourceType}/{id}` - Read individual resource
-- ✅ `GET /{resourceType}` - List resources (paginated search)
-- ✅ `DELETE /{resourceType}/{id}` - Delete resource
-- ✅ `PATCH /{resourceType}/{id}` - FHIRPath Patch operations
-
-**Advanced Operations**
-- ✅ `POST /` - Transaction bundles (atomic multi-resource operations)
-- ✅ `GET /metadata` - Capability statement
-- ✅ `GET /{resourceType}/_history` - Type-level resource history
-- ✅ `GET /{resourceType}/{id}/_history` - Instance history (version tracking)
-- ✅ `GET /_history` - System-level history
-
-**Bulk Operations**
-- ✅ `GET /{resourceType}/$export` - Bulk export (async with DurableTask)
-- ✅ `POST /{resourceType}/$import` - Bulk import (async with DurableTask)
-
-**Search & Discovery**
-- ✅ `POST /{resourceType}/_search` - Search via POST with parameters
-- ✅ `GET /{resourceType}?{params}` - Search via GET with query parameters
-- ✅ Search result pagination with Bundle links
-
-**Multi-Tenancy Support**
-- ✅ Tenant-explicit routes: `/tenant/{tenantId}/{resourceType}/{id}`
-- ✅ Tenant-agnostic routes with auto-detection: `/{resourceType}/{id}`
-- ✅ Data partitioning with Isolation mode (Distributed mode planned)
-
-## Project Structure
-
-```
-fhir-server-contrib/
-├── src/
-│   ├── Ignixa.Api/                    # ASP.NET Core API
-│   ├── Ignixa.Application/            # CQRS handlers (Medino)
-│   ├── Ignixa.Domain/                 # Domain models
-│   ├── Ignixa.DataLayer.FileSystem/   # File-based storage (prototype)
-│   ├── Ignixa.DataLayer.InMemoryIndex/# Resource location index
-│   ├── Ignixa.DataLayer.BlobStorage/  # Azure Blob Storage
-│   ├── Ignixa.DataLayer.SqlEntityFramework/  # SQL Server with EF Core
-│   ├── Ignixa.Extensions/             # FHIR extensions
-│   ├── Ignixa.Search/                 # Search infrastructure
-│   ├── Ignixa.Specification/          # Structure definitions
-│   ├── Ignixa.Validation/             # Validation engine
-│   ├── Ignixa.FhirPath/               # FHIRPath engine
-│   └── Ignixa.Serialization/# JSON serialization
-├── test/
-│   ├── Ignixa.Api.Tests/
-│   ├── Ignixa.Application.Tests/
-│   ├── Ignixa.Extensions.Tests/
-│   ├── Ignixa.FhirPath.Tests/
-│   ├── Ignixa.Serialization.Tests/
-│   └── Ignixa.Validation.Tests/
-├── codegen/                           # Code generation tools
-│   ├── Ignixa.Specification.Generators/
-│   └── fhir-codegen/                  # Git submodule
-├── docs/
-│   ├── adr/                           # Architecture Decision Records
-│   └── investigations/                # Research and design docs
-└── All.sln                            # Main solution file
-```
-
-## Configuration
-
-### appsettings.json
+**Enable SQL Server (Recommended for Production):**
 
 ```json
 {
-  "FhirRepository": {
-    "BaseDirectory": "fhir-data"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
+  "Storage": {
+    "Provider": "SqlServer",
+    "ConnectionString": "Server=(localdb)\mssqllocaldb;Database=IgnixaFhir;Trusted_Connection=True;"
   }
 }
 ```
 
-## Storage Backends
+*See `appsettings.json` for full configuration options.*
 
-### File System (Default - Prototype)
+## 💻 Developer Tools
 
-Stores resources as JSON files with metadata sidecars:
+Ignixa includes a suite of powerful CLI tools to accelerate development and testing.
 
-```
-fhir-data/
-├── Patient/
-│   ├── example-123.json       # Resource JSON
-│   └── example-123.meta.json  # Metadata (version, lastModified)
-├── Observation/
-└── _jobs/                     # DurableTask state
-    ├── instances/
-    └── history/
-```
+| Tool | Description |
+|------|-------------|
+| **[ignixa-fakes](tools/Ignixa.FhirFakes.Cli)** | Generate realistic synthetic patient data, clinical scenarios, and populations at scale. |
+| **[ignixa-validator](tools/Ignixa.Validation.Cli)** | High-performance FHIR resource validation (JSON/XML) against official profiles. |
+| **[ignixa-sqlonfhir](tools/Ignixa.SqlOnFhir.Cli)** | Transform FHIR data into tabular formats (Parquet/CSV) using SQL-on-FHIR ViewDefinitions. |
 
-### SQL Server with Entity Framework (Production Ready) ✅
-
-Fully implemented SQL Server provider with Entity Framework Core for production workloads.
-
-**Features**:
-- Optimized relational schema with indexed columns
-- Search parameter indexing (token, string, date, quantity, reference, URI)
-- Transaction management with ACID guarantees
-- Connection pooling and query optimization
-- Full-text search support (future enhancement)
-- Compressed resource storage (gzipped JSON)
-
-**Storage Schema**:
-- `ResourceEntity` - Stores compressed FHIR resources (gzipped JSON)
-- Separate tables for each search parameter type (TokenSearchParam, DateTimeSearchParam, etc.)
-- Transaction tracking with stall detection
-- Multi-tenant support with TenantId partitioning
-
-**Configuration**: Set storage type in `appsettings.json` to use SQL Server instead of file system. Supports both Isolation mode (per-tenant databases) and single database with partitioning.
-
-### Azure Blob Storage (Planned)
-
-Cloud-native storage option for import/export.
-
-## Dependencies
-
-### Core Packages
-
-- **System.Text.Json**: Native .NET JSON serialization (zero-copy, high performance)
-- **Medino 2.0.1**: In-process CQRS messaging
-- **Autofac 8.2.0**: Dependency injection container
-- **Microsoft.Azure.DurableTask.Core 3.5.0**: Background job orchestration
-
-### Testing
-
-- **xUnit 2.9.2**: Test framework
-- **NSubstitute 5.3.0**: Mocking
-- **FluentAssertions 7.0.0**: Assertion library
-
-See `Directory.Packages.props` for complete package list (centralized package management).
-
-## Development
-
-### Building
-
+Install any tool globally:
 ```bash
-# Clean build
-dotnet clean All.sln
-dotnet build All.sln
-
-# Run unit tests only (fast, excludes E2E)
-dotnet test All.sln --filter "FullyQualifiedName!~E2ETests"
-
-# Run E2E tests with SQL Server (default, recommended)
-docker compose -f docker-compose.test.yml up -d --wait
-dotnet test All.sln --filter "FullyQualifiedName~E2ETests"
-docker compose -f docker-compose.test.yml down -v
-
-# Run E2E tests with FileSystem (fast, limited search support)
-# PowerShell:
-$env:TEST_USE_FILESYSTEM="true"
-dotnet test All.sln --filter "FullyQualifiedName~E2ETests"
-# Bash/Linux:
-# export TEST_USE_FILESYSTEM=true
-# dotnet test All.sln --filter "FullyQualifiedName~E2ETests"
+dotnet tool install --global Ignixa.FhirFakes.Cli
 ```
 
-See [E2E Testing Guide](docs/testing/e2e-testing-guide.md) for details.
+## 🏗️ Architecture
 
-### Code Generation
+Ignixa follows a strict **Clean Architecture** pattern using **CQRS** (Command Query Responsibility Segregation) with **MediatR**.
 
-Structure definition providers are generated from official FHIR packages:
+*   **API**: Minimal API endpoints, middleware, and presentation logic.
+*   **Application**: Business logic, CQRS Handlers (Commands/Queries).
+*   **Domain**: Core entities, value objects, and repository interfaces.
+*   **DataLayer**: Infrastructure implementations (SQL, FileSystem, BlobStorage).
 
-```bash
-cd codegen
-./generate.ps1        # PowerShell
-./generate.sh         # Bash
-```
+## 🧩 Ignixa Core SDK
 
-Supports: R4, R4B, R5, STU3
+The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** available on NuGet. These can be used independently to build custom FHIR applications.
 
-### Code Style
+| Package | Feature |
+|---------|---------|
+| **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **Zero-copy JSON serialization** optimized for high-throughput streaming. |
+| **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
+| **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine** that outperforms standard interpreters. |
+| **[Ignixa.Validation](src/Core/Ignixa.Validation)** | **Three-tier validation engine** (Fast, Spec, Profile) for robust data integrity. |
+| **[Ignixa.SqlOnFhir](src/Core/Ignixa.SqlOnFhir)** | Implementation of the **SQL on FHIR v2** specification for data transformation. |
+| **[Ignixa.PackageManagement](src/Core/Ignixa.PackageManagement)** | **NPM-based package manager** for downloading and caching FHIR implementation guides. |
 
-- **StyleCop**: Enforced via `stylecop.json`
-- **Code Analysis**: Enabled with warnings as errors
-- **EditorConfig**: Configured for consistency
-- **Nullable Reference Types**: Enabled
+See the [Core SDK Documentation](src/Core/README.md) for full details.
 
-## Documentation
+## 🤝 Contributing
 
-- **CLAUDE.md**: Development guide for AI assistants
-- **docs/adr/**: Architecture Decision Records
-  - ADR-2500: Master implementation roadmap
-  - ADR-2501: Prototype phase (COMPLETED)
-  - ADR-2502: Bundle processing
-  - ADR-2503: Search implementation
-  - ADR-2504: Search parameter types
-- **docs/investigations/**: Research and design documents
-  - Dynamic FHIR routing
-  - Bundle streaming
-  - Search query parsing
-  - Multi-tenancy data partitioning
-  - And 20+ more investigation documents
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) and the [Developer Guide](CLAUDE.md) for details on setting up your environment and submitting PRs.
 
-## Roadmap
-
-### Completed ✅
-
-**Core Functionality**
-- ✅ File-based storage with JSON files
-- ✅ Multi-version FHIR support (R4/R4B/R5/STU3)
-- ✅ Full CRUD operations (PUT, GET, DELETE, PATCH)
-- ✅ Search with comprehensive parameter parsing
-- ✅ Transaction bundles with reference resolution
-- ✅ Modern API patterns (Minimal API, no MVC Controllers)
-- ✅ Streaming Bundle responses (95% memory reduction)
-
-**Enterprise Features**
-- ✅ Multi-tenant data partitioning (Isolation mode)
-- ✅ Tenant-explicit and tenant-agnostic routing
-- ✅ Automatic transaction recovery and stall detection
-- ✅ FHIR History operations (instance/type/system level)
-- ✅ SQL Server provider with Entity Framework Core
-- ✅ Background job orchestration (DurableTask)
-
-### In Development 🚧
-
-**Search Enhancements**
-- 🚧 Advanced query parameter support (_include, _revinclude)
-- 🚧 Chained search parameters
-- 🚧 Sort parameter support
-- 🚧 Simplified search query parsing
-
-**API Improvements**
-- 🚧 Generic resource endpoints (handle all types dynamically)
-- 🚧 Performance optimization (14% improvement potential)
-
-### Planned 📋
-
-**Storage**
-- 📋 Azure Cosmos DB (cloud-native, globally distributed)
-- 📋 Azure Blob Storage (archival and high-volume workloads)
-
-**Security & Operations**
-- 📋 SMART on FHIR authentication
-- 📋 Role-based access control
-- 📋 Audit logging and compliance
-
-**Advanced Features**
-- 📋 FHIR Subscriptions (webhook delivery)
-- 📋 Custom search parameters
-- 📋 Version conversion/transformation between FHIR versions
-- 📋 Response caching (ETag, If-Modified-Since)
-- 📋 GraphQL API layer
-- 📋 Distributed deployment (multi-node consistency)
-
-## Performance
-
-Ignixa is designed from the ground up for high performance with proven optimizations:
-
-**Core Optimizations**
-- **Zero-Copy Serialization**: Direct JSON → HTTP response without intermediate POCO objects
-- **Streaming Responses**: IAsyncEnumerable bundle serialization—memory usage scales with active connections, not result set size
-- **Memory Pooling**: RecyclableMemoryStream reduces garbage collection pressure
-- **Async/Await**: Non-blocking I/O throughout the stack for maximum throughput
-- **In-Memory Indexing**: ResourceLocationIndex pre-loads on startup for O(1) lookups
-
-**Scalability**
-- Multi-tenant isolation: Separate repositories per tenant prevent cross-tenant interference
-- Partition strategies: Extensible design supports horizontal sharding (future Distributed mode)
-- Background job processing: DurableTask orchestration enables bulk operations without blocking API threads
-- Connection pooling: Factory pattern caches repositories and search services per tenant
-
-## Contributing
-
-We welcome contributions! Please see our [contribution guidelines](CONTRIBUTING.md).
-
-### Getting Help
-
-- 📖 Read the [CLAUDE.md](CLAUDE.md) development guide
-- 📚 Browse the [docs/](docs/) folder
-- 🐛 Report issues on [GitHub Issues](https://github.com/your-org/fhir-server-contrib/issues)
-
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
-### Sources and Attribution
-
-This project incorporates code and design patterns from multiple open-source projects:
-
-#### Microsoft FHIR Server (Architectural Inspiration)
-- **Source**: [microsoft/fhir-server](https://github.com/microsoft/fhir-server)
-- **License**: MIT
-- **Copyright**: Copyright (c) Microsoft Corporation. All rights reserved.
-- **Usage**: This project was inspired by and adapted from architectural patterns in Microsoft FHIR Server. The majority of implementation files have been substantially rewritten or newly generated for Ignixa's specific needs (streaming responses, zero-copy serialization, Minimal API endpoints, etc.).
-- **Specifically Derived**: Core abstractions (IFhirRepository, ISearchService), exception hierarchies, multi-tenancy partition concepts
-- **Substantially Rewritten**: CQRS handlers (Medino), bundle processing (streaming), API endpoints (Minimal API), metadata capability statements
-- **Newly Created**: FHIRPath engine, validation system, PATCH operations, history endpoints, DurableTask integration
-- **Files**: See `src/**/*.cs` files with Microsoft copyright headers for conservative attribution
-
-#### Firely SDK
-- **Source**: [FirelyTeam/firely-net-sdk](https://github.com/FirelyTeam/firely-net-sdk)
-- **License**: BSD 3-Clause
-- **Copyright**: Copyright (c) 2015-2023, Firely (info@fire.ly) and contributors
-- **Usage**: Core abstractions including `ISourceNode`, `ITypedElement`, `IAnnotated`, and element navigation patterns. Approximately 11 source files derived from Firely SDK.
-- **Files**: `Ignixa.SourceNodeSerialization/Abstractions/`, `Ignixa.FhirPath/Expressions/`
-
-#### Ignixa Contributors
-- **New/Custom Code**: All original implementations, enhancements, and modifications
-- **License**: MIT
-- **Copyright**: Copyright (c) Ignixa Contributors. All rights reserved.
-
-### Other Credits
-
-- Structure definition providers generated from official HL7 FHIR packages
-- Inspired by the [Microsoft FHIR Server](https://github.com/microsoft/fhir-server) architecture
-- Inspired by the [Firely SDK](https://docs.fire.ly/) for FHIR R4/R4B/R5/STU3 support
-- Uses [Medino](https://github.com/AndyJB/Medino) for CQRS messaging
-- Powered by [.NET 9.0](https://dotnet.microsoft.com/)
-- Custom zero-copy serialization with ISourceNode/ITypedElement patterns
+Ignixa is inspired by and incorporates patterns from excellent open-source projects:
+*   [Microsoft FHIR Server](https://github.com/microsoft/fhir-server)
+*   [Firely dotnet SDK](https://github.com/FirelyTeam/firely-net-sdk)
 
 ---
 
-**Ignixa** / Intelligent Gateway for Next-generation Interoperability and eXtensible APIs / Igniting healthcare data interoperability 🔥
-
+<p align="center">
+  <b>Ignixa</b> — Intelligent Gateway for Next-generation Interoperability and eXtensible APIs.
+</p>
