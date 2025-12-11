@@ -6,6 +6,7 @@
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 using Ignixa.Abstractions;
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;
@@ -256,6 +257,9 @@ public static class CompartmentEndpoints
         // Set response headers
         context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream Bundle response (95% memory reduction vs buffering)
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
@@ -265,7 +269,7 @@ public static class CompartmentEndpoints
             searchOptions: searchOptions,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
-            pretty: false,
+            pretty: pretty,
             cancellationToken: cancellationToken);
 
         // Response already written to the body, return empty result

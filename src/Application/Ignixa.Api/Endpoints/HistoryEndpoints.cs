@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
@@ -195,6 +196,9 @@ public static class HistoryEndpoints
         // Set response content type
         context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream history bundle directly to response
         await StreamingBundleSerializer.SerializeHistoryAsync(
             outputStream: context.Response.Body,
@@ -202,7 +206,7 @@ public static class HistoryEndpoints
             total: result.TotalCount,
             entries: result.Entries,
             links: result.Links,
-            pretty: false,
+            pretty: pretty,
             pageSize: parameters.Count,
             cancellationToken: ct);
 
@@ -241,6 +245,9 @@ public static class HistoryEndpoints
         // Set response content type
         context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream history bundle directly to response
         await StreamingBundleSerializer.SerializeHistoryAsync(
             outputStream: context.Response.Body,
@@ -248,7 +255,7 @@ public static class HistoryEndpoints
             total: result.TotalCount,
             entries: result.Entries,
             links: result.Links,
-            pretty: false,
+            pretty: pretty,
             pageSize: parameters.Count,
             cancellationToken: ct);
 

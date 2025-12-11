@@ -24,6 +24,16 @@ public static class JsonSourceNodeFactory
         Converters = { new JsonNodeConverterFactory() }
     };
 
+    private static readonly JsonSerializerOptions _indentedJsonSerializerOptions = new()
+    {
+        AllowTrailingCommas = false,
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Disallow,
+        Encoder = JavaScriptEncoder.Default,
+        WriteIndented = true,
+        Converters = { new JsonNodeConverterFactory() }
+    };
+
     public static TResource Parse<TResource>(string json)
         where TResource : ResourceJsonNode
     {
@@ -102,18 +112,21 @@ public static class JsonSourceNodeFactory
         return Parse<ResourceJsonNode>(jsonNode);
     }
 
-    public static string SerializeToString(this ResourceJsonNode resource)
+    public static string SerializeToString(this ResourceJsonNode resource, bool pretty = false)
     {
-        return resource.MutableNode.ToJsonString(_jsonSerializerOptions);
+        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
+        return resource.MutableNode.ToJsonString(options);
     }
 
-    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream)
+    public static void SerializeToStream(this ResourceJsonNode resource, Stream outStream, bool pretty = false)
     {
-        JsonSerializer.Serialize(outStream, resource.MutableNode, _jsonSerializerOptions);
+        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
+        JsonSerializer.Serialize(outStream, resource.MutableNode, options);
     }
     
-    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource)
+    public static ReadOnlyMemory<byte> SerializeToBytes(this ResourceJsonNode resource, bool pretty = false)
     {
-        return JsonSerializer.SerializeToUtf8Bytes(resource.MutableNode, _jsonSerializerOptions);
+        var options = pretty ? _indentedJsonSerializerOptions : _jsonSerializerOptions;
+        return JsonSerializer.SerializeToUtf8Bytes(resource.MutableNode, options);
     }
 }

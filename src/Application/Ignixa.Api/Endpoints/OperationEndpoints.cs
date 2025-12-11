@@ -481,6 +481,9 @@ public static class OperationEndpoints
         // Set response headers
         context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
 
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream Bundle response using StreamingBundleSerializer
         // This provides optimal memory efficiency by streaming results as they're retrieved
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
@@ -491,7 +494,7 @@ public static class OperationEndpoints
             searchOptions: result.SearchOptions!,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
-            pretty: false,
+            pretty: pretty,
             cancellationToken: cancellationToken);
 
         // Response already written to the body, return empty result

@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Azure;
 using Ignixa.Abstractions;
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Api.Infrastructure;
@@ -605,6 +606,9 @@ public static class FhirEndpoints
         // Set response headers
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream Bundle response with count-as-render pagination
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
@@ -615,7 +619,7 @@ public static class FhirEndpoints
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
             schemaProvider: schemaProvider,
-            pretty: false,
+            pretty: pretty,
             cancellationToken: ct);
 
         return Results.Empty;
@@ -697,6 +701,9 @@ public static class FhirEndpoints
         // Set response headers
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
+        // Check for _pretty parameter (from query or form data)
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream Bundle response with count-as-render pagination
         // Pagination links will be GET requests with search parameters preserved
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
@@ -708,7 +715,7 @@ public static class FhirEndpoints
             baseUrl: baseUrl,
             queryString: queryString, // POST _search: convert to GET with query parameters
             schemaProvider: schemaProvider,
-            pretty: false,
+            pretty: pretty,
             cancellationToken: ct);
 
         return Results.Empty;
@@ -1127,6 +1134,9 @@ public static class FhirEndpoints
                     context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
                 }
 
+                // Check for _pretty parameter
+                bool pretty = context.Request.Query.GetPrettyParameter();
+
                 // Stream responses directly to HTTP (headers are now locked)
                 await StreamingBundleSerializer.SerializeStreamAsync(
                     outputStream: context.Response.Body,
@@ -1135,7 +1145,7 @@ public static class FhirEndpoints
                     total: null,
                     selfLink: null,
                     nextLink: null,
-                    pretty: false,
+                    pretty: pretty,
                     cancellationToken: ct);
 
                 // Complete background tasks
@@ -1461,6 +1471,9 @@ public static class FhirEndpoints
         // Set response headers
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         // Stream Bundle response with count-as-render pagination
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
@@ -1471,7 +1484,7 @@ public static class FhirEndpoints
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
             schemaProvider: schemaProvider,
-            pretty: false,
+            pretty: pretty,
             cancellationToken: ct);
 
         return Results.Empty;
@@ -1551,6 +1564,9 @@ public static class FhirEndpoints
         context.Response.ContentType = "application/fhir+json; charset=utf-8";
 
         // Stream Bundle response with count-as-render pagination
+        // Check for _pretty parameter (from query or form data)
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
             bundleType: "searchset",
@@ -1560,7 +1576,7 @@ public static class FhirEndpoints
             baseUrl: baseUrl,
             queryString: queryString,
             schemaProvider: schemaProvider,
-            pretty: false,
+            pretty: pretty,
             cancellationToken: ct);
 
         return Results.Empty;
