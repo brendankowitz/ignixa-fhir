@@ -6,7 +6,9 @@
 namespace Ignixa.Domain.Abstractions;
 
 /// <summary>
-/// Audit logger for tracking tenant access and security events.
+/// Audit logger for tracking FHIR operations and security events.
+/// Implementations can log to structured logging, create AuditEvent resources,
+/// or forward to external audit systems (SIEM, Azure Monitor, etc.).
 /// </summary>
 public interface IAuditLogger
 {
@@ -26,4 +28,77 @@ public interface IAuditLogger
         string resourceType,
         string? resourceId,
         bool authorized);
+
+    /// <summary>
+    /// Logs an HTTP request audit event.
+    /// Maps to FHIR AuditEvent resource structure.
+    /// </summary>
+    /// <param name="auditEvent">The audit event details</param>
+    void LogHttpRequest(HttpRequestAuditEvent auditEvent);
+}
+
+/// <summary>
+/// Represents an HTTP request audit event with FHIR AuditEvent-compatible fields.
+/// </summary>
+public sealed record HttpRequestAuditEvent
+{
+    /// <summary>
+    /// FHIR AuditEvent.action (C=Create, R=Read, U=Update, D=Delete, E=Execute).
+    /// </summary>
+    public required string Action { get; init; }
+
+    /// <summary>
+    /// FHIR AuditEvent.outcome (0=Success, 4=Minor failure, 8=Serious failure, 12=Major failure).
+    /// </summary>
+    public required string Outcome { get; init; }
+
+    /// <summary>
+    /// User identifier (from JWT claims: sub, oid, or name_id).
+    /// </summary>
+    public required string UserId { get; init; }
+
+    /// <summary>
+    /// Client IP address.
+    /// </summary>
+    public required string ClientIp { get; init; }
+
+    /// <summary>
+    /// HTTP method (GET, POST, PUT, PATCH, DELETE).
+    /// </summary>
+    public required string Method { get; init; }
+
+    /// <summary>
+    /// Request path.
+    /// </summary>
+    public required string Path { get; init; }
+
+    /// <summary>
+    /// HTTP response status code.
+    /// </summary>
+    public required int StatusCode { get; init; }
+
+    /// <summary>
+    /// Request duration in milliseconds.
+    /// </summary>
+    public required double DurationMs { get; init; }
+
+    /// <summary>
+    /// Tenant ID (if applicable).
+    /// </summary>
+    public int? TenantId { get; init; }
+
+    /// <summary>
+    /// FHIR resource type (if applicable).
+    /// </summary>
+    public string? ResourceType { get; init; }
+
+    /// <summary>
+    /// FHIR resource ID (if applicable).
+    /// </summary>
+    public string? ResourceId { get; init; }
+
+    /// <summary>
+    /// Correlation ID for request tracing.
+    /// </summary>
+    public string? CorrelationId { get; init; }
 }

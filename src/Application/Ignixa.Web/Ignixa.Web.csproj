@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Api\Ignixa.Api.csproj" />
+    <ProjectReference Include="..\Ignixa.Api.OpenIddict\Ignixa.Api.OpenIddict.csproj" />
   </ItemGroup>
 
 </Project>

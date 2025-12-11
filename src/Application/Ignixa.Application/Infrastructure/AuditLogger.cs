@@ -9,18 +9,12 @@ using Ignixa.Domain.Abstractions;
 namespace Ignixa.Application.Infrastructure;
 
 /// <summary>
-/// Audit logger for tracking tenant access and security events.
-/// Uses structured logging to enable querying and alerting on security events.
+/// Default audit logger using structured logging.
+/// Enables querying and alerting on security events via log aggregation.
+/// Replace with custom implementation for SIEM, AuditEvent creation, etc.
 /// </summary>
-public class AuditLogger : IAuditLogger
+public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
 {
-    private readonly ILogger<AuditLogger> _logger;
-
-    public AuditLogger(ILogger<AuditLogger> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
     public void LogTenantAccess(
         string userId,
         int tenantId,
@@ -31,25 +25,67 @@ public class AuditLogger : IAuditLogger
     {
         if (authorized)
         {
-            _logger.LogInformation(
-                "AUDIT: Tenant access AUTHORIZED - User={UserId}, Tenant={TenantId}, " +
-                "Operation={Operation}, Resource={ResourceType}/{ResourceId}",
-                userId,
-                tenantId,
-                operation,
-                resourceType,
-                resourceId ?? "(none)");
+            LogTenantAccessAuthorized(logger, userId, tenantId, operation, resourceType, resourceId ?? "(none)");
         }
         else
         {
-            _logger.LogWarning(
-                "AUDIT: Tenant access DENIED - User={UserId}, Tenant={TenantId}, " +
-                "Operation={Operation}, Resource={ResourceType}/{ResourceId}",
-                userId,
-                tenantId,
-                operation,
-                resourceType,
-                resourceId ?? "(none)");
+            LogTenantAccessDenied(logger, userId, tenantId, operation, resourceType, resourceId ?? "(none)");
         }
     }
+
+    public void LogHttpRequest(HttpRequestAuditEvent auditEvent)
+    {
+        ArgumentNullException.ThrowIfNull(auditEvent);
+
+        if (auditEvent.Outcome == "0")
+        {
+            LogHttpRequestSuccess(
+                logger,
+                auditEvent.Action,
+                auditEvent.Outcome,
+                auditEvent.UserId,
+                auditEvent.ClientIp,
+                auditEvent.Method,
+                auditEvent.Path,
+                auditEvent.StatusCode,
+                auditEvent.DurationMs);
+        }
+        else
+        {
+            LogHttpRequestFailure(
+                logger,
+                auditEvent.Action,
+                auditEvent.Outcome,
+                auditEvent.UserId,
+                auditEvent.ClientIp,
+                auditEvent.Method,
+                auditEvent.Path,
+                auditEvent.StatusCode,
+                auditEvent.DurationMs);
+        }
+    }
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "AUDIT: Tenant access AUTHORIZED - User={UserId}, Tenant={TenantId}, Operation={Operation}, Resource={ResourceType}/{ResourceId}")]
+    private static partial void LogTenantAccessAuthorized(
+        ILogger logger, string userId, int tenantId, string operation, string resourceType, string resourceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "AUDIT: Tenant access DENIED - User={UserId}, Tenant={TenantId}, Operation={Operation}, Resource={ResourceType}/{ResourceId}")]
+    private static partial void LogTenantAccessDenied(
+        ILogger logger, string userId, int tenantId, string operation, string resourceType, string resourceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "AUDIT: Action={Action}, Outcome={Outcome}, User={UserId}, Client={ClientIp}, Method={Method}, Path={Path}, Status={StatusCode}, Duration={DurationMs}ms")]
+    private static partial void LogHttpRequestSuccess(
+        ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "AUDIT: Action={Action}, Outcome={Outcome}, User={UserId}, Client={ClientIp}, Method={Method}, Path={Path}, Status={StatusCode}, Duration={DurationMs}ms")]
+    private static partial void LogHttpRequestFailure(
+        ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs);
 }

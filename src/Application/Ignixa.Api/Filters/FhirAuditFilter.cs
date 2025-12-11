@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Authorization;
-using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Abstractions;
 using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Api.Filters;
@@ -21,15 +21,8 @@ namespace Ignixa.Api.Filters;
 ///       .AddEndpointFilter<FhirAuthorizationFilter>()  // Run first
 ///       .AddEndpointFilter<FhirAuditFilter>();         // Run after authz
 /// </summary>
-public class FhirAuditFilter : IEndpointFilter
+public class FhirAuditFilter(IAuditLogger auditLogger, ILogger<FhirAuditFilter> logger) : IEndpointFilter
 {
-    private readonly ILogger<FhirAuditFilter> _logger;
-
-    public FhirAuditFilter(ILogger<FhirAuditFilter> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
     /// <inheritdoc />
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext context,
@@ -82,34 +75,33 @@ public class FhirAuditFilter : IEndpointFilter
 
             var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             var method = httpContext.Request.Method;
-            var path = httpContext.Request.Path.Value;
+            var path = httpContext.Request.Path.Value ?? "/";
             var statusCode = httpContext.Response.StatusCode;
 
             var action = DetermineAuditAction(method);
             var outcome = DetermineAuditOutcome(statusCode, exception);
 
-            // Log audit event (in production, this would create an AuditEvent resource)
-            _logger.LogInformation(
-                "AUDIT: Action={Action}, Outcome={Outcome}, User={User}, Client={ClientIp}, " +
-                "Method={Method}, Path={Path}, Status={StatusCode}, Duration={Duration}ms",
-                action,
-                outcome,
-                userId,
-                clientIp,
-                method,
-                path,
-                statusCode,
-                (endTime - startTime).TotalMilliseconds);
+            var auditEvent = new HttpRequestAuditEvent
+            {
+                Action = action,
+                Outcome = outcome,
+                UserId = userId,
+                ClientIp = clientIp,
+                Method = method,
+                Path = path,
+                StatusCode = statusCode,
+                DurationMs = (endTime - startTime).TotalMilliseconds,
+                CorrelationId = httpContext.TraceIdentifier
+            };
 
-            // TODO: In Phase 2, create actual AuditEvent resource
-            // await _mediator.SendAsync(new CreateAuditEventCommand { ... });
+            auditLogger.LogHttpRequest(auditEvent);
 
             await Task.CompletedTask;
         }
         catch (Exception ex)
         {
             // Log but don't fail request - audit is best-effort
-            _logger.LogError(ex, "Failed to create audit event for {Method} {Path}",
+            logger.LogError(ex, "Failed to create audit event for {Method} {Path}",
                 httpContext.Request.Method,
                 httpContext.Request.Path.Value);
         }

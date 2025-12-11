@@ -25,6 +25,7 @@ COPY .editorconfig ./
 COPY src/Application/Ignixa.Web/Ignixa.Web.csproj src/Application/Ignixa.Web/
 # Application layer
 COPY src/Application/Ignixa.Api/Ignixa.Api.csproj src/Application/Ignixa.Api/
+COPY src/Application/Ignixa.Api.OpenIddict/Ignixa.Api.OpenIddict.csproj src/Application/Ignixa.Api.OpenIddict/
 COPY src/Application/Ignixa.Application/Ignixa.Application.csproj src/Application/Ignixa.Application/
 COPY src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj src/Application/Ignixa.Application.BackgroundOperations/
 COPY src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj src/Application/Ignixa.Application.Operations/

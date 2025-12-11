@@ -60,6 +60,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Rest", "Rest", "{5DB93B3E-65B8-4C0A-A08E-633F2E159FE9}"
 	ProjectSection(SolutionItems) = preProject
 		docs\rest\SearchExamples.http = docs\rest\SearchExamples.http
+		docs\rest\AuthorizationExamples.http = docs\rest\AuthorizationExamples.http
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bench", "bench", "{760AB15A-8938-8D9B-BEDE-5CE1484B84C3}"
@@ -154,6 +155,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SqlOnFhir.Cli", "tools\Ignixa.SqlOnFhir.Cli\Ignixa.SqlOnFhir.Cli.csproj", "{1AD75E11-43DB-4B66-86FD-FA710EF5DE98}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Web", "src\Application\Ignixa.Web\Ignixa.Web.csproj", "{6E378004-2030-492A-9E9B-F8A7B3256E12}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api.OpenIddict", "src\Application\Ignixa.Api.OpenIddict\Ignixa.Api.OpenIddict.csproj", "{80580F9D-FB5D-4817-8B13-6858562F887C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -645,6 +648,18 @@ Global
 		{6E378004-2030-492A-9E9B-F8A7B3256E12}.Release|x64.Build.0 = Release|Any CPU
 		{6E378004-2030-492A-9E9B-F8A7B3256E12}.Release|x86.ActiveCfg = Release|Any CPU
 		{6E378004-2030-492A-9E9B-F8A7B3256E12}.Release|x86.Build.0 = Release|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Debug|x64.Build.0 = Debug|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Debug|x86.Build.0 = Debug|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x64.ActiveCfg = Release|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x64.Build.0 = Release|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x86.ActiveCfg = Release|Any CPU
+		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -699,5 +714,6 @@ Global
 		{627AB02D-A661-48B3-A614-7CE31472F9C3} = {0955C698-034D-424C-A981-095EB50A5673}
 		{1AD75E11-43DB-4B66-86FD-FA710EF5DE98} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{6E378004-2030-492A-9E9B-F8A7B3256E12} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
+		{80580F9D-FB5D-4817-8B13-6858562F887C} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 	EndGlobalSection
 EndGlobal

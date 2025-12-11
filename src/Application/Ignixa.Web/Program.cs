@@ -7,11 +7,13 @@ using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Infrastructure;
+using Ignixa.Api.OpenIddict.Extensions;
 using Ignixa.Api.Services;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
+using Ignixa.Specification;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +23,10 @@ builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
 // Add all Ignixa services to the service collection
 builder.Services.AddIgnixaApi(builder.Configuration, builder.Environment);
 
+// Add OpenIddict embedded identity provider (optional, for dev/self-hosted)
+// Uses all FHIR version schema providers for complete SMART scope coverage
+builder.Services.AddIgnixaOpenIddict(builder.Configuration, GetSchemaProviders());
+
 // Configure Autofac container with all Ignixa registrations
 builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 {
@@ -28,6 +34,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 });
 
 var app = builder.Build();
+
+app.MapIgnixaOpenIddictEndpoints();
 
 // Configure the HTTP request pipeline
 app.UseIgnixaApi(builder.Configuration, builder.Environment);
@@ -43,6 +51,9 @@ await ValidateMultiTenancyConfigurationAsync(app);
 
 // Initialize all tenant databases
 await InitializeDatabasesAsync(app);
+
+// Initialize OpenIddict (if enabled) - seeds clients and creates database
+await app.Services.InitializeOpenIddictAsync();
 
 await app.RunAsync();
 
@@ -174,6 +185,18 @@ static async Task InitializeDatabasesAsync(WebApplication app)
     logger.LogInformation("===== All Databases Initialized =====");
 
     startupTiming.LogSummary();
+}
+
+/// <summary>
+/// Gets all available FHIR schema providers for SMART scope generation.
+/// </summary>
+static IEnumerable<IFhirSchemaProvider> GetSchemaProviders()
+{
+    // Return all generated schema providers for multi-version FHIR support
+    yield return new Ignixa.Specification.Generated.R4CoreSchemaProvider();
+    yield return new Ignixa.Specification.Generated.R4BCoreSchemaProvider();
+    yield return new Ignixa.Specification.Generated.R5CoreSchemaProvider();
+    yield return new Ignixa.Specification.Generated.R6CoreSchemaProvider();
 }
 
 // Explicit partial class to make Program public for integration testing
