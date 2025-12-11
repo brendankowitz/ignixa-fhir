@@ -69,6 +69,12 @@ public class InMemoryRolePermissionStore : IRolePermissionStore
         IReadOnlyList<string> roles,
         CancellationToken cancellationToken)
     {
+        // Note: tenantId is intentionally unused in this in-memory implementation.
+        // Permissions are loaded from global configuration (appsettings.json) and apply to all tenants.
+        // Per-tenant role customization is deferred to a future phase.
+        // Production deployments can implement IRolePermissionStore with database
+        // or external IdP integration for per-tenant role definitions.
+
         // Aggregate permissions from all roles
         var permissions = roles
             .Where(r => _rolePermissions.ContainsKey(r))

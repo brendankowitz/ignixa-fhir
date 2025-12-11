@@ -297,8 +297,11 @@ Accept: application/fhir+json
 ### =============================================================================
 ### Tests that bundle entries go through same authorization as direct calls
 
-### 7.1 Transaction Bundle - Mixed Permissions (Should Fail if Any Entry Fails)
-### Note: This will fail because clinicianToken only has Patient.rs (read+search), not create permission
+### 7.1 Transaction Bundle - Authorization Failure Atomicity (Should Fail - 403)
+### ClinicianToken has user/Patient.rs (read+search ONLY), user/Observation.cruds (full permissions)
+### The first entry (POST Patient) will fail authorization because clinician lacks create permission on Patient
+### Transaction atomicity: When any entry fails authorization, the entire transaction is rolled back
+### Expected: 403 Forbidden - demonstrates that bundle entries respect same authorization as direct requests
 POST {{hostname}}/tenant/{{tenantId}}
 Authorization: Bearer {{clinicianToken.response.body.access_token}}
 Content-Type: application/fhir+json

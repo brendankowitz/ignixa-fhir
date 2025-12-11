@@ -18,8 +18,8 @@ namespace Ignixa.Api.Filters;
 ///
 /// Usage:
 ///   var group = endpoints.MapGroup("/tenant/{tenantId:int}")
-///       .AddEndpointFilter<FhirAuthorizationFilter>()  // Run first
-///       .AddEndpointFilter<FhirAuditFilter>();         // Run after authz
+///       .AddEndpointFilter&lt;FhirAuthorizationFilter&gt;()  // Run first
+///       .AddEndpointFilter&lt;FhirAuditFilter&gt;();         // Run after authz
 /// </summary>
 public class FhirAuditFilter(IAuditLogger auditLogger, ILogger<FhirAuditFilter> logger) : IEndpointFilter
 {
@@ -68,6 +68,12 @@ public class FhirAuditFilter(IAuditLogger auditLogger, ILogger<FhirAuditFilter> 
     {
         try
         {
+            // Note: These values are already validated/parsed by ASP.NET Core pipeline:
+            // - Method: HttpRequest.Method is validated by Kestrel
+            // - Path: PathString is parsed/validated
+            // - ClientIp: IPAddress.ToString() is safe
+            // - UserId: JWT claims are validated by auth middleware
+            // Structured logging with {placeholders} is immune to log injection.
             var userId = httpContext.User.FindFirst(FhirClaimTypes.Subject)?.Value ??
                         httpContext.User.FindFirst(FhirClaimTypes.ObjectId)?.Value ??
                         httpContext.User.FindFirst(FhirClaimTypes.NameIdentifier)?.Value ??
@@ -101,9 +107,12 @@ public class FhirAuditFilter(IAuditLogger auditLogger, ILogger<FhirAuditFilter> 
         catch (Exception ex)
         {
             // Log but don't fail request - audit is best-effort
+            // Sanitize to prevent log injection in error path (char overload avoids CA1307)
+            var safeMethod = httpContext.Request.Method.Replace('\r', ' ').Replace('\n', ' ');
+            var safePath = (httpContext.Request.Path.Value ?? "/").Replace('\r', ' ').Replace('\n', ' ');
             logger.LogError(ex, "Failed to create audit event for {Method} {Path}",
-                httpContext.Request.Method,
-                httpContext.Request.Path.Value);
+                safeMethod,
+                safePath);
         }
     }
 
@@ -130,7 +139,7 @@ public class FhirAuditFilter(IAuditLogger auditLogger, ILogger<FhirAuditFilter> 
     /// </summary>
     private static string DetermineAuditOutcome(int statusCode, Exception? exception)
     {
-        if (exception != null)
+        if (exception is not null)
         {
             return "8"; // Serious failure
         }
