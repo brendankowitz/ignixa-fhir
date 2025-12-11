@@ -35,15 +35,18 @@ namespace Ignixa.Api.Filters;
 public class FhirAuthorizationFilter : IEndpointFilter
 {
     private readonly IFhirAuthorizationService _authzService;
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<FhirAuthorizationFilter> _logger;
     private readonly AuthorizationOptions _authzOptions;
 
     public FhirAuthorizationFilter(
         IFhirAuthorizationService authzService,
+        IFhirRequestContextAccessor fhirContextAccessor,
         IOptions<AuthorizationOptions> authzOptions,
         ILogger<FhirAuthorizationFilter> logger)
     {
         _authzService = authzService ?? throw new ArgumentNullException(nameof(authzService));
+        _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
         _authzOptions = authzOptions?.Value ?? throw new ArgumentNullException(nameof(authzOptions));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -126,11 +129,14 @@ public class FhirAuthorizationFilter : IEndpointFilter
             .Distinct()
             .ToList();
 
-        // If no tenant from claims, try route value
-        if (string.IsNullOrEmpty(tenantId) &&
-            httpContext.Request.RouteValues.TryGetValue("tenantId", out var routeTenant))
+        // If no tenant from claims, use FhirRequestContext (set by TenantResolutionMiddleware)
+        if (string.IsNullOrEmpty(tenantId))
         {
-            tenantId = routeTenant?.ToString();
+            var fhirContext = _fhirContextAccessor.RequestContext;
+            if (fhirContext?.TenantId > 0)
+            {
+                tenantId = fhirContext.TenantId.ToString();
+            }
         }
 
         // Extract SMART context if present
@@ -205,6 +211,10 @@ public class FhirAuthorizationFilter : IEndpointFilter
         var resourceType = routeValues.TryGetValue("resourceType", out var rt) ? rt as string : null;
         var resourceId = routeValues.TryGetValue("id", out var id) ? id as string : null;
 
+        // Check for compartment search (e.g., /Patient/123/Observation or /Patient/123/*)
+        var compartmentType = routeValues.TryGetValue("compartmentType", out var ct) ? ct as string : null;
+        var isCompartmentSearch = compartmentType is not null;
+
         // Check for special endpoints
         var isSearchEndpoint = path.EndsWith("/_search", StringComparison.OrdinalIgnoreCase);
         var isHistoryEndpoint = path.Contains("/_history", StringComparison.OrdinalIgnoreCase);
@@ -218,33 +228,43 @@ public class FhirAuthorizationFilter : IEndpointFilter
         }
 
         // Determine interaction from method + route pattern
-        var interaction = (method.ToUpperInvariant(), resourceId != null, isSearchEndpoint, isHistoryEndpoint, isOperationEndpoint) switch
+        var interaction = (method.ToUpperInvariant(), resourceId != null, isSearchEndpoint, isHistoryEndpoint, isOperationEndpoint, isCompartmentSearch) switch
         {
             // Operation endpoints
-            (_, _, _, _, true) when resourceId != null => FhirInteraction.OperationInstance,
-            (_, _, _, _, true) when resourceType != null => FhirInteraction.OperationType,
-            (_, _, _, _, true) => FhirInteraction.OperationSystem,
+            (_, _, _, _, true, _) when resourceId != null => FhirInteraction.OperationInstance,
+            (_, _, _, _, true, _) when resourceType != null => FhirInteraction.OperationType,
+            (_, _, _, _, true, _) => FhirInteraction.OperationSystem,
 
             // History endpoints
-            ("GET", _, _, true, _) when resourceId != null => FhirInteraction.HistoryInstance,
-            ("GET", _, _, true, _) => FhirInteraction.HistoryType,
+            ("GET", _, _, true, _, _) when resourceId != null => FhirInteraction.HistoryInstance,
+            ("GET", _, _, true, _, _) => FhirInteraction.HistoryType,
+
+            // Compartment search (e.g., /Patient/123/Observation or /Patient/123/*)
+            ("GET", _, _, _, _, true) => FhirInteraction.SearchType,
 
             // Search endpoints
-            (_, _, true, _, _) => FhirInteraction.SearchType,
-            ("GET", false, _, _, _) when resourceType != null => FhirInteraction.SearchType,
-            ("GET", false, _, _, _) when resourceType == null => FhirInteraction.SearchSystem,
+            (_, _, true, _, _, _) => FhirInteraction.SearchType,
+            ("GET", false, _, _, _, _) when resourceType != null => FhirInteraction.SearchType,
+            ("GET", false, _, _, _, _) when resourceType == null => FhirInteraction.SearchSystem,
 
             // CRUD operations
-            ("GET", true, _, _, _) => FhirInteraction.Read,
-            ("PUT", _, _, _, _) => FhirInteraction.Update,
-            ("POST", false, _, _, _) when resourceType == null && path.EndsWith("/", StringComparison.Ordinal) => FhirInteraction.Transaction,
-            ("POST", false, _, _, _) when resourceType != null => FhirInteraction.Create,
-            ("DELETE", _, _, _, _) => FhirInteraction.Delete,
-            ("PATCH", _, _, _, _) => FhirInteraction.Patch,
+            ("GET", true, _, _, _, _) => FhirInteraction.Read,
+            ("PUT", _, _, _, _, _) => FhirInteraction.Update,
+            ("POST", false, _, _, _, _) when resourceType == null && path.EndsWith("/", StringComparison.Ordinal) => FhirInteraction.Transaction,
+            ("POST", false, _, _, _, _) when resourceType != null => FhirInteraction.Create,
+            ("DELETE", _, _, _, _, _) => FhirInteraction.Delete,
+            ("PATCH", _, _, _, _, _) => FhirInteraction.Patch,
 
             // Default
             _ => FhirInteraction.Read // Default fallback
         };
+
+        // For compartment search, the "resourceType" for authorization is the compartment type
+        // (e.g., Patient compartment search requires Patient read access)
+        if (isCompartmentSearch && resourceType is null)
+        {
+            resourceType = compartmentType;
+        }
 
         return (interaction, resourceType, resourceId);
     }

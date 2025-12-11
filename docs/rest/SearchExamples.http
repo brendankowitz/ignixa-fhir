@@ -1,8 +1,19 @@
 @hostname = https://localhost:7058
 
+### 1.1 Get Admin Token (Full Access - CRUDS)
+# @name adminToken
+POST {{hostname}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=fhir-admin-client
+&client_secret=dev-secret
+&scope=system/*.cruds
+
 ### Setup test data
 # @name batch
 POST {{hostname}}
+#Authorization: Bearer {{adminToken.response.body.access_token}}
 Prefer: validation=minimum
 Content-Type: application/json
 
@@ -10,6 +21,7 @@ Content-Type: application/json
 
 ### Batch2
 POST {{hostname}}
+#Authorization: Bearer {{adminToken.response.body.access_token}}
 Prefer: validation=minimum
 Content-Type: application/json
 
@@ -44,6 +56,7 @@ GET {{hostname}}/metadata
 
 ### Compartment Search All
 GET {{hostname}}/Patient/example/*
+#Authorization: Bearer {{adminToken.response.body.access_token}}
 
 ### Sort Name
 GET {{hostname}}/Patient?_sort=name&_total=accurate&_count=10000
