@@ -538,5 +538,10 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<Ignixa.Application.Features.Mcp.Authorization.McpAuthorizationService>()
             .As<Ignixa.Application.Features.Mcp.Authorization.IMcpAuthorizationService>()
             .InstancePerLifetimeScope();
+
+        // SMART configuration provider
+        builder.RegisterType<Ignixa.Application.Features.Authorization.Services.OidcDiscoverySmartConfigurationProvider>()
+            .As<Ignixa.Application.Features.Authorization.Services.ISmartConfigurationProvider>()
+            .InstancePerLifetimeScope();
     }
 }

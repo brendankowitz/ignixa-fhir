@@ -64,49 +64,86 @@ public class FhirAuthorizationFilter : IEndpointFilter
 
         var httpContext = context.HttpContext;
 
-        // Build authorization context from route + request + user claims
-        var authContext = await BuildAuthorizationContextAsync(httpContext);
-
-        // Run authorization handlers (authentication → RBAC → SMART → capability)
-        var result = await _authzService.AuthorizeAsync(authContext);
-
-        if (!result.Allowed)
+        try
         {
-            _logger.LogWarning(
-                "Authorization denied: {Reason} (User: {User}, Resource: {ResourceType}/{ResourceId}, Interaction: {Interaction})",
-                result.DenialReason,
-                authContext.UserId ?? "anonymous",
-                authContext.ResourceType ?? "system",
-                authContext.ResourceId ?? "none",
-                authContext.Interaction);
+            // Build authorization context from route + request + user claims
+            var authContext = await BuildAuthorizationContextAsync(httpContext);
 
-            // Return FHIR OperationOutcome with 403 Forbidden
-            var outcome = new OperationOutcomeJsonNode();
-            outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+            // Run authorization handlers (authentication → RBAC → SMART → capability)
+            var result = await _authzService.AuthorizeAsync(authContext);
+
+            if (!result.Allowed)
             {
-                Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
-                Code = OperationOutcomeJsonNode.IssueType.Forbidden,
-                Diagnostics = result.DenialReason ?? "Access denied"
-            });
+                _logger.LogWarning(
+                    "Authorization denied: {Reason} (User: {User}, Resource: {ResourceType}/{ResourceId}, Interaction: {Interaction})",
+                    result.DenialReason,
+                    authContext.UserId ?? "anonymous",
+                    authContext.ResourceType ?? "system",
+                    authContext.ResourceId ?? "none",
+                    authContext.Interaction);
 
-            return Results.Content(
-                outcome.SerializeToString(),
-                KnownContentTypes.ApplicationFhirJson,
-                statusCode: StatusCodes.Status403Forbidden);
+                // Return FHIR OperationOutcome with 403 Forbidden
+                return CreateForbiddenResponse(result.DenialReason ?? "Access denied");
+            }
+
+            // Store filter in HttpContext for query layer (patient compartment filtering)
+            if (result.Filter != null)
+            {
+                httpContext.Items["FhirAuthorizationFilter"] = result.Filter;
+
+                _logger.LogDebug(
+                    "Authorization filter applied: PatientFilter={PatientFilter}",
+                    result.Filter.PatientFilter ?? "none");
+            }
+
+            // Continue to next filter or handler
+            return await next(context);
         }
-
-        // Store filter in HttpContext for query layer (patient compartment filtering)
-        if (result.Filter != null)
+        catch (Exception ex)
         {
-            httpContext.Items["FhirAuthorizationFilter"] = result.Filter;
+            _logger.LogError(ex, "Authorization error for {Path}", httpContext.Request.Path);
 
-            _logger.LogDebug(
-                "Authorization filter applied: PatientFilter={PatientFilter}",
-                result.Filter.PatientFilter ?? "none");
+            // Return generic error to prevent internal error leakage
+            return CreateErrorResponse("An error occurred during authorization");
         }
+    }
 
-        // Continue to next filter or handler
-        return await next(context);
+    /// <summary>
+    /// Creates a 403 Forbidden response with FHIR OperationOutcome.
+    /// </summary>
+    private static IResult CreateForbiddenResponse(string diagnostics)
+    {
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.Forbidden,
+            Diagnostics = diagnostics
+        });
+
+        return Results.Content(
+            outcome.SerializeToString(),
+            KnownContentTypes.ApplicationFhirJson,
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>
+    /// Creates a 500 Internal Server Error response with FHIR OperationOutcome.
+    /// </summary>
+    private static IResult CreateErrorResponse(string diagnostics)
+    {
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.Exception,
+            Diagnostics = diagnostics
+        });
+
+        return Results.Content(
+            outcome.SerializeToString(),
+            KnownContentTypes.ApplicationFhirJson,
+            statusCode: StatusCodes.Status500InternalServerError);
     }
 
     /// <summary>

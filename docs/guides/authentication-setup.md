@@ -1,15 +1,32 @@
 # Authentication Setup Guide
 
-Ignixa FHIR Server supports multiple authentication modes for different deployment scenarios.
+Ignixa FHIR Server supports OAuth2/OIDC authentication with automatic endpoint discovery.
+
+## Simplified Configuration (Recommended)
+
+**Any OIDC-compliant OAuth2 server works with just the Authority URL:**
+
+```json
+{
+  "Authentication": {
+    "Authority": "https://your-oauth-server.example.com",
+    "Audience": "fhir-api"
+  }
+}
+```
+
+The system automatically discovers OAuth2 endpoints via `/.well-known/openid-configuration`.
 
 ## Quick Reference
 
-| Scenario | Provider | Use Case |
-|----------|----------|----------|
-| Local development | `OpenIddict` (embedded) | No external IdP required |
-| Azure App Service | `Entra` | Managed Identity + Azure AD |
-| Self-hosted production | `OIDC` | Any OpenID Connect provider |
-| Enterprise | `Okta` | Okta integration |
+| Scenario | Authority URL Example |
+|----------|----------------------|
+| Local development (OpenIddict) | `https://localhost:7058` |
+| Azure Entra ID | `https://login.microsoftonline.com/{tenant-id}/v2.0` |
+| Okta | `https://your-org.okta.com` |
+| Auth0 | `https://your-tenant.auth0.com` |
+| Keycloak | `https://keycloak.example.com/realms/{realm}` |
+| Any OIDC provider | Set to your OAuth2 server's base URL |
 
 ---
 
@@ -23,6 +40,10 @@ Add to `appsettings.Development.json`:
 
 ```json
 {
+  "Authentication": {
+    "Authority": "https://localhost:7058",
+    "Audience": "fhir-api"
+  },
   "OpenIddict": {
     "Enabled": true,
     "UseInMemoryStorage": true,
@@ -61,16 +82,11 @@ Add to `appsettings.Development.json`:
         "Roles": ["Clinician"]
       }
     ]
-  },
-  "Authentication": {
-    "Provider": "OpenIddict",
-    "OpenIddict": {
-      "Issuer": "https://localhost:7058",
-      "Audience": "fhir-api"
-    }
   }
 }
 ```
+
+**Key point**: Setting `Authentication:Authority` enables automatic OIDC discovery. The system fetches OAuth2 endpoints from `https://localhost:7058/.well-known/openid-configuration`.
 
 ### Get a Token
 
@@ -120,56 +136,15 @@ OpenIddict supports full SMART v2 scope syntax:
 
 ---
 
-## 2. Azure App Service with Entra ID (Managed Identity)
+## 2. Production with Any OIDC Provider
 
-For production deployments on Azure App Service using Microsoft Entra ID.
-
-### Prerequisites
-
-1. Azure App Service with System-assigned Managed Identity enabled
-2. Microsoft Entra ID (Azure AD) tenant
-3. App Registration for the FHIR API
-
-### Step 1: Create App Registration
-
-1. Go to Azure Portal > Microsoft Entra ID > App registrations
-2. Click **New registration**
-3. Name: `Ignixa FHIR API`
-4. Supported account types: **Single tenant**
-5. Click **Register**
-
-### Step 2: Configure App Registration
-
-**Expose an API:**
-
-1. Go to **Expose an API**
-2. Set Application ID URI: `api://<client-id>` or custom URI
-3. Add scopes:
-   - `system.read` - Read FHIR resources
-   - `system.write` - Write FHIR resources
-   - `patient.read` - Patient-context read access
-
-**App Roles (for RBAC):**
-
-1. Go to **App roles**
-2. Create roles:
-   - `Admin` - Full access
-   - `Clinician` - Clinical data access
-   - `ReadOnly` - Read-only access
-
-### Step 3: Configure App Service
-
-**appsettings.json:**
+**Simple configuration for any OAuth2/OIDC server:**
 
 ```json
 {
   "Authentication": {
-    "Provider": "Entra",
-    "Entra": {
-      "Instance": "https://login.microsoftonline.com/",
-      "TenantId": "<your-tenant-id>",
-      "Audience": "api://<your-client-id>"
-    }
+    "Authority": "https://your-oauth-server.example.com",
+    "Audience": "your-api-identifier"
   },
   "Authorization": {
     "Enabled": true,
@@ -178,36 +153,60 @@ For production deployments on Azure App Service using Microsoft Entra ID.
 }
 ```
 
-**Environment Variables (App Service Configuration):**
+The system automatically:
+- Fetches OIDC metadata from `{Authority}/.well-known/openid-configuration`
+- Configures JWT validation using the discovered `jwks_uri`
+- Validates tokens against the `Authority` (issuer) and `Audience`
 
-```
-Authentication__Provider=Entra
-Authentication__Entra__TenantId=<your-tenant-id>
-Authentication__Entra__Audience=api://<your-client-id>
-```
+### Provider-Specific Examples
 
-### Step 4: Configure Client Applications
+**Azure Entra ID (Azure AD):**
 
-For applications calling the FHIR API:
-
-1. Create another App Registration for the client
-2. Add **API permissions** > **My APIs** > select your FHIR API
-3. Grant the required scopes
-
-**Client Credentials Token Request:**
-
-```bash
-curl -X POST https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials" \
-  -d "client_id=<client-app-id>" \
-  -d "client_secret=<client-secret>" \
-  -d "scope=api://<fhir-api-id>/.default"
+```json
+{
+  "Authentication": {
+    "Authority": "https://login.microsoftonline.com/{tenant-id}/v2.0",
+    "Audience": "api://{client-id}"
+  }
+}
 ```
 
-### Step 5: Managed Identity for Azure Resources
+**Okta:**
 
-For the FHIR server to access Azure Blob Storage with Managed Identity:
+```json
+{
+  "Authentication": {
+    "Authority": "https://your-org.okta.com",
+    "Audience": "api://fhir"
+  }
+}
+```
+
+**Auth0:**
+
+```json
+{
+  "Authentication": {
+    "Authority": "https://your-tenant.auth0.com",
+    "Audience": "https://fhir-api.example.com"
+  }
+}
+```
+
+**Keycloak:**
+
+```json
+{
+  "Authentication": {
+    "Authority": "https://keycloak.example.com/realms/fhir",
+    "Audience": "fhir-api"
+  }
+}
+```
+
+### Azure Managed Identity for Resources
+
+For the FHIR server to access Azure services with Managed Identity:
 
 ```json
 {
@@ -232,49 +231,31 @@ Ensure the App Service Managed Identity has **Storage Blob Data Contributor** ro
 
 ---
 
-## 3. Generic OpenID Connect (Any Provider)
+## How OIDC Discovery Works
 
-For Keycloak, Auth0, or other OIDC-compliant providers.
+When you set `Authentication:Authority`, the system:
 
-```json
-{
-  "Authentication": {
-    "Provider": "OIDC",
-    "OIDC": {
-      "Authority": "https://your-idp.example.com/realms/fhir",
-      "Audience": "fhir-api"
-    }
-  }
-}
-```
+1. **Fetches OIDC metadata** from `{Authority}/.well-known/openid-configuration`
+2. **Discovers OAuth2 endpoints** automatically:
+   - `authorization_endpoint` - For authorization code flow
+   - `token_endpoint` - For token requests
+   - `jwks_uri` - For JWT signature validation
+   - `introspection_endpoint` - For token introspection (optional)
+   - `revocation_endpoint` - For token revocation (optional)
+3. **Configures JWT validation** using the discovered signing keys
+4. **Validates tokens** against the issuer and audience
 
----
-
-## 4. Okta Integration
-
-```json
-{
-  "Authentication": {
-    "Provider": "Okta",
-    "Okta": {
-      "Domain": "your-org.okta.com",
-      "Audience": "api://fhir"
-    }
-  }
-}
-```
-
----
+**No manual endpoint configuration needed** - just set the Authority URL.
 
 ## Configuration Reference
 
 ### Authentication Section
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `Provider` | Auth provider type | `JwtBearer` |
-| `Authority` | Token issuer URL | - |
-| `Audience` | Expected audience claim | - |
+| Setting | Description | Default | Required |
+|---------|-------------|---------|----------|
+| `Authority` | **Primary config**: OAuth2 server base URL. Used for OIDC discovery. | `null` | **Yes** |
+| `Audience` | Expected `aud` claim in JWT tokens | `null` | **Yes** |
+| `Provider` | Legacy provider type (optional - use Authority instead) | `JwtBearer` | No |
 
 ### Authorization Section
 

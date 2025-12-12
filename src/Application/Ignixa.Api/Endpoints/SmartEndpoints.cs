@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ignixa.Application.Features.Authorization.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Ignixa.Api.Endpoints;
@@ -57,10 +58,12 @@ public static class SmartEndpoints
     /// GET /.well-known/smart-configuration
     /// Returns the SMART on FHIR discovery document (tenant-agnostic).
     /// </summary>
-    private static IResult HandleGetSmartConfiguration(
+    private static async Task<IResult> HandleGetSmartConfiguration(
         HttpContext context,
         [FromServices] IConfiguration configuration,
-        [FromServices] ILoggerFactory loggerFactory)
+        [FromServices] ISmartConfigurationProvider smartConfigurationProvider,
+        [FromServices] ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Ignixa.Api.Endpoints.SmartEndpoints");
         logger.LogInformation("GET /.well-known/smart-configuration (tenant-agnostic)");
@@ -73,7 +76,8 @@ public static class SmartEndpoints
             return Results.NotFound();
         }
 
-        var smartConfig = BuildSmartConfiguration(context, configuration, tenantId: null, logger);
+        var configData = await smartConfigurationProvider.GetConfigurationAsync(tenantId: null, cancellationToken);
+        var smartConfig = BuildSmartConfigurationResponse(context, configData, tenantId: null);
         return Results.Json(smartConfig, options: new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -85,11 +89,13 @@ public static class SmartEndpoints
     /// GET /tenant/{tenantId}/.well-known/smart-configuration
     /// Returns the SMART on FHIR discovery document for a specific tenant.
     /// </summary>
-    private static IResult HandleGetTenantSmartConfiguration(
+    private static async Task<IResult> HandleGetTenantSmartConfiguration(
         HttpContext context,
         int tenantId,
         [FromServices] IConfiguration configuration,
-        [FromServices] ILoggerFactory loggerFactory)
+        [FromServices] ISmartConfigurationProvider smartConfigurationProvider,
+        [FromServices] ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Ignixa.Api.Endpoints.SmartEndpoints");
         logger.LogInformation("GET /tenant/{TenantId}/.well-known/smart-configuration", tenantId);
@@ -102,7 +108,8 @@ public static class SmartEndpoints
             return Results.NotFound();
         }
 
-        var smartConfig = BuildSmartConfiguration(context, configuration, tenantId, logger);
+        var configData = await smartConfigurationProvider.GetConfigurationAsync(tenantId.ToString(), cancellationToken);
+        var smartConfig = BuildSmartConfigurationResponse(context, configData, tenantId);
         return Results.Json(smartConfig, options: new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -111,150 +118,28 @@ public static class SmartEndpoints
     }
 
     /// <summary>
-    /// Builds the SMART on FHIR discovery configuration based on appsettings.json provider configuration.
+    /// Builds the SMART on FHIR discovery configuration response from configuration data.
     /// </summary>
-    private static SmartConfiguration BuildSmartConfiguration(
+    private static SmartConfiguration BuildSmartConfigurationResponse(
         HttpContext context,
-        IConfiguration configuration,
-        int? tenantId,
-        ILogger logger)
+        SmartConfigurationData configData,
+        int? tenantId)
     {
-        var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
-        var tenantPrefix = tenantId.HasValue ? $"/tenant/{tenantId}" : string.Empty;
-
-        // Determine OAuth endpoints based on configured provider
-        var authConfig = configuration.GetSection("Authentication");
-        var provider = authConfig["Provider"] ?? "JwtBearer";
-
-        string authorizationEndpoint;
-        string tokenEndpoint;
-        string? introspectionEndpoint = null;
-        string? revocationEndpoint = null;
-        string? issuer = null;
-        string? jwksUri = null;
-
-        switch (provider)
-        {
-            case "OpenIddict":
-                // OpenIddict for local development
-                var openIddictConfig = authConfig.GetSection("OpenIddict");
-                var openIddictIssuer = openIddictConfig["Issuer"] ?? baseUrl;
-                issuer = openIddictIssuer;
-                authorizationEndpoint = $"{openIddictIssuer}/connect/authorize";
-                tokenEndpoint = $"{openIddictIssuer}/connect/token";
-                introspectionEndpoint = $"{openIddictIssuer}/connect/introspect";
-                revocationEndpoint = $"{openIddictIssuer}/connect/revoke";
-                jwksUri = $"{openIddictIssuer}/.well-known/jwks";
-                break;
-
-            case "Entra":
-                // Azure Entra ID (formerly Azure AD)
-                var entraConfig = authConfig.GetSection("Entra");
-                var entraInstance = entraConfig["Instance"] ?? "https://login.microsoftonline.com/";
-                var entraTenantId = entraConfig["TenantId"] ?? "common";
-                var entraAuthority = $"{entraInstance}{entraTenantId}/v2.0";
-                issuer = entraAuthority;
-                authorizationEndpoint = $"{entraAuthority}/authorize";
-                tokenEndpoint = $"{entraAuthority}/token";
-                jwksUri = $"{entraAuthority}/discovery/keys";
-                // Entra supports introspection but requires different endpoint patterns
-                break;
-
-            case "Okta":
-                // Okta configuration
-                var oktaConfig = authConfig.GetSection("Okta");
-                var oktaDomain = oktaConfig["Domain"] ?? "your-okta-domain.okta.com";
-                var oktaAuthority = $"https://{oktaDomain}";
-                issuer = oktaAuthority;
-                authorizationEndpoint = $"{oktaAuthority}/oauth2/v1/authorize";
-                tokenEndpoint = $"{oktaAuthority}/oauth2/v1/token";
-                introspectionEndpoint = $"{oktaAuthority}/oauth2/v1/introspect";
-                revocationEndpoint = $"{oktaAuthority}/oauth2/v1/revoke";
-                jwksUri = $"{oktaAuthority}/oauth2/v1/keys";
-                break;
-
-            case "OIDC":
-                // Generic OpenID Connect provider
-                var oidcConfig = authConfig.GetSection("OIDC");
-                var oidcAuthority = oidcConfig["Authority"] ?? baseUrl;
-                issuer = oidcAuthority;
-                authorizationEndpoint = $"{oidcAuthority}/authorize";
-                tokenEndpoint = $"{oidcAuthority}/token";
-                jwksUri = $"{oidcAuthority}/.well-known/jwks.json";
-                // Generic OIDC may support introspection/revocation - check provider docs
-                break;
-
-            case "JwtBearer":
-            default:
-                // Generic JWT Bearer - use base configuration
-                var authority = authConfig["Authority"] ?? baseUrl;
-                issuer = authority;
-                authorizationEndpoint = $"{authority}/authorize";
-                tokenEndpoint = $"{authority}/token";
-                jwksUri = $"{authority}/.well-known/jwks.json";
-                break;
-        }
-
-        // Read SMART capabilities from configuration
-        var smartConfig = configuration.GetSection("Authorization:SmartOnFhir");
-        var capabilities = smartConfig.GetSection("SupportedCapabilities").Get<List<string>>() ??
-        [
-            "launch-ehr",
-            "launch-standalone",
-            "client-public",
-            "client-confidential-symmetric",
-            "sso-openid-connect",
-            "context-ehr-patient",
-            "context-standalone-patient",
-            "permission-offline",
-            "permission-patient",
-            "permission-user"
-        ];
-
-        // SMART v2 scopes (examples - customize based on server capabilities)
-        var supportedScopes = new List<string>
-        {
-            "openid",
-            "fhirUser",
-            "launch",
-            "launch/patient",
-            "patient/*.read",
-            "patient/*.write",
-            "patient/*.*",
-            "user/*.read",
-            "user/*.write",
-            "user/*.*",
-            "offline_access",
-            "online_access"
-        };
-
-        // Add SMART v1 compatibility scopes if enabled
-        var enableV1Compatibility = smartConfig.GetValue<bool>("EnableV1ScopeCompatibility", false);
-        if (enableV1Compatibility)
-        {
-            supportedScopes.AddRange([
-                "patient/Patient.read",
-                "patient/Observation.read",
-                "user/Patient.read",
-                "user/Observation.read"
-            ]);
-        }
-
         return new SmartConfiguration
         {
-            Issuer = issuer,
-            JwksUri = jwksUri,
-            AuthorizationEndpoint = authorizationEndpoint,
-            TokenEndpoint = tokenEndpoint,
-            IntrospectionEndpoint = introspectionEndpoint,
-            RevocationEndpoint = revocationEndpoint,
-            GrantTypes = ["authorization_code", "client_credentials"],
-            TokenEndpointAuthMethods = ["client_secret_basic", "client_secret_post", "private_key_jwt"],
-            TokenEndpointAuthSigningAlgs = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-            SupportedScopes = supportedScopes,
+            Issuer = configData.Issuer,
+            JwksUri = configData.JwksUri,
+            AuthorizationEndpoint = configData.AuthorizationEndpoint,
+            TokenEndpoint = configData.TokenEndpoint,
+            IntrospectionEndpoint = configData.IntrospectionEndpoint,
+            RevocationEndpoint = configData.RevocationEndpoint,
+            GrantTypes = configData.GrantTypes,
+            TokenEndpointAuthMethods = configData.TokenEndpointAuthMethods,
+            TokenEndpointAuthSigningAlgs = configData.TokenEndpointAuthSigningAlgs,
+            SupportedScopes = configData.SupportedScopes,
             SupportedResponseTypes = ["code"],
             SupportedChallengeMethods = ["S256"], // MUST include S256, MUST NOT include "plain" per SMART v2
-            Capabilities = capabilities
+            Capabilities = configData.Capabilities
         };
     }
 }

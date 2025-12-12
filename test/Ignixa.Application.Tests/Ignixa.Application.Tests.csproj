@@ -6,7 +6,7 @@
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
     <!-- Suppress test-specific code analysis warnings -->
-    <NoWarn>$(NoWarn);CA1707;CA1849;CA2000;CS8604;CS8625</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA1849;CA2000;CA2012;CS8604;CS8625</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

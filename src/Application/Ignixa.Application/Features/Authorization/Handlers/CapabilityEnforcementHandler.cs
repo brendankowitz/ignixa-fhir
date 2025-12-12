@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.FhirPath.Evaluation;
 using Microsoft.Extensions.Logging;
 
@@ -24,6 +25,7 @@ public class CapabilityEnforcementHandler : IAuthorizationHandler
 {
     private readonly CapabilityStatementService _capabilityService;
     private readonly IFhirVersionContext _versionContext;
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<CapabilityEnforcementHandler> _logger;
 
     // Per-tenant interaction caches for O(1) lookups
@@ -32,10 +34,12 @@ public class CapabilityEnforcementHandler : IAuthorizationHandler
     public CapabilityEnforcementHandler(
         CapabilityStatementService capabilityService,
         IFhirVersionContext versionContext,
+        IFhirRequestContextAccessor fhirContextAccessor,
         ILogger<CapabilityEnforcementHandler> logger)
     {
         _capabilityService = capabilityService ?? throw new ArgumentNullException(nameof(capabilityService));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
+        _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -116,9 +120,8 @@ public class CapabilityEnforcementHandler : IAuthorizationHandler
     {
         var cache = new Services.CapabilityInteractionCache();
 
-        // Get FHIR version - default to R4 for now
-        // TODO: Look up tenant configuration to get correct FHIR version when multi-version support is needed
-        var fhirVersion = FhirVersion.R4;
+        // Get FHIR version from request context (set by TenantResolutionMiddleware)
+        var fhirVersion = _fhirContextAccessor.RequestContext?.FhirVersion ?? FhirVersion.R4;
 
         var capabilityContext = new CapabilityContext(
             FhirVersion: fhirVersion,

@@ -8,8 +8,8 @@ using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.Features.Mcp.Authorization;
 
@@ -21,30 +21,23 @@ public class McpAuthorizationService : IMcpAuthorizationService
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IRolePermissionStore _rolePermissionStore;
-    private readonly IConfiguration _configuration;
+    private readonly AuthorizationOptions _authzOptions;
     private readonly ILogger<McpAuthorizationService> _logger;
-
-    /// <summary>
-    /// Roles that have MCP access enabled by default.
-    /// </summary>
-    private static readonly HashSet<string> DefaultMcpEnabledRoles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Admin",
-        "SystemAdmin",
-        "Mcp",
-        "Contributor"
-    };
+    private readonly HashSet<string> _mcpEnabledRoles;
 
     public McpAuthorizationService(
         IHttpContextAccessor httpContextAccessor,
         IRolePermissionStore rolePermissionStore,
-        IConfiguration configuration,
+        IOptions<AuthorizationOptions> authzOptions,
         ILogger<McpAuthorizationService> logger)
     {
         _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
         _rolePermissionStore = rolePermissionStore ?? throw new ArgumentNullException(nameof(rolePermissionStore));
-        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _authzOptions = authzOptions?.Value ?? throw new ArgumentNullException(nameof(authzOptions));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // Build the set of MCP-enabled roles from configuration
+        _mcpEnabledRoles = new HashSet<string>(_authzOptions.McpEnabledRoles, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
@@ -64,8 +57,9 @@ public class McpAuthorizationService : IMcpAuthorizationService
         if (!hasAccess)
         {
             _logger.LogWarning(
-                "MCP access denied: User roles [{Roles}] do not have MCP access. Required: Admin, SystemAdmin, Mcp, or Contributor role.",
-                string.Join(", ", roles));
+                "MCP access denied: User roles [{Roles}] do not have MCP access. Configured MCP roles: [{McpRoles}]",
+                string.Join(", ", roles),
+                string.Join(", ", _mcpEnabledRoles));
         }
 
         return Task.FromResult(hasAccess);
@@ -113,8 +107,9 @@ public class McpAuthorizationService : IMcpAuthorizationService
     {
         if (!await AuthorizeMcpAccessAsync(cancellationToken))
         {
+            var configuredRoles = string.Join(", ", _mcpEnabledRoles);
             throw new ForbiddenException(
-                "MCP access denied. Required role: Admin, SystemAdmin, Mcp, or Contributor.");
+                $"MCP access denied. Required role: {configuredRoles} or a role with McpAccess enabled.");
         }
     }
 
@@ -163,21 +158,16 @@ public class McpAuthorizationService : IMcpAuthorizationService
 
     private bool HasMcpAccess(string role)
     {
-        // Check if role is in default MCP-enabled roles
-        if (DefaultMcpEnabledRoles.Contains(role))
+        // Check if role is in configured MCP-enabled roles
+        if (_mcpEnabledRoles.Contains(role))
         {
             return true;
         }
 
-        // Check configuration for custom role MCP access
-        var roleConfig = _configuration.GetSection($"Authorization:DefaultRoles:{role}");
-        if (roleConfig.Exists())
+        // Check DefaultRoles configuration for per-role McpAccess setting
+        if (_authzOptions.DefaultRoles.TryGetValue(role, out var roleConfig))
         {
-            var mcpAccess = roleConfig.GetValue<bool?>("McpAccess");
-            if (mcpAccess.HasValue)
-            {
-                return mcpAccess.Value;
-            }
+            return roleConfig.McpAccess;
         }
 
         return false;

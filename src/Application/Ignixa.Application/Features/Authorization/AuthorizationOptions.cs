@@ -47,6 +47,13 @@ public class AuthorizationOptions
     public Dictionary<string, RolePermissions> DefaultRoles { get; } = new();
 
     /// <summary>
+    /// Roles that have MCP (Model Context Protocol) access enabled by default.
+    /// These roles can access MCP endpoints for AI/automation, in addition to
+    /// any role with McpAccess=true in DefaultRoles configuration.
+    /// </summary>
+    public Collection<string> McpEnabledRoles { get; } = ["Admin", "SystemAdmin", "Mcp", "Contributor"];
+
+    /// <summary>
     /// SMART on FHIR configuration options.
     /// </summary>
     public SmartOptions SmartOnFhir { get; set; } = new();
