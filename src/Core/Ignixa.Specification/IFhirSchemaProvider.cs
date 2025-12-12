@@ -35,4 +35,10 @@ public interface IFhirSchemaProvider : ISchema
     /// Provides metadata about reference fields in FHIR resources.
     /// </summary>
     IReferenceMetadataProvider ReferenceMetadataProvider { get; }
+
+    /// <summary>
+    /// Gets the ValueSet provider for this schema's FHIR version.
+    /// Provides access to ValueSet code definitions and validation.
+    /// </summary>
+    IValueSetProvider ValueSetProvider { get; }
 }

@@ -301,6 +301,12 @@ public class CompositeStructureDefinitionSummaryProvider : IFhirSchemaProvider
     public IReferenceMetadataProvider ReferenceMetadataProvider => _baseProvider.ReferenceMetadataProvider;
 
     /// <summary>
+    /// Gets the ValueSet provider for this schema's FHIR version.
+    /// Delegates to the base FHIR specification provider.
+    /// </summary>
+    public IValueSetProvider ValueSetProvider => _baseProvider.ValueSetProvider;
+
+    /// <summary>
     /// Computes the combined resource type names from base spec and loaded packages.
     /// Called lazily on first access to ResourceTypeNames property.
     /// </summary>

@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
+using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes;
 
@@ -27,6 +29,18 @@ namespace Ignixa.FhirFakes;
 /// </remarks>
 internal static class BindingCodeMapper
 {
+    private static IValueSetProvider? _valueSetProvider;
+
+    /// <summary>
+    /// Initializes the BindingCodeMapper with a value set provider.
+    /// </summary>
+    /// <param name="valueSetProvider">The value set provider to use for looking up FHIR valuesets.</param>
+    public static void Initialize(IValueSetProvider valueSetProvider)
+    {
+        ArgumentNullException.ThrowIfNull(valueSetProvider);
+        _valueSetProvider = valueSetProvider;
+    }
+
     /// <summary>
     /// Known binding strength values from FHIR specification.
     /// </summary>
@@ -75,325 +89,11 @@ internal static class BindingCodeMapper
         // Normalize the URI (remove version suffixes like |4.0.1)
         var normalizedUri = NormalizeValueSetUri(valueSetUri);
 
-        return normalizedUri switch
+        // PRIORITY 1: Check clinical terminology codes FIRST (curated for realistic test data)
+        // These take precedence over FHIR package codes because they're specifically designed
+        // for test data generation with real-world clinical terminology.
+        var clinicalCodes = normalizedUri switch
         {
-            // Administrative Gender - http://hl7.org/fhir/ValueSet/administrative-gender
-            "http://hl7.org/fhir/ValueSet/administrative-gender" =>
-            [
-                new FhirCode("http://hl7.org/fhir/administrative-gender", "male", "Male"),
-                new FhirCode("http://hl7.org/fhir/administrative-gender", "female", "Female"),
-                new FhirCode("http://hl7.org/fhir/administrative-gender", "other", "Other"),
-                new FhirCode("http://hl7.org/fhir/administrative-gender", "unknown", "Unknown")
-            ],
-
-            // Name Use - http://hl7.org/fhir/ValueSet/name-use
-            "http://hl7.org/fhir/ValueSet/name-use" =>
-            [
-                new FhirCode("http://hl7.org/fhir/name-use", "usual", "Usual"),
-                new FhirCode("http://hl7.org/fhir/name-use", "official", "Official"),
-                new FhirCode("http://hl7.org/fhir/name-use", "temp", "Temp"),
-                new FhirCode("http://hl7.org/fhir/name-use", "nickname", "Nickname"),
-                new FhirCode("http://hl7.org/fhir/name-use", "anonymous", "Anonymous"),
-                new FhirCode("http://hl7.org/fhir/name-use", "old", "Old"),
-                new FhirCode("http://hl7.org/fhir/name-use", "maiden", "Maiden")
-            ],
-
-            // Address Use - http://hl7.org/fhir/ValueSet/address-use
-            "http://hl7.org/fhir/ValueSet/address-use" =>
-            [
-                new FhirCode("http://hl7.org/fhir/address-use", "home", "Home"),
-                new FhirCode("http://hl7.org/fhir/address-use", "work", "Work"),
-                new FhirCode("http://hl7.org/fhir/address-use", "temp", "Temporary"),
-                new FhirCode("http://hl7.org/fhir/address-use", "old", "Old / Incorrect"),
-                new FhirCode("http://hl7.org/fhir/address-use", "billing", "Billing")
-            ],
-
-            // Address Type - http://hl7.org/fhir/ValueSet/address-type
-            "http://hl7.org/fhir/ValueSet/address-type" =>
-            [
-                new FhirCode("http://hl7.org/fhir/address-type", "postal", "Postal"),
-                new FhirCode("http://hl7.org/fhir/address-type", "physical", "Physical"),
-                new FhirCode("http://hl7.org/fhir/address-type", "both", "Postal & Physical")
-            ],
-
-            // Contact Point System - http://hl7.org/fhir/ValueSet/contact-point-system
-            "http://hl7.org/fhir/ValueSet/contact-point-system" =>
-            [
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "phone", "Phone"),
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "fax", "Fax"),
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "email", "Email"),
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "pager", "Pager"),
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "url", "URL"),
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "sms", "SMS"),
-                new FhirCode("http://hl7.org/fhir/contact-point-system", "other", "Other")
-            ],
-
-            // Contact Point Use - http://hl7.org/fhir/ValueSet/contact-point-use
-            "http://hl7.org/fhir/ValueSet/contact-point-use" =>
-            [
-                new FhirCode("http://hl7.org/fhir/contact-point-use", "home", "Home"),
-                new FhirCode("http://hl7.org/fhir/contact-point-use", "work", "Work"),
-                new FhirCode("http://hl7.org/fhir/contact-point-use", "temp", "Temp"),
-                new FhirCode("http://hl7.org/fhir/contact-point-use", "old", "Old"),
-                new FhirCode("http://hl7.org/fhir/contact-point-use", "mobile", "Mobile")
-            ],
-
-            // Identifier Use - http://hl7.org/fhir/ValueSet/identifier-use
-            "http://hl7.org/fhir/ValueSet/identifier-use" =>
-            [
-                new FhirCode("http://hl7.org/fhir/identifier-use", "usual", "Usual"),
-                new FhirCode("http://hl7.org/fhir/identifier-use", "official", "Official"),
-                new FhirCode("http://hl7.org/fhir/identifier-use", "temp", "Temp"),
-                new FhirCode("http://hl7.org/fhir/identifier-use", "secondary", "Secondary"),
-                new FhirCode("http://hl7.org/fhir/identifier-use", "old", "Old")
-            ],
-
-            // Observation Status - http://hl7.org/fhir/ValueSet/observation-status
-            "http://hl7.org/fhir/ValueSet/observation-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/observation-status", "registered", "Registered"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "preliminary", "Preliminary"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "final", "Final"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "amended", "Amended"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "corrected", "Corrected"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "cancelled", "Cancelled"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/observation-status", "unknown", "Unknown")
-            ],
-
-            // Condition Clinical Status - http://hl7.org/fhir/ValueSet/condition-clinical
-            "http://hl7.org/fhir/ValueSet/condition-clinical" =>
-            [
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-clinical", "active", "Active"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-clinical", "recurrence", "Recurrence"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-clinical", "relapse", "Relapse"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-clinical", "inactive", "Inactive"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-clinical", "remission", "Remission"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-clinical", "resolved", "Resolved")
-            ],
-
-            // Condition Verification Status - http://hl7.org/fhir/ValueSet/condition-ver-status
-            "http://hl7.org/fhir/ValueSet/condition-ver-status" =>
-            [
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-ver-status", "unconfirmed", "Unconfirmed"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-ver-status", "provisional", "Provisional"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-ver-status", "differential", "Differential"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-ver-status", "confirmed", "Confirmed"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-ver-status", "refuted", "Refuted"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/condition-ver-status", "entered-in-error", "Entered in Error")
-            ],
-
-            // Encounter Status - http://hl7.org/fhir/ValueSet/encounter-status
-            // Note: R5 changed significantly - removed "arrived", "triaged", "onleave", "finished"
-            // and added "on-hold", "discharged", "completed", "discontinued".
-            // Only including codes valid across ALL versions (STU3 through R5).
-            "http://hl7.org/fhir/ValueSet/encounter-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/encounter-status", "planned", "Planned"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "in-progress", "In Progress"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "cancelled", "Cancelled"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "unknown", "Unknown")
-            ],
-
-            // Medication Status - http://hl7.org/fhir/ValueSet/medication-status
-            "http://hl7.org/fhir/ValueSet/medication-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medication-status", "active", "Active"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medication-status", "inactive", "Inactive"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medication-status", "entered-in-error", "Entered in Error")
-            ],
-
-            // Medication Request Status - http://hl7.org/fhir/ValueSet/medicationrequest-status
-            "http://hl7.org/fhir/ValueSet/medicationrequest-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "active", "Active"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "on-hold", "On Hold"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "cancelled", "Cancelled"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "completed", "Completed"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "stopped", "Stopped"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "draft", "Draft"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-status", "unknown", "Unknown")
-            ],
-
-            // Medication Request Intent - http://hl7.org/fhir/ValueSet/medicationrequest-intent
-            "http://hl7.org/fhir/ValueSet/medicationrequest-intent" =>
-            [
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "proposal", "Proposal"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "plan", "Plan"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "order", "Order"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "original-order", "Original Order"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "reflex-order", "Reflex Order"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "filler-order", "Filler Order"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "instance-order", "Instance Order"),
-                new FhirCode("http://hl7.org/fhir/CodeSystem/medicationrequest-intent", "option", "Option")
-            ],
-
-            // Procedure Status - http://hl7.org/fhir/ValueSet/event-status
-            "http://hl7.org/fhir/ValueSet/event-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/event-status", "preparation", "Preparation"),
-                new FhirCode("http://hl7.org/fhir/event-status", "in-progress", "In Progress"),
-                new FhirCode("http://hl7.org/fhir/event-status", "not-done", "Not Done"),
-                new FhirCode("http://hl7.org/fhir/event-status", "on-hold", "On Hold"),
-                new FhirCode("http://hl7.org/fhir/event-status", "stopped", "Stopped"),
-                new FhirCode("http://hl7.org/fhir/event-status", "completed", "Completed"),
-                new FhirCode("http://hl7.org/fhir/event-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/event-status", "unknown", "Unknown")
-            ],
-
-            // AllergyIntolerance Clinical Status - http://hl7.org/fhir/ValueSet/allergyintolerance-clinical
-            "http://hl7.org/fhir/ValueSet/allergyintolerance-clinical" =>
-            [
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "active", "Active"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "inactive", "Inactive"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "resolved", "Resolved")
-            ],
-
-            // AllergyIntolerance Verification Status - http://hl7.org/fhir/ValueSet/allergyintolerance-verification (R4+)
-            "http://hl7.org/fhir/ValueSet/allergyintolerance-verification" =>
-            [
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "unconfirmed", "Unconfirmed"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "confirmed", "Confirmed"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "refuted", "Refuted"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "entered-in-error", "Entered in Error")
-            ],
-
-            // AllergyIntolerance Clinical Status - http://hl7.org/fhir/ValueSet/allergy-clinical-status (STU3 URL)
-            "http://hl7.org/fhir/ValueSet/allergy-clinical-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/allergy-clinical-status", "active", "Active"),
-                new FhirCode("http://hl7.org/fhir/allergy-clinical-status", "inactive", "Inactive"),
-                new FhirCode("http://hl7.org/fhir/allergy-clinical-status", "resolved", "Resolved")
-            ],
-
-            // AllergyIntolerance Verification Status - http://hl7.org/fhir/ValueSet/allergy-verification-status (STU3 URL)
-            "http://hl7.org/fhir/ValueSet/allergy-verification-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "unconfirmed", "Unconfirmed"),
-                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "confirmed", "Confirmed"),
-                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "refuted", "Refuted"),
-                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "entered-in-error", "Entered in Error")
-            ],
-
-            // AllergyIntolerance Type - http://hl7.org/fhir/ValueSet/allergy-intolerance-type
-            "http://hl7.org/fhir/ValueSet/allergy-intolerance-type" =>
-            [
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-type", "allergy", "Allergy"),
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-type", "intolerance", "Intolerance")
-            ],
-
-            // AllergyIntolerance Category - http://hl7.org/fhir/ValueSet/allergy-intolerance-category
-            "http://hl7.org/fhir/ValueSet/allergy-intolerance-category" =>
-            [
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-category", "food", "Food"),
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-category", "medication", "Medication"),
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-category", "environment", "Environment"),
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-category", "biologic", "Biologic")
-            ],
-
-            // AllergyIntolerance Criticality - http://hl7.org/fhir/ValueSet/allergy-intolerance-criticality
-            "http://hl7.org/fhir/ValueSet/allergy-intolerance-criticality" =>
-            [
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-criticality", "low", "Low Risk"),
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-criticality", "high", "High Risk"),
-                new FhirCode("http://hl7.org/fhir/allergy-intolerance-criticality", "unable-to-assess", "Unable to Assess Risk")
-            ],
-
-            // Immunization Status - http://hl7.org/fhir/ValueSet/immunization-status
-            // Note: "not-done" was added in R4+. Only including codes valid in STU3+ for cross-version compatibility.
-            "http://hl7.org/fhir/ValueSet/immunization-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/event-status", "completed", "Completed"),
-                new FhirCode("http://hl7.org/fhir/event-status", "entered-in-error", "Entered in Error")
-            ],
-
-            // Diagnostic Report Status - http://hl7.org/fhir/ValueSet/diagnostic-report-status
-            "http://hl7.org/fhir/ValueSet/diagnostic-report-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "registered", "Registered"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "partial", "Partial"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "preliminary", "Preliminary"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "final", "Final"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "amended", "Amended"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "corrected", "Corrected"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "appended", "Appended"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "cancelled", "Cancelled"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/diagnostic-report-status", "unknown", "Unknown")
-            ],
-
-            // Marital Status - http://hl7.org/fhir/ValueSet/marital-status
-            "http://hl7.org/fhir/ValueSet/marital-status" =>
-            [
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "A", "Annulled"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "D", "Divorced"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "I", "Interlocutory"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "L", "Legally Separated"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "M", "Married"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "P", "Polygamous"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "S", "Never Married"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "T", "Domestic Partner"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "U", "Unmarried"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-MaritalStatus", "W", "Widowed"),
-                new FhirCode("http://terminology.hl7.org/CodeSystem/v3-NullFlavor", "UNK", "Unknown")
-            ],
-
-            // Link Type (Patient) - http://hl7.org/fhir/ValueSet/link-type
-            "http://hl7.org/fhir/ValueSet/link-type" =>
-            [
-                new FhirCode("http://hl7.org/fhir/link-type", "replaced-by", "Replaced-by"),
-                new FhirCode("http://hl7.org/fhir/link-type", "replaces", "Replaces"),
-                new FhirCode("http://hl7.org/fhir/link-type", "refer", "Refer"),
-                new FhirCode("http://hl7.org/fhir/link-type", "seealso", "See also")
-            ],
-
-            // Request Intent - http://hl7.org/fhir/ValueSet/request-intent (used by CarePlan, ServiceRequest, etc.)
-            "http://hl7.org/fhir/ValueSet/request-intent" =>
-            [
-                new FhirCode("http://hl7.org/fhir/request-intent", "proposal", "Proposal"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "plan", "Plan"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "order", "Order"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "original-order", "Original Order"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "reflex-order", "Reflex Order"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "filler-order", "Filler Order"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "instance-order", "Instance Order"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "option", "Option")
-            ],
-
-            // Care Plan Intent - http://hl7.org/fhir/ValueSet/care-plan-intent (subset of request-intent)
-            "http://hl7.org/fhir/ValueSet/care-plan-intent" =>
-            [
-                new FhirCode("http://hl7.org/fhir/request-intent", "proposal", "Proposal"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "plan", "Plan"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "order", "Order"),
-                new FhirCode("http://hl7.org/fhir/request-intent", "option", "Option")
-            ],
-
-            // Request Status - http://hl7.org/fhir/ValueSet/request-status (used by CarePlan, ServiceRequest, etc.)
-            "http://hl7.org/fhir/ValueSet/request-status" =>
-            [
-                new FhirCode("http://hl7.org/fhir/request-status", "draft", "Draft"),
-                new FhirCode("http://hl7.org/fhir/request-status", "active", "Active"),
-                new FhirCode("http://hl7.org/fhir/request-status", "on-hold", "On Hold"),
-                new FhirCode("http://hl7.org/fhir/request-status", "revoked", "Revoked"),
-                new FhirCode("http://hl7.org/fhir/request-status", "completed", "Completed"),
-                new FhirCode("http://hl7.org/fhir/request-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/request-status", "unknown", "Unknown")
-            ],
-
-            // Request Priority - http://hl7.org/fhir/ValueSet/request-priority (used by MedicationRequest, ServiceRequest, etc.)
-            "http://hl7.org/fhir/ValueSet/request-priority" =>
-            [
-                new FhirCode("http://hl7.org/fhir/request-priority", "routine", "Routine"),
-                new FhirCode("http://hl7.org/fhir/request-priority", "urgent", "Urgent"),
-                new FhirCode("http://hl7.org/fhir/request-priority", "asap", "ASAP"),
-                new FhirCode("http://hl7.org/fhir/request-priority", "stat", "STAT")
-            ],
-
-            // ===== CLINICAL TERMINOLOGY VALUE SETS =====
-
             // Observation Codes (LOINC) - http://hl7.org/fhir/ValueSet/observation-codes
             "http://hl7.org/fhir/ValueSet/observation-codes" => GetAllLabAndVitalSignCodes(),
 
@@ -423,6 +123,27 @@ internal static class BindingCodeMapper
 
             _ => []
         };
+
+        if (clinicalCodes.Length > 0)
+        {
+            return clinicalCodes;
+        }
+
+        // PRIORITY 2: Fall back to IValueSetProvider (FHIR package valuesets)
+        // Use FHIR spec codes for administrative/structural valuesets that don't have
+        // curated clinical codes (e.g., administrative-gender, name-use, etc.)
+        if (_valueSetProvider is not null)
+        {
+            var codes = _valueSetProvider.GetCodes(normalizedUri);
+            if (codes is not null)
+            {
+                // Convert from Ignixa.Abstractions.FhirCode to Ignixa.FhirFakes.Scenarios.Codes.FhirCode
+                return codes.Select(c => new FhirCode(c.System, c.Code, c.Display)).ToArray();
+            }
+        }
+
+        // No codes found
+        return [];
     }
 
     /// <summary>

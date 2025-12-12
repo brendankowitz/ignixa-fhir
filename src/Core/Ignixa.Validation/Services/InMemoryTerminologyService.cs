@@ -16,33 +16,18 @@ namespace Ignixa.Validation.Services;
 public partial class InMemoryTerminologyService : ITerminologyService
 {
     private readonly Dictionary<string, HashSet<string>> _valueSets = new(StringComparer.Ordinal);
+    private readonly IValueSetProvider _valueSetProvider;
 
     /// <summary>
-    /// Initializes a new instance of the InMemoryTerminologyService for the specified FHIR version.
+    /// Initializes a new instance of the InMemoryTerminologyService using a ValueSet provider.
     /// </summary>
-    /// <param name="fhirVersion">The FHIR version to load ValueSets for.</param>
-    public InMemoryTerminologyService(FhirVersion fhirVersion)
+    /// <param name="valueSetProvider">The value set provider to use for terminology validation.</param>
+    public InMemoryTerminologyService(IValueSetProvider valueSetProvider)
     {
-        switch (fhirVersion)
-        {
-            case FhirVersion.R4:
-                AddFhirR4ValueSets(_valueSets);
-                break;
-            case FhirVersion.R4B:
-                AddFhirR4BValueSets(_valueSets);
-                break;
-            case FhirVersion.R5:
-                AddFhirR5ValueSets(_valueSets);
-                break;
-            case FhirVersion.R6:
-                AddFhirR6ValueSets(_valueSets);
-                break;
-            case FhirVersion.Stu3:
-                AddFhirSTU3ValueSets(_valueSets);
-                break;
-            default:
-                throw new ArgumentException($"Unsupported FHIR version: {fhirVersion}", nameof(fhirVersion));
-        }
+        _valueSetProvider = valueSetProvider ?? throw new ArgumentNullException(nameof(valueSetProvider));
+
+        // _valueSets dictionary is populated lazily on-demand in ValidateCodeAsync
+        // This avoids upfront memory cost and allows efficient caching
     }
     /// Returns ERROR for known ValueSets with invalid codes.
     /// </summary>
@@ -81,14 +66,24 @@ public partial class InMemoryTerminologyService : ITerminologyService
             ? valueSetUrl[..valueSetUrl.LastIndexOf('|')]
             : valueSetUrl;
 
-        // Check if we have this ValueSet in memory
+        // Check if we have this ValueSet in memory cache
         if (!_valueSets.TryGetValue(normalizedUrl, out var validCodes))
         {
-            // Unknown ValueSet - return WARNING (graceful degradation)
-            return Task.FromResult(new TerminologyValidationResult(
-                IsValid: true,
-                Severity: IssueSeverity.Warning,
-                Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - in-memory provider does not contain this ValueSet"));
+            // Try to get from IValueSetProvider
+            var providerCodes = _valueSetProvider.GetCodes(normalizedUrl);
+
+            if (providerCodes is null)
+            {
+                // Unknown ValueSet - return WARNING (graceful degradation)
+                return Task.FromResult(new TerminologyValidationResult(
+                    IsValid: true,
+                    Severity: IssueSeverity.Warning,
+                    Message: $"Terminology validation unavailable for ValueSet '{valueSetUrl}' - provider does not contain this ValueSet"));
+            }
+
+            // Cache the codes for future lookups (convert to HashSet for fast Contains checks)
+            validCodes = new HashSet<string>(providerCodes.Select(c => c.Code), StringComparer.Ordinal);
+            _valueSets[normalizedUrl] = validCodes;
         }
 
         // Check if the code is in the ValueSet

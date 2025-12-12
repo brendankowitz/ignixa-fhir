@@ -14,4 +14,9 @@ public sealed partial class R4BCoreSchemaProvider
         = new(() => new R4BReferenceMetadata());
 
     public IReferenceMetadataProvider ReferenceMetadataProvider => _referenceMetadataProvider.Value;
+
+    private readonly Lazy<IValueSetProvider> _valueSetProvider
+        = new(() => new R4BValueSetProvider());
+
+    public IValueSetProvider ValueSetProvider => _valueSetProvider.Value;
 }

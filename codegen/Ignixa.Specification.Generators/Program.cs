@@ -16,6 +16,7 @@ mode = mode switch
     "compartment" => "compartment",
     "codesystem" => "codesystem",
     "valueset" => "valueset",
+    "valueset-provider" => "valueset-provider",
     "invariant" => "invariant",
     "coreschema" => "coreschema",
     "validation-terminology" => "validation-terminology",
@@ -28,6 +29,7 @@ string defaultOutputDir = mode switch
 {
     "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "ValueSets", "Normative"),
+    "valueset-provider" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "validation-terminology" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Validation", "Generated"),
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
@@ -43,6 +45,7 @@ string title = mode switch
     "compartment" => "Ignixa FHIR Compartment Definition Generator",
     "codesystem" => "Ignixa FHIR Code System Mappings Generator",
     "valueset" => "Ignixa FHIR ValueSet Enum Generator",
+    "valueset-provider" => "Ignixa FHIR ValueSet Provider Generator",
     "invariant" => "Ignixa FHIR Invariant Provider Generator",
     "coreschema" => "Ignixa FHIR Core Schema Provider Generator",
     "validation-terminology" => "Ignixa FHIR In-Memory Terminology Service Generator",
@@ -169,6 +172,17 @@ switch (mode)
             Namespace = "Ignixa.Validation.Generated"
         };
         terminologyLanguage.Export(terminologyConfig, definitions);
+        break;
+
+    case "valueset-provider":
+        Console.WriteLine("Generating ValueSet provider code...");
+        var valueSetProviderLanguage = new CSharpValueSetProviderLanguage();
+        var valueSetProviderConfig = new CSharpValueSetProviderConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Ignixa.Specification.Generated"
+        };
+        valueSetProviderLanguage.Export(valueSetProviderConfig, definitions);
         break;
 
     default: // structure

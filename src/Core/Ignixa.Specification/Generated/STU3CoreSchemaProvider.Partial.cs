@@ -14,4 +14,9 @@ public sealed partial class STU3CoreSchemaProvider
         = new(() => new Stu3ReferenceMetadata());
 
     public IReferenceMetadataProvider ReferenceMetadataProvider => _referenceMetadataProvider.Value;
+
+    private readonly Lazy<IValueSetProvider> _valueSetProvider
+        = new(() => new Stu3ValueSetProvider());
+
+    public IValueSetProvider ValueSetProvider => _valueSetProvider.Value;
 }

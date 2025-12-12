@@ -8,11 +8,11 @@ using System.Text.Json.Nodes;
 using Bogus;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Builders;
-using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes;
 
@@ -68,6 +68,9 @@ public class SchemaBasedFhirResourceFaker
         _schemaProvider = schemaProvider;
         _faker = new Faker();
         _random = new Random();
+
+        // Initialize BindingCodeMapper with the schema provider's ValueSetProvider
+        BindingCodeMapper.Initialize(schemaProvider.ValueSetProvider);
     }
 
     /// <summary>

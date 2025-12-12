@@ -35,7 +35,13 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
     {
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _builder = builder ?? new StructureDefinitionSchemaBuilder();
-        _terminologyService = terminologyService ?? new InMemoryTerminologyService(schema.Version);
+
+        // If no terminology service provided, create default InMemoryTerminologyService
+        // using the schema's ValueSetProvider if available
+        _terminologyService = terminologyService ??
+            (schema is IFhirSchemaProvider schemaProvider
+                ? new InMemoryTerminologyService(schemaProvider.ValueSetProvider)
+                : throw new InvalidOperationException("Schema must implement IFhirSchemaProvider to use default InMemoryTerminologyService"));
 
         // Extract valid resource types if schema is an IFhirSchemaProvider
         _validResourceTypes = (schema as IFhirSchemaProvider)?.ResourceTypeNames;

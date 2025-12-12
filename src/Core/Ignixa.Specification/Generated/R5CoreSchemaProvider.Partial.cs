@@ -14,4 +14,9 @@ public sealed partial class R5CoreSchemaProvider
         = new(() => new R5ReferenceMetadata());
 
     public IReferenceMetadataProvider ReferenceMetadataProvider => _referenceMetadataProvider.Value;
+
+    private readonly Lazy<IValueSetProvider> _valueSetProvider
+        = new(() => new R5ValueSetProvider());
+
+    public IValueSetProvider ValueSetProvider => _valueSetProvider.Value;
 }
