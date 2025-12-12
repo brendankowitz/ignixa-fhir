@@ -577,6 +577,21 @@ public class BindingAwareGenerationTests
         }
     }
 
+    [Fact]
+    public void GenerateCarePlan_WhenIntentHasRequiredBinding_ThenUsesValidCarePlanIntentCode()
+    {
+        // Arrange & Act
+        var carePlan = _faker.Generate("CarePlan");
+
+        // Assert
+        var intent = carePlan.MutableNode["intent"]?.GetValue<string>();
+        intent.Should().NotBeNullOrEmpty("CarePlan.intent is required");
+        intent.Should().BeOneOf("proposal", "plan", "order", "option",
+            "CarePlan.intent should use care-plan-intent value set (required binding)");
+        intent.Should().NotMatch(@"^[0-9a-z]+$",
+            "CarePlan.intent should not be a random alphanumeric code like '0xucbq'");
+    }
+
     #endregion
 
     #region Multiple Generation Consistency Tests
@@ -626,6 +641,31 @@ public class BindingAwareGenerationTests
         generatedStatuses.Should().AllSatisfy(s =>
             s.Should().BeOneOf("registered", "preliminary", "final", "amended",
                 "corrected", "cancelled", "entered-in-error", "unknown"));
+    }
+
+    [Fact]
+    public void GenerateMultipleCarePlans_WhenIntentHasRequiredBinding_ThenAllUsesValidIntentCodes()
+    {
+        // Arrange
+        var generatedIntents = new List<string>();
+
+        // Act
+        for (int i = 0; i < 50; i++)
+        {
+            var carePlan = _faker.Generate("CarePlan");
+            var intent = carePlan.MutableNode["intent"]?.GetValue<string>();
+            if (intent is not null)
+            {
+                generatedIntents.Add(intent);
+            }
+        }
+
+        // Assert
+        generatedIntents.Should().NotBeEmpty("CarePlan.intent is required");
+        generatedIntents.Should().HaveCount(50, "CarePlan.intent is required and should be generated every time");
+        generatedIntents.Should().AllSatisfy(i =>
+            i.Should().BeOneOf("proposal", "plan", "order", "option",
+                "All generated CarePlan.intent codes should be valid"));
     }
 
     #endregion

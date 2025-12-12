@@ -126,14 +126,29 @@ public sealed class ConditionOnsetState : ScenarioState
             ["reference"] = $"Patient/{context.Patient.Id}"
         };
 
-        // Set encounter reference if available
+        // Set encounter reference if available (STU3 uses "context" instead of "encounter")
+        var encounterField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Condition",
+            "encounter");
+
         if (context.CurrentEncounter is not null)
         {
-            node["encounter"] = new JsonObject
+            node[encounterField] = new JsonObject
             {
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
         }
+        else
+        {
+            // Clear any faker-generated encounter reference
+            node.Remove(encounterField);
+            // Also clear STU3 "context" field if present
+            node.Remove("context");
+        }
+
+        // Remove any existing choice element variants to avoid "Choice element 'onset[x]' can only have one type variant" error
+        RemoveChoiceConflicts(node, "onset");
 
         // Set onset date using version-appropriate field name (R4+ normative is "onsetDateTime")
         var onsetField = VersionFieldOverrides.GetFieldName(
@@ -142,8 +157,12 @@ public sealed class ConditionOnsetState : ScenarioState
             "onsetDateTime");
         node[onsetField] = context.CurrentTime.ToString("o");
 
-        // Set recorded date
-        node["recordedDate"] = context.CurrentTime.ToString("o");
+        // Set recorded date using version-appropriate field name (STU3 uses "assertedDate" instead of "recordedDate")
+        var recordedDateField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Condition",
+            "recordedDate");
+        node[recordedDateField] = context.CurrentTime.ToString("o");
 
         // Add to context
         context.AddCondition(condition, Code.Display);

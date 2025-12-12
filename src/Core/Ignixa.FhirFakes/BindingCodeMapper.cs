@@ -184,17 +184,24 @@ internal static class BindingCodeMapper
             ],
 
             // Encounter Status - http://hl7.org/fhir/ValueSet/encounter-status
+            // Note: R5 changed significantly - removed "arrived", "triaged", "onleave", "finished"
+            // and added "on-hold", "discharged", "completed", "discontinued".
+            // Only including codes valid across ALL versions (STU3 through R5).
             "http://hl7.org/fhir/ValueSet/encounter-status" =>
             [
                 new FhirCode("http://hl7.org/fhir/encounter-status", "planned", "Planned"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "arrived", "Arrived"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "triaged", "Triaged"),
                 new FhirCode("http://hl7.org/fhir/encounter-status", "in-progress", "In Progress"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "onleave", "On Leave"),
-                new FhirCode("http://hl7.org/fhir/encounter-status", "finished", "Finished"),
                 new FhirCode("http://hl7.org/fhir/encounter-status", "cancelled", "Cancelled"),
                 new FhirCode("http://hl7.org/fhir/encounter-status", "entered-in-error", "Entered in Error"),
                 new FhirCode("http://hl7.org/fhir/encounter-status", "unknown", "Unknown")
+            ],
+
+            // Medication Status - http://hl7.org/fhir/ValueSet/medication-status
+            "http://hl7.org/fhir/ValueSet/medication-status" =>
+            [
+                new FhirCode("http://hl7.org/fhir/CodeSystem/medication-status", "active", "Active"),
+                new FhirCode("http://hl7.org/fhir/CodeSystem/medication-status", "inactive", "Inactive"),
+                new FhirCode("http://hl7.org/fhir/CodeSystem/medication-status", "entered-in-error", "Entered in Error")
             ],
 
             // Medication Request Status - http://hl7.org/fhir/ValueSet/medicationrequest-status
@@ -244,13 +251,30 @@ internal static class BindingCodeMapper
                 new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "resolved", "Resolved")
             ],
 
-            // AllergyIntolerance Verification Status - http://hl7.org/fhir/ValueSet/allergyintolerance-verification
+            // AllergyIntolerance Verification Status - http://hl7.org/fhir/ValueSet/allergyintolerance-verification (R4+)
             "http://hl7.org/fhir/ValueSet/allergyintolerance-verification" =>
             [
                 new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "unconfirmed", "Unconfirmed"),
                 new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "confirmed", "Confirmed"),
                 new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "refuted", "Refuted"),
                 new FhirCode("http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "entered-in-error", "Entered in Error")
+            ],
+
+            // AllergyIntolerance Clinical Status - http://hl7.org/fhir/ValueSet/allergy-clinical-status (STU3 URL)
+            "http://hl7.org/fhir/ValueSet/allergy-clinical-status" =>
+            [
+                new FhirCode("http://hl7.org/fhir/allergy-clinical-status", "active", "Active"),
+                new FhirCode("http://hl7.org/fhir/allergy-clinical-status", "inactive", "Inactive"),
+                new FhirCode("http://hl7.org/fhir/allergy-clinical-status", "resolved", "Resolved")
+            ],
+
+            // AllergyIntolerance Verification Status - http://hl7.org/fhir/ValueSet/allergy-verification-status (STU3 URL)
+            "http://hl7.org/fhir/ValueSet/allergy-verification-status" =>
+            [
+                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "unconfirmed", "Unconfirmed"),
+                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "confirmed", "Confirmed"),
+                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "refuted", "Refuted"),
+                new FhirCode("http://hl7.org/fhir/allergy-verification-status", "entered-in-error", "Entered in Error")
             ],
 
             // AllergyIntolerance Type - http://hl7.org/fhir/ValueSet/allergy-intolerance-type
@@ -278,11 +302,11 @@ internal static class BindingCodeMapper
             ],
 
             // Immunization Status - http://hl7.org/fhir/ValueSet/immunization-status
+            // Note: "not-done" was added in R4+. Only including codes valid in STU3+ for cross-version compatibility.
             "http://hl7.org/fhir/ValueSet/immunization-status" =>
             [
                 new FhirCode("http://hl7.org/fhir/event-status", "completed", "Completed"),
-                new FhirCode("http://hl7.org/fhir/event-status", "entered-in-error", "Entered in Error"),
-                new FhirCode("http://hl7.org/fhir/event-status", "not-done", "Not Done")
+                new FhirCode("http://hl7.org/fhir/event-status", "entered-in-error", "Entered in Error")
             ],
 
             // Diagnostic Report Status - http://hl7.org/fhir/ValueSet/diagnostic-report-status
@@ -323,6 +347,49 @@ internal static class BindingCodeMapper
                 new FhirCode("http://hl7.org/fhir/link-type", "replaces", "Replaces"),
                 new FhirCode("http://hl7.org/fhir/link-type", "refer", "Refer"),
                 new FhirCode("http://hl7.org/fhir/link-type", "seealso", "See also")
+            ],
+
+            // Request Intent - http://hl7.org/fhir/ValueSet/request-intent (used by CarePlan, ServiceRequest, etc.)
+            "http://hl7.org/fhir/ValueSet/request-intent" =>
+            [
+                new FhirCode("http://hl7.org/fhir/request-intent", "proposal", "Proposal"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "plan", "Plan"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "order", "Order"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "original-order", "Original Order"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "reflex-order", "Reflex Order"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "filler-order", "Filler Order"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "instance-order", "Instance Order"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "option", "Option")
+            ],
+
+            // Care Plan Intent - http://hl7.org/fhir/ValueSet/care-plan-intent (subset of request-intent)
+            "http://hl7.org/fhir/ValueSet/care-plan-intent" =>
+            [
+                new FhirCode("http://hl7.org/fhir/request-intent", "proposal", "Proposal"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "plan", "Plan"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "order", "Order"),
+                new FhirCode("http://hl7.org/fhir/request-intent", "option", "Option")
+            ],
+
+            // Request Status - http://hl7.org/fhir/ValueSet/request-status (used by CarePlan, ServiceRequest, etc.)
+            "http://hl7.org/fhir/ValueSet/request-status" =>
+            [
+                new FhirCode("http://hl7.org/fhir/request-status", "draft", "Draft"),
+                new FhirCode("http://hl7.org/fhir/request-status", "active", "Active"),
+                new FhirCode("http://hl7.org/fhir/request-status", "on-hold", "On Hold"),
+                new FhirCode("http://hl7.org/fhir/request-status", "revoked", "Revoked"),
+                new FhirCode("http://hl7.org/fhir/request-status", "completed", "Completed"),
+                new FhirCode("http://hl7.org/fhir/request-status", "entered-in-error", "Entered in Error"),
+                new FhirCode("http://hl7.org/fhir/request-status", "unknown", "Unknown")
+            ],
+
+            // Request Priority - http://hl7.org/fhir/ValueSet/request-priority (used by MedicationRequest, ServiceRequest, etc.)
+            "http://hl7.org/fhir/ValueSet/request-priority" =>
+            [
+                new FhirCode("http://hl7.org/fhir/request-priority", "routine", "Routine"),
+                new FhirCode("http://hl7.org/fhir/request-priority", "urgent", "Urgent"),
+                new FhirCode("http://hl7.org/fhir/request-priority", "asap", "ASAP"),
+                new FhirCode("http://hl7.org/fhir/request-priority", "stat", "STAT")
             ],
 
             // ===== CLINICAL TERMINOLOGY VALUE SETS =====

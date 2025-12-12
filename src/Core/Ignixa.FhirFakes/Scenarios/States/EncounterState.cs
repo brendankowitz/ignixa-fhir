@@ -20,9 +20,11 @@ public sealed class EncounterState : ScenarioState
     public FhirCode EncounterType { get; init; } = FhirCode.EncounterTypes.Ambulatory;
 
     /// <summary>
-    /// Gets or sets the encounter status ("planned", "arrived", "triaged", "in-progress", "onleave", "finished", "cancelled").
+    /// Gets or sets the encounter status.
+    /// Cross-version compatible values: "planned", "in-progress", "cancelled", "entered-in-error", "unknown".
+    /// Note: "finished" (STU3-R4B) was renamed to "completed" in R5. Use "in-progress" for cross-version compatibility.
     /// </summary>
-    public string Status { get; init; } = "finished";
+    public string Status { get; init; } = "in-progress";
 
     /// <summary>
     /// Gets or sets the encounter class ("AMB", "EMER", "IMP", etc.).
@@ -91,25 +93,38 @@ public sealed class EncounterState : ScenarioState
             ["reference"] = $"Patient/{context.Patient.Id}"
         };
 
-        // Set period
+        // Set period (R5 uses "actualPeriod" instead of "period")
         var startTime = context.CurrentTime;
         var endTime = startTime.AddMinutes(DurationMinutes);
-        node["period"] = new JsonObject
+        var periodField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Encounter",
+            "period");
+        node[periodField] = new JsonObject
         {
             ["start"] = startTime.ToString("o"),
             ["end"] = endTime.ToString("o")
         };
 
-        // Set reason if provided
+        // Set reason if provided (version-aware field name: R4/R4B uses "reasonCode", STU3 uses "reason", R5 uses backbone element)
         if (!string.IsNullOrEmpty(Reason))
         {
-            node["reasonCode"] = new JsonArray
+            var reasonField = VersionFieldOverrides.GetFieldName(
+                faker.SchemaProvider.Version,
+                "Encounter",
+                "reasonCode");
+
+            // Skip R5 as it requires a different structure (Encounter.Reason backbone element)
+            if (!string.IsNullOrEmpty(reasonField))
             {
-                new JsonObject
+                node[reasonField] = new JsonArray
                 {
-                    ["text"] = Reason
-                }
-            };
+                    new JsonObject
+                    {
+                        ["text"] = Reason
+                    }
+                };
+            }
         }
 
         // Set participant if practitioner is available

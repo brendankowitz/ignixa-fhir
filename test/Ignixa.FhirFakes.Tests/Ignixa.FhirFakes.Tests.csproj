@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirFakes\Ignixa.FhirFakes.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
   </ItemGroup>
 
 </Project>

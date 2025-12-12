@@ -372,9 +372,13 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
+        // DiagnosticReport.performer is a BackboneElement[] with actor (Reference)
+        // The actor reference can have either "reference" or "display" or both
         var report = scenario.DiagnosticReports[0];
-        var performer = report.MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
-        performer.Should().NotBeNullOrEmpty();
+        var performerActor = report.MutableNode["performer"]?[0]?["actor"];
+        performerActor.Should().NotBeNull();
+        var hasRefOrDisplay = performerActor?["reference"] != null || performerActor?["display"] != null;
+        hasRefOrDisplay.Should().BeTrue("performer.actor should have either reference or display");
     }
 
     #endregion

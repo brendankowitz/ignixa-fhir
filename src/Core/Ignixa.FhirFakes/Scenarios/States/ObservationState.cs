@@ -81,6 +81,11 @@ public sealed class ObservationState : ScenarioState
         var observation = faker.Generate("Observation");
         var node = observation.MutableNode;
 
+        // Remove any existing choice element variants to avoid conflicts
+        // The faker may generate placeholder values for choice elements
+        RemoveChoiceConflicts(node, "effective");
+        RemoveChoiceConflicts(node, "value");
+
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
         node["status"] = Status;
@@ -123,13 +128,25 @@ public sealed class ObservationState : ScenarioState
             ["reference"] = $"Patient/{context.Patient.Id}"
         };
 
-        // Set encounter reference if available
+        // Set encounter reference if available (STU3 uses "context" instead of "encounter")
+        var encounterField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Observation",
+            "encounter");
+
         if (context.CurrentEncounter is not null)
         {
-            node["encounter"] = new JsonObject
+            node[encounterField] = new JsonObject
             {
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
+        }
+        else
+        {
+            // Clear any faker-generated encounter reference
+            node.Remove(encounterField);
+            // Also clear STU3 "context" field if present
+            node.Remove("context");
         }
 
         // Set effective date using version-appropriate field name (R4+ normative is "effectiveDateTime")
@@ -157,7 +174,7 @@ public sealed class ObservationState : ScenarioState
                         ? _faker.Random.Decimal(component.ValueRangeMin.Value, component.ValueRangeMax.Value)
                         : 0);
 
-                componentArray.Add(new JsonObject
+                var componentNode = new JsonObject
                 {
                     ["code"] = new JsonObject
                     {
@@ -178,7 +195,9 @@ public sealed class ObservationState : ScenarioState
                         ["system"] = FhirCode.Systems.Ucum,
                         ["code"] = component.UnitCode ?? "mm[Hg]"
                     }
-                });
+                };
+
+                componentArray.Add(componentNode);
             }
             node["component"] = componentArray;
         }

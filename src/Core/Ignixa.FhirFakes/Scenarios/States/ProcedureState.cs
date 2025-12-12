@@ -141,13 +141,23 @@ public sealed class ProcedureState : ScenarioState
             ["reference"] = $"Patient/{context.Patient.Id}"
         };
 
-        // Set encounter reference if available
+        // Set encounter reference if available (STU3 uses "context" instead of "encounter")
+        var encounterField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Procedure",
+            "encounter");
+
         if (context.CurrentEncounter is not null)
         {
-            node["encounter"] = new JsonObject
+            node[encounterField] = new JsonObject
             {
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
+        }
+        else
+        {
+            // Remove any pre-generated encounter reference from faker
+            node.Remove(encounterField);
         }
 
         // Set performed period using version-appropriate field name (R4+ normative is "performedPeriod")
@@ -159,6 +169,11 @@ public sealed class ProcedureState : ScenarioState
             faker.SchemaProvider.Version,
             "Procedure",
             "performedPeriod");
+
+        // Remove any existing choice element variants to avoid "Choice element 'performed[x]' can only have one type variant" error
+        RemoveChoiceConflicts(node, "performed");
+
+        // Set the desired choice element variant
         node[performedField] = new JsonObject
         {
             ["start"] = startTime.ToString("o"),
@@ -178,12 +193,18 @@ public sealed class ProcedureState : ScenarioState
             performerActor["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
         }
 
+        // STU3 uses "role" instead of "function" for performer role
+        var performerFunctionField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Procedure.performer",
+            "function");
+
         node["performer"] = new JsonArray
         {
             new JsonObject
             {
                 ["actor"] = performerActor,
-                ["function"] = new JsonObject
+                [performerFunctionField] = new JsonObject
                 {
                     ["coding"] = new JsonArray
                     {

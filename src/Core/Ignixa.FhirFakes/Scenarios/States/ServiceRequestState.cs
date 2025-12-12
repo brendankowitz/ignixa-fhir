@@ -218,6 +218,11 @@ public sealed class ServiceRequestState : ScenarioState
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
         }
+        else
+        {
+            // Clear any faker-generated encounter reference
+            node.Remove("encounter");
+        }
 
         // Set requester if practitioner is available
         if (context.CurrentPractitioner is not null)

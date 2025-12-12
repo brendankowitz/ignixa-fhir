@@ -24,6 +24,52 @@ internal static class VersionFieldOverrides
 
         // MedicationRequest: STU3 uses bare "medication" field instead of choice types
         { (FhirVersion.Stu3, "MedicationRequest", "medicationCodeableConcept"), "medication" },
+
+        // Encounter: STU3 uses "reason" instead of "reasonCode" (and reason is a CodeableConcept array)
+        { (FhirVersion.Stu3, "Encounter", "reasonCode"), "reason" },
+
+        // Procedure: STU3 uses "performed[x]" as choice element (not "performedPeriod" directly)
+        { (FhirVersion.Stu3, "Procedure", "performedPeriod"), "performedPeriod" },
+
+        // Procedure: STU3 uses "context" instead of "encounter" for encounter reference
+        { (FhirVersion.Stu3, "Procedure", "encounter"), "context" },
+
+        // Procedure.performer: STU3 uses "role" instead of "function"
+        { (FhirVersion.Stu3, "Procedure.performer", "function"), "role" },
+
+        // Condition: STU3 uses "context" instead of "encounter" for encounter reference
+        { (FhirVersion.Stu3, "Condition", "encounter"), "context" },
+
+        // Condition: STU3 uses "assertedDate" instead of "recordedDate"
+        { (FhirVersion.Stu3, "Condition", "recordedDate"), "assertedDate" },
+
+        // Observation: STU3 uses "context" instead of "encounter" for encounter reference
+        { (FhirVersion.Stu3, "Observation", "encounter"), "context" },
+
+        // AllergyIntolerance: STU3 doesn't have "encounter" field (it was added in R4)
+        // Map to empty to signal it should be skipped in STU3
+        { (FhirVersion.Stu3, "AllergyIntolerance", "encounter"), "" },
+
+        // DiagnosticReport: STU3 uses "context" instead of "encounter"
+        { (FhirVersion.Stu3, "DiagnosticReport", "encounter"), "context" },
+
+        // Immunization: STU3 uses "date" instead of "occurrenceDateTime"
+        { (FhirVersion.Stu3, "Immunization", "occurrenceDateTime"), "date" },
+
+        // AllergyIntolerance: STU3 uses "assertedDate" instead of "recordedDate"
+        { (FhirVersion.Stu3, "AllergyIntolerance", "recordedDate"), "assertedDate" },
+
+        // R5-specific overrides (breaking changes from R4)
+
+        // Encounter: R5 uses "actualPeriod" instead of "period"
+        { (FhirVersion.R5, "Encounter", "period"), "actualPeriod" },
+
+        // Encounter: R5 uses "reason" with different structure (backbone element) instead of "reasonCode"
+        // Map to empty to signal the state should skip this in R5 (reason structure is complex)
+        { (FhirVersion.R5, "Encounter", "reasonCode"), "" },
+
+        // Encounter: R5 uses "completed" instead of "finished" for status
+        // Note: This isn't a field override but a code mapping issue handled in BindingCodeMapper
     };
 
     /// <summary>

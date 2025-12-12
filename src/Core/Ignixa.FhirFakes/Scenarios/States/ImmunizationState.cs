@@ -129,8 +129,17 @@ public sealed class ImmunizationState : ScenarioState
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
         }
+        else
+        {
+            // Clear any faker-generated encounter reference
+            node.Remove("encounter");
+        }
 
-        // Set occurrence date using version-appropriate field name (R4+ normative is "occurrenceDateTime")
+        // Remove any existing choice element variants to avoid conflicts
+        // The faker may generate placeholder values for choice elements
+        RemoveChoiceConflicts(node, "occurrence");
+
+        // Set occurrence date using version-appropriate field name (R4+ normative is "occurrenceDateTime", STU3 is "date")
         var occurrenceField = VersionFieldOverrides.GetFieldName(
             faker.SchemaProvider.Version,
             "Immunization",
@@ -194,7 +203,11 @@ public sealed class ImmunizationState : ScenarioState
         };
 
         // Set performer (administering provider)
-        var performerActor = new JsonObject
+        // In STU3, use "practitioner" (BackboneElement[] with role and actor).
+        // In R4+, use "performer" (BackboneElement[] with function and actor).
+        var isSTU3 = faker.SchemaProvider.Version == Ignixa.Abstractions.FhirVersion.Stu3;
+
+        var performerRef = new JsonObject
         {
             ["display"] = _faker.Name.FullName() + ", RN"
         };
@@ -202,28 +215,55 @@ public sealed class ImmunizationState : ScenarioState
         // Add practitioner reference if available
         if (context.CurrentPractitioner is not null)
         {
-            performerActor["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
+            performerRef["reference"] = $"Practitioner/{context.CurrentPractitioner.Id}";
         }
 
-        node["performer"] = new JsonArray
+        if (isSTU3)
         {
-            new JsonObject
+            // STU3: BackboneElement[] with role (CodeableConcept) and actor (Reference)
+            node["practitioner"] = new JsonArray
             {
-                ["function"] = new JsonObject
+                new JsonObject
                 {
-                    ["coding"] = new JsonArray
+                    ["role"] = new JsonObject
                     {
-                        new JsonObject
+                        ["coding"] = new JsonArray
                         {
-                            ["system"] = "http://terminology.hl7.org/CodeSystem/v2-0443",
-                            ["code"] = "AP",
-                            ["display"] = "Administering Provider"
+                            new JsonObject
+                            {
+                                ["system"] = "http://hl7.org/fhir/v2/0443",
+                                ["code"] = "AP",
+                                ["display"] = "Administering Provider"
+                            }
                         }
-                    }
-                },
-                ["actor"] = performerActor
-            }
-        };
+                    },
+                    ["actor"] = performerRef
+                }
+            };
+        }
+        else
+        {
+            // R4+: BackboneElement[] with function and actor
+            node["performer"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["function"] = new JsonObject
+                    {
+                        ["coding"] = new JsonArray
+                        {
+                            new JsonObject
+                            {
+                                ["system"] = "http://terminology.hl7.org/CodeSystem/v2-0443",
+                                ["code"] = "AP",
+                                ["display"] = "Administering Provider"
+                            }
+                        }
+                    },
+                    ["actor"] = performerRef
+                }
+            };
+        }
 
         // Set protocol applied (dose series tracking) - version-aware field naming
         var protocolFieldName = faker.SchemaProvider.GetImmunizationProtocolFieldName();
@@ -240,6 +280,7 @@ public sealed class ImmunizationState : ScenarioState
     private JsonObject CreateProtocolApplied(IFhirSchemaProvider schemaProvider)
     {
         var protocol = new JsonObject();
+        var isSTU3 = schemaProvider.Version == Ignixa.Abstractions.FhirVersion.Stu3;
 
         // Version-aware dose number field
         var doseNumberFieldName = schemaProvider.GetImmunizationDoseNumberFieldName();
@@ -259,6 +300,42 @@ public sealed class ImmunizationState : ScenarioState
             {
                 protocol[seriesDosesFieldName] = SeriesDosesRecommended.Value;
             }
+        }
+
+        // STU3-specific required fields: targetDisease and doseStatus
+        if (isSTU3)
+        {
+            // targetDisease is required in STU3 - use a generic code based on vaccine
+            protocol["targetDisease"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["coding"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["system"] = FhirCode.Systems.SnomedCt,
+                            ["code"] = "840539006", // Disease caused by SARS-CoV-2 (generic disease code)
+                            ["display"] = "Infectious disease"
+                        }
+                    },
+                    ["text"] = "Target disease"
+                }
+            };
+
+            // doseStatus is required in STU3
+            protocol["doseStatus"] = new JsonObject
+            {
+                ["coding"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["system"] = "http://terminology.hl7.org/CodeSystem/vaccination-protocol-dose-status",
+                        ["code"] = "count",
+                        ["display"] = "Counts"
+                    }
+                }
+            };
         }
 
         return protocol;

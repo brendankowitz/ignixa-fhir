@@ -124,6 +124,11 @@ public sealed class MedicationOrderState : ScenarioState
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
         }
+        else
+        {
+            // Clear any faker-generated encounter reference
+            node.Remove("encounter");
+        }
 
         // Set authored date
         node["authoredOn"] = context.CurrentTime.ToString("o");

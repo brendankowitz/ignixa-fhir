@@ -177,6 +177,11 @@ public sealed class CarePlanState : ScenarioState
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
         }
+        else
+        {
+            // Clear any faker-generated encounter reference
+            node.Remove("encounter");
+        }
 
         // Set period
         var periodStart = PeriodStart ?? context.CurrentTime;

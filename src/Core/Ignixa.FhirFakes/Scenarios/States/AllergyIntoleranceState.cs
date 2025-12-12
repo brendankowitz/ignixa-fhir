@@ -93,6 +93,10 @@ public sealed class AllergyIntoleranceState : ScenarioState
         var allergy = faker.Generate("AllergyIntolerance");
         var node = allergy.MutableNode;
 
+        // Remove any existing choice element variants to avoid conflicts
+        // The faker may generate placeholder values for choice elements
+        RemoveChoiceConflicts(node, "onset");
+
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
 
@@ -159,12 +163,23 @@ public sealed class AllergyIntoleranceState : ScenarioState
         };
 
         // Set encounter reference if available
-        if (context.CurrentEncounter is not null)
+        // STU3 doesn't have an encounter field for AllergyIntolerance, so check if it should be skipped
+        var encounterField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "AllergyIntolerance",
+            "encounter");
+
+        if (context.CurrentEncounter is not null && !string.IsNullOrEmpty(encounterField))
         {
-            node["encounter"] = new JsonObject
+            node[encounterField] = new JsonObject
             {
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
+        }
+        else
+        {
+            // Clear any faker-generated encounter reference (R4+ only, STU3 doesn't have encounter)
+            node.Remove("encounter");
         }
 
         // Set onset date using version-appropriate field name (R4+ normative is "onsetDateTime")
@@ -175,9 +190,13 @@ public sealed class AllergyIntoleranceState : ScenarioState
             "onsetDateTime");
         node[onsetField] = onsetDateTime.ToString("o");
 
-        // Set recorded date
+        // Set recorded date (STU3 uses "assertedDate" instead of "recordedDate")
         var recordedDateTime = RecordedDate ?? context.CurrentTime;
-        node["recordedDate"] = recordedDateTime.ToString("o");
+        var recordedDateField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "AllergyIntolerance",
+            "recordedDate");
+        node[recordedDateField] = recordedDateTime.ToString("o");
 
         // Set recorder (who documented this allergy)
         var recorderNode = new JsonObject

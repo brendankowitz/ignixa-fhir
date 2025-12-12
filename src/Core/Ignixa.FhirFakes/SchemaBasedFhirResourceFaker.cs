@@ -288,7 +288,12 @@ public class SchemaBasedFhirResourceFaker
         }
 
         // Complex types - use specialized generators with binding awareness
-        var childTypeName = element.Info.Name;
+        // For child elements, Info.Name is the element name, not the type name.
+        // Get the actual type from Types[0] or fallback to Info.Name for root resources.
+        var childTypeName = element is ITypeExtended extended && extended.Types.Count > 0
+            ? extended.Types[0].Code
+            : element.Info.Name;
+
         return childTypeName switch
         {
             "HumanName" => GenerateHumanName(element),
@@ -303,6 +308,7 @@ public class SchemaBasedFhirResourceFaker
             "Range" => GenerateRange(),
             "Ratio" => GenerateRatio(),
             "Attachment" => GenerateAttachment(),
+            "CodeableReference" => GenerateCodeableReference(lowerName, element, parentResourceType),
             _ => null // Unknown complex type - skip
         };
     }
@@ -443,6 +449,7 @@ public class SchemaBasedFhirResourceFaker
 
     /// <summary>
     /// Generates code values using binding information (preferred) or element name heuristics (fallback).
+    /// For required bindings, only generates codes from the value set - never falls back to random codes.
     /// </summary>
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "FHIR codes are lowercase by convention")]
     private JsonValue GenerateCodeValue(string lowerName, IType element)
@@ -455,9 +462,16 @@ public class SchemaBasedFhirResourceFaker
                 var selectedCode = _faker.PickRandom(codes);
                 return JsonValue.Create(selectedCode.Code)!;
             }
+
+            // For required bindings, we MUST use a code from the value set
+            // If we don't have codes defined, use common fallback codes for well-known value sets
+            if (BindingCodeMapper.IsRequiredBinding(binding.Strength))
+            {
+                return GenerateFallbackCodeForRequiredBinding(binding.ValueSet, lowerName);
+            }
         }
 
-        // Fall back to heuristics
+        // Fall back to heuristics (only for non-required bindings)
         if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
         {
             return JsonValue.Create(_faker.PickRandom("male", "female"));
@@ -477,6 +491,39 @@ public class SchemaBasedFhirResourceFaker
 
         // Default: random alphanumeric code
         return JsonValue.Create(_faker.Random.AlphaNumeric(6).ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// Generates a fallback code for required bindings when we don't have the value set defined.
+    /// Uses common fallback codes for well-known value sets to ensure valid FHIR resources.
+    /// </summary>
+    [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
+    private JsonValue GenerateFallbackCodeForRequiredBinding(string? valueSetUri, string elementName)
+    {
+        // Normalize the value set URI (remove version suffixes)
+        var normalizedUri = valueSetUri?.Contains('|', StringComparison.Ordinal) == true
+            ? valueSetUri[..valueSetUri.IndexOf('|', StringComparison.Ordinal)]
+            : valueSetUri;
+
+        // Use element name patterns as fallback for common required bindings
+        var lowerName = elementName.ToLowerInvariant();
+
+        if (lowerName.Contains("intent", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("plan", "order", "proposal"));
+        }
+        if (lowerName.Contains("status", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("active", "completed", "entered-in-error"));
+        }
+        if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonValue.Create(_faker.PickRandom("male", "female", "other", "unknown"));
+        }
+
+        // Ultimate fallback for required bindings we don't recognize
+        // Use a safe generic code that's common across many value sets
+        return JsonValue.Create("unknown");
     }
 
     #region Complex Type Generators
@@ -570,6 +617,58 @@ public class SchemaBasedFhirResourceFaker
         {
             ["coding"] = new JsonArray(GenerateCoding(context, element)),
             ["text"] = _faker.Lorem.Sentence(3)
+        };
+    }
+
+    /// <summary>
+    /// Generates a CodeableReference (R5+ type that combines CodeableConcept and Reference).
+    /// This type allows either a concept or a reference to be provided.
+    /// </summary>
+    private JsonObject GenerateCodeableReference(string context, IType element, string? parentResourceType)
+    {
+        // CodeableReference can have either concept (CodeableConcept) or reference (Reference)
+        // For fake data generation, we'll prefer concept since it's self-contained
+        // But for medication contexts, we'll use a concept
+
+        // Try to get binding information for concept generation
+        if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
+        {
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            {
+                var selectedCode = _faker.PickRandom(codes);
+                return new JsonObject
+                {
+                    ["concept"] = CreateCodeableConcept(selectedCode)
+                };
+            }
+        }
+
+        // Fall back to heuristic-based concept generation
+        if (TryGetCodeFromHeuristic(context, out var fhirCode))
+        {
+            return new JsonObject
+            {
+                ["concept"] = CreateCodeableConcept(fhirCode)
+            };
+        }
+
+        // Ultimate fallback: generic medication code for medication-related contexts
+        if (context.Contains("medication", StringComparison.OrdinalIgnoreCase))
+        {
+            return new JsonObject
+            {
+                ["concept"] = CreateCodeableConcept(FhirCode.Medications.Ibuprofen400mg)
+            };
+        }
+
+        // Generic fallback
+        return new JsonObject
+        {
+            ["concept"] = new JsonObject
+            {
+                ["coding"] = new JsonArray(GenerateCoding(context, element)),
+                ["text"] = _faker.Lorem.Sentence(3)
+            }
         };
     }
 
