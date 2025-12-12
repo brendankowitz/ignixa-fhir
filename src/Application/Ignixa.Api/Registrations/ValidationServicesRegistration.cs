@@ -85,13 +85,16 @@ public static class ValidationServicesRegistration
     private static void RegisterTerminologyServices(ContainerBuilder builder)
     {
         // InMemoryTerminologyService (fallback for non-imported terminology)
+        // Note: This service requires a valid FHIR request context to determine the
+        // correct FHIR version and tenant for terminology resolution.
         builder.Register<InMemoryTerminologyService>(c =>
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
-            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext;
-            var fhirVersion = requestContext?.FhirVersion ?? FhirVersion.R4;
-            var tenantId = requestContext?.TenantId ?? 1;
-            var schemaProvider = versionContext.GetSchemaProvider(fhirVersion, tenantId);
+            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext
+                ?? throw new InvalidOperationException(
+                    "FHIR request context not available. InMemoryTerminologyService requires " +
+                    "a valid request context with FhirVersion and TenantId for terminology resolution.");
+            var schemaProvider = versionContext.GetSchemaProvider(requestContext.FhirVersion, requestContext.TenantId);
             return new InMemoryTerminologyService(schemaProvider.ValueSetProvider);
         })
         .AsSelf()
