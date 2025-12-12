@@ -139,8 +139,8 @@ Ignixa includes a suite of powerful CLI tools to accelerate development and test
 | Tool | Description |
 |------|-------------|
 | **[ignixa-fakes](tools/Ignixa.FhirFakes.Cli)** | Generate realistic synthetic patient data, clinical scenarios, and populations at scale. |
-| **[ignixa-validator](tools/Ignixa.Validation.Cli)** | High-performance FHIR resource validation (JSON/XML) against official profiles. |
 | **[ignixa-sqlonfhir](tools/Ignixa.SqlOnFhir.Cli)** | Transform FHIR data into tabular formats (Parquet/CSV) using SQL-on-FHIR ViewDefinitions. |
+| **[ignixa-validator](tools/Ignixa.Validation.Cli)** | High-performance FHIR resource validation (JSON) against official profiles. |
 
 Install any tool globally:
 ```bash
@@ -162,15 +162,15 @@ The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** 
 
 | Package | Feature |
 |---------|---------|
-| **[Ignixa.Specification](src/Core/Ignixa.Specification)** | **FHIR structure definitions** and auto-generated providers for R4/R4B/R5/R6/STU3. |
-| **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **System.Text.Json** based serialization optimized for high-throughput. |
-| **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
-| **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine**. |
-| **[Ignixa.Validation](src/Core/Ignixa.Validation)** | **Three-tier validation engine** (Fast, Spec, Profile) for robust data integrity. |
 | **[Ignixa.FhirFakes](src/Core/Ignixa.FhirFakes)** | **Schema-based test data generator** for creating realistic synthetic FHIR resources and clinical scenarios. |
 | **[Ignixa.FhirMappingLanguage](src/Core/Ignixa.FhirMappingLanguage)** | **FHIR Mapping Language (FML)** parser and StructureMap engine. |
-| **[Ignixa.SqlOnFhir](src/Core/Ignixa.SqlOnFhir)** | Implementation of the **SQL on FHIR v2** specification for data transformation. |
+| **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine**. |
 | **[Ignixa.PackageManagement](src/Core/Ignixa.PackageManagement)** | **NPM-based package manager** for downloading and caching FHIR implementation guides. |
+| **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
+| **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **System.Text.Json** based serialization optimized for high-throughput. |
+| **[Ignixa.Specification](src/Core/Ignixa.Specification)** | **FHIR structure definitions** and auto-generated providers for R4/R4B/R5/R6/STU3. |
+| **[Ignixa.SqlOnFhir](src/Core/Ignixa.SqlOnFhir)** | Implementation of the **SQL on FHIR v2** specification for data transformation. |
+| **[Ignixa.Validation](src/Core/Ignixa.Validation)** | **Three-tier validation engine** (Fast, Spec, Profile) for robust data integrity. |
 
 See the [Core SDK Documentation](src/Core/README.md) for full details.
 
