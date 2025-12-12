@@ -87,7 +87,11 @@ public static class ValidationServicesRegistration
         // InMemoryTerminologyService (fallback for non-imported terminology)
         builder.Register<InMemoryTerminologyService>(c =>
         {
-            var schemaProvider = c.Resolve<IFhirSchemaProvider>();
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext;
+            var fhirVersion = requestContext?.FhirVersion ?? FhirVersion.R4;
+            var tenantId = requestContext?.TenantId ?? 1;
+            var schemaProvider = versionContext.GetSchemaProvider(fhirVersion, tenantId);
             return new InMemoryTerminologyService(schemaProvider.ValueSetProvider);
         })
         .AsSelf()
