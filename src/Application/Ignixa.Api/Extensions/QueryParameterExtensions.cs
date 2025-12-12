@@ -14,11 +14,12 @@ public static class QueryParameterExtensions
 {
     /// <summary>
     /// Extracts the _pretty parameter from the query collection.
-    /// Returns true if _pretty=true is present, false otherwise.
+    /// Returns true if _pretty is present (with or without a value), false otherwise.
     /// According to FHIR spec, _pretty is a boolean parameter that controls JSON formatting.
+    /// Per FHIR spec: presence of the parameter implies true, even without a value.
     /// </summary>
     /// <param name="query">The query collection from HttpRequest.Query</param>
-    /// <returns>True if _pretty=true, false otherwise</returns>
+    /// <returns>True if _pretty is present and not explicitly set to false/0, false otherwise</returns>
     public static bool GetPrettyParameter(this IQueryCollection query)
     {
         if (!query.TryGetValue("_pretty", out var prettyValues))
@@ -27,6 +28,14 @@ public static class QueryParameterExtensions
         }
 
         var prettyValue = prettyValues.FirstOrDefault();
+
+        // Handle null or empty string (just ?_pretty with no value) - FHIR spec says presence implies true
+        if (string.IsNullOrEmpty(prettyValue))
+        {
+            return true;
+        }
+
+        // Handle whitespace-only value as false
         if (string.IsNullOrWhiteSpace(prettyValue))
         {
             return false;

@@ -92,7 +92,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        return Results.Content(capabilityStatement.SerializeToString(), KnownContentTypes.ApplicationFhirJson);
+        return FhirResults.Ok(capabilityStatement, context);
     }
 
     /// <summary>
@@ -118,10 +118,7 @@ public static class MetadataEndpoints
         var query = new GetCapabilityStatementQuery(tenantId);
         var capabilityStatement = await mediator.SendAsync(query, cancellationToken);
 
-        // Check for _pretty parameter
-        bool pretty = context.Request.Query.GetPrettyParameter();
-
-        return Results.Content(capabilityStatement.SerializeToString(pretty), KnownContentTypes.ApplicationFhirJson);
+        return FhirResults.Ok(capabilityStatement, context);
     }
 
     /// <summary>

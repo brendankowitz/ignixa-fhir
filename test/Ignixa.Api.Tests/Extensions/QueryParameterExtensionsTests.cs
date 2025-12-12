@@ -111,9 +111,9 @@ public class QueryParameterExtensionsTests
     }
 
     [Fact]
-    public void GetPrettyParameter_WithEmptyValue_ReturnsFalse()
+    public void GetPrettyParameter_WithNoValue_ReturnsTrue()
     {
-        // Arrange
+        // Arrange - simulate ?_pretty with no value
         var query = new QueryCollection(new Dictionary<string, StringValues>
         {
             { "_pretty", new StringValues("") }
@@ -123,7 +123,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeFalse();
+        result.Should().BeTrue("FHIR spec says presence implies true");
     }
 
     [Fact]

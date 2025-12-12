@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Api.Infrastructure;
@@ -192,9 +193,8 @@ public static class PatchEndpoints
             return Results.NotFound();
         }
 
-        var resourceBytes = result.Resource.SerializeToBytes();
         logger.LogInformation("Patched {ResourceType}/{Id} (version {VersionId})", resourceType, id, result.VersionId);
-        return FhirResults.Ok(resourceBytes)
+        return FhirResults.Ok(result.Resource, context)
             .WithETag(result.VersionId)
             .WithLastModified(result.LastModified);
     }
@@ -290,8 +290,6 @@ public static class PatchEndpoints
 
         var result = await mediator.SendAsync(command, cancellationToken);
 
-        var resourceBytes = result.Resource.Resource.SerializeToBytes();
-
         // Extract return preference from Prefer header (RFC 7240)
         var returnPreference = PreferHeaderParser.TryParseReturnPreference(context.Request.Headers);
 
@@ -309,7 +307,7 @@ public static class PatchEndpoints
         if (actualReturnPreference == ReturnPreference.Minimal)
         {
             // return=minimal - return minimal body
-            return FhirResults.Ok(resourceBytes)
+            return FhirResults.Ok(result.Resource.Resource, context)
                 .WithETag(result.Resource.VersionId)
                 .WithLastModified(result.Resource.LastModified)
                 .WithMinimalBody(resourceType, result.Resource.ResourceId, result.Resource.VersionId, result.Resource.LastModified);
@@ -324,12 +322,12 @@ public static class PatchEndpoints
                 Code = OperationOutcomeJsonNode.IssueType.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{result.Resource.ResourceId}"
             });
-            return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+            return FhirResults.Ok(outcome, context);
         }
         else
         {
             // return=representation - return full resource
-            return FhirResults.Ok(resourceBytes)
+            return FhirResults.Ok(result.Resource.Resource, context)
                 .WithETag(result.Resource.VersionId)
                 .WithLastModified(result.Resource.LastModified);
         }

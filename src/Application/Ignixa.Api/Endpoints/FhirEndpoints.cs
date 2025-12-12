@@ -356,7 +356,7 @@ public static class FhirEndpoints
 
             // Resource modified: Return resource with headers
             logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", resourceType, id);
-            return FhirResults.Ok(conditionalResult.Resource.ResourceBytes)
+            return FhirResults.Ok(conditionalResult.Resource.ResourceBytes, context)
                 .WithETag(conditionalResult.Resource.VersionId)
                 .WithLastModified(conditionalResult.Resource.LastModified);
         }
@@ -390,7 +390,7 @@ public static class FhirEndpoints
         }
 
         // Return raw JSON bytes with FHIR headers (zero-copy serialization)
-        return FhirResults.Ok(result.ResourceBytes)
+        return FhirResults.Ok(result.ResourceBytes, context)
             .WithETag(result.VersionId)
             .WithLastModified(result.LastModified);
     }
@@ -526,7 +526,7 @@ public static class FhirEndpoints
             if (actualReturnPreference == ReturnPreference.Representation)
             {
                 // Return full resource representation with Location and ETag headers
-                return FhirResults.Created(location, result.ResourceBytes)
+                return FhirResults.Created(location, result.ResourceBytes, context)
                     .WithETag(result.Key.VersionId!)
                     .WithLastModified(result.LastModified);
             }
@@ -543,13 +543,13 @@ public static class FhirEndpoints
         if (actualReturnPreference == ReturnPreference.Representation)
         {
             // Return full resource representation with ETag headers
-            return FhirResults.Ok(result.ResourceBytes)
+            return FhirResults.Ok(result.ResourceBytes, context)
                 .WithETag(result.Key.VersionId!)
                 .WithLastModified(result.LastModified);
         }
 
         // Prefer: return=minimal - return minimal body
-        return FhirResults.Ok(result.ResourceBytes)
+        return FhirResults.Ok(result.ResourceBytes, context)
             .WithETag(result.Key.VersionId!)
             .WithLastModified(result.LastModified)
             .WithMinimalBody(resourceType, result.Key.Id, result.Key.VersionId!, result.LastModified);
@@ -826,7 +826,8 @@ public static class FhirEndpoints
                 {
                     // return=OperationOutcome - return OperationOutcome with success message
                     var outcome = CreateSuccessOperationOutcome($"Successfully created {resourceType}/{result.Resource.ResourceId}");
-                    return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status201Created);
+                    context.Response.StatusCode = StatusCodes.Status201Created;
+                    return FhirResults.Ok(outcome, context);
                 }
                 else
                 {
@@ -985,7 +986,7 @@ public static class FhirEndpoints
         if (actualReturnPreference == ReturnPreference.Representation)
         {
             // Return full resource representation
-            return FhirResults.Created(createLocation, createResult.ResourceBytes)
+            return FhirResults.Created(createLocation, createResult.ResourceBytes, context)
                 .WithETag(createResult.Key.VersionId!)
                 .WithLastModified(createResult.LastModified);
         }
@@ -1278,7 +1279,8 @@ public static class FhirEndpoints
             {
                 // return=OperationOutcome - return OperationOutcome with success message
                 var outcome = CreateSuccessOperationOutcome($"Successfully created {resourceType}/{result.Resource.ResourceId}");
-                return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status201Created);
+                context.Response.StatusCode = StatusCodes.Status201Created;
+                return FhirResults.Ok(outcome, context);
             }
             else
             {
@@ -1303,7 +1305,7 @@ public static class FhirEndpoints
             {
                 // return=OperationOutcome - return OperationOutcome with success message
                 var outcome = CreateSuccessOperationOutcome($"Successfully updated {resourceType}/{result.Resource.ResourceId}");
-                return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+                return FhirResults.Ok(outcome, context);
             }
             else
             {
@@ -1414,7 +1416,8 @@ public static class FhirEndpoints
                     : $"Deleted {result.DeletedCount} matching resource(s). Deleted IDs: {string.Join(", ", result.DeletedIds)}"
             });
 
-            return Results.Content(outcome.SerializeToString(), KnownContentTypes.ApplicationFhirJson, statusCode: StatusCodes.Status200OK);
+            bool pretty = context.Request.Query.GetPrettyParameter();
+            return Results.Bytes(outcome.SerializeToBytes(pretty), KnownContentTypes.ApplicationFhirJson);
         }
     }
 

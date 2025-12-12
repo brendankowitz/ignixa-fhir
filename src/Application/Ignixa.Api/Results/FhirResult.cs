@@ -18,6 +18,7 @@ public sealed class FhirResult : IResult
     private readonly string? _eTag;
     private readonly DateTimeOffset? _lastModified;
     private readonly object? _minimalBody;
+    private readonly HttpContext? _httpContext;
 
     public FhirResult(
         int statusCode,
@@ -25,7 +26,8 @@ public sealed class FhirResult : IResult
         string? location = null,
         string? eTag = null,
         DateTimeOffset? lastModified = null,
-        object? minimalBody = null)
+        object? minimalBody = null,
+        HttpContext? httpContext = null)
     {
         _statusCode = statusCode;
         _bytes = bytes;
@@ -33,6 +35,7 @@ public sealed class FhirResult : IResult
         _eTag = eTag;
         _lastModified = lastModified;
         _minimalBody = minimalBody;
+        _httpContext = httpContext;
     }
 
     /// <summary>
@@ -40,7 +43,7 @@ public sealed class FhirResult : IResult
     /// </summary>
     public FhirResult WithETag(string versionId)
     {
-        return new FhirResult(_statusCode, _bytes, _location, versionId, _lastModified, _minimalBody);
+        return new FhirResult(_statusCode, _bytes, _location, versionId, _lastModified, _minimalBody, _httpContext);
     }
 
     /// <summary>
@@ -48,7 +51,7 @@ public sealed class FhirResult : IResult
     /// </summary>
     public FhirResult WithLastModified(DateTimeOffset lastModified)
     {
-        return new FhirResult(_statusCode, _bytes, _location, _eTag, lastModified, _minimalBody);
+        return new FhirResult(_statusCode, _bytes, _location, _eTag, lastModified, _minimalBody, _httpContext);
     }
 
     /// <summary>
@@ -56,7 +59,7 @@ public sealed class FhirResult : IResult
     /// </summary>
     public FhirResult WithLocation(string location)
     {
-        return new FhirResult(_statusCode, _bytes, location, _eTag, _lastModified, _minimalBody);
+        return new FhirResult(_statusCode, _bytes, location, _eTag, _lastModified, _minimalBody, _httpContext);
     }
 
     /// <summary>
@@ -76,7 +79,7 @@ public sealed class FhirResult : IResult
             }
         };
 
-        return new FhirResult(_statusCode, bytes: null, _location, _eTag, _lastModified, minimalBody);
+        return new FhirResult(_statusCode, bytes: null, _location, _eTag, _lastModified, minimalBody, _httpContext);
     }
 
     public async Task ExecuteAsync(HttpContext httpContext)
