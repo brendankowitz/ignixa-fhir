@@ -167,6 +167,7 @@ The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** 
 | **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
 | **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine**. |
 | **[Ignixa.Validation](src/Core/Ignixa.Validation)** | **Three-tier validation engine** (Fast, Spec, Profile) for robust data integrity. |
+| **[Ignixa.FhirFakes](src/Core/Ignixa.FhirFakes)** | **Schema-based test data generator** for creating realistic synthetic FHIR resources and clinical scenarios. |
 | **[Ignixa.FhirMappingLanguage](src/Core/Ignixa.FhirMappingLanguage)** | **FHIR Mapping Language (FML)** parser and StructureMap engine. |
 | **[Ignixa.SqlOnFhir](src/Core/Ignixa.SqlOnFhir)** | Implementation of the **SQL on FHIR v2** specification for data transformation. |
 | **[Ignixa.PackageManagement](src/Core/Ignixa.PackageManagement)** | **NPM-based package manager** for downloading and caching FHIR implementation guides. |
