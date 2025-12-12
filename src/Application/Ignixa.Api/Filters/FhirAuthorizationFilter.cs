@@ -101,7 +101,13 @@ public class FhirAuthorizationFilter : IEndpointFilter
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Authorization error for {Path}", httpContext.Request.Path);
+            _logger.LogError(
+                ex,
+                "Authorization error for {Path}",
+                httpContext.Request.Path.Value
+                    ?.Replace("\r\n", "")
+                    ?.Replace("\n", "")
+                    ?.Replace("\r", ""));
 
             // Return generic error to prevent internal error leakage
             return CreateErrorResponse("An error occurred during authorization");
