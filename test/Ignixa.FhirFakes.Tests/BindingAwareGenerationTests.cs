@@ -664,8 +664,8 @@ public class BindingAwareGenerationTests
         generatedIntents.Should().NotBeEmpty("CarePlan.intent is required");
         generatedIntents.Should().HaveCount(50, "CarePlan.intent is required and should be generated every time");
         generatedIntents.Should().AllSatisfy(i =>
-            i.Should().BeOneOf("proposal", "plan", "order", "option",
-                "All generated CarePlan.intent codes should be valid"));
+            i.Should().BeOneOf("proposal", "plan", "order", "option", "directive",
+                "All generated CarePlan.intent codes should be valid from the care-plan-intent value set"));
     }
 
     #endregion

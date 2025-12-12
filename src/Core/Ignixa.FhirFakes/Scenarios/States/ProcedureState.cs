@@ -160,7 +160,9 @@ public sealed class ProcedureState : ScenarioState
             node.Remove(encounterField);
         }
 
-        // Set performed period using version-appropriate field name (R4+ normative is "performedPeriod")
+        // Set performed/occurrence period using version-appropriate field name
+        // STU3/R4/R4B: "performedPeriod" (from performed[x])
+        // R5: "occurrencePeriod" (renamed from performed[x] to occurrence[x])
         var startTime = context.CurrentTime;
         var duration = Duration ?? InferDuration();
         var endTime = startTime.Add(duration);
@@ -170,8 +172,10 @@ public sealed class ProcedureState : ScenarioState
             "Procedure",
             "performedPeriod");
 
-        // Remove any existing choice element variants to avoid "Choice element 'performed[x]' can only have one type variant" error
+        // Remove any existing choice element variants to avoid "Choice element can only have one type variant" error
+        // Clear both "performed" (STU3/R4/R4B) and "occurrence" (R5) variants
         RemoveChoiceConflicts(node, "performed");
+        RemoveChoiceConflicts(node, "occurrence");
 
         // Set the desired choice element variant
         node[performedField] = new JsonObject

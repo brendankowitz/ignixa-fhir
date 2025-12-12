@@ -75,6 +75,21 @@ public class ChoiceElementCheck : IValidationCheck
         var actualChild = choiceChildren[0];
         var actualTypeName = actualChild.Name.Substring(_baseElementName.Length); // Extract type suffix (e.g., "String" from "valueString")
 
+        // Handle edge case where the element name exactly matches the base name (no type suffix)
+        // This indicates the faker generated "deceased" instead of "deceasedBoolean" or similar
+        // The wildcard pattern matched the base name itself
+        if (string.IsNullOrEmpty(actualTypeName))
+        {
+            // This is an error - choice elements must have a type suffix
+            var allowedTypesStr = string.Join(", ", _allowedTypes);
+            return ValidationResult.Failure(
+                new ValidationIssue(
+                    IssueSeverity.Error,
+                    "choice-missing-type",
+                    location,
+                    $"Choice element '{_baseElementName}[x]' must include a type suffix (e.g., '{_baseElementName}{_allowedTypes.FirstOrDefault() ?? "Type"}'). Found '{actualChild.Name}' without type suffix. Allowed types: {allowedTypesStr}"));
+        }
+
         // Normalize type name (first character may be lowercase in element name but uppercase in Type array)
         // e.g., "valueString" → "String", but Type[] contains "string"
         var normalizedActualType = char.ToUpperInvariant(actualTypeName[0]) + actualTypeName.Substring(1);

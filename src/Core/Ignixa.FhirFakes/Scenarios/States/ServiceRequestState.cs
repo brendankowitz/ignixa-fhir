@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using FhirCode = Ignixa.FhirFakes.Scenarios.Codes.FhirCode;
 
 namespace Ignixa.FhirFakes.Scenarios.States;
 
@@ -189,8 +191,10 @@ public sealed class ServiceRequestState : ScenarioState
             };
         }
 
-        // Set the service code
-        node["code"] = new JsonObject
+        // Set the service code (version-aware)
+        // R4/R4B: ServiceRequest.code is a CodeableConcept (with coding array directly)
+        // R5: ServiceRequest.code is a CodeableReference (with concept.coding nested)
+        var codeableConcept = new JsonObject
         {
             ["coding"] = new JsonArray
             {
@@ -203,6 +207,20 @@ public sealed class ServiceRequestState : ScenarioState
             },
             ["text"] = Code.Display
         };
+
+        if (faker.SchemaProvider.Version >= FhirVersion.R5)
+        {
+            // R5: code is CodeableReference - wrap the CodeableConcept in "concept"
+            node["code"] = new JsonObject
+            {
+                ["concept"] = codeableConcept
+            };
+        }
+        else
+        {
+            // R4/R4B: code is CodeableConcept - use directly
+            node["code"] = codeableConcept;
+        }
 
         // Set subject (patient reference)
         node["subject"] = new JsonObject
@@ -245,8 +263,10 @@ public sealed class ServiceRequestState : ScenarioState
             node["occurrenceDateTime"] = OccurrenceDateTime.Value.ToString("o");
         }
 
-        // Set reason (code or reference)
-        SetReason(node, context);
+        // Set reason (code or reference) - version-aware
+        // R4/R4B: reasonCode (CodeableConcept[]) and reasonReference (Reference[])
+        // R5: reason (CodeableReference[]) with concept or reference parts
+        SetReason(node, context, faker.SchemaProvider.Version);
 
         // Set note if provided
         if (!string.IsNullOrEmpty(Note))
@@ -363,47 +383,91 @@ public sealed class ServiceRequestState : ScenarioState
         node["performer"] = new JsonArray { performerNode };
     }
 
-    private void SetReason(JsonObject node, ScenarioContext context)
+    private void SetReason(JsonObject node, ScenarioContext context, FhirVersion version)
     {
+        var isR5 = version >= FhirVersion.R5;
+
         if (ReasonCode is not null)
         {
-            node["reasonCode"] = new JsonArray
+            var codeableConcept = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["coding"] = new JsonArray
+                    new JsonObject
                     {
-                        new JsonObject
-                        {
-                            ["system"] = ReasonCode.System,
-                            ["code"] = ReasonCode.Code,
-                            ["display"] = ReasonCode.Display
-                        }
+                        ["system"] = ReasonCode.System,
+                        ["code"] = ReasonCode.Code,
+                        ["display"] = ReasonCode.Display
                     }
                 }
             };
+
+            if (isR5)
+            {
+                // R5: reason is CodeableReference[] with concept part
+                node["reason"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["concept"] = codeableConcept
+                    }
+                };
+            }
+            else
+            {
+                // R4/R4B: reasonCode is CodeableConcept[]
+                node["reasonCode"] = new JsonArray { codeableConcept };
+            }
         }
         else if (!string.IsNullOrEmpty(ReasonConditionAttribute) &&
                  context.HasAttribute(ReasonConditionAttribute))
         {
             var conditionId = context.GetAttribute<string>(ReasonConditionAttribute);
-            node["reasonReference"] = new JsonArray
+            var reference = new JsonObject
             {
-                new JsonObject
-                {
-                    ["reference"] = $"Condition/{conditionId}"
-                }
+                ["reference"] = $"Condition/{conditionId}"
             };
+
+            if (isR5)
+            {
+                // R5: reason is CodeableReference[] with reference part
+                node["reason"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["reference"] = reference
+                    }
+                };
+            }
+            else
+            {
+                // R4/R4B: reasonReference is Reference[]
+                node["reasonReference"] = new JsonArray { reference };
+            }
         }
         else if (!string.IsNullOrEmpty(ReasonDisplay))
         {
-            node["reasonCode"] = new JsonArray
+            var codeableConceptTextOnly = new JsonObject
             {
-                new JsonObject
-                {
-                    ["text"] = ReasonDisplay
-                }
+                ["text"] = ReasonDisplay
             };
+
+            if (isR5)
+            {
+                // R5: reason is CodeableReference[] with concept.text
+                node["reason"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["concept"] = codeableConceptTextOnly
+                    }
+                };
+            }
+            else
+            {
+                // R4/R4B: reasonCode with just text
+                node["reasonCode"] = new JsonArray { codeableConceptTextOnly };
+            }
         }
     }
 

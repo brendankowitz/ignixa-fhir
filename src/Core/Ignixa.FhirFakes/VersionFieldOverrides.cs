@@ -23,7 +23,11 @@ internal static class VersionFieldOverrides
         // Format: { (FhirVersion.Stu3, "ResourceType", "normativeFieldName"), "stu3FieldName" }
 
         // MedicationRequest: STU3 uses bare "medication" field instead of choice types
-        { (FhirVersion.Stu3, "MedicationRequest", "medicationCodeableConcept"), "medication" },
+        // Note: This override is only used for legacy code - the state now uses medicationCodeableConcept directly
+        { (FhirVersion.Stu3, "MedicationRequest", "medicationCodeableConcept"), "medicationCodeableConcept" },
+
+        // MedicationRequest: STU3 uses "context" instead of "encounter" for encounter reference
+        { (FhirVersion.Stu3, "MedicationRequest", "encounter"), "context" },
 
         // Encounter: STU3 uses "reason" instead of "reasonCode" (and reason is a CodeableConcept array)
         { (FhirVersion.Stu3, "Encounter", "reasonCode"), "reason" },
@@ -67,6 +71,15 @@ internal static class VersionFieldOverrides
         // Encounter: R5 uses "reason" with different structure (backbone element) instead of "reasonCode"
         // Map to empty to signal the state should skip this in R5 (reason structure is complex)
         { (FhirVersion.R5, "Encounter", "reasonCode"), "" },
+
+        // Procedure: R5 renames "performed[x]" to "occurrence[x]"
+        { (FhirVersion.R5, "Procedure", "performedPeriod"), "occurrencePeriod" },
+        { (FhirVersion.R5, "Procedure", "performedDateTime"), "occurrenceDateTime" },
+
+        // ServiceRequest: R5 merges "reasonCode" and "reasonReference" into "reason" (CodeableReference)
+        // Map to empty to signal the state should use version-aware handling
+        { (FhirVersion.R5, "ServiceRequest", "reasonCode"), "" },
+        { (FhirVersion.R5, "ServiceRequest", "reasonReference"), "" },
 
         // Encounter: R5 uses "completed" instead of "finished" for status
         // Note: This isn't a field override but a code mapping issue handled in BindingCodeMapper

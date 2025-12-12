@@ -46,6 +46,8 @@ namespace Ignixa.FhirFakes;
 [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
 public class SchemaBasedFhirResourceFaker
 {
+    private const int MaxRecursionDepth = 5; // Prevent infinite recursion in complex type generation
+
     private readonly IFhirSchemaProvider _schemaProvider;
     private readonly Faker _faker;
     private readonly Random _random;
@@ -188,28 +190,42 @@ public class SchemaBasedFhirResourceFaker
             var elementName = child.Info.Name;
 
             // Skip meta elements (already added), text, contained, extension, modifierExtension (complex)
-            if (IsSkippableElement(elementName))
+            // At root level, also skip "language" (it's metadata)
+            if (IsSkippableElement(elementName, isRootResourceLevel: true))
             {
                 continue;
             }
 
+            // Handle choice elements (value[x] pattern)
+            // For choice elements, we need to pick a type and append it to the element name
+            var (actualElementName, actualElement) = ResolveChoiceElement(child);
+
             // Required elements: always add
             if (child.IsRequired)
             {
-                var value = GenerateElementValue(child, resourceType);
+                var value = GenerateElementValue(actualElement, resourceType, depth: 0);
                 if (value is not null)
                 {
-                    root[elementName] = value;
+                    root[actualElementName] = value;
+                }
+                else
+                {
+                    // For required fields that failed to generate (e.g., BackboneElement with only optional children),
+                    // add a minimal placeholder to satisfy cardinality requirements
+                    if (!actualElement.Info.IsPrimitive)
+                    {
+                        root[actualElementName] = new JsonObject();
+                    }
                 }
             }
 
             // Optional elements: add 30% of the time if in summary or important
             else if (child.InSummary || _random.NextDouble() < 0.3)
             {
-                var value = GenerateElementValue(child, resourceType);
+                var value = GenerateElementValue(actualElement, resourceType, depth: 0);
                 if (value is not null)
                 {
-                    root[elementName] = value;
+                    root[actualElementName] = value;
                 }
             }
         }
@@ -223,7 +239,7 @@ public class SchemaBasedFhirResourceFaker
     /// <summary>
     /// Generates a value for a specific element based on its type and cardinality.
     /// </summary>
-    private JsonNode? GenerateElementValue(IType element, string parentResourceType)
+    private JsonNode? GenerateElementValue(IType element, string parentResourceType, int depth = 0)
     {
         var elementName = element.Info.Name;
 
@@ -234,16 +250,29 @@ public class SchemaBasedFhirResourceFaker
             var array = new JsonArray();
             for (int i = 0; i < arraySize; i++)
             {
-                var item = GenerateSingleValue(element, elementName, parentResourceType);
+                var item = GenerateSingleValue(element, elementName, parentResourceType, depth);
                 if (item is not null)
                 {
                     array.Add(item);
                 }
             }
+
+            // For required collections, ensure at least one item exists (even if empty)
+            // This handles cases like DataElement.element (type ElementDefinition) where we can't generate content
+            // but still need to satisfy min cardinality constraints
+            if (array.Count == 0 && element.IsRequired)
+            {
+                // Add a minimal placeholder object for complex types
+                if (!element.Info.IsPrimitive)
+                {
+                    array.Add(new JsonObject());
+                }
+            }
+
             return array.Count > 0 ? array : null;
         }
 
-        return GenerateSingleValue(element, elementName, parentResourceType);
+        return GenerateSingleValue(element, elementName, parentResourceType, depth);
     }
 
     /// <summary>
@@ -251,7 +280,7 @@ public class SchemaBasedFhirResourceFaker
     /// Uses binding information when available (ITypeExtended) to generate terminology-correct codes.
     /// </summary>
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
-    private JsonNode? GenerateSingleValue(IType element, string elementName, string parentResourceType)
+    private JsonNode? GenerateSingleValue(IType element, string elementName, string parentResourceType, int depth = 0)
     {
         var info = element.Info;
         var lowerName = elementName.ToLowerInvariant();
@@ -312,8 +341,133 @@ public class SchemaBasedFhirResourceFaker
             "Ratio" => GenerateRatio(),
             "Attachment" => GenerateAttachment(),
             "CodeableReference" => GenerateCodeableReference(lowerName, element, parentResourceType),
-            _ => null // Unknown complex type - skip
+            "Signature" => GenerateSignature(element, depth),
+            _ => GenerateGenericComplexType(element, parentResourceType, depth) // Generate complex types like BackboneElement
         };
+    }
+
+    /// <summary>
+    /// Generates a Signature complex type.
+    /// </summary>
+    private JsonNode GenerateSignature(IType element, int depth)
+    {
+        // Get Signature type definition
+        var signatureType = _schemaProvider.GetTypeDefinition("Signature");
+        if (signatureType == null)
+        {
+            // Fallback to minimal signature
+            return new JsonObject
+            {
+                ["type"] = new JsonArray { GenerateCoding("signature-type", element) },
+                ["when"] = JsonValue.Create(_faker.Date.Recent().ToString("o")),
+                ["who"] = new JsonObject { ["reference"] = $"Practitioner/{_faker.Random.Guid()}" }
+            };
+        }
+
+        // Use generic generation for Signature type
+        return GenerateGenericComplexType(signatureType, "Signature", depth) ?? new JsonObject();
+    }
+
+    /// <summary>
+    /// Generates a generic complex type by recursively populating its children.
+    /// Used for BackboneElement and other complex types that don't have specialized generators.
+    /// </summary>
+    private JsonNode? GenerateGenericComplexType(IType element, string parentResourceType, int depth)
+    {
+        // Prevent infinite recursion
+        if (depth >= MaxRecursionDepth)
+        {
+            return null;
+        }
+
+        // Only generate complex types (primitives should have been handled earlier)
+        if (element.Info.IsPrimitive)
+        {
+            return null;
+        }
+
+        // Get child elements
+        var children = element.Children;
+
+        // For BackboneElement types, the element itself has 0 children.
+        // We need to look up the type definition (e.g., "Appointment.participant", "ConceptMap.group.element")
+        var currentTypeName = parentResourceType;
+        if (children.Count == 0 && element is ITypeExtended extended && extended.Types.Count > 0)
+        {
+            var typeName = extended.Types[0].Code;
+            if (typeName == "BackboneElement")
+            {
+                // BackboneElement types are named as "ParentResource.ElementName" (PascalCase)
+                // Element names in FHIR are camelCase, but type names are PascalCase
+                var elementName = element.Info.Name;
+                var pascalCaseElementName = char.ToUpperInvariant(elementName[0]) + elementName.Substring(1);
+                currentTypeName = $"{parentResourceType}.{pascalCaseElementName}";
+                var typeDefinition = _schemaProvider.GetTypeDefinition(currentTypeName);
+                if (typeDefinition != null)
+                {
+                    children = typeDefinition.Children;
+                }
+            }
+        }
+
+        if (children.Count == 0)
+        {
+            return null;
+        }
+
+        var obj = new JsonObject();
+        var hasContent = false;
+
+        // Populate child elements
+        // For nested BackboneElements, pass the current type name as the parent
+        foreach (var child in children)
+        {
+            var childName = child.Info.Name;
+
+            // Skip problematic elements
+            // For BackboneElements, don't skip "language" (it's content, not metadata)
+            if (IsSkippableElement(childName, isRootResourceLevel: false))
+            {
+                continue;
+            }
+
+            // Handle choice elements
+            var (actualElementName, actualElement) = ResolveChoiceElement(child);
+
+            // Required elements: ALWAYS add, even at deep nesting levels
+            // This ensures BackboneElements in arrays have their required nested fields populated
+            if (child.IsRequired)
+            {
+                var value = GenerateElementValue(actualElement, currentTypeName, depth + 1);
+                if (value is not null)
+                {
+                    obj[actualElementName] = value;
+                    hasContent = true;
+                }
+                else
+                {
+                    // For required fields that failed to generate (e.g., unsupported complex types),
+                    // add a minimal placeholder to satisfy cardinality requirements
+                    if (!actualElement.Info.IsPrimitive)
+                    {
+                        obj[actualElementName] = new JsonObject();
+                        hasContent = true;
+                    }
+                }
+            }
+            // Optional elements: add 30% of the time if in summary
+            else if (child.InSummary || _random.NextDouble() < 0.3)
+            {
+                var value = GenerateElementValue(actualElement, currentTypeName, depth + 1);
+                if (value is not null)
+                {
+                    obj[actualElementName] = value;
+                    hasContent = true;
+                }
+            }
+        }
+
+        return hasContent ? obj : null;
     }
 
     /// <summary>
@@ -452,7 +606,7 @@ public class SchemaBasedFhirResourceFaker
 
     /// <summary>
     /// Generates code values using binding information (preferred) or element name heuristics (fallback).
-    /// For required bindings, only generates codes from the value set - never falls back to random codes.
+    /// Always queries the ValueSetProvider when a binding is present before using heuristics.
     /// </summary>
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "FHIR codes are lowercase by convention")]
     private JsonValue GenerateCodeValue(string lowerName, IType element)
@@ -466,66 +620,73 @@ public class SchemaBasedFhirResourceFaker
                 return JsonValue.Create(selectedCode.Code)!;
             }
 
+            // Query the ValueSetProvider directly if BindingCodeMapper doesn't have the value set
+            var normalizedUri = binding.ValueSet?.Contains('|', StringComparison.Ordinal) == true
+                ? binding.ValueSet[..binding.ValueSet.IndexOf('|', StringComparison.Ordinal)]
+                : binding.ValueSet;
+
+            if (!string.IsNullOrEmpty(normalizedUri))
+            {
+                var providerCodes = _schemaProvider.ValueSetProvider.GetCodes(normalizedUri);
+                if (providerCodes is { Count: > 0 })
+                {
+                    var randomIndex = _random.Next(providerCodes.Count);
+                    var selectedCode = providerCodes[randomIndex];
+                    return JsonValue.Create(selectedCode.Code);
+                }
+            }
+
             // For required bindings, we MUST use a code from the value set
-            // If we don't have codes defined, use common fallback codes for well-known value sets
+            // If we still don't have codes, use safe fallbacks based on element patterns
             if (BindingCodeMapper.IsRequiredBinding(binding.Strength))
             {
                 return GenerateFallbackCodeForRequiredBinding(binding.ValueSet, lowerName);
             }
         }
 
-        // Fall back to heuristics (only for non-required bindings)
+        // Fall back to heuristics (only when no binding present)
+        // DO NOT use broad pattern matching for codes - too many version-specific variations
+        // Only use heuristics for elements that truly have no binding information
+
         if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
         {
+            // administrative-gender is stable across all FHIR versions
             return JsonValue.Create(_faker.PickRandom("male", "female"));
         }
-        if (lowerName.Contains("status", StringComparison.OrdinalIgnoreCase))
-        {
-            return JsonValue.Create(_faker.PickRandom("active", "inactive", "entered-in-error"));
-        }
-        if (lowerName.Contains("use", StringComparison.OrdinalIgnoreCase))
-        {
-            return JsonValue.Create(_faker.PickRandom("official", "usual", "temp", "old"));
-        }
-        if (lowerName.Contains("system", StringComparison.OrdinalIgnoreCase))
-        {
-            return JsonValue.Create(_faker.PickRandom("phone", "fax", "email", "pager", "url", "sms", "other"));
-        }
 
-        // Default: random alphanumeric code
+        // Default: random alphanumeric code (only for truly unbound elements)
         return JsonValue.Create(_faker.Random.AlphaNumeric(6).ToLowerInvariant());
     }
 
     /// <summary>
-    /// Generates a fallback code for required bindings when we don't have the value set defined.
-    /// Uses common fallback codes for well-known value sets to ensure valid FHIR resources.
+    /// Generates a fallback code for required bindings when we don't have the value set defined in BindingCodeMapper.
+    /// This should only be called after ValueSetProvider has been queried (done in GenerateCodeValue).
+    /// Uses very conservative fallbacks based on well-known FHIR patterns.
     /// </summary>
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
     private JsonValue GenerateFallbackCodeForRequiredBinding(string? valueSetUri, string elementName)
     {
-        // Normalize the value set URI (remove version suffixes)
-        var normalizedUri = valueSetUri?.Contains('|', StringComparison.Ordinal) == true
-            ? valueSetUri[..valueSetUri.IndexOf('|', StringComparison.Ordinal)]
-            : valueSetUri;
+        // Note: ValueSetProvider should have already been queried by the caller (GenerateCodeValue).
+        // This method provides last-resort fallbacks only.
 
-        // Use element name patterns as fallback for common required bindings
         var lowerName = elementName.ToLowerInvariant();
+
+        // Very conservative fallbacks for well-known required bindings
+        // Only use patterns that are known to be stable across all FHIR versions (STU3, R4, R4B, R5)
 
         if (lowerName.Contains("intent", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonValue.Create(_faker.PickRandom("plan", "order", "proposal"));
-        }
-        if (lowerName.Contains("status", StringComparison.OrdinalIgnoreCase))
-        {
-            return JsonValue.Create(_faker.PickRandom("active", "completed", "entered-in-error"));
+            // request-intent: "order" is in all versions
+            return JsonValue.Create("order");
         }
         if (lowerName.Contains("gender", StringComparison.OrdinalIgnoreCase))
         {
+            // administrative-gender: all versions have male/female/other/unknown
             return JsonValue.Create(_faker.PickRandom("male", "female", "other", "unknown"));
         }
 
         // Ultimate fallback for required bindings we don't recognize
-        // Use a safe generic code that's common across many value sets
+        // Use "unknown" as it's a common safe code across many value sets
         return JsonValue.Create("unknown");
     }
 
@@ -896,11 +1057,106 @@ public class SchemaBasedFhirResourceFaker
 
     /// <summary>
     /// Elements to skip during automatic generation.
+    /// NOTE: "language" is only skipped at the root resource level (it's a metadata field).
+    /// For BackboneElements like Patient.communication, "language" should NOT be skipped.
     /// </summary>
-    private static bool IsSkippableElement(string elementName)
+    /// <param name="elementName">The element name to check.</param>
+    /// <param name="isRootResourceLevel">True if this is a root resource element (not in a BackboneElement).</param>
+    /// <returns>True if the element should be skipped.</returns>
+    private static bool IsSkippableElement(string elementName, bool isRootResourceLevel = true)
     {
-        return elementName is "meta" or "id" or "implicitRules" or "language"
-            or "text" or "contained" or "extension" or "modifierExtension";
+        // Always skip these infrastructure elements regardless of level
+        if (elementName is "meta" or "id" or "implicitRules" or "text" or "contained" or "extension" or "modifierExtension")
+        {
+            return true;
+        }
+
+        // Only skip "language" at root level (it's the resource's metadata language)
+        // Don't skip it in BackboneElements (e.g., Patient.communication.language)
+        if (elementName == "language" && isRootResourceLevel)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves choice elements (value[x] pattern) to their concrete element name with type suffix.
+    /// For example: "deceased" (choice element) -> "deceasedBoolean"
+    /// For non-choice elements, returns the original element unchanged.
+    /// </summary>
+    /// <param name="element">The element to resolve.</param>
+    /// <returns>A tuple of (actualElementName, element) where actualElementName includes the type suffix for choice elements.</returns>
+    private (string ActualElementName, IType ActualElement) ResolveChoiceElement(IType element)
+    {
+        var elementName = element.Info.Name;
+
+        // Not a choice element - return as-is
+        if (!element.Info.IsChoiceElement)
+        {
+            return (elementName, element);
+        }
+
+        // Choice element - need to pick a type and create the concrete element name
+        if (element is ITypeExtended extended && extended.Types.Count > 0)
+        {
+            // Pick a random type from the available types (preferring simpler/common types)
+            var selectedType = SelectChoiceType(extended.Types);
+            var typeSuffix = FormatTypeSuffix(selectedType.Code);
+
+            // Create the actual JSON element name (e.g., "deceased" + "Boolean" = "deceasedBoolean")
+            var actualElementName = elementName + typeSuffix;
+
+            return (actualElementName, element);
+        }
+
+        // Fallback: element is marked as choice but has no types info - use default type if available
+        if (element is ITypeExtended extendedWithDefault && !string.IsNullOrEmpty(extendedWithDefault.DefaultTypeName))
+        {
+            var typeSuffix = FormatTypeSuffix(extendedWithDefault.DefaultTypeName);
+            return (elementName + typeSuffix, element);
+        }
+
+        // Ultimate fallback - shouldn't happen with well-formed schemas
+        return (elementName, element);
+    }
+
+    /// <summary>
+    /// Selects a type from the available choice types for value generation.
+    /// Prefers simpler/more common types that are easier to generate.
+    /// </summary>
+    private ITypeReference SelectChoiceType(IReadOnlyList<ITypeReference> types)
+    {
+        // Preference order for choice types (simpler types first)
+        var preferenceOrder = new[] { "boolean", "string", "integer", "decimal", "code", "dateTime", "date", "Quantity", "CodeableConcept" };
+
+        foreach (var preferred in preferenceOrder)
+        {
+            var match = types.FirstOrDefault(t => string.Equals(t.Code, preferred, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        // No preferred type found - pick randomly
+        return _faker.PickRandom(types.ToArray());
+    }
+
+    /// <summary>
+    /// Formats a type code as a FHIR JSON element suffix (capitalizes first letter).
+    /// For example: "boolean" -> "Boolean", "dateTime" -> "DateTime"
+    /// </summary>
+    private static string FormatTypeSuffix(string typeCode)
+    {
+        if (string.IsNullOrEmpty(typeCode))
+        {
+            return string.Empty;
+        }
+
+        // Capitalize first letter for JSON element naming convention
+        return char.ToUpperInvariant(typeCode[0]) + typeCode.Substring(1);
     }
 
     #endregion

@@ -483,7 +483,7 @@ public class CrossVersionCompatibilityTests
     {
         foreach (var schema in _schemaProviders)
         {
-            _output.WriteLine($"Testing Procedure performedPeriod with {schema.Version}");
+            _output.WriteLine($"Testing Procedure performed/occurrence period with {schema.Version}");
 
             // Act
             var scenario = new ScenarioBuilder(schema)
@@ -494,10 +494,13 @@ public class CrossVersionCompatibilityTests
 
             var procedure = scenario.Procedures[0];
 
-            // Assert - performedPeriod should exist across all versions
-            procedure.MutableNode["performedPeriod"].Should().NotBeNull($"performedPeriod should exist in {schema.Version}");
-            var start = procedure.MutableNode["performedPeriod"]?["start"]?.GetValue<string>();
-            start.Should().NotBeNullOrEmpty($"performedPeriod.start should be set in {schema.Version}");
+            // Assert - performed/occurrence period should exist (version-aware field name)
+            // STU3/R4/R4B: performedPeriod (from performed[x])
+            // R5: occurrencePeriod (renamed from performed[x] to occurrence[x])
+            var periodFieldName = schema.Version == FhirVersion.R5 ? "occurrencePeriod" : "performedPeriod";
+            procedure.MutableNode[periodFieldName].Should().NotBeNull($"{periodFieldName} should exist in {schema.Version}");
+            var start = procedure.MutableNode[periodFieldName]?["start"]?.GetValue<string>();
+            start.Should().NotBeNullOrEmpty($"{periodFieldName}.start should be set in {schema.Version}");
         }
     }
 
@@ -626,11 +629,23 @@ public class CrossVersionCompatibilityTests
 
             var serviceRequest = scenario.ServiceRequests[0];
 
-            // Assert - code should exist with proper coding structure
+            // Assert - code should exist with proper structure (version-aware)
+            // R4/R4B: code is CodeableConcept -> code.coding
+            // R5: code is CodeableReference -> code.concept.coding
             var code = serviceRequest.MutableNode["code"];
             code.Should().NotBeNull($"code should exist in {schema.Version}");
 
-            var coding = code?["coding"]?[0];
+            JsonNode? coding;
+            if (schema.Version == FhirVersion.R5)
+            {
+                // R5: CodeableReference with concept part
+                coding = code?["concept"]?["coding"]?[0];
+            }
+            else
+            {
+                // R4/R4B: CodeableConcept directly
+                coding = code?["coding"]?[0];
+            }
             coding.Should().NotBeNull($"code.coding should exist in {schema.Version}");
 
             var system = coding?["system"]?.GetValue<string>();
@@ -784,34 +799,21 @@ public class CrossVersionCompatibilityTests
 
             var medicationRequest = scenario.Medications[0];
 
-            // Assert - Field name varies by FHIR version
-            // STU3 uses "medication" (bare field, not choice type)
-            // R4+ uses "medicationCodeableConcept" or "medicationReference" (choice type variants)
-            var hasMedicationField = medicationRequest.MutableNode["medication"] != null;
+            // Assert - All FHIR versions use medication[x] choice element
+            // STU3/R4/R4B/R5 all serialize as "medicationCodeableConcept" or "medicationReference"
+            // (STU3 spec: medication[x][1..1]: CodeableConcept|Reference(Medication))
             var hasMedicationCodeableConcept = medicationRequest.MutableNode["medicationCodeableConcept"] != null;
             var hasMedicationReference = medicationRequest.MutableNode["medicationReference"] != null;
 
-            if (schema.Version == FhirVersion.Stu3)
-            {
-                hasMedicationField.Should().BeTrue($"STU3 should have bare 'medication' field");
+            (hasMedicationCodeableConcept || hasMedicationReference)
+                .Should().BeTrue($"{schema.Version} should have medicationCodeableConcept or medicationReference");
 
-                // In STU3, medication can be CodeableConcept or Reference
-                var medicationNode = medicationRequest.MutableNode["medication"];
-                medicationNode.Should().NotBeNull($"STU3 should have medication field");
-                medicationNode?.AsObject().Select(kvp => kvp.Key).Count().Should().BeGreaterThan(0, "medication should have content in STU3");
-            }
-            else
+            // If using CodeableConcept, verify structure
+            if (hasMedicationCodeableConcept)
             {
-                (hasMedicationCodeableConcept || hasMedicationReference)
-                    .Should().BeTrue($"R4+ should have medicationCodeableConcept or medicationReference in {schema.Version}");
-
-                // If using CodeableConcept, verify structure
-                if (hasMedicationCodeableConcept)
-                {
-                    var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
-                    coding.Should().NotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
-                    coding?["code"]?.GetValue<string>().Should().NotBeNullOrEmpty($"should have medication code in {schema.Version}");
-                }
+                var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
+                coding.Should().NotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
+                coding?["code"]?.GetValue<string>().Should().NotBeNullOrEmpty($"should have medication code in {schema.Version}");
             }
         }
     }

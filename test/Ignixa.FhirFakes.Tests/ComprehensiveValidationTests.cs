@@ -20,7 +20,7 @@ namespace Ignixa.FhirFakes.Tests;
 
 /// <summary>
 /// Comprehensive validation tests for SchemaBasedFhirResourceFaker and ScenarioBuilder.
-/// Validates that all generated resources pass FHIR schema validation across all FHIR versions (STU3, R4, R4B, R5).
+/// Validates that all generated resources pass FHIR schema validation across all FHIR versions (STU3, R4, R4B, R5, R6).
 /// </summary>
 public class ComprehensiveValidationTests
 {
@@ -38,7 +38,8 @@ public class ComprehensiveValidationTests
             [FhirVersion.Stu3] = new STU3CoreSchemaProvider(),
             [FhirVersion.R4] = new R4CoreSchemaProvider(),
             [FhirVersion.R4B] = new R4BCoreSchemaProvider(),
-            [FhirVersion.R5] = new R5CoreSchemaProvider()
+            [FhirVersion.R5] = new R5CoreSchemaProvider(),
+            [FhirVersion.R6] = new R6CoreSchemaProvider()
         };
 
         // Initialize validation schema resolvers for all versions
@@ -55,32 +56,23 @@ public class ComprehensiveValidationTests
     /// </summary>
     /// <param name="resource">The resource to validate.</param>
     /// <param name="version">The FHIR version to validate against.</param>
-    /// <returns>ValidationResult with any issues found, or null if validation throws an exception.</returns>
-    private ValidationResult? ValidateResource(ResourceJsonNode resource, FhirVersion version)
+    /// <returns>ValidationResult with any issues found.</returns>
+    private ValidationResult ValidateResource(ResourceJsonNode resource, FhirVersion version)
     {
-        try
-        {
-            var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode);
-            var resourceType = resource.ResourceType;
-            var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
+        var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode);
+        var resourceType = resource.ResourceType;
+        var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
 
-            var schema = _schemaResolvers[version].GetSchema(canonicalUrl);
-            if (schema == null)
-            {
-                throw new InvalidOperationException($"Schema not found for {resourceType} in {version}");
-            }
-
-            var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-            var state = new ValidationState();
-            var schemaProvider = _schemaProviders[version];
-            return schema.Validate(sourceNode.ToElement(schemaProvider), settings, state);
-        }
-        catch (IndexOutOfRangeException ex)
+        var schema = _schemaResolvers[version].GetSchema(canonicalUrl);
+        if (schema == null)
         {
-            // Known issue with ChoiceElementCheck validation in some scenarios
-            _output.WriteLine($"      KNOWN ISSUE: Validation threw IndexOutOfRangeException: {ex.Message}");
-            return null;
+            throw new InvalidOperationException($"Schema not found for {resourceType} in {version}");
         }
+
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+        var schemaProvider = _schemaProviders[version];
+        return schema.Validate(sourceNode.ToElement(schemaProvider), settings, state);
     }
 
     /// <summary>
@@ -96,27 +88,41 @@ public class ComprehensiveValidationTests
     [Fact]
     public void GivenAllResourceTypes_WhenGeneratedAndValidatedAcrossAllVersions_ThenAllPassValidation()
     {
-        // Define common resource types that should work across all versions
-        var commonResourceTypes = new[]
+        // Skip infrastructure/definitional resources with complex nested structures that the faker can't handle yet
+        var skipResourceTypes = new HashSet<string>
         {
-            "Patient",
-            "Observation",
-            "Condition",
-            "Encounter",
-            "Practitioner",
-            "Organization",
-            "Medication",
-            "AllergyIntolerance",
-            "Procedure",
-            "DiagnosticReport",
-            "Immunization",
-            "CarePlan",
-            "Goal",
-            "MedicationRequest"
+            "ActivityDefinition",       // Complex action/dynamicValue structures
+            "CapabilityStatement",      // Complex rest/messaging/document structures
+            "ChargeItemDefinition",     // Complex propertyGroup structures with priceComponent
+            "ClaimResponse",            // Requires nested amount/Money fields in total/payment
+            "CompartmentDefinition",    // Requires complex resource/param relationships
+            "DataElement",              // Requires ElementDefinition with many required nested fields
+            "EventDefinition",          // Complex trigger structures with required nested fields
+            "ExampleScenario",          // Complex process/step structures
+            "ExplanationOfBenefit",     // Requires nested amount/Money fields in total
+            "GraphDefinition",          // Complex link/target structures
+            "ImplementationGuide",      // Complex definition/page structures
+            "Measure",                  // Complex group/population/stratifier structures
+            "MeasureReport",            // Complex group/population/stratifier result structures
+            "MedicationKnowledge",      // R4-specific: Complex cost.cost cardinality issues
+            "MedicinalProduct",         // R4-specific: Complex name.countryLanguage.language cardinality issues
+            "MessageDefinition",        // Complex focus/allowedResponse structures
+            "OperationDefinition",      // Complex parameter structures with nested parameters
+            "PaymentNotice",            // R4-specific: Requires amount (Money type) cardinality
+            "PaymentReconciliation",    // Requires paymentAmount (Money type) cardinality
+            "PlanDefinition",           // Complex action/goal/trigger structures
+            "Questionnaire",            // Complex item structures with enableWhen/answerOption
+            "ResearchElementDefinition", // Complex characteristic structures with choice elements
+            "SearchParameter",          // Complex component structures
+            "StructureDefinition",      // Requires ElementDefinition with complex snapshot/differential
+            "StructureMap",             // Complex group/rule/source/target structures
+            "SubstanceReferenceInformation", // Choice element bug - generates multiple variants for amount[x]
+            "SubstanceSpecification",   // Choice element bug - generates multiple variants for amount[x] in relationship
+            "AuditEvent", // R5+: Coding.system validation requires absolute URIs (faker generates local references)
+            "Citation", // R5: Citation.summary[0].text required but not generated in BackboneElement arrays
+            "TestReport",               // Complex setup/test/teardown action structures
+            "TestScript",               // Complex setup/test/teardown structures
         };
-
-        // ServiceRequest was introduced in R4 (called ProcedureRequest in STU3)
-        var r4PlusResourceTypes = new[] { "ServiceRequest" };
 
         foreach (var version in _schemaProviders.Keys)
         {
@@ -124,9 +130,27 @@ public class ComprehensiveValidationTests
             var schemaProvider = _schemaProviders[version];
             var faker = new SchemaBasedFhirResourceFaker(schemaProvider);
 
-            // Test common resource types
-            foreach (var resourceType in commonResourceTypes)
+            // Get all resource types from the schema provider for this version
+            var allResourceTypes = schemaProvider.ResourceTypeNames
+                .OrderBy(rt => rt, StringComparer.Ordinal)
+                .ToList();
+
+            _output.WriteLine($"  Found {allResourceTypes.Count} resource types in {version}");
+
+            var skippedCount = 0;
+            var testedCount = 0;
+
+            // Test all resource types
+            foreach (var resourceType in allResourceTypes)
             {
+                // Skip known complex resource types
+                if (skipResourceTypes.Contains(resourceType))
+                {
+                    _output.WriteLine($"  Skipping {resourceType} (known complex structure - not yet supported by faker)");
+                    skippedCount++;
+                    continue;
+                }
+
                 _output.WriteLine($"  Generating and validating {resourceType}...");
 
                 try
@@ -137,14 +161,6 @@ public class ComprehensiveValidationTests
 
                     // Validate the resource
                     var validationResult = ValidateResource(resource, version);
-
-                    if (validationResult == null)
-                    {
-                        // Validation threw an exception (known issue)
-                        _output.WriteLine($"    SKIPPED: {resourceType} validation skipped in {version} due to known validation bug");
-                        continue;
-                    }
-
                     var errors = GetErrorIssues(validationResult).ToList();
 
                     if (errors.Any())
@@ -158,6 +174,7 @@ public class ComprehensiveValidationTests
 
                     errors.Should().BeEmpty($"{resourceType} should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                     _output.WriteLine($"    OK: {resourceType} passed validation in {version}");
+                    testedCount++;
                 }
                 catch (Exception ex)
                 {
@@ -166,38 +183,7 @@ public class ComprehensiveValidationTests
                 }
             }
 
-            // Test R4+ specific resource types
-            if (version != FhirVersion.Stu3)
-            {
-                foreach (var resourceType in r4PlusResourceTypes)
-                {
-                    _output.WriteLine($"  Generating and validating {resourceType} (R4+)...");
-
-                    try
-                    {
-                        var resource = faker.Generate(resourceType);
-                        resource.Should().NotBeNull($"{resourceType} should be generated for {version}");
-
-                        var validationResult = ValidateResource(resource, version);
-
-                        if (validationResult == null)
-                        {
-                            _output.WriteLine($"    SKIPPED: {resourceType} validation skipped in {version} due to known validation bug");
-                            continue;
-                        }
-
-                        var errors = GetErrorIssues(validationResult).ToList();
-
-                        errors.Should().BeEmpty($"{resourceType} should pass validation in {version}");
-                        _output.WriteLine($"    OK: {resourceType} passed validation in {version}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _output.WriteLine($"    FAILED: {resourceType} threw exception in {version}: {ex.Message}");
-                        throw;
-                    }
-                }
-            }
+            _output.WriteLine($"  Summary: Tested {testedCount} resource types, skipped {skippedCount} complex types");
         }
     }
 
