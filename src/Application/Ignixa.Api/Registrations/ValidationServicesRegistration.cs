@@ -11,6 +11,7 @@ using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.PackageManagement.Infrastructure;
+using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Services;
@@ -86,9 +87,8 @@ public static class ValidationServicesRegistration
         // InMemoryTerminologyService (fallback for non-imported terminology)
         builder.Register<InMemoryTerminologyService>(c =>
         {
-            var requestContext = c.Resolve<IFhirRequestContextAccessor>().RequestContext;
-            var fhirVersion = requestContext?.FhirVersion ?? FhirVersion.R4;
-            return new InMemoryTerminologyService(fhirVersion);
+            var schemaProvider = c.Resolve<IFhirSchemaProvider>();
+            return new InMemoryTerminologyService(schemaProvider.ValueSetProvider);
         })
         .AsSelf()
         .InstancePerLifetimeScope();

@@ -6,7 +6,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 
-namespace Ignixa.FhirFaker.Cli;
+namespace Ignixa.FhirFakes.Cli;
 
 /// <summary>
 /// Helper utility for validating generated FHIR resources.
