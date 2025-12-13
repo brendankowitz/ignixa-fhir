@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios.Codes;
 
@@ -22,6 +23,9 @@ namespace Ignixa.FhirFakes.Scenarios.States;
 /// - Contact information (phone, email)
 /// - Realistic addresses using demographics data
 /// - Organization type codes from HL7 terminology
+///
+/// This state internally uses OrganizationBuilder for resource construction,
+/// adding scenario-specific orchestration on top (auto-generation, tagging, context integration).
 /// </remarks>
 public sealed class OrganizationState : ScenarioState
 {
@@ -90,6 +94,7 @@ public sealed class OrganizationState : ScenarioState
 
     /// <summary>
     /// Creates an Organization resource and adds it to the scenario context.
+    /// Uses OrganizationBuilder internally with scenario-specific orchestration.
     /// </summary>
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Used for test data generation only")]
     public override void Execute(ScenarioContext context, SchemaBasedFhirResourceFaker faker)
@@ -97,110 +102,64 @@ public sealed class OrganizationState : ScenarioState
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(faker);
 
-        var organization = faker.Generate("Organization");
-        var node = organization.MutableNode;
+        // Create builder with schema provider
+        var builder = OrganizationBuilder.Create(faker.SchemaProvider);
 
         // Set required fields
-        node["id"] = Guid.NewGuid().ToString();
-        node["active"] = Active;
-        node["name"] = OrganizationName;
+        builder.WithName(OrganizationName);
+        builder.WithActive(Active);
+
+        // Apply tag from scenario context
+        if (faker.Tag is not null)
+        {
+            builder.WithTag(faker.Tag);
+        }
 
         // Set type
         if (Type is not null)
         {
-            node["type"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["coding"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["system"] = Type.System,
-                            ["code"] = Type.Code,
-                            ["display"] = Type.Display
-                        }
-                    },
-                    ["text"] = Type.Display
-                }
-            };
+            builder.WithType(Type.Code, Type.System, Type.Display);
         }
 
         // Set identifiers (NPI and Tax ID)
-        var identifiers = new JsonArray();
-
-        // Add NPI identifier
-        var npi = NpiNumber ?? GenerateNpi();
-        identifiers.Add(new JsonObject
+        // OrganizationBuilder auto-generates NPI and Tax ID, but we override if provided
+        if (NpiNumber is not null)
         {
-            ["system"] = NpiSystem,
-            ["value"] = npi
-        });
+            builder.WithNpi(NpiNumber);
+        }
 
-        // Add Tax ID identifier
-        var taxId = TaxId ?? GenerateTaxId();
-        identifiers.Add(new JsonObject
+        if (TaxId is not null)
         {
-            ["system"] = TaxIdSystem,
-            ["value"] = taxId
-        });
+            builder.WithTaxId(TaxId);
+        }
 
         // Add custom identifiers
         if (CustomIdentifiers is not null)
         {
             foreach (var (system, value) in CustomIdentifiers)
             {
-                identifiers.Add(new JsonObject
-                {
-                    ["system"] = system,
-                    ["value"] = value
-                });
+                builder.WithIdentifier(value, system);
             }
         }
 
-        node["identifier"] = identifiers;
-
         // Set telecom
-        var telecomArray = new JsonArray();
-
         var phoneNumber = Phone ?? GeneratePhoneNumber();
-        telecomArray.Add(new JsonObject
-        {
-            ["system"] = "phone",
-            ["value"] = phoneNumber,
-            ["use"] = "work"
-        });
+        builder.WithPhone(phoneNumber);
 
         var emailAddress = Email ?? GenerateEmail();
-        telecomArray.Add(new JsonObject
-        {
-            ["system"] = "email",
-            ["value"] = emailAddress,
-            ["use"] = "work"
-        });
-
-        node["telecom"] = telecomArray;
+        builder.WithEmail(emailAddress);
 
         // Set address
         var address = Address ?? GenerateAddress();
-        node["address"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["use"] = "work",
-                ["type"] = "physical",
-                ["line"] = new JsonArray { address.Line },
-                ["city"] = address.City,
-                ["state"] = address.State,
-                ["postalCode"] = address.PostalCode,
-                ["country"] = address.Country
-            }
-        };
+        builder.WithAddress(address.Line, address.City, address.State, address.PostalCode, address.Country);
+
+        // Build the resource
+        var organization = builder.Build();
 
         // Add to context
         context.AddOrganization(organization, OrganizationName, SetAsCurrent);
 
-        // NEW: Register with StateId for cross-references
+        // Register with StateId for cross-references
         context.RegisterStateResource(StateId, organization);
     }
 

@@ -41,9 +41,8 @@ namespace Ignixa.FhirFakes.Builders;
 /// </code>
 /// </remarks>
 [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Random is used for test data generation only")]
-public sealed class PatientBuilder
+public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
 {
-    private readonly IFhirSchemaProvider _schemaProvider;
     private readonly Faker _faker = new();
     private readonly LocalBasedNameGenerator? _nameGenerator;
     private readonly DemographicsDataProvider? _demographics;
@@ -66,10 +65,6 @@ public sealed class PatientBuilder
     // Clinical configuration
     private decimal? _bmi;
     private bool _active = true;
-
-    // ID/Meta configuration
-    private string? _id;
-    private string? _tag;
 
     // Reference configuration
     private string? _managingOrganizationId;
@@ -131,9 +126,8 @@ public sealed class PatientBuilder
     /// Creates a simple builder with basic Bogus-based randomization.
     /// </summary>
     public PatientBuilder(IFhirSchemaProvider schemaProvider)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
-        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -143,12 +137,11 @@ public sealed class PatientBuilder
         IFhirSchemaProvider schemaProvider,
         DemographicsDataProvider demographics,
         LocalBasedNameGenerator nameGenerator)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
         ArgumentNullException.ThrowIfNull(demographics);
         ArgumentNullException.ThrowIfNull(nameGenerator);
 
-        _schemaProvider = schemaProvider;
         _demographics = demographics;
         _nameGenerator = nameGenerator;
     }
@@ -341,28 +334,6 @@ public sealed class PatientBuilder
         return this;
     }
 
-    // === Metadata Configuration ===
-
-    /// <summary>
-    /// Sets the patient's resource ID.
-    /// </summary>
-    public PatientBuilder WithId(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-        _id = id;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a tag to be included in the patient's meta.tag element.
-    /// </summary>
-    public PatientBuilder WithTag(string tag)
-    {
-        ArgumentNullException.ThrowIfNull(tag);
-        _tag = tag;
-        return this;
-    }
-
     // === Reference Configuration ===
 
     /// <summary>
@@ -527,7 +498,7 @@ public sealed class PatientBuilder
     /// Builds the Patient resource with all configured properties.
     /// </summary>
     /// <returns>A ResourceJsonNode representing the Patient resource</returns>
-    public ResourceJsonNode Build()
+    public override ResourceJsonNode Build()
     {
         // Calculate derived fields
         CalculateDerivedFields();
@@ -536,7 +507,7 @@ public sealed class PatientBuilder
         var patientJson = new JsonObject
         {
             ["resourceType"] = "Patient",
-            ["id"] = _id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["gender"] = _gender ?? PatientBuilderConstants.Gender.Unknown,
             ["birthDate"] = CalculateBirthDate().ToString("yyyy-MM-dd"),
@@ -632,29 +603,6 @@ public sealed class PatientBuilder
 
         // Auto-generate state abbr if not provided but we have a state name
         // (handled in BuildAddress)
-    }
-
-    private JsonObject BuildMeta()
-    {
-        var meta = new JsonObject
-        {
-            ["versionId"] = "1",
-            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-        };
-
-        if (_tag != null)
-        {
-            meta["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
-            };
-        }
-
-        return meta;
     }
 
     private DateTime CalculateBirthDate()

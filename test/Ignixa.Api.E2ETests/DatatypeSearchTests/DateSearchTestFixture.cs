@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json.Nodes;
 using Ignixa.Api.E2ETests.Fixtures;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.DatatypeSearchTests;
@@ -92,45 +92,13 @@ public class DateSearchTestFixture : IAsyncLifetime
     /// </summary>
     private ResourceJsonNode CreateObservationWithDateTime(string codeValue, string dateTime)
     {
-        var observation = new ResourceJsonNode
-        {
-            ResourceType = "Observation",
-            Id = Guid.NewGuid().ToString()
-        };
+        var faker = _apiFixture.Harness.CreateFaker();
 
-        // Set meta tag for isolation
-        observation.MutableNode["meta"] = new JsonObject
-        {
-            ["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://fhir-server-test/tag",
-                    ["code"] = Tag
-                }
-            }
-        };
-
-        // Required fields
-        observation.MutableNode["status"] = "final";
-
-        // Unique code for this test run
-        observation.MutableNode["code"] = new JsonObject
-        {
-            ["coding"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://fhir-server-test/guid",
-                    ["code"] = codeValue
-                }
-            }
-        };
-
-        // Set effectiveDateTime with specified precision
-        observation.MutableNode["effectiveDateTime"] = dateTime;
-
-        return observation;
+        return ObservationBuilder.Create(faker.SchemaProvider)
+            .WithTag(Tag)
+            .WithCode(codeValue, "http://fhir-server-test/guid")
+            .WithEffectiveDateTime(dateTime)
+            .Build();
     }
 
     /// <summary>
@@ -138,48 +106,12 @@ public class DateSearchTestFixture : IAsyncLifetime
     /// </summary>
     private ResourceJsonNode CreateObservationWithPeriod(string codeValue, string startDate, string endDate)
     {
-        var observation = new ResourceJsonNode
-        {
-            ResourceType = "Observation",
-            Id = Guid.NewGuid().ToString()
-        };
+        var faker = _apiFixture.Harness.CreateFaker();
 
-        // Set meta tag for isolation
-        observation.MutableNode["meta"] = new JsonObject
-        {
-            ["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://fhir-server-test/tag",
-                    ["code"] = Tag
-                }
-            }
-        };
-
-        // Required fields
-        observation.MutableNode["status"] = "final";
-
-        // Unique code for this test run
-        observation.MutableNode["code"] = new JsonObject
-        {
-            ["coding"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://fhir-server-test/guid",
-                    ["code"] = codeValue
-                }
-            }
-        };
-
-        // Set effectivePeriod with start and end
-        observation.MutableNode["effectivePeriod"] = new JsonObject
-        {
-            ["start"] = startDate,
-            ["end"] = endDate
-        };
-
-        return observation;
+        return ObservationBuilder.Create(faker.SchemaProvider)
+            .WithTag(Tag)
+            .WithCode(codeValue, "http://fhir-server-test/guid")
+            .WithEffectivePeriod(startDate, endDate)
+            .Build();
     }
 }

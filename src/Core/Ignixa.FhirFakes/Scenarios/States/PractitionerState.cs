@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios.Codes;
 
 namespace Ignixa.FhirFakes.Scenarios.States;
@@ -27,6 +28,7 @@ namespace Ignixa.FhirFakes.Scenarios.States;
 public sealed class PractitionerState : ScenarioState
 {
     private readonly Faker _faker = new();
+    private PractitionerBuilder? _builder;
 
     /// <summary>
     /// Gets the specialty code for the practitioner (from Specialties constants).
@@ -94,29 +96,8 @@ public sealed class PractitionerState : ScenarioState
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(faker);
 
-        var practitioner = faker.Generate("Practitioner");
-        var node = practitioner.MutableNode;
-
-        // Set required fields
-        var practitionerId = Guid.NewGuid().ToString();
-        node["id"] = practitionerId;
-
-        // Set active status
-        node["active"] = true;
-
-        // Generate or use provided NPI
-        var npi = NpiNumber ?? GenerateNpi(IsOrganization);
-
-        // Set identifier with NPI
-        node["identifier"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["use"] = "official",
-                ["system"] = "http://hl7.org/fhir/sid/us-npi",
-                ["value"] = npi
-            }
-        };
+        // Initialize builder
+        _builder = PractitionerBuilder.Create(faker.SchemaProvider);
 
         // Generate name components
         var givenName = GivenName ?? _faker.Name.FirstName();
@@ -124,25 +105,52 @@ public sealed class PractitionerState : ScenarioState
         var prefix = Prefix ?? InferPrefix();
         var suffix = Suffix ?? InferSuffix();
 
-        // Set name
-        var nameObject = new JsonObject
-        {
-            ["use"] = "official",
-            ["family"] = familyName,
-            ["given"] = new JsonArray { givenName }
-        };
+        // Delegate basic building to PractitionerBuilder
+        _builder.WithName(givenName, familyName);
 
-        if (!string.IsNullOrEmpty(prefix))
+        // Generate or use provided NPI
+        var npi = NpiNumber ?? GenerateNpi(IsOrganization);
+        _builder.WithNpi(npi);
+
+        // Add specialty as qualification
+        _builder.WithSpecialty(Specialty.Code, Specialty.System, Specialty.Display);
+
+        // Apply scenario tag if present
+        if (faker.Tag is not null)
         {
-            nameObject["prefix"] = new JsonArray { prefix };
+            _builder.WithTag(faker.Tag);
         }
 
-        if (!string.IsNullOrEmpty(suffix))
+        // Build the base resource from builder
+        var practitioner = _builder.Build();
+        var node = practitioner.MutableNode;
+
+        // Add scenario-specific fields not supported by builder
+        // Set identifier use to "official"
+        if (node["identifier"] is JsonArray identifiers && identifiers.Count > 0)
         {
-            nameObject["suffix"] = new JsonArray { suffix };
+            if (identifiers[0] is JsonObject firstIdentifier)
+            {
+                firstIdentifier["use"] = "official";
+            }
         }
 
-        node["name"] = new JsonArray { nameObject };
+        // Add prefix/suffix to name
+        if (node["name"] is JsonArray names && names.Count > 0)
+        {
+            if (names[0] is JsonObject nameObject)
+            {
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    nameObject["prefix"] = new JsonArray { prefix };
+                }
+
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    nameObject["suffix"] = new JsonArray { suffix };
+                }
+            }
+        }
 
         // Set gender
         var gender = Gender ?? _faker.PickRandom("male", "female");
@@ -180,8 +188,8 @@ public sealed class PractitionerState : ScenarioState
             }
         };
 
-        // Set qualifications
-        node["qualification"] = CreateQualifications();
+        // Enhance qualifications with scenario-specific details
+        EnhanceQualifications(node);
 
         // Add to context
         context.AddPractitioner(practitioner, Specialty.Display);
@@ -344,45 +352,49 @@ public sealed class PractitionerState : ScenarioState
     }
 
     /// <summary>
-    /// Creates qualification entries for the practitioner.
+    /// Enhances qualifications created by PractitionerBuilder with scenario-specific details.
+    /// Adds identifier, period, issuer, and text to the specialty qualification.
+    /// Adds additional qualifications if provided.
     /// </summary>
-    private JsonArray CreateQualifications()
+    /// <param name="node">The Practitioner resource JSON node.</param>
+    private void EnhanceQualifications(JsonObject node)
     {
-        var qualifications = new JsonArray();
-
-        // Add specialty qualification
-        qualifications.Add(new JsonObject
+        if (node["qualification"] is not JsonArray qualifications)
         {
-            ["identifier"] = new JsonArray
+            return;
+        }
+
+        // Enhance the first qualification (specialty) with additional details
+        if (qualifications.Count > 0 && qualifications[0] is JsonObject specialtyQual)
+        {
+            // Add identifier
+            specialtyQual["identifier"] = new JsonArray
             {
                 new JsonObject
                 {
                     ["system"] = "http://example.org/qualifications",
                     ["value"] = $"QUAL-{Guid.NewGuid():N}"[..16]
                 }
-            },
-            ["code"] = new JsonObject
+            };
+
+            // Add text to code
+            if (specialtyQual["code"] is JsonObject code)
             {
-                ["coding"] = new JsonArray
-                {
-                    new JsonObject
-                    {
-                        ["system"] = Specialty.System,
-                        ["code"] = Specialty.Code,
-                        ["display"] = Specialty.Display
-                    }
-                },
-                ["text"] = $"Board Certified - {Specialty.Display}"
-            },
-            ["period"] = new JsonObject
+                code["text"] = $"Board Certified - {Specialty.Display}";
+            }
+
+            // Add period
+            specialtyQual["period"] = new JsonObject
             {
                 ["start"] = DateTime.UtcNow.AddYears(-10).ToString("yyyy-MM-dd")
-            },
-            ["issuer"] = new JsonObject
+            };
+
+            // Add issuer
+            specialtyQual["issuer"] = new JsonObject
             {
                 ["display"] = "American Board of Medical Specialties"
-            }
-        });
+            };
+        }
 
         // Add any additional qualifications provided
         if (Qualifications is { Count: > 0 })
@@ -398,8 +410,6 @@ public sealed class PractitionerState : ScenarioState
                 });
             }
         }
-
-        return qualifications;
     }
 
     #region Factory Methods

@@ -117,22 +117,4 @@ public static class PatientBuilderConstants
         /// <summary>Michigan state.</summary>
         public const string Michigan = "Michigan";
     }
-
-    /// <summary>
-    /// Common city-state pairs for use with FromCity().
-    /// Provides strongly-typed city-state combinations.
-    /// </summary>
-    public static class CityStatePairs
-    {
-        public static readonly (string City, string State) NewYorkNY = (Cities.NewYork, UsStates.NewYork);
-        public static readonly (string City, string State) LosAngelesCA = (Cities.LosAngeles, UsStates.California);
-        public static readonly (string City, string State) ChicagoIL = (Cities.Chicago, UsStates.Illinois);
-        public static readonly (string City, string State) HoustonTX = (Cities.Houston, UsStates.Texas);
-        public static readonly (string City, string State) PhoenixAZ = (Cities.Phoenix, UsStates.Arizona);
-        public static readonly (string City, string State) PhiladelphiaPA = (Cities.Philadelphia, UsStates.Pennsylvania);
-        public static readonly (string City, string State) SanAntonioTX = (Cities.SanAntonio, UsStates.Texas);
-        public static readonly (string City, string State) SanDiegoCA = (Cities.SanDiego, UsStates.California);
-        public static readonly (string City, string State) DallasTX = (Cities.Dallas, UsStates.Texas);
-        public static readonly (string City, string State) BostonMA = (Cities.Boston, UsStates.Massachusetts);
-    }
 }

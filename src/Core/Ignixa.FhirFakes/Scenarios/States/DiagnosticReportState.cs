@@ -6,6 +6,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios.Codes;
 
 namespace Ignixa.FhirFakes.Scenarios.States;
@@ -77,19 +78,52 @@ public sealed class DiagnosticReportState : ScenarioState
             throw new InvalidOperationException("Cannot create DiagnosticReport without a Patient. Ensure InitialState runs first.");
         }
 
-        var report = faker.Generate("DiagnosticReport");
+        // Use DiagnosticReportBuilder for basic structure
+        var builder = DiagnosticReportBuilder.Create(faker.SchemaProvider)
+            .WithStatus(Status)
+            .WithCode(Code.Code, Code.System, Code.Display)
+            .WithSubject(context.Patient.Id);
+
+        // Collect observation references for results
+        var observationIds = new List<string>();
+
+        // Add references to existing observations by StateId
+        if (ReferencedObservationStateIds is not null)
+        {
+            foreach (var stateId in ReferencedObservationStateIds)
+            {
+                var observation = context.GetStateResource(stateId);
+                if (observation is not null)
+                {
+                    observationIds.Add(observation.Id);
+                }
+            }
+        }
+
+        // Create new observations from tuples (existing behavior)
+        if (Observations is { Count: > 0 })
+        {
+            foreach (var (obsCode, obsValue, obsUnit) in Observations)
+            {
+                var observation = CreateObservation(context, faker, obsCode, obsValue, obsUnit);
+                context.AddObservation(observation, obsCode.Display);
+                observationIds.Add(observation.Id);
+            }
+        }
+
+        // Add all observation results to builder
+        if (observationIds.Count > 0)
+        {
+            builder.WithResults([.. observationIds]);
+        }
+
+        // Build the base report from DiagnosticReportBuilder
+        var report = builder.Build();
         var node = report.MutableNode;
-        var reportId = Guid.NewGuid().ToString();
 
-        // Remove any existing choice element variants to avoid conflicts
-        // The faker may generate placeholder values for choice elements
-        RemoveChoiceConflicts(node, "effective");
+        // Scenario-specific enhancements beyond DiagnosticReportBuilder's capabilities
 
-        // Set required fields
-        node["id"] = reportId;
-        node["status"] = Status;
-
-        // Determine and set category
+        // Determine and set category (LAB vs RAD based on code)
         var isImaging = IsImagingReport ?? InferIsImagingReport();
         var categoryCode = Category ?? (isImaging ? "RAD" : "LAB");
         var categoryDisplay = isImaging ? "Radiology" : "Laboratory";
@@ -110,27 +144,6 @@ public sealed class DiagnosticReportState : ScenarioState
             }
         };
 
-        // Set report code
-        node["code"] = new JsonObject
-        {
-            ["coding"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = Code.System,
-                    ["code"] = Code.Code,
-                    ["display"] = Code.Display
-                }
-            },
-            ["text"] = Code.Display
-        };
-
-        // Set patient reference
-        node["subject"] = new JsonObject
-        {
-            ["reference"] = $"Patient/{context.Patient.Id}"
-        };
-
         // Set encounter reference if available (STU3 uses "context" instead of "encounter")
         var encounterField = VersionFieldOverrides.GetFieldName(
             faker.SchemaProvider.Version,
@@ -144,15 +157,10 @@ public sealed class DiagnosticReportState : ScenarioState
                 ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
             };
         }
-        else
-        {
-            // Clear any faker-generated encounter reference
-            node.Remove(encounterField);
-            // Also clear STU3 "context" field if present
-            node.Remove("context");
-        }
 
         // Set effective date using version-appropriate field name (R4+ normative is "effectiveDateTime")
+        // Remove any existing choice element variants to avoid conflicts
+        RemoveChoiceConflicts(node, "effective");
         var effectiveField = VersionFieldOverrides.GetFieldName(
             faker.SchemaProvider.Version,
             "DiagnosticReport",
@@ -206,51 +214,6 @@ public sealed class DiagnosticReportState : ScenarioState
 
         node["performer"] = performers;
 
-        // Create result array for observation references
-        var observationReferences = new JsonArray();
-
-        // Add references to existing observations by StateId
-        if (ReferencedObservationStateIds is not null)
-        {
-            foreach (var stateId in ReferencedObservationStateIds)
-            {
-                var observation = context.GetStateResource(stateId);
-                if (observation is not null)
-                {
-                    observationReferences.Add(new JsonObject
-                    {
-                        ["reference"] = $"Observation/{observation.Id}"
-                    });
-                }
-            }
-        }
-
-        // Create new observations from tuples (existing behavior)
-        if (Observations is { Count: > 0 })
-        {
-            foreach (var (obsCode, obsValue, obsUnit) in Observations)
-            {
-                var observation = CreateObservation(context, faker, obsCode, obsValue, obsUnit);
-                context.AddObservation(observation, obsCode.Display);
-
-                observationReferences.Add(new JsonObject
-                {
-                    ["reference"] = $"Observation/{observation.Id}"
-                });
-            }
-        }
-
-        // Set result references
-        if (observationReferences.Count > 0)
-        {
-            node["result"] = observationReferences;
-        }
-        else
-        {
-            // Clear any faker-generated result references
-            node.Remove("result");
-        }
-
         // Set conclusion for imaging reports
         if (!string.IsNullOrEmpty(Conclusion))
         {
@@ -260,7 +223,7 @@ public sealed class DiagnosticReportState : ScenarioState
         // Add to context
         context.AddDiagnosticReport(report, Code.Display);
 
-        // NEW: Register with StateId for cross-references
+        // Register with StateId for cross-references
         context.RegisterStateResource(StateId, report);
     }
 

@@ -27,12 +27,8 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .Build();
 /// </code>
 /// </remarks>
-public sealed class OrganizationBuilder
+public sealed class OrganizationBuilder : FhirResourceBuilder<OrganizationBuilder>
 {
-    private readonly IFhirSchemaProvider _schemaProvider;
-
-    private string? _id;
-    private string? _tag;
     private string? _name;
     private string? _npiNumber;
     private string? _taxId;
@@ -54,10 +50,13 @@ public sealed class OrganizationBuilder
     // Reference fields
     private string? _partOfOrganizationId;
 
-    private OrganizationBuilder(IFhirSchemaProvider schemaProvider)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OrganizationBuilder"/> class.
+    /// </summary>
+    /// <param name="schemaProvider">The FHIR schema provider.</param>
+    public OrganizationBuilder(IFhirSchemaProvider schemaProvider)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
-        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -66,26 +65,6 @@ public sealed class OrganizationBuilder
     public static OrganizationBuilder Create(IFhirSchemaProvider schemaProvider)
     {
         return new OrganizationBuilder(schemaProvider);
-    }
-
-    /// <summary>
-    /// Sets the organization's resource ID.
-    /// </summary>
-    public OrganizationBuilder WithId(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-        _id = id;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a tag to be included in the organization's meta.tag element.
-    /// </summary>
-    public OrganizationBuilder WithTag(string tag)
-    {
-        ArgumentNullException.ThrowIfNull(tag);
-        _tag = tag;
-        return this;
     }
 
     /// <summary>
@@ -207,12 +186,12 @@ public sealed class OrganizationBuilder
     /// <summary>
     /// Builds the Organization resource with all configured properties.
     /// </summary>
-    public ResourceJsonNode Build()
+    public override ResourceJsonNode Build()
     {
         var orgJson = new JsonObject
         {
             ["resourceType"] = "Organization",
-            ["id"] = _id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["active"] = _active
         };
@@ -259,29 +238,6 @@ public sealed class OrganizationBuilder
 
         var json = orgJson.ToJsonString();
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
-    }
-
-    private JsonObject BuildMeta()
-    {
-        var meta = new JsonObject
-        {
-            ["versionId"] = "1",
-            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-        };
-
-        if (_tag is not null)
-        {
-            meta["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
-            };
-        }
-
-        return meta;
     }
 
     private JsonArray BuildIdentifiers()

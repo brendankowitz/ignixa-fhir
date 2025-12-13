@@ -6,7 +6,9 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using Bogus;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios.Codes;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirFakes.Scenarios.States;
 
@@ -14,6 +16,11 @@ namespace Ignixa.FhirFakes.Scenarios.States;
 /// State that creates an Observation resource.
 /// Observations represent clinical measurements and test results.
 /// </summary>
+/// <remarks>
+/// This state internally uses ObservationBuilder for resource construction,
+/// adding scenario-specific orchestration on top (auto-generation, components, context integration).
+/// All cross-version field name handling is delegated to the builder and VersionFieldOverrides.
+/// </remarks>
 public sealed class ObservationState : ScenarioState
 {
     private readonly Faker _faker = new();
@@ -78,6 +85,72 @@ public sealed class ObservationState : ScenarioState
             throw new InvalidOperationException("Cannot create Observation without a Patient. Ensure InitialState runs first.");
         }
 
+        // Build the observation using ObservationBuilder for simple observations
+        // or manual construction for multi-component observations (builder doesn't support components yet)
+        var observation = Components is { Count: > 0 }
+            ? BuildMultiComponentObservation(context, faker)
+            : BuildSimpleObservation(context, faker);
+
+        // Add to context
+        context.AddObservation(observation, Code.Display);
+
+        // Register with StateId for cross-references
+        context.RegisterStateResource(StateId, observation);
+    }
+
+    /// <summary>
+    /// Builds a simple observation using ObservationBuilder.
+    /// </summary>
+    private ResourceJsonNode BuildSimpleObservation(ScenarioContext context, SchemaBasedFhirResourceFaker faker)
+    {
+        // Calculate the observation value
+        var observationValue = ValueFromContext?.Invoke(context)
+            ?? Value
+            ?? (ValueRangeMin.HasValue && ValueRangeMax.HasValue
+                ? _faker.Random.Decimal(ValueRangeMin.Value, ValueRangeMax.Value)
+                : 0);
+
+        // Use ObservationBuilder to create the resource
+        var builder = ObservationBuilder.Create(faker.SchemaProvider)
+            .WithCode(Code.Code, Code.System, Code.Display)
+            .WithStatus(Status)
+            .WithQuantityValue(observationValue, Unit ?? "unit", FhirCode.Systems.Ucum)
+            .WithSubject(context.Patient!.Id!)
+            .WithEffectiveDateTime(context.CurrentTime.ToString("o"))
+            .WithCategory("vital-signs");
+
+        // Add tag if faker has one
+        if (!string.IsNullOrEmpty(faker.Tag))
+        {
+            builder.WithTag(faker.Tag);
+        }
+
+        // Build and add encounter reference manually if needed (builder doesn't support encounter yet)
+        var observation = builder.Build();
+
+        // Add encounter reference using version-appropriate field name (STU3 uses "context" instead of "encounter")
+        if (context.CurrentEncounter is not null)
+        {
+            var encounterField = VersionFieldOverrides.GetFieldName(
+                faker.SchemaProvider.Version,
+                "Observation",
+                "encounter");
+
+            observation.MutableNode[encounterField] = new JsonObject
+            {
+                ["reference"] = $"Encounter/{context.CurrentEncounter.Id}"
+            };
+        }
+
+        return observation;
+    }
+
+    /// <summary>
+    /// Builds a multi-component observation manually (ObservationBuilder doesn't support components yet).
+    /// Preserves all existing cross-version logic for components.
+    /// </summary>
+    private ResourceJsonNode BuildMultiComponentObservation(ScenarioContext context, SchemaBasedFhirResourceFaker faker)
+    {
         var observation = faker.Generate("Observation");
         var node = observation.MutableNode;
 
@@ -125,7 +198,7 @@ public sealed class ObservationState : ScenarioState
         // Set patient reference
         node["subject"] = new JsonObject
         {
-            ["reference"] = $"Patient/{context.Patient.Id}"
+            ["reference"] = $"Patient/{context.Patient!.Id}"
         };
 
         // Set encounter reference if available (STU3 uses "context" instead of "encounter")
@@ -156,79 +229,49 @@ public sealed class ObservationState : ScenarioState
             "effectiveDateTime");
         node[effectiveField] = context.CurrentTime.ToString("o");
 
-        // Set value
-        if (Components is { Count: > 0 })
+        // Build component array with version-appropriate field names
+        var componentArray = new JsonArray();
+        var componentValueField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Observation",
+            "valueQuantity");
+
+        foreach (var component in Components!)
         {
-            // Multi-component observation (e.g., blood pressure)
-            var componentArray = new JsonArray();
-            var componentValueField = VersionFieldOverrides.GetFieldName(
-                faker.SchemaProvider.Version,
-                "Observation",
-                "valueQuantity");
-
-            foreach (var component in Components)
-            {
-                var compValue = component.ValueFromContext?.Invoke(context)
-                    ?? component.Value
-                    ?? (component.ValueRangeMin.HasValue && component.ValueRangeMax.HasValue
-                        ? _faker.Random.Decimal(component.ValueRangeMin.Value, component.ValueRangeMax.Value)
-                        : 0);
-
-                var componentNode = new JsonObject
-                {
-                    ["code"] = new JsonObject
-                    {
-                        ["coding"] = new JsonArray
-                        {
-                            new JsonObject
-                            {
-                                ["system"] = component.Code.System,
-                                ["code"] = component.Code.Code,
-                                ["display"] = component.Code.Display
-                            }
-                        }
-                    },
-                    [componentValueField] = new JsonObject
-                    {
-                        ["value"] = compValue,
-                        ["unit"] = component.Unit ?? "mmHg",
-                        ["system"] = FhirCode.Systems.Ucum,
-                        ["code"] = component.UnitCode ?? "mm[Hg]"
-                    }
-                };
-
-                componentArray.Add(componentNode);
-            }
-            node["component"] = componentArray;
-        }
-        else
-        {
-            // Simple value using version-appropriate field name (R4+ normative is "valueQuantity")
-            var observationValue = ValueFromContext?.Invoke(context)
-                ?? Value
-                ?? (ValueRangeMin.HasValue && ValueRangeMax.HasValue
-                    ? _faker.Random.Decimal(ValueRangeMin.Value, ValueRangeMax.Value)
+            var compValue = component.ValueFromContext?.Invoke(context)
+                ?? component.Value
+                ?? (component.ValueRangeMin.HasValue && component.ValueRangeMax.HasValue
+                    ? _faker.Random.Decimal(component.ValueRangeMin.Value, component.ValueRangeMax.Value)
                     : 0);
 
-            var valueField = VersionFieldOverrides.GetFieldName(
-                faker.SchemaProvider.Version,
-                "Observation",
-                "valueQuantity");
-
-            node[valueField] = new JsonObject
+            var componentNode = new JsonObject
             {
-                ["value"] = observationValue,
-                ["unit"] = Unit ?? "unit",
-                ["system"] = FhirCode.Systems.Ucum,
-                ["code"] = UnitCode ?? Unit ?? "1"
+                ["code"] = new JsonObject
+                {
+                    ["coding"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["system"] = component.Code.System,
+                            ["code"] = component.Code.Code,
+                            ["display"] = component.Code.Display
+                        }
+                    }
+                },
+                [componentValueField] = new JsonObject
+                {
+                    ["value"] = compValue,
+                    ["unit"] = component.Unit ?? "mmHg",
+                    ["system"] = FhirCode.Systems.Ucum,
+                    ["code"] = component.UnitCode ?? "mm[Hg]"
+                }
             };
+
+            componentArray.Add(componentNode);
         }
+        node["component"] = componentArray;
 
-        // Add to context
-        context.AddObservation(observation, Code.Display);
-
-        // NEW: Register with StateId for cross-references
-        context.RegisterStateResource(StateId, observation);
+        return observation;
     }
 
     /// <summary>

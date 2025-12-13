@@ -5,6 +5,7 @@
 
 using FluentAssertions;
 using Ignixa.Api.E2ETests.Fixtures;
+using Ignixa.FhirFakes.Builders;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -32,10 +33,16 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var organization = CreateOrganizationResource(tag, "Test Org");
+        var organization = CreateOrganization()
+            .WithTag(tag)
+            .WithName("Test Org")
+            .Build();
         var createdOrg = await Harness.CreateResourceAsync(organization);
 
-        var location = CreateLocation(tag, createdOrg.Id);
+        var location = LocationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithManagingOrganization(createdOrg.Id)
+            .Build();
         var createdLocation = await Harness.CreateResourceAsync(location);
 
         // Act
@@ -64,10 +71,16 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var organization = CreateOrganizationResource(tag, "Test Org");
+        var organization = CreateOrganization()
+            .WithTag(tag)
+            .WithName("Test Org")
+            .Build();
         var createdOrg = await Harness.CreateResourceAsync(organization);
 
-        var location = CreateLocation(tag, createdOrg.Id);
+        var location = LocationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithManagingOrganization(createdOrg.Id)
+            .Build();
         var createdLocation = await Harness.CreateResourceAsync(location);
 
         // Act - include with _id should still include the organization even though its ID doesn't match
@@ -93,10 +106,16 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var organization = CreateOrganizationResource(tag, "Test Org");
+        var organization = CreateOrganization()
+            .WithTag(tag)
+            .WithName("Test Org")
+            .Build();
         var createdOrg = await Harness.CreateResourceAsync(organization);
 
-        var location = CreateLocation(tag, createdOrg.Id);
+        var location = LocationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithManagingOrganization(createdOrg.Id)
+            .Build();
         var createdLocation = await Harness.CreateResourceAsync(location);
 
         // Act - POST _search
@@ -126,10 +145,19 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        var patient = CreatePatientWithReferences(tag, "Adams");
+        var patient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Adams")
+            .WithTag(tag)
+            .Build();
         var createdPatient = await Harness.CreateResourceAsync(patient);
 
-        var group = CreateGroup(tag, createdPatient.Id);
+        var group = GroupBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithType("person")
+            .WithActual(true)
+            .WithPatientMember(createdPatient.Id)
+            .Build();
         var createdGroup = await Harness.CreateResourceAsync(group);
 
         // Act - search by _lastUpdated and include member
@@ -159,21 +187,51 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var snomedSystem = "http://snomed.info/sct";
 
         // Create two patients
-        var smithPatient = CreatePatientWithReferences(tag, "Smith");
-        var trumanPatient = CreatePatientWithReferences(tag, "Truman");
+        var smithPatient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Smith")
+            .WithTag(tag)
+            .Build();
+        var trumanPatient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Truman")
+            .WithTag(tag)
+            .Build();
 
         var createdPatients = await Harness.CreateResourcesAsync([smithPatient, trumanPatient]);
         var smithId = createdPatients[0].Id;
         var trumanId = createdPatients[1].Id;
 
         // Create observations
-        var smithObs = CreateObservation(tag, smithId, snomedCode, snomedSystem);
-        var trumanObs = CreateObservation(tag, trumanId, snomedCode, snomedSystem);
+        var smithObs = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(smithId)
+            .WithStatus("final")
+            .Build();
+        var trumanObs = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(trumanId)
+            .WithStatus("final")
+            .Build();
         var createdObs = await Harness.CreateResourcesAsync([smithObs, trumanObs]);
 
         // Create diagnostic reports
-        var smithReport = CreateDiagnosticReport(tag, smithId, snomedCode, snomedSystem, createdObs[0].Id);
-        var trumanReport = CreateDiagnosticReport(tag, trumanId, snomedCode, snomedSystem, createdObs[1].Id);
+        var smithReport = DiagnosticReportBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(smithId)
+            .WithStatus("final")
+            .WithResult(createdObs[0].Id)
+            .Build();
+        var trumanReport = DiagnosticReportBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(trumanId)
+            .WithStatus("final")
+            .WithResult(createdObs[1].Id)
+            .Build();
         await Harness.CreateResourcesAsync([smithReport, trumanReport]);
 
         // Act
@@ -204,15 +262,30 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var snomedSystem = "http://snomed.info/sct";
 
         // Create patient
-        var patient = CreatePatientWithReferences(tag, "Smith");
+        var patient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Smith")
+            .WithTag(tag)
+            .Build();
         var createdPatient = await Harness.CreateResourceAsync(patient);
 
         // Create observation
-        var obs = CreateObservation(tag, createdPatient.Id, snomedCode, snomedSystem);
+        var obs = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(createdPatient.Id)
+            .WithStatus("final")
+            .Build();
         var createdObs = await Harness.CreateResourceAsync(obs);
 
         // Create diagnostic report referencing both patient and observation
-        var report = CreateDiagnosticReport(tag, createdPatient.Id, snomedCode, snomedSystem, createdObs.Id);
+        var report = DiagnosticReportBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(createdPatient.Id)
+            .WithStatus("final")
+            .WithResult(createdObs.Id)
+            .Build();
         var createdReport = await Harness.CreateResourceAsync(report);
 
         // Act - wildcard include should get all references
@@ -247,15 +320,30 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var snomedSystem = "http://snomed.info/sct";
 
         // Create patient
-        var patient = CreatePatientWithReferences(tag, "Smith");
+        var patient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Smith")
+            .WithTag(tag)
+            .Build();
         var createdPatient = await Harness.CreateResourceAsync(patient);
 
         // Create observation
-        var obs = CreateObservation(tag, createdPatient.Id, snomedCode, snomedSystem);
+        var obs = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(createdPatient.Id)
+            .WithStatus("final")
+            .Build();
         var createdObs = await Harness.CreateResourceAsync(obs);
 
         // Create diagnostic report
-        var report = CreateDiagnosticReport(tag, createdPatient.Id, snomedCode, snomedSystem, createdObs.Id);
+        var report = DiagnosticReportBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode(snomedCode, snomedSystem)
+            .WithSubject(createdPatient.Id)
+            .WithStatus("final")
+            .WithResult(createdObs.Id)
+            .Build();
         await Harness.CreateResourceAsync(report);
 
         // Act - multiple includes
@@ -285,18 +373,34 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var tag = Guid.NewGuid().ToString();
 
         // Create organization and practitioner
-        var organization = CreateOrganizationResource(tag, "Test Org");
-        var practitioner = CreatePractitioner(tag, "TestDoc");
+        var organization = CreateOrganization()
+            .WithTag(tag)
+            .WithName("Test Org")
+            .Build();
+        var practitioner = PractitionerBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithFamilyName("TestDoc")
+            .Build();
         var createdOrg = await Harness.CreateResourceAsync(organization);
         var createdPractitioner = await Harness.CreateResourceAsync(practitioner);
 
         // Create patient
-        var patient = CreatePatientWithReferences(tag, "Adams");
+        var patient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Adams")
+            .WithTag(tag)
+            .Build();
         var createdPatient = await Harness.CreateResourceAsync(patient);
 
         // Create observation with multiple performer types
-        var obs = CreateObservation(tag, createdPatient.Id, "4548-4", "http://loinc.org",
-            createdPractitioner.Id, createdOrg.Id);
+        var obs = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("4548-4", "http://loinc.org")
+            .WithSubject(createdPatient.Id)
+            .WithStatus("final")
+            .WithPractitionerPerformer(createdPractitioner.Id)
+            .WithOrganizationPerformer(createdOrg.Id)
+            .Build();
         await Harness.CreateResourceAsync(obs);
 
         // Act - include performer without target type
@@ -326,11 +430,21 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var tag = Guid.NewGuid().ToString();
 
         // Create patient
-        var patient = CreatePatientWithReferences(tag, "Adams");
+        var patient = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Adams")
+            .WithTag(tag)
+            .Build();
         var createdPatient = await Harness.CreateResourceAsync(patient);
 
-        // Create observation with untyped reference
-        var obs = CreateObservation(tag, createdPatient.Id, "4548-4", "http://loinc.org", untypedReferences: true);
+        // Create observation with untyped reference (manually modify subject after building)
+        var obs = ObservationBuilder.Create(SchemaProvider)
+            .WithTag(tag)
+            .WithCode("4548-4", "http://loinc.org")
+            .WithStatus("final")
+            .Build();
+        // Override subject with untyped reference
+        obs.MutableNode["subject"] = new System.Text.Json.Nodes.JsonObject { ["reference"] = createdPatient.Id };
         var createdObs = await Harness.CreateResourceAsync(obs);
 
         // Act - wildcard include
@@ -353,14 +467,30 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var tag = Guid.NewGuid().ToString();
 
         // Create two organizations
-        var activeOrg = CreateOrganizationResource(tag, "Active Org");
-        var deletedOrg = CreateOrganizationResource(tag, "Deleted Org");
+        var activeOrg = CreateOrganization()
+            .WithTag(tag)
+            .WithName("Active Org")
+            .Build();
+        var deletedOrg = CreateOrganization()
+            .WithTag(tag)
+            .WithName("Deleted Org")
+            .Build();
         var createdActiveOrg = await Harness.CreateResourceAsync(activeOrg);
         var createdDeletedOrg = await Harness.CreateResourceAsync(deletedOrg);
 
         // Create patients referencing the organizations
-        var patientWithActiveOrg = CreatePatientWithReferences(tag, "Active", managingOrganizationId: createdActiveOrg.Id);
-        var patientWithDeletedOrg = CreatePatientWithReferences(tag, "Deleted", managingOrganizationId: createdDeletedOrg.Id);
+        var patientWithActiveOrg = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Active")
+            .WithTag(tag)
+            .WithManagingOrganization(createdActiveOrg.Id)
+            .Build();
+        var patientWithDeletedOrg = CreatePatient()
+            .FromSeattle()
+            .WithFamilyName("Deleted")
+            .WithTag(tag)
+            .WithManagingOrganization(createdDeletedOrg.Id)
+            .Build();
         await Harness.CreateResourcesAsync([patientWithActiveOrg, patientWithDeletedOrg]);
 
         // Delete one organization

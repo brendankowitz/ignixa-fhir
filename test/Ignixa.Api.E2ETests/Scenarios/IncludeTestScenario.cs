@@ -3,8 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json.Nodes;
-using Ignixa.FhirFakes;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Serialization.SourceNodes;
@@ -58,8 +56,6 @@ public static class IncludeTestScenario
         ArgumentNullException.ThrowIfNull(schemaProvider);
         ArgumentNullException.ThrowIfNull(tag);
 
-        var faker = new SchemaBasedFhirResourceFaker(schemaProvider).WithTag(tag);
-
         var data = new IncludeTestData
         {
             Tag = tag,
@@ -85,24 +81,30 @@ public static class IncludeTestScenario
 
         // === Step 2: Create Locations (parent and child) ===
 
-        var parentLocation = CreateLocation(faker, data.Organization.Id);
+        var parentLocation = LocationBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithName("Test Location")
+            .WithStatus("active")
+            .WithManagingOrganization(data.Organization.Id!)
+            .Build();
+
         data.Location = parentLocation;
 
-        var childLocation = CreateLocation(faker, partOfLocationId: parentLocation.Id);
+        var childLocation = LocationBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithName("Test Location")
+            .WithStatus("active")
+            .WithPartOf(parentLocation.Id!)
+            .Build();
+
         data.ChildLocation = childLocation;
 
         // === Step 3: Create Practitioner ===
-        // Note: No PractitionerBuilder exists yet, so using faker with manual configuration.
 
-        var practitioner = faker.Generate("Practitioner");
-        practitioner.MutableNode["name"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["family"] = "Anderson",
-                ["given"] = new JsonArray { "Alice" }
-            }
-        };
+        var practitioner = PractitionerBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithName("Alice", "Anderson")
+            .Build();
 
         data.Practitioner = practitioner;
 
@@ -135,43 +137,56 @@ public static class IncludeTestScenario
         // === Step 5: Create Observations ===
 
         // Observation1: subject=Patient1, performer=Practitioner
-        data.Observation1 = CreateObservation(
-            faker,
-            data.Patient1.Id!,
-            loincCode,
-            6.5m,
-            "%",
-            practitionerId: data.Practitioner.Id);
+        data.Observation1 = ObservationBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithStatus("final")
+            .WithCode(loincCode.Code, loincCode.System, loincCode.Display)
+            .WithSubject(data.Patient1.Id!)
+            .WithQuantityValue(6.5m, "%")
+            .WithPractitionerPerformer(data.Practitioner.Id!)
+            .Build();
 
         // Observation2: subject=Patient1, performer=Organization
-        data.Observation2 = CreateObservation(
-            faker,
-            data.Patient1.Id!,
-            snomedCode,
-            145m,
-            "mg/dL",
-            organizationId: data.Organization.Id);
+        data.Observation2 = ObservationBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithStatus("final")
+            .WithCode(snomedCode.Code, snomedCode.System, snomedCode.Display)
+            .WithSubject(data.Patient1.Id!)
+            .WithQuantityValue(145m, "mg/dL")
+            .WithOrganizationPerformer(data.Organization.Id!)
+            .Build();
 
         // === Step 6: Create DiagnosticReport ===
 
-        data.DiagnosticReport = CreateDiagnosticReport(
-            faker,
-            data.Patient1.Id!,
-            snomedCode,
-            data.Observation1.Id!,
-            data.Observation2.Id!);
+        data.DiagnosticReport = DiagnosticReportBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithStatus("final")
+            .WithCode(snomedCode.Code, snomedCode.System, snomedCode.Display)
+            .WithSubject(data.Patient1.Id!)
+            .WithResults(data.Observation1.Id!, data.Observation2.Id!)
+            .Build();
 
         // === Step 7: Create Group ===
 
-        var group = CreateGroup(faker, data.Patient1.Id!, data.Patient2.Id!);
+        var group = GroupBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithType("person")
+            .WithActual(true)
+            .WithMembers(data.Patient1.Id!, data.Patient2.Id!)
+            .Build();
+
         data.Group = group;
 
         // === Step 8: Create CareTeam ===
 
-        var careTeam = CreateCareTeam(faker,
-            [data.Patient1.Id!],
-            data.Organization.Id!,
-            data.Practitioner.Id!);
+        var careTeam = CareTeamBuilder.Create(schemaProvider)
+            .WithTag(tag)
+            .WithStatus("active")
+            .WithPatientParticipant(data.Patient1.Id!)
+            .WithOrganizationParticipant(data.Organization.Id!)
+            .WithPractitionerParticipant(data.Practitioner.Id!)
+            .Build();
+
         data.CareTeam = careTeam;
 
         // === Populate AllResources in dependency order ===
@@ -206,206 +221,6 @@ public static class IncludeTestScenario
         return data;
     }
 
-    #region Private Helper Methods
-
-    private static JsonObject CreateReferenceJson(string resourceType, string id)
-    {
-        return new JsonObject
-        {
-            ["reference"] = $"{resourceType}/{id}"
-        };
-    }
-
-    private static JsonObject CreateCodeableConceptJson(FhirCode code)
-    {
-        return new JsonObject
-        {
-            ["coding"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = code.System,
-                    ["code"] = code.Code,
-                    ["display"] = code.Display
-                }
-            }
-        };
-    }
-
-    /// <summary>
-    /// Creates a Location resource with optional organization and partOf references.
-    /// </summary>
-    private static ResourceJsonNode CreateLocation(
-        SchemaBasedFhirResourceFaker faker,
-        string? managingOrganizationId = null,
-        string? partOfLocationId = null)
-    {
-        var location = faker.Generate("Location");
-        location.MutableNode["status"] = "active";
-        location.MutableNode["name"] = "Test Location";
-
-        if (managingOrganizationId is not null)
-        {
-            location.MutableNode["managingOrganization"] = CreateReferenceJson("Organization", managingOrganizationId);
-        }
-
-        if (partOfLocationId is not null)
-        {
-            location.MutableNode["partOf"] = CreateReferenceJson("Location", partOfLocationId);
-        }
-
-        return location;
-    }
-
-    /// <summary>
-    /// Creates an Observation resource with subject and optional performer references.
-    /// </summary>
-    private static ResourceJsonNode CreateObservation(
-        SchemaBasedFhirResourceFaker faker,
-        string patientId,
-        FhirCode code,
-        decimal value,
-        string unit,
-        string? practitionerId = null,
-        string? organizationId = null)
-    {
-        var observation = faker.Generate("Observation");
-        observation.MutableNode["status"] = "final";
-        observation.MutableNode["code"] = CreateCodeableConceptJson(code);
-        observation.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
-        observation.MutableNode["valueQuantity"] = new JsonObject
-        {
-            ["value"] = value,
-            ["unit"] = unit
-        };
-
-        if (practitionerId is not null || organizationId is not null)
-        {
-            var performers = new JsonArray();
-            if (practitionerId is not null)
-            {
-                performers.Add(CreateReferenceJson("Practitioner", practitionerId));
-            }
-            if (organizationId is not null)
-            {
-                performers.Add(CreateReferenceJson("Organization", organizationId));
-            }
-            observation.MutableNode["performer"] = performers;
-        }
-
-        return observation;
-    }
-
-    /// <summary>
-    /// Creates a DiagnosticReport resource with subject and result references.
-    /// </summary>
-    private static ResourceJsonNode CreateDiagnosticReport(
-        SchemaBasedFhirResourceFaker faker,
-        string patientId,
-        FhirCode code,
-        params string[] observationIds)
-    {
-        var report = faker.Generate("DiagnosticReport");
-        report.MutableNode["status"] = "final";
-        report.MutableNode["code"] = CreateCodeableConceptJson(code);
-        report.MutableNode["subject"] = CreateReferenceJson("Patient", patientId);
-
-        if (observationIds.Length > 0)
-        {
-            var results = new JsonArray();
-            foreach (var obsId in observationIds)
-            {
-                results.Add(CreateReferenceJson("Observation", obsId));
-            }
-            report.MutableNode["result"] = results;
-        }
-
-        return report;
-    }
-
-    /// <summary>
-    /// Creates a Group resource with member references.
-    /// </summary>
-    private static ResourceJsonNode CreateGroup(SchemaBasedFhirResourceFaker faker, params string[] patientIds)
-    {
-        var group = faker.Generate("Group");
-        group.MutableNode["type"] = "person";
-        group.MutableNode["actual"] = true;
-        group.MutableNode["member"] = CreateGroupMemberArray(patientIds);
-
-        return group;
-    }
-
-    /// <summary>
-    /// Creates a Group.member array with Patient references.
-    /// </summary>
-    private static JsonArray CreateGroupMemberArray(params string[] patientIds)
-    {
-        var members = new JsonArray();
-        foreach (var id in patientIds)
-        {
-            members.Add(new JsonObject
-            {
-                ["entity"] = CreateReferenceJson("Patient", id)
-            });
-        }
-        return members;
-    }
-
-    /// <summary>
-    /// Creates a CareTeam resource with participant references.
-    /// </summary>
-    private static ResourceJsonNode CreateCareTeam(
-        SchemaBasedFhirResourceFaker faker,
-        string[] patientIds,
-        string? organizationId = null,
-        string? practitionerId = null)
-    {
-        var careTeam = faker.Generate("CareTeam");
-        careTeam.MutableNode["status"] = "active";
-        careTeam.MutableNode["participant"] = CreateCareTeamParticipantArray(patientIds, organizationId, practitionerId);
-
-        return careTeam;
-    }
-
-    /// <summary>
-    /// Creates a CareTeam.participant array with member references.
-    /// </summary>
-    private static JsonArray CreateCareTeamParticipantArray(
-        string[] patientIds,
-        string? organizationId,
-        string? practitionerId)
-    {
-        var participants = new JsonArray();
-
-        foreach (var patientId in patientIds)
-        {
-            participants.Add(new JsonObject
-            {
-                ["member"] = CreateReferenceJson("Patient", patientId)
-            });
-        }
-
-        if (organizationId is not null)
-        {
-            participants.Add(new JsonObject
-            {
-                ["member"] = CreateReferenceJson("Organization", organizationId)
-            });
-        }
-
-        if (practitionerId is not null)
-        {
-            participants.Add(new JsonObject
-            {
-                ["member"] = CreateReferenceJson("Practitioner", practitionerId)
-            });
-        }
-
-        return participants;
-    }
-
-    #endregion
 }
 
 /// <summary>
