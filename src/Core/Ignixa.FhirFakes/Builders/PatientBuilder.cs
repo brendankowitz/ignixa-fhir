@@ -50,6 +50,9 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     // Demographic configuration
     private int? _age;
     private int? _birthYear;
+    private int? _birthMonth;
+    private int? _birthDay;
+    private string? _birthDateString; // For direct FHIR date string assignment (supports year/month/day precision)
     private string? _gender;
     private string? _givenName;
     private string? _familyName;
@@ -66,9 +69,16 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     private decimal? _bmi;
     private bool _active = true;
 
+    // Multiple birth configuration
+    private int? _multipleBirthInteger;
+    private bool? _multipleBirthBoolean;
+
     // Reference configuration
     private string? _managingOrganizationId;
     private readonly List<string> _generalPractitionerIds = [];
+
+    // Identifier configuration
+    private readonly List<IdentifierConfig> _identifiers = [];
 
     // Profile-specific configuration (Attributes Pattern)
     private IPatientProfile _profile = DefaultPatientProfile.Instance;
@@ -163,6 +173,90 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     public PatientBuilder WithBirthYear(int year)
     {
         _birthYear = year;
+        _birthMonth = null;
+        _birthDay = null;
+        _birthDateString = null;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the patient's birthdate with year-only precision.
+    /// Stores as FHIR date string "YYYY" (e.g., "1982").
+    /// </summary>
+    /// <param name="year">Birth year (1900-2100)</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithBirthDate(1982)  // Year-only precision
+    ///     .Build();
+    /// // birthDate will be "1982"
+    /// </code>
+    /// </example>
+    public PatientBuilder WithBirthDate(int year)
+    {
+        ValidateYear(year);
+        _birthDateString = year.ToString();
+        _birthYear = year;
+        _birthMonth = null;
+        _birthDay = null;
+        _age = CalculateAge(year);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the patient's birthdate with month-only precision.
+    /// Stores as FHIR date string "YYYY-MM" (e.g., "1982-01").
+    /// </summary>
+    /// <param name="year">Birth year (1900-2100)</param>
+    /// <param name="month">Birth month (1-12)</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithBirthDate(1982, 1)  // Month precision: January 1982
+    ///     .Build();
+    /// // birthDate will be "1982-01"
+    /// </code>
+    /// </example>
+    public PatientBuilder WithBirthDate(int year, int month)
+    {
+        ValidateYear(year);
+        ValidateMonth(month);
+        _birthDateString = $"{year:D4}-{month:D2}";
+        _birthYear = year;
+        _birthMonth = month;
+        _birthDay = null;
+        _age = CalculateAge(year, month);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the patient's birthdate with full date precision.
+    /// Stores as FHIR date string "YYYY-MM-DD" (e.g., "1982-01-15").
+    /// </summary>
+    /// <param name="year">Birth year (1900-2100)</param>
+    /// <param name="month">Birth month (1-12)</param>
+    /// <param name="day">Birth day (1-31, validated for month)</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var patient = CreatePatient()
+    ///     .WithBirthDate(1982, 1, 15)  // Full date precision
+    ///     .Build();
+    /// // birthDate will be "1982-01-15"
+    /// </code>
+    /// </example>
+    public PatientBuilder WithBirthDate(int year, int month, int day)
+    {
+        ValidateYear(year);
+        ValidateMonth(month);
+        ValidateDay(year, month, day);
+        _birthDateString = $"{year:D4}-{month:D2}-{day:D2}";
+        _birthYear = year;
+        _birthMonth = month;
+        _birthDay = day;
+        _age = CalculateAge(year, month, day);
         return this;
     }
 
@@ -331,6 +425,51 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     public PatientBuilder WithActive(bool active)
     {
         _active = active;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets multipleBirthInteger to indicate birth order in multiple birth.
+    /// Used for number searches with comparison operators.
+    /// </summary>
+    /// <param name="order">Birth order (1 = first born, 2 = second, etc.). Must be positive.</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <exception cref="ArgumentException">Thrown when order is less than 1</exception>
+    /// <example>
+    /// <code>
+    /// var triplet = CreatePatient()
+    ///     .WithMultipleBirth(3)  // Third born of triplets
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithMultipleBirth(int order)
+    {
+        if (order < 1)
+        {
+            throw new ArgumentException("Birth order must be positive", nameof(order));
+        }
+
+        _multipleBirthInteger = order;
+        _multipleBirthBoolean = null; // Clear boolean variant
+        return this;
+    }
+
+    /// <summary>
+    /// Sets multipleBirthBoolean to indicate if patient is part of multiple birth.
+    /// </summary>
+    /// <param name="isMultipleBirth">True if patient is a twin/triplet/etc., false if singleton.</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// var singleton = CreatePatient()
+    ///     .WithMultipleBirth(false)  // Not a multiple birth
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithMultipleBirth(bool isMultipleBirth)
+    {
+        _multipleBirthBoolean = isMultipleBirth;
+        _multipleBirthInteger = null; // Clear integer variant
         return this;
     }
 
@@ -510,7 +649,7 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
             ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["gender"] = _gender ?? PatientBuilderConstants.Gender.Unknown,
-            ["birthDate"] = CalculateBirthDate().ToString("yyyy-MM-dd"),
+            ["birthDate"] = _birthDateString ?? CalculateBirthDate().ToString("yyyy-MM-dd"),
             ["name"] = BuildName(),
             ["active"] = _active
         };
@@ -550,6 +689,20 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
                 });
             }
             patientJson["generalPractitioner"] = gpArray;
+        }
+
+        if (_multipleBirthInteger.HasValue)
+        {
+            patientJson["multipleBirthInteger"] = _multipleBirthInteger.Value;
+        }
+        else if (_multipleBirthBoolean.HasValue)
+        {
+            patientJson["multipleBirthBoolean"] = _multipleBirthBoolean.Value;
+        }
+
+        if (HasIdentifiers())
+        {
+            patientJson["identifier"] = BuildIdentifiers();
         }
 
         var json = patientJson.ToJsonString();
@@ -712,5 +865,192 @@ public sealed class PatientBuilder : FhirResourceBuilder<PatientBuilder>
     {
         // Country defaults to "US" if not set, so treat null/empty as US
         return string.IsNullOrEmpty(_country) || _country == "US";
+    }
+
+    // === Birth Date Validation and Calculation Methods ===
+
+    /// <summary>
+    /// Validates that the year is within a reasonable range.
+    /// </summary>
+    private static void ValidateYear(int year)
+    {
+        if (year < 1900 || year > 2100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(year), year, "Year must be between 1900 and 2100");
+        }
+    }
+
+    /// <summary>
+    /// Validates that the month is between 1 and 12.
+    /// </summary>
+    private static void ValidateMonth(int month)
+    {
+        if (month < 1 || month > 12)
+        {
+            throw new ArgumentOutOfRangeException(nameof(month), month, "Month must be between 1 and 12");
+        }
+    }
+
+    /// <summary>
+    /// Validates that the day is valid for the given year and month.
+    /// </summary>
+    private static void ValidateDay(int year, int month, int day)
+    {
+        if (day < 1 || day > 31)
+        {
+            throw new ArgumentOutOfRangeException(nameof(day), day, "Day must be between 1 and 31");
+        }
+
+        try
+        {
+            _ = new DateTime(year, month, day);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            throw new ArgumentOutOfRangeException(nameof(day), day, $"Invalid day for {year}-{month:D2}");
+        }
+    }
+
+    /// <summary>
+    /// Calculates approximate age from year only.
+    /// </summary>
+    private static int CalculateAge(int year)
+    {
+        return DateTime.UtcNow.Year - year;
+    }
+
+    /// <summary>
+    /// Calculates approximate age from year and month.
+    /// </summary>
+    private static int CalculateAge(int year, int month)
+    {
+        var today = DateTime.UtcNow;
+        var age = today.Year - year;
+        if (today.Month < month)
+        {
+            age--;
+        }
+        return age;
+    }
+
+    /// <summary>
+    /// Calculates exact age from full birth date.
+    /// </summary>
+    private static int CalculateAge(int year, int month, int day)
+    {
+        var today = DateTime.UtcNow;
+        var birthDate = new DateTime(year, month, day);
+        var age = today.Year - birthDate.Year;
+        if (today < birthDate.AddYears(age))
+        {
+            age--;
+        }
+        return age;
+    }
+
+    // === Identifier Support ===
+
+    /// <summary>
+    /// Adds a typed identifier to the patient.
+    /// Creates an identifier with a type code from the FHIR v2-0203 code system.
+    /// </summary>
+    /// <param name="value">The identifier value (e.g., "12345", "123-45-6789")</param>
+    /// <param name="typeSystem">The type coding system (e.g., "http://terminology.hl7.org/CodeSystem/v2-0203")</param>
+    /// <param name="typeCode">The type code (e.g., "MR", "SS", "DL", "PPN")</param>
+    /// <param name="typeDisplay">Optional display text for the type (e.g., "Medical Record", "Social Security Number")</param>
+    /// <param name="identifierSystem">Optional system for the identifier value itself</param>
+    /// <returns>This builder for method chaining</returns>
+    /// <example>
+    /// <code>
+    /// // Medical Record Number
+    /// var patient = CreatePatient()
+    ///     .WithTypedIdentifier("12345", "http://terminology.hl7.org/CodeSystem/v2-0203", "MR", "Medical Record")
+    ///     .Build();
+    ///
+    /// // Social Security Number with identifier system
+    /// var patient = CreatePatient()
+    ///     .WithTypedIdentifier("123-45-6789", "http://terminology.hl7.org/CodeSystem/v2-0203", "SS", "Social Security Number", "http://hl7.org/fhir/sid/us-ssn")
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public PatientBuilder WithTypedIdentifier(
+        string value,
+        string typeSystem,
+        string typeCode,
+        string? typeDisplay = null,
+        string? identifierSystem = null)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(typeSystem);
+        ArgumentNullException.ThrowIfNull(typeCode);
+
+        _identifiers.Add(new IdentifierConfig
+        {
+            Value = value,
+            TypeSystem = typeSystem,
+            TypeCode = typeCode,
+            TypeDisplay = typeDisplay,
+            IdentifierSystem = identifierSystem
+        });
+
+        return this;
+    }
+
+    private bool HasIdentifiers()
+    {
+        return _identifiers.Count > 0;
+    }
+
+    private JsonArray BuildIdentifiers()
+    {
+        var identifierArray = new JsonArray();
+
+        foreach (var config in _identifiers)
+        {
+            var identifier = new JsonObject
+            {
+                ["type"] = new JsonObject
+                {
+                    ["coding"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["system"] = config.TypeSystem,
+                            ["code"] = config.TypeCode
+                        }
+                    }
+                },
+                ["value"] = config.Value
+            };
+
+            // Add type display if provided
+            if (!string.IsNullOrEmpty(config.TypeDisplay))
+            {
+                var typeCoding = identifier["type"]!["coding"]!.AsArray()[0]!.AsObject();
+                typeCoding["display"] = config.TypeDisplay;
+            }
+
+            // Add identifier system if provided
+            if (!string.IsNullOrEmpty(config.IdentifierSystem))
+            {
+                identifier["system"] = config.IdentifierSystem;
+            }
+
+            identifierArray.Add(identifier);
+        }
+
+        return identifierArray;
+    }
+
+    /// <summary>
+    /// Configuration for a typed identifier.
+    /// </summary>
+    private sealed class IdentifierConfig
+    {
+        public required string Value { get; init; }
+        public required string TypeSystem { get; init; }
+        public required string TypeCode { get; init; }
+        public string? TypeDisplay { get; init; }
+        public string? IdentifierSystem { get; init; }
     }
 }

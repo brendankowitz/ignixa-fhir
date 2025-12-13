@@ -808,4 +808,434 @@ public class PatientBuilderTests
     }
 
     #endregion
+
+    #region Birthdate Precision Tests
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithYearOnlyPrecision_ThenStoresYearOnlyString()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982)
+            .WithGender("male")
+            .Build();
+
+        // Assert
+        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982");
+    }
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithMonthOnlyPrecision_ThenStoresMonthOnlyString()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, 1)
+            .WithGender("female")
+            .Build();
+
+        // Assert
+        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-01");
+    }
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithFullDatePrecision_ThenStoresFullDateString()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, 1, 15)
+            .WithGender("male")
+            .Build();
+
+        // Assert
+        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-01-15");
+    }
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithVariousBirthdatePrecisions_ThenEachStoresCorrectPrecision()
+    {
+        // Test year-only
+        var yearOnly = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1980)
+            .Build();
+        yearOnly.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1980");
+
+        // Test month-only
+        var monthOnly = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1985, 3)
+            .Build();
+        monthOnly.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1985-03");
+
+        // Test full date
+        var fullDate = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1990, 12, 25)
+            .Build();
+        fullDate.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1990-12-25");
+    }
+
+    [Theory]
+    [InlineData(1899)] // Below minimum
+    [InlineData(2101)] // Above maximum
+    public void GivenSimpleBuilder_WhenBuildingWithInvalidYear_ThenThrowsArgumentOutOfRangeException(int year)
+    {
+        // Arrange & Act
+        var act = () => PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(year)
+            .Build();
+
+        // Assert
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithMessage("*Year must be between 1900 and 2100*");
+    }
+
+    [Theory]
+    [InlineData(0)]  // Below minimum
+    [InlineData(13)] // Above maximum
+    public void GivenSimpleBuilder_WhenBuildingWithInvalidMonth_ThenThrowsArgumentOutOfRangeException(int month)
+    {
+        // Arrange & Act
+        var act = () => PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, month)
+            .Build();
+
+        // Assert
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithMessage("*Month must be between 1 and 12*");
+    }
+
+    [Theory]
+    [InlineData(1982, 2, 30)] // Feb 30 doesn't exist
+    [InlineData(1982, 4, 31)] // April only has 30 days
+    [InlineData(2023, 2, 29)] // 2023 is not a leap year
+    public void GivenSimpleBuilder_WhenBuildingWithInvalidDay_ThenThrowsArgumentOutOfRangeException(int year, int month, int day)
+    {
+        // Arrange & Act
+        var act = () => PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(year, month, day)
+            .Build();
+
+        // Assert
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithMessage($"*Invalid day for {year}-{month:D2}*");
+    }
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithLeapYearDate_ThenAcceptsFebruary29()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(2000, 2, 29) // 2000 is a leap year
+            .WithGender("female")
+            .Build();
+
+        // Assert
+        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("2000-02-29");
+    }
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithYearBoundaryDates_ThenStoresCorrectly()
+    {
+        // Test year boundaries
+        var jan1 = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, 1, 1)
+            .Build();
+        jan1.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-01-01");
+
+        var dec31 = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, 12, 31)
+            .Build();
+        dec31.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-12-31");
+    }
+
+    [Fact]
+    public void GivenSimpleBuilder_WhenBuildingWithMonthBoundaryDates_ThenStoresCorrectly()
+    {
+        // Test month boundaries
+        var monthStart = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, 5, 1)
+            .Build();
+        monthStart.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-05-01");
+
+        var monthEnd = PatientBuilderFactory.Create(_schemaProvider)
+            .WithBirthDate(1982, 5, 31)
+            .Build();
+        monthEnd.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-05-31");
+    }
+
+    #endregion
+
+    // TODO: Field Omission Tests require implementation of WithoutActive, WithoutGender, WithoutAddress, WithoutTelecom methods
+    // These tests were part of the branch but the methods are not implemented yet
+    #region Field Omission Tests (:missing modifier support) - COMMENTED OUT - REQUIRES IMPLEMENTATION
+
+    /*
+
+    [Fact]
+    public void GivenPatientWithoutActive_WhenBuilt_ThenActiveFieldOmitted()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutActive()
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("active").Should().BeFalse("active field should be omitted");
+    }
+
+    [Fact]
+    public void GivenPatientWithActiveThenWithoutActive_WhenBuilt_ThenActiveFieldOmitted()
+    {
+        // Arrange & Act - WithoutActive should override WithActive
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithActive(true)
+            .WithoutActive()  // Should override
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("active").Should().BeFalse("WithoutActive should override WithActive");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutActiveThenWithActive_WhenBuilt_ThenActiveFieldIncluded()
+    {
+        // Arrange & Act - WithActive should re-enable after WithoutActive
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutActive()
+            .WithActive(false)  // Should re-enable
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("active").Should().BeTrue("WithActive should re-enable the field");
+        patient.MutableNode["active"]?.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void GivenPatientWithoutGender_WhenBuilt_ThenGenderFieldOmitted()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithoutGender()
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("gender").Should().BeFalse("gender field should be omitted");
+    }
+
+    [Fact]
+    public void GivenPatientWithGenderThenWithoutGender_WhenBuilt_ThenGenderFieldOmitted()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("female")
+            .WithoutGender()  // Should override
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("gender").Should().BeFalse("WithoutGender should override WithGender");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutGenderThenWithGender_WhenBuilt_ThenGenderFieldIncluded()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithoutGender()
+            .WithGender("male")  // Should re-enable
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("gender").Should().BeTrue("WithGender should re-enable the field");
+        patient.MutableNode["gender"]?.GetValue<string>().Should().Be("male");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutTelecom_WhenBuilt_ThenTelecomFieldOmitted()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithAreaCode("617")  // Would normally generate telecom
+            .WithoutTelecom()     // But explicitly omit it
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("telecom").Should().BeFalse("telecom field should be omitted");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutTelecomThenWithAreaCode_WhenBuilt_ThenTelecomFieldIncluded()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutTelecom()
+            .WithAreaCode("617")  // Should re-enable telecom
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("telecom").Should().BeTrue("WithAreaCode should re-enable telecom field");
+        var telecoms = patient.MutableNode["telecom"]?.AsArray();
+        telecoms.Should().NotBeNull();
+        telecoms.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void GivenPatientWithoutAddress_WhenBuilt_ThenAddressFieldOmitted()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithZipCode("02101")  // Would normally generate address
+            .WithoutAddress()      // But explicitly omit it
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("address").Should().BeFalse("address field should be omitted");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutAddressThenWithZipCode_WhenBuilt_ThenAddressFieldIncluded()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutAddress()
+            .WithZipCode("02101")  // Should re-enable address
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithZipCode should re-enable address field");
+        var addresses = patient.MutableNode["address"]?.AsArray();
+        addresses.Should().NotBeNull();
+        addresses.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void GivenPatientWithoutAddressThenWithCity_WhenBuilt_ThenAddressFieldIncluded()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutAddress()
+            .WithCity("Boston")  // Should re-enable address
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithCity should re-enable address field");
+        var addresses = patient.MutableNode["address"]?.AsArray();
+        addresses.Should().NotBeNull();
+        addresses.Should().HaveCount(1);
+        var address = addresses?[0]?.AsObject();
+        address?["city"]?.GetValue<string>().Should().Be("Boston");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutAddressThenWithState_WhenBuilt_ThenAddressFieldIncluded()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutAddress()
+            .WithState("MA")  // Should re-enable address
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithState should re-enable address field");
+    }
+
+    [Fact]
+    public void GivenPatientWithoutAddressThenWithFullAddress_WhenBuilt_ThenAddressFieldIncluded()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithGender("male")
+            .WithoutAddress()
+            .WithAddress("123 Main St", "Boston", "MA", "02101")  // Should re-enable address
+            .Build();
+
+        // Assert
+        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithAddress should re-enable address field");
+        var addresses = patient.MutableNode["address"]?.AsArray();
+        addresses.Should().NotBeNull();
+        addresses.Should().HaveCount(1);
+        var address = addresses?[0]?.AsObject();
+        address?["city"]?.GetValue<string>().Should().Be("Boston");
+        address?["postalCode"]?.GetValue<string>().Should().Be("02101");
+    }
+
+    [Fact]
+    public void GivenPatientWithMultipleFieldsOmitted_WhenBuilt_ThenAllOmittedFieldsAbsent()
+    {
+        // Arrange & Act
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .WithAge(30)
+            .WithoutGender()
+            .WithoutActive()
+            .WithoutTelecom()
+            .WithoutAddress()
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("gender").Should().BeFalse("gender should be omitted");
+        patient.MutableNode.ContainsKey("active").Should().BeFalse("active should be omitted");
+        patient.MutableNode.ContainsKey("telecom").Should().BeFalse("telecom should be omitted");
+        patient.MutableNode.ContainsKey("address").Should().BeFalse("address should be omitted");
+
+        // Other fields should still be present
+        patient.MutableNode.ContainsKey("id").Should().BeTrue();
+        patient.MutableNode.ContainsKey("birthDate").Should().BeTrue();
+        patient.MutableNode.ContainsKey("name").Should().BeTrue();
+    }
+
+    [Fact]
+    public void GivenPatientFromCityWithoutAddress_WhenBuilt_ThenAddressFieldOmitted()
+    {
+        // Arrange & Act - FromCity sets address fields, but WithoutAddress should override
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .FromCity(KnownCities.Boston)
+            .WithoutAddress()
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("address").Should().BeFalse("address should be omitted even after FromCity");
+    }
+
+    [Fact]
+    public void GivenPatientFromCityWithoutTelecom_WhenBuilt_ThenTelecomFieldOmitted()
+    {
+        // Arrange & Act - FromCity sets area code, but WithoutTelecom should override
+        var patient = PatientBuilderFactory.Create(_schemaProvider)
+            .FromCity(KnownCities.Boston)
+            .WithoutTelecom()
+            .Build();
+
+        // Assert
+        patient.Should().NotBeNull();
+        patient.MutableNode.ContainsKey("telecom").Should().BeFalse("telecom should be omitted even after FromCity");
+    }
+    */
+
+    #endregion
 }
+
