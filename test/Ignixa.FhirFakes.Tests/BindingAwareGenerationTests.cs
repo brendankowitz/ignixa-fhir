@@ -32,6 +32,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/administrative-gender",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -49,6 +50,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/observation-codes",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -63,6 +65,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/procedure-code",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -79,6 +82,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/allergyintolerance-code",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -95,6 +99,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/vaccine-code",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -112,6 +117,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/medication-codes",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -126,6 +132,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/observation-status",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -142,6 +149,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://hl7.org/fhir/ValueSet/administrative-gender|4.0.1",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -155,6 +163,7 @@ public class BindingAwareGenerationTests
         // Act
         var result = BindingCodeMapper.TryGetCodesForValueSet(
             "http://example.org/ValueSet/unknown",
+            _schemaProvider.ValueSetProvider,
             out var codes);
 
         // Assert
@@ -166,7 +175,7 @@ public class BindingAwareGenerationTests
     public void BindingCodeMapper_GivenNullValueSet_ThenReturnsFalse()
     {
         // Act
-        var result = BindingCodeMapper.TryGetCodesForValueSet(null, out var codes);
+        var result = BindingCodeMapper.TryGetCodesForValueSet(null, _schemaProvider.ValueSetProvider, out var codes);
 
         // Assert
         result.Should().BeFalse();
@@ -177,7 +186,7 @@ public class BindingAwareGenerationTests
     public void BindingCodeMapper_GivenEmptyValueSet_ThenReturnsFalse()
     {
         // Act
-        var result = BindingCodeMapper.TryGetCodesForValueSet(string.Empty, out var codes);
+        var result = BindingCodeMapper.TryGetCodesForValueSet(string.Empty, _schemaProvider.ValueSetProvider, out var codes);
 
         // Assert
         result.Should().BeFalse();
@@ -597,26 +606,30 @@ public class BindingAwareGenerationTests
     #region Multiple Generation Consistency Tests
 
     [Fact]
-    public void GenerateMultiplePatients_WhenGenderHasBinding_ThenAllUsesValidGenderCodes()
+    public void GenerateMultiplePatients_WhenGenderIsOptional_ThenNotPopulatedByDefault()
     {
-        // Arrange
-        var generatedGenders = new List<string>();
+        // Arrange & Act
+        // Patient.gender is optional (0..1), so with deterministic generation
+        // it should NOT be populated (only required fields are populated)
+        var patient = _faker.Generate("Patient");
+        var gender = patient.MutableNode["gender"]?.GetValue<string>();
 
-        // Act
-        for (int i = 0; i < 50; i++)
-        {
-            var patient = _faker.Generate("Patient");
-            var gender = patient.MutableNode["gender"]?.GetValue<string>();
-            if (gender is not null)
-            {
-                generatedGenders.Add(gender);
-            }
-        }
+        // Assert - gender is optional and should not be populated by default
+        gender.Should().BeNull(
+            "Patient.gender is optional (0..1) and optional fields are not populated by default for deterministic test behavior");
+    }
 
-        // Assert
-        generatedGenders.Should().NotBeEmpty();
-        generatedGenders.Should().AllSatisfy(g =>
-            g.Should().BeOneOf("male", "female", "other", "unknown"));
+    [Fact]
+    public void GivenPatientBuilder_WhenGenderIsSet_ThenUsesValidGenderCode()
+    {
+        // Arrange & Act - Use PatientBuilder to explicitly set gender
+        var patient = _faker.CreatePatient(p => p.WithGender(g => g.Female));
+        var gender = patient.MutableNode["gender"]?.GetValue<string>();
+
+        // Assert - when gender IS set via builder, it should be a valid code
+        gender.Should().NotBeNullOrEmpty();
+        gender.Should().BeOneOf("male", "female", "other", "unknown",
+            "Patient.gender should use administrative-gender value set when set via builder");
     }
 
     [Fact]

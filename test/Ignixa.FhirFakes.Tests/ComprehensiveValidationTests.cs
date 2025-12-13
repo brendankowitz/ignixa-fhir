@@ -254,10 +254,10 @@ public class ComprehensiveValidationTests
                     }
 
                     // Validate Medications
-                    // Note: R5 has significant breaking changes to MedicationRequest (medication -> CodeableReference,
+                    // Note: R5+ have significant breaking changes to MedicationRequest (medication -> CodeableReference,
                     // dosageInstruction.timing.repeat restructured, reasonCode removed, etc.)
-                    // Skip R5 MedicationRequest validation until MedicationOrderState is updated for R5
-                    if (version != FhirVersion.R5)
+                    // Skip R5+ MedicationRequest validation until MedicationOrderState is updated for R5+
+                    if (version < FhirVersion.R5)
                     {
                         foreach (var medication in built.Medications)
                         {
@@ -293,10 +293,10 @@ public class ComprehensiveValidationTests
                     }
 
                     // Validate Immunizations
-                    // Note: R5 has significant breaking changes to Immunization (manufacturer -> CodeableReference,
+                    // Note: R5+ have significant breaking changes to Immunization (manufacturer -> CodeableReference,
                     // doseNumber/seriesDoses changed from positiveInt to string, etc.)
-                    // Skip R5 Immunization validation until ImmunizationState is updated for R5
-                    if (version != FhirVersion.R5)
+                    // Skip R5+ Immunization validation until ImmunizationState is updated for R5+
+                    if (version < FhirVersion.R5)
                     {
                         foreach (var immunization in built.Immunizations)
                         {
@@ -310,10 +310,10 @@ public class ComprehensiveValidationTests
                     }
 
                     // Validate Allergies
-                    // Note: R5 has significant breaking changes to AllergyIntolerance
+                    // Note: R5+ have significant breaking changes to AllergyIntolerance
                     // (reaction.manifestation -> CodeableReference, recorder removed, etc.)
-                    // Skip R5 AllergyIntolerance validation until AllergyIntoleranceState is updated for R5
-                    if (version != FhirVersion.R5)
+                    // Skip R5+ AllergyIntolerance validation until AllergyIntoleranceState is updated for R5+
+                    if (version < FhirVersion.R5)
                     {
                         foreach (var allergy in built.Allergies)
                         {

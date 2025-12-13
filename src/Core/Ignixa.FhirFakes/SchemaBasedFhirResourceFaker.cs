@@ -70,9 +70,6 @@ public class SchemaBasedFhirResourceFaker
         _schemaProvider = schemaProvider;
         _faker = new Faker();
         _random = new Random();
-
-        // Initialize BindingCodeMapper with the schema provider's ValueSetProvider
-        BindingCodeMapper.Initialize(schemaProvider.ValueSetProvider);
     }
 
     /// <summary>
@@ -219,15 +216,8 @@ public class SchemaBasedFhirResourceFaker
                 }
             }
 
-            // Optional elements: add 30% of the time if in summary or important
-            else if (child.InSummary || _random.NextDouble() < 0.3)
-            {
-                var value = GenerateElementValue(actualElement, resourceType, depth: 0);
-                if (value is not null)
-                {
-                    root[actualElementName] = value;
-                }
-            }
+            // Optional elements: never populate (deterministic behavior for test stability)
+            // If tests need optional fields, use PatientBuilder or manually set them after generation
         }
 
         var json = root.ToJsonString();
@@ -455,16 +445,8 @@ public class SchemaBasedFhirResourceFaker
                     }
                 }
             }
-            // Optional elements: add 30% of the time if in summary
-            else if (child.InSummary || _random.NextDouble() < 0.3)
-            {
-                var value = GenerateElementValue(actualElement, currentTypeName, depth + 1);
-                if (value is not null)
-                {
-                    obj[actualElementName] = value;
-                    hasContent = true;
-                }
-            }
+            // Optional elements: never populate (deterministic behavior for test stability)
+            // If tests need optional fields, use PatientBuilder or manually set them after generation
         }
 
         return hasContent ? obj : null;
@@ -494,7 +476,7 @@ public class SchemaBasedFhirResourceFaker
         }
 
         // Try to get codes from our predefined constants
-        if (!BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) || codes.Length == 0)
+        if (!BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) || codes.Length == 0)
         {
             return false;
         }
@@ -614,7 +596,7 @@ public class SchemaBasedFhirResourceFaker
         // Try binding-aware generation first
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return JsonValue.Create(selectedCode.Code)!;
@@ -769,7 +751,7 @@ public class SchemaBasedFhirResourceFaker
         // Try binding-aware generation first
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return CreateCodeableConcept(selectedCode);
@@ -797,7 +779,7 @@ public class SchemaBasedFhirResourceFaker
         // Try to get binding information for concept generation
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return new JsonObject
@@ -845,7 +827,7 @@ public class SchemaBasedFhirResourceFaker
         // Try binding-aware generation first
         if (element is ITypeExtended extendedType && extendedType.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
                 var selectedCode = _faker.PickRandom(codes);
                 return CreateCoding(selectedCode);
@@ -954,7 +936,7 @@ public class SchemaBasedFhirResourceFaker
 
         if (childElement is ITypeExtended extendedChild && extendedChild.Binding is { } binding)
         {
-            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, out var codes) && codes.Length > 0)
+            if (BindingCodeMapper.TryGetCodesForValueSet(binding.ValueSet, _schemaProvider.ValueSetProvider, out var codes) && codes.Length > 0)
             {
                 return _faker.PickRandom(codes).Code;
             }

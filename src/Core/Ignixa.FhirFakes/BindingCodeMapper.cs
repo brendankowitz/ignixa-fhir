@@ -26,20 +26,13 @@ namespace Ignixa.FhirFakes;
 /// This mapper provides codes for common FHIR value sets. When generating fake data,
 /// the faker can query this mapper to get appropriate codes for elements with bindings,
 /// ensuring generated resources use realistic, valid terminology.
+///
+/// NOTE: This class is stateless and thread-safe. The IValueSetProvider must be passed
+/// to methods that need version-specific code lookup to ensure correct version handling
+/// when multiple FHIR versions are used concurrently (e.g., in test scenarios).
 /// </remarks>
 internal static class BindingCodeMapper
 {
-    private static IValueSetProvider? _valueSetProvider;
-
-    /// <summary>
-    /// Initializes the BindingCodeMapper with a value set provider.
-    /// </summary>
-    /// <param name="valueSetProvider">The value set provider to use for looking up FHIR valuesets.</param>
-    public static void Initialize(IValueSetProvider valueSetProvider)
-    {
-        ArgumentNullException.ThrowIfNull(valueSetProvider);
-        _valueSetProvider = valueSetProvider;
-    }
 
     /// <summary>
     /// Known binding strength values from FHIR specification.
@@ -67,9 +60,10 @@ internal static class BindingCodeMapper
     /// Attempts to get predefined codes for a value set URI.
     /// </summary>
     /// <param name="valueSetUri">The canonical URL of the value set from the binding.</param>
+    /// <param name="valueSetProvider">The version-specific value set provider for FHIR spec codes.</param>
     /// <param name="codes">The array of predefined codes if found.</param>
     /// <returns>True if codes were found for this value set, false otherwise.</returns>
-    public static bool TryGetCodesForValueSet(string? valueSetUri, out FhirCode[] codes)
+    public static bool TryGetCodesForValueSet(string? valueSetUri, IValueSetProvider? valueSetProvider, out FhirCode[] codes)
     {
         if (string.IsNullOrEmpty(valueSetUri))
         {
@@ -77,14 +71,16 @@ internal static class BindingCodeMapper
             return false;
         }
 
-        codes = GetCodesForValueSetInternal(valueSetUri);
+        codes = GetCodesForValueSetInternal(valueSetUri, valueSetProvider);
         return codes.Length > 0;
     }
 
     /// <summary>
     /// Gets codes for a value set URI, returning an empty array if no mapping exists.
     /// </summary>
-    private static FhirCode[] GetCodesForValueSetInternal(string valueSetUri)
+    /// <param name="valueSetUri">The canonical URL of the value set.</param>
+    /// <param name="valueSetProvider">The version-specific value set provider.</param>
+    private static FhirCode[] GetCodesForValueSetInternal(string valueSetUri, IValueSetProvider? valueSetProvider)
     {
         // Normalize the URI (remove version suffixes like |4.0.1)
         var normalizedUri = NormalizeValueSetUri(valueSetUri);
@@ -132,9 +128,9 @@ internal static class BindingCodeMapper
         // PRIORITY 2: Fall back to IValueSetProvider (FHIR package valuesets)
         // Use FHIR spec codes for administrative/structural valuesets that don't have
         // curated clinical codes (e.g., administrative-gender, name-use, etc.)
-        if (_valueSetProvider is not null)
+        if (valueSetProvider is not null)
         {
-            var codes = _valueSetProvider.GetCodes(normalizedUri);
+            var codes = valueSetProvider.GetCodes(normalizedUri);
             if (codes is not null)
             {
                 // Convert from Ignixa.Abstractions.FhirCode to Ignixa.FhirFakes.Scenarios.Codes.FhirCode

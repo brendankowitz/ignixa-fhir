@@ -63,30 +63,40 @@ internal static class VersionFieldOverrides
         // AllergyIntolerance: STU3 uses "assertedDate" instead of "recordedDate"
         { (FhirVersion.Stu3, "AllergyIntolerance", "recordedDate"), "assertedDate" },
 
-        // R5-specific overrides (breaking changes from R4)
+        // R5+ overrides (breaking changes from R4, applies to R5, R6, and later versions)
 
-        // Encounter: R5 uses "actualPeriod" instead of "period"
+        // Encounter: R5+ uses "actualPeriod" instead of "period"
         { (FhirVersion.R5, "Encounter", "period"), "actualPeriod" },
 
-        // Encounter: R5 uses "reason" with different structure (backbone element) instead of "reasonCode"
-        // Map to empty to signal the state should skip this in R5 (reason structure is complex)
+        // Encounter: R5+ uses "reason" with different structure (backbone element) instead of "reasonCode"
+        // Map to empty to signal the state should skip this in R5+ (reason structure is complex)
         { (FhirVersion.R5, "Encounter", "reasonCode"), "" },
 
-        // Procedure: R5 renames "performed[x]" to "occurrence[x]"
+        // Procedure: R5+ renames "performed[x]" to "occurrence[x]"
         { (FhirVersion.R5, "Procedure", "performedPeriod"), "occurrencePeriod" },
         { (FhirVersion.R5, "Procedure", "performedDateTime"), "occurrenceDateTime" },
 
-        // ServiceRequest: R5 merges "reasonCode" and "reasonReference" into "reason" (CodeableReference)
+        // ServiceRequest: R5+ merges "reasonCode" and "reasonReference" into "reason" (CodeableReference)
         // Map to empty to signal the state should use version-aware handling
         { (FhirVersion.R5, "ServiceRequest", "reasonCode"), "" },
         { (FhirVersion.R5, "ServiceRequest", "reasonReference"), "" },
 
-        // Encounter: R5 uses "completed" instead of "finished" for status
+        // Encounter: R5+ uses "completed" instead of "finished" for status
         // Note: This isn't a field override but a code mapping issue handled in BindingCodeMapper
+
+        // MedicationRequest: R5+ uses "medication" (CodeableReference) instead of "medication[x]" choice elements
+        // Map to empty to signal the state should use version-aware handling
+        { (FhirVersion.R5, "MedicationRequest", "medicationCodeableConcept"), "" },
+        { (FhirVersion.R5, "MedicationRequest", "medicationReference"), "" },
+
+        // MedicationRequest: R5+ uses "reason" (CodeableReference) instead of "reasonCode"/"reasonReference"
+        { (FhirVersion.R5, "MedicationRequest", "reasonCode"), "" },
+        { (FhirVersion.R5, "MedicationRequest", "reasonReference"), "" },
     };
 
     /// <summary>
     /// Gets the actual field name for a given FHIR version, applying overrides where necessary.
+    /// Uses version comparison logic: R5+ versions will use R5 mappings unless a more specific override exists.
     /// </summary>
     /// <param name="version">The FHIR version</param>
     /// <param name="resourceType">The FHIR resource type (e.g., "Observation", "Procedure")</param>
@@ -97,9 +107,24 @@ internal static class VersionFieldOverrides
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentNullException.ThrowIfNull(normativeFieldName);
 
-        var key = (version, resourceType, normativeFieldName);
-        return Overrides.TryGetValue(key, out var overrideName)
-            ? overrideName
-            : normativeFieldName;
+        // Try exact version match first (e.g., STU3-specific overrides)
+        var exactKey = (version, resourceType, normativeFieldName);
+        if (Overrides.TryGetValue(exactKey, out var overrideName))
+        {
+            return overrideName;
+        }
+
+        // For R5+ versions, check if there's an R5 mapping (R5+ breaking changes apply to all versions >= R5)
+        if (version >= FhirVersion.R5)
+        {
+            var r5Key = (FhirVersion.R5, resourceType, normativeFieldName);
+            if (Overrides.TryGetValue(r5Key, out var r5OverrideName))
+            {
+                return r5OverrideName;
+            }
+        }
+
+        // No override found - use the normative field name
+        return normativeFieldName;
     }
 }
