@@ -591,6 +591,19 @@ public class SearchParameterQueryGenerator
 
             if (typeId.HasValue)
             {
+                // Optimization: If resourceTypeId is already specified (e.g., from a typed forward chain like subject:Patient),
+                // and the requested _type doesn't match, return empty results immediately.
+                // This prevents expensive queries when searching for impossible conditions like "Patient._type=Observation"
+                if (resourceTypeId.HasValue && resourceTypeId.Value != typeId.Value)
+                {
+                    _logger.LogDebug(
+                        "Type mismatch in _type filter: query is constrained to ResourceTypeId={ConstrainedTypeId}, but _type={RequestedType} (typeId={RequestedTypeId}). Returning empty results.",
+                        resourceTypeId.Value,
+                        stringExpr.Value,
+                        typeId.Value);
+                    return Enumerable.Empty<long>().AsQueryable();
+                }
+
                 var query = _context.Resources
                     .Where(r => r.ResourceTypeId == typeId.Value
                         && !r.IsHistory
@@ -605,7 +618,7 @@ public class SearchParameterQueryGenerator
         // Handle MultiaryExpression for multiple resource types with OR/AND
         if (expr is MultiaryExpression multiaryExpr)
         {
-            return await ProcessResourceTypeMultiaryExpressionAsync(multiaryExpr, ct);
+            return await ProcessResourceTypeMultiaryExpressionAsync(resourceTypeId, multiaryExpr, ct);
         }
 
         // Handle NotExpression for _type:not modifier
@@ -622,6 +635,7 @@ public class SearchParameterQueryGenerator
     /// Uses the SearchIndexReferenceDataCache to look up resource type IDs.
     /// </summary>
     private async Task<IQueryable<long>> ProcessResourceTypeMultiaryExpressionAsync(
+        short? resourceTypeId,
         MultiaryExpression multiaryExpr,
         CancellationToken ct)
     {
@@ -639,13 +653,20 @@ public class SearchParameterQueryGenerator
                 var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value);
                 if (typeId.HasValue)
                 {
-                    resourceTypeIds.Add(typeId.Value);
+                    // Optimization: Skip types that don't match the constrained resourceTypeId
+                    if (!resourceTypeId.HasValue || resourceTypeId.Value == typeId.Value)
+                    {
+                        resourceTypeIds.Add(typeId.Value);
+                    }
                 }
             }
         }
 
         if (resourceTypeIds.Count == 0)
         {
+            _logger.LogDebug(
+                "No matching resource types found for _type filter. Query constrained to ResourceTypeId={ConstrainedTypeId}",
+                resourceTypeId);
             return Enumerable.Empty<long>().AsQueryable();
         }
 
@@ -737,12 +758,19 @@ public class SearchParameterQueryGenerator
 
             if (typeId.HasValue)
             {
-                resourceTypeIds.Add(typeId.Value);
+                // Optimization: Skip types that don't match the constrained resourceTypeId
+                if (!resourceTypeId.HasValue || resourceTypeId.Value == typeId.Value)
+                {
+                    resourceTypeIds.Add(typeId.Value);
+                }
             }
         }
 
         if (resourceTypeIds.Count == 0)
         {
+            _logger.LogDebug(
+                "No matching resource types found for _type IN filter. Query constrained to ResourceTypeId={ConstrainedTypeId}",
+                resourceTypeId);
             return Enumerable.Empty<long>().AsQueryable();
         }
 

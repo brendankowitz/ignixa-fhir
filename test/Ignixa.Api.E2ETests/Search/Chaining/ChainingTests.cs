@@ -70,9 +70,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests a nested chained search expression: DiagnosticReport?result.subject:Patient.name=X
     /// Ported from: GivenANestedChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Nested forward chaining (result.subject) requires additional parsing support.
     /// </summary>
-    [Fact(Skip = "Nested forward chaining (result.subject) requires additional parsing support")]
+    [Fact]
     public async Task GivenANestedChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -93,9 +92,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests a multi-level (3-hop) chained search: DiagnosticReport?result.subject:Patient.organization.address-city=X
     /// Ported from: GivenAMultiNestedChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Multi-level forward chaining requires additional parsing support.
     /// </summary>
-    [Fact(Skip = "Multi-level forward chaining requires additional parsing support")]
+    [Fact]
     public async Task GivenAMultiNestedChainedSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -116,9 +114,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests a chained search with OR condition in final parameter: subject:Patient.name=Smith,Truman
     /// Ported from: GivenANestedChainedSearchExpressionWithAnOrFinalCondition_WhenSearched_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Multi-level forward chaining (result.subject) requires additional parsing support.
     /// </summary>
-    [Fact(Skip = "Multi-level forward chaining (result.subject) requires additional parsing support")]
+    [Fact]
     public async Task GivenANestedChainedSearchExpressionWithAnOrFinalCondition_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -203,7 +200,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// Tests a chained search with no results: subject:Patient._type=Observation (Patient can't be Observation)
     /// Ported from: GivenAChainedSearchExpressionOverASimpleParameterWithNoResults_WhenSearched_ThenCorrectBundleShouldBeReturned
     /// </summary>
-    [Fact(Skip = "Forward chaining with _type=Observation causes SQL query timeout - requires query optimization")]
+    [Fact]
     public async Task GivenAChainedSearchExpressionOverASimpleParameterWithNoResults_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -222,7 +219,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// Tests chained search with :not modifier: subject:Patient.gender:not=female
     /// Ported from: GivenAChainedSearchExpressionWithNotProvider_WhenSearched_ThenCorrectBundleShouldBeReturned
     /// </summary>
-    [Fact(Skip = "Forward chaining with :not modifier causes SQL query timeout - requires query optimization")]
+    [Fact]
     public async Task GivenAChainedSearchExpressionWithNotModifier_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -430,9 +427,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests combination of forward and reverse chaining.
     /// Ported from: GivenACombinationOfChainingReverseChainSearchExpressionOverASimpleParameter_WhenSearched_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Combined forward+reverse chaining not fully implemented.
     /// </summary>
-    [Fact(Skip = "Combined forward+reverse chaining not fully implemented")]
+    [Fact]
     public async Task GivenACombinationOfChainingReverseChainSearchExpression_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -453,9 +449,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests combination of forward and reverse chaining with pagination.
     /// Ported from: GivenACombinationOfChainingReverseChainSearchExpressionOverASimpleParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Combined forward+reverse chaining not fully implemented.
     /// </summary>
-    [Fact(Skip = "Combined forward+reverse chaining not fully implemented")]
+    [Fact]
     public async Task GivenACombinationOfChainingReverseChainSearchExpression_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -487,9 +482,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests combination of forward and reverse chaining with _id parameter.
     /// Ported from: GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearched_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Combined forward+reverse chaining not fully implemented.
     /// </summary>
-    [Fact(Skip = "Combined forward+reverse chaining not fully implemented")]
+    [Fact]
     public async Task GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -510,9 +504,8 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// <summary>
     /// Tests combination of forward and reverse chaining with _id parameter and pagination.
     /// Ported from: GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned
-    /// SKIPPED: Combined forward+reverse chaining not fully implemented.
     /// </summary>
-    [Fact(Skip = "Combined forward+reverse chaining not fully implemented")]
+    [Fact]
     public async Task GivenACombinationOfChainingReverseChainSearchExpressionOverAResourceTableParameter_WhenSearchedWithPaging_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
@@ -549,7 +542,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
     /// Tests chained search with pagination using surrogate IDs to ensure consistent results.
     /// Ported from: GivenAChainedSearchExpressionWithAPredicateOnSurrogateId_WhenSearched_ThenCorrectBundleShouldBeReturned
     /// </summary>
-    [Fact(Skip = "Forward chaining pagination test causes SQL query timeout - requires query optimization")]
+    [Fact]
     public async Task GivenAChainedSearchExpressionWithAPredicateOnSurrogateId_WhenSearched_ThenCorrectBundleShouldBeReturned()
     {
         // Arrange
