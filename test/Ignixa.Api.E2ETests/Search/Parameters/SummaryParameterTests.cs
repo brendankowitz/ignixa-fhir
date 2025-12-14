@@ -65,7 +65,8 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
 
         // Assert
         bundle.Should().NotBeNull();
-        bundle.Total.Should().Be(3);
+        // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
+        // We verify entry count instead of total which may be null
         bundle.Entry.Should().HaveCount(3, "_summary=false should return all matching resources");
 
         // Verify resources contain full data (name, address, gender, extensions, etc.)
@@ -112,7 +113,7 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
 
         // Assert
         bundle.Should().NotBeNull();
-        bundle.Total.Should().Be(3);
+        // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
         bundle.Entry.Should().HaveCount(3, "_summary=true should return all matching resources");
 
         // Verify resources are returned (summary still includes resources, just fewer elements)
@@ -155,7 +156,7 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
 
         // Assert
         bundle.Should().NotBeNull();
-        bundle.Total.Should().Be(3);
+        // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
         bundle.Entry.Should().HaveCount(3, "_summary=text should return all matching resources");
 
         // Verify resources are returned
@@ -199,7 +200,7 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
 
         // Assert
         bundle.Should().NotBeNull();
-        bundle.Total.Should().Be(3);
+        // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
         bundle.Entry.Should().HaveCount(3, "_summary=data should return all matching resources");
 
         // Verify resources contain data elements but not text
@@ -257,16 +258,20 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
     #region Summary Flag Combinations and Edge Cases
 
     /// <summary>
-    /// Tests all summary flags with the same dataset to verify total consistency.
-    /// All summary flags should return the same total count.
+    /// Tests all summary flags with the same dataset to verify entry count consistency.
+    /// All non-count summary flags should return the same entry count.
     /// </summary>
+    /// <remarks>
+    /// Per FHIR spec, Bundle.total is OPTIONAL for non-count searches.
+    /// Only _summary=count is required to populate total.
+    /// </remarks>
     [Theory]
     [InlineData("false")]
     [InlineData("true")]
     [InlineData("text")]
     [InlineData("data")]
     [InlineData("count")]
-    public async Task GivenSummaryParameter_WhenSearched_ThenReturnsConsistentTotal(string summaryFlag)
+    public async Task GivenSummaryParameter_WhenSearched_ThenReturnsConsistentResults(string summaryFlag)
     {
         // Arrange
         var tag = Guid.NewGuid().ToString();
@@ -289,14 +294,16 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary={summaryFlag}");
 
         // Assert
-        bundle.Total.Should().Be(3, $"all summary flags should return same total count (testing {summaryFlag})");
-
         if (summaryFlag == "count")
         {
+            // _summary=count MUST return total (required by FHIR spec)
+            bundle.Total.Should().Be(3, "_summary=count should return accurate total");
             bundle.Entry.Should().BeEmpty("_summary=count should have no entries");
         }
         else
         {
+            // For other summary modes, total is OPTIONAL per FHIR spec
+            // We verify entry count instead
             bundle.Entry.Should().HaveCount(3, $"_summary={summaryFlag} should return entry resources");
         }
 

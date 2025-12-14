@@ -835,4 +835,160 @@ public class FhirPathEvaluatorTests
     }
 
     #endregion
+
+    #region RiskAssessment Probability Tests
+
+    /// <summary>
+    /// Test that navigating to 'probability' on RiskAssessment.prediction matches choice type 'probabilityDecimal'.
+    /// This is the search parameter expression used by the 'probability' number search parameter.
+    /// </summary>
+    [Fact]
+    public void GivenRiskAssessmentWithProbabilityDecimal_WhenNavigatingToProbability_ThenReturnsProbabilityDecimalElement()
+    {
+        // Arrange: RiskAssessment with probabilityDecimal
+        var riskAssessmentJson = """
+        {
+          "resourceType": "RiskAssessment",
+          "id": "ra1",
+          "status": "final",
+          "prediction": [
+            {
+              "outcome": {
+                "coding": [
+                  {
+                    "system": "http://example.org/outcomes",
+                    "code": "risk",
+                    "display": "Risk identified"
+                  }
+                ]
+              },
+              "probabilityDecimal": 0.125
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(riskAssessmentJson);
+        var element = resource.ToElement(_r4Provider);
+
+        // Act: Evaluate 'prediction.probability' (the standard search parameter expression)
+        var result = EvaluatePath(element, "prediction.probability");
+
+        // Assert: Should find the probabilityDecimal element with value 0.125
+        var resultList = result.ToList();
+        Assert.Single(resultList);
+        Assert.Equal(0.125m, resultList[0].Value);
+        Assert.Equal("decimal", resultList[0].InstanceType);
+    }
+
+    /// <summary>
+    /// Test that navigating to 'probability' on RiskAssessment returns correct values for multiple predictions.
+    /// </summary>
+    [Fact]
+    public void GivenRiskAssessmentWithMultiplePredictions_WhenNavigatingToProbability_ThenReturnsAllProbabilities()
+    {
+        // Arrange: RiskAssessment with multiple predictions, each with different probability values
+        var riskAssessmentJson = """
+        {
+          "resourceType": "RiskAssessment",
+          "id": "ra2",
+          "status": "final",
+          "prediction": [
+            {
+              "outcome": { "text": "Outcome 1" },
+              "probabilityDecimal": 0.25
+            },
+            {
+              "outcome": { "text": "Outcome 2" },
+              "probabilityDecimal": 0.5
+            },
+            {
+              "outcome": { "text": "Outcome 3" },
+              "probabilityDecimal": 0.75
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(riskAssessmentJson);
+        var element = resource.ToElement(_r4Provider);
+
+        // Act: Evaluate 'prediction.probability'
+        var result = EvaluatePath(element, "prediction.probability");
+
+        // Assert: Should return all 3 probability values
+        var resultList = result.ToList();
+        Assert.Equal(3, resultList.Count);
+
+        var values = resultList.Select(r => r.Value).ToList();
+        Assert.Contains(0.25m, values);
+        Assert.Contains(0.5m, values);
+        Assert.Contains(0.75m, values);
+    }
+
+    /// <summary>
+    /// Test that navigating to 'probability' on RiskAssessment without probability returns empty.
+    /// </summary>
+    [Fact]
+    public void GivenRiskAssessmentWithoutProbability_WhenNavigatingToProbability_ThenReturnsEmpty()
+    {
+        // Arrange: RiskAssessment without probability (only has outcome)
+        var riskAssessmentJson = """
+        {
+          "resourceType": "RiskAssessment",
+          "id": "ra3",
+          "status": "final",
+          "prediction": [
+            {
+              "outcome": { "text": "Some outcome" }
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(riskAssessmentJson);
+        var element = resource.ToElement(_r4Provider);
+
+        // Act: Evaluate 'prediction.probability'
+        var result = EvaluatePath(element, "prediction.probability");
+
+        // Assert: Should return empty collection
+        Assert.Empty(result);
+    }
+
+    /// <summary>
+    /// Test that probability values are extracted correctly with decimal precision.
+    /// This ensures no rounding/precision issues in FHIRPath extraction.
+    /// </summary>
+    [Fact]
+    public void GivenRiskAssessmentWithPreciseProbability_WhenNavigatingToProbability_ThenReturnsPreciseValue()
+    {
+        // Arrange: RiskAssessment with precise decimal value
+        var riskAssessmentJson = """
+        {
+          "resourceType": "RiskAssessment",
+          "id": "ra4",
+          "status": "final",
+          "prediction": [
+            {
+              "outcome": { "text": "Some outcome" },
+              "probabilityDecimal": 0.123456789
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(riskAssessmentJson);
+        var element = resource.ToElement(_r4Provider);
+
+        // Act: Evaluate 'prediction.probability'
+        var result = EvaluatePath(element, "prediction.probability");
+
+        // Assert: Should return the precise value
+        var resultList = result.ToList();
+        Assert.Single(resultList);
+        Assert.Equal(0.123456789m, resultList[0].Value);
+    }
+
+    #endregion
 }

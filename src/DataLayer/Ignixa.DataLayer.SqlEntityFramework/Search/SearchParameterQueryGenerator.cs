@@ -1407,13 +1407,21 @@ public class SearchParameterQueryGenerator
     {
         var value = Convert.ToDecimal(binaryExpr.Value);
 
-        // When resourceTypeId is null (system-wide search), don't filter by resource type
-        // Filter by SearchParamId to only match values indexed for this specific parameter
+        _logger.LogDebug(
+            "GenerateNumberQuery: ResourceTypeId={ResourceTypeId}, SearchParamId={SearchParamId}, Operator={Operator}, Value={Value}",
+            resourceTypeId,
+            searchParamId,
+            binaryExpr.BinaryOperator,
+            value);
+
+        // Uses standard LINQ - EF Core correctly generates decimal(36,18) parameters.
+        // Previous FromSqlRaw workaround was unnecessary; the root cause was SqlMetaData in row generators
+        // defaulting to decimal(18,0) instead of decimal(36,18), which truncated fractional values during insertion.
+
         var query = _context.NumberSearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        // Apply comparison based on operator
         query = binaryExpr.BinaryOperator switch
         {
             BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
@@ -1478,7 +1486,7 @@ public class SearchParameterQueryGenerator
         return query.Select(sp => sp.ResourceSurrogateId);
     }
 
-    private async Task<IQueryable<long>> GenerateQuantityQueryAsync(
+    private Task<IQueryable<long>> GenerateQuantityQueryAsync(
         short? resourceTypeId,
         short? searchParamId,
         BinaryExpression binaryExpr,
@@ -1486,15 +1494,21 @@ public class SearchParameterQueryGenerator
     {
         var value = Convert.ToDecimal(binaryExpr.Value);
 
-        // Note: System and Code would need to come from additional expressions in a MultiaryExpression
-        // For now, we'll just handle the numeric comparison
-        // When resourceTypeId is null (system-wide search), don't filter by resource type
-        // Filter by SearchParamId to only match values indexed for this specific parameter
+        _logger.LogDebug(
+            "GenerateQuantityQuery: ResourceTypeId={ResourceTypeId}, SearchParamId={SearchParamId}, Operator={Operator}, Value={Value}",
+            resourceTypeId,
+            searchParamId,
+            binaryExpr.BinaryOperator,
+            value);
+
+        // Uses standard LINQ - EF Core correctly generates decimal(36,18) parameters.
+        // Previous FromSqlRaw workaround was unnecessary; the root cause was SqlMetaData in row generators
+        // defaulting to decimal(18,0) instead of decimal(36,18), which truncated fractional values during insertion.
+
         var query = _context.QuantitySearchParams
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        // Apply comparison based on operator
         query = binaryExpr.BinaryOperator switch
         {
             BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
@@ -1506,7 +1520,7 @@ public class SearchParameterQueryGenerator
             _ => throw new NotSupportedException($"BinaryOperator {binaryExpr.BinaryOperator} is not supported for Quantity")
         };
 
-        return await Task.FromResult(query.Select(sp => sp.ResourceSurrogateId));
+        return Task.FromResult(query.Select(sp => sp.ResourceSurrogateId));
     }
 
     /// <summary>

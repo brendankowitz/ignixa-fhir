@@ -34,9 +34,11 @@ public class NumberSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
-            new SqlMetaData("SingleValue", SqlDbType.Decimal),
-            new SqlMetaData("LowValue", SqlDbType.Decimal),
-            new SqlMetaData("HighValue", SqlDbType.Decimal),
+            // CRITICAL: Specify precision (36) and scale (18) to match database column definition
+            // Without explicit precision/scale, SqlMetaData defaults to (18, 0) which truncates decimals!
+            new SqlMetaData("SingleValue", SqlDbType.Decimal, precision: 36, scale: 18),
+            new SqlMetaData("LowValue", SqlDbType.Decimal, precision: 36, scale: 18),
+            new SqlMetaData("HighValue", SqlDbType.Decimal, precision: 36, scale: 18),
         };
 
         foreach (var resource in resources)

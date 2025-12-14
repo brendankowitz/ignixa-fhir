@@ -11,24 +11,24 @@ namespace Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
 
 /// <summary>
 /// Test fixture for number search tests.
-/// Creates Patient test data with various multipleBirth values for testing
+/// Creates RiskAssessment resources with various probability values for testing
 /// number search parameters with comparison operators (eq, gt, ge, lt, le).
 /// </summary>
 /// <remarks>
 /// FHIR Number Search Semantics (http://hl7.org/fhir/search.html#number):
 /// - Number search parameters support comparison prefixes (eq, gt, ge, lt, le)
-/// - The Patient.multipleBirth element can be either integer (birth order) or boolean (is multiple birth)
-/// - Number searches only match against integer values, not boolean values
+/// - The 'probability' search parameter on RiskAssessment is a standard R4 number parameter
+/// - Expression: RiskAssessment.prediction.probability
 ///
-/// Test Data Setup:
-/// Index mapping:
-/// [0] = MultipleBirth integer 1 (first born)
-/// [1] = MultipleBirth integer 2 (second born)
-/// [2] = MultipleBirth integer 3 (third born)
-/// [3] = MultipleBirth integer 4 (fourth born - quadruplet)
-/// [4] = MultipleBirth boolean true (is from multiple birth, but order unknown)
-/// [5] = MultipleBirth boolean false (singleton)
-/// [6] = No MultipleBirth value (null/missing)
+/// Test Data Setup (using exact decimal values to avoid precision issues):
+/// Index mapping (probabilities as decimals 0.0 to 1.0):
+/// [0] = probability = 0.125 (1/8 = exact in binary)
+/// [1] = probability = 0.25 (1/4 = exact in binary)
+/// [2] = probability = 0.375 (3/8 = exact in binary)
+/// [3] = probability = 0.5 (1/2 = exact in binary)
+/// [4] = probability = 0.625 (5/8 = exact in binary)
+/// [5] = probability = 0.75 (3/4 = exact in binary)
+/// [6] = no probability value (null/missing)
 /// </remarks>
 public class NumberSearchTestFixture : IAsyncLifetime
 {
@@ -45,41 +45,41 @@ public class NumberSearchTestFixture : IAsyncLifetime
     public string Tag { get; private set; } = null!;
 
     /// <summary>
-    /// Patient test data with various multipleBirth patterns.
+    /// RiskAssessment test data with various probability values.
     /// See class-level remarks for index mapping.
     /// </summary>
-    public IReadOnlyList<ResourceJsonNode> Patients { get; private set; } = null!;
+    public IReadOnlyList<ResourceJsonNode> RiskAssessments { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
         Tag = Guid.NewGuid().ToString();
 
-        // Create 7 patients with various multipleBirth patterns
-        var patients = new[]
+        // Create RiskAssessments with exact decimal values (powers of 2 in denominator)
+        var riskAssessments = new[]
         {
-            // [0] - First born of multiple birth
-            CreatePatientWithInteger(1, "Smith"),
+            // [0] - 0.125 (1/8)
+            CreateRiskAssessmentWithProbability(0.125m),
 
-            // [1] - Second born of multiple birth
-            CreatePatientWithInteger(2, "Johnson"),
+            // [1] - 0.25 (1/4)
+            CreateRiskAssessmentWithProbability(0.25m),
 
-            // [2] - Third born of multiple birth (triplet)
-            CreatePatientWithInteger(3, "Williams"),
+            // [2] - 0.375 (3/8)
+            CreateRiskAssessmentWithProbability(0.375m),
 
-            // [3] - Fourth born of multiple birth (quadruplet)
-            CreatePatientWithInteger(4, "Brown"),
+            // [3] - 0.5 (1/2)
+            CreateRiskAssessmentWithProbability(0.5m),
 
-            // [4] - Multiple birth boolean true (twin/triplet, order unknown)
-            CreatePatientWithBoolean(true, "Davis"),
+            // [4] - 0.625 (5/8)
+            CreateRiskAssessmentWithProbability(0.625m),
 
-            // [5] - Multiple birth boolean false (singleton)
-            CreatePatientWithBoolean(false, "Miller"),
+            // [5] - 0.75 (3/4)
+            CreateRiskAssessmentWithProbability(0.75m),
 
-            // [6] - No multipleBirth value
-            CreatePatientWithoutMultipleBirth("Wilson")
+            // [6] - No probability value (tests :missing modifier)
+            CreateRiskAssessmentWithoutProbability()
         };
 
-        Patients = await _apiFixture.Harness.CreateResourcesAsync(patients);
+        RiskAssessments = await _apiFixture.Harness.CreateResourcesAsync(riskAssessments);
     }
 
     public Task DisposeAsync()
@@ -88,28 +88,17 @@ public class NumberSearchTestFixture : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private ResourceJsonNode CreatePatientWithInteger(int order, string family)
+    private ResourceJsonNode CreateRiskAssessmentWithProbability(decimal probability)
     {
-        return PatientBuilderFactory.Create(_apiFixture.SchemaProvider)
-            .WithMultipleBirth(order)
-            .WithFamilyName(family)
+        return new RiskAssessmentBuilder(_apiFixture.SchemaProvider)
+            .WithProbability(probability)
             .WithTag(Tag)
             .Build();
     }
 
-    private ResourceJsonNode CreatePatientWithBoolean(bool isMultipleBirth, string family)
+    private ResourceJsonNode CreateRiskAssessmentWithoutProbability()
     {
-        return PatientBuilderFactory.Create(_apiFixture.SchemaProvider)
-            .WithMultipleBirth(isMultipleBirth)
-            .WithFamilyName(family)
-            .WithTag(Tag)
-            .Build();
-    }
-
-    private ResourceJsonNode CreatePatientWithoutMultipleBirth(string family)
-    {
-        return PatientBuilderFactory.Create(_apiFixture.SchemaProvider)
-            .WithFamilyName(family)
+        return new RiskAssessmentBuilder(_apiFixture.SchemaProvider)
             .WithTag(Tag)
             .Build();
     }

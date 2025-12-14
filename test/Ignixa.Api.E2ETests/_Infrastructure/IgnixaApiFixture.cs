@@ -147,6 +147,9 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // Disable eager loading of package search parameters (avoids SQL connection)
                 ["SearchParameters:ConflictResolution:EagerLoadPackageSearchParameters"] = "false",
 
+                // Enable EF Core SQL logging for debugging
+                ["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] = "Information",
+
                 // Set test environment
                 ["ASPNETCORE_ENVIRONMENT"] = "Test"
             };
