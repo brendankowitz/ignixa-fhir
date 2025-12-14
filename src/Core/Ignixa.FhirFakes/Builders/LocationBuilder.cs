@@ -66,12 +66,8 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .Build();
 /// </code>
 /// </remarks>
-public sealed class LocationBuilder
+public sealed class LocationBuilder : FhirResourceBuilder<LocationBuilder>
 {
-    private readonly IFhirSchemaProvider _schemaProvider;
-
-    private string? _id;
-    private string? _tag;
     private string? _name;
     private string _status = "active";
     private string? _managingOrganizationId;
@@ -84,9 +80,8 @@ public sealed class LocationBuilder
     private string? _addressZip;
 
     private LocationBuilder(IFhirSchemaProvider schemaProvider)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
-        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -97,30 +92,6 @@ public sealed class LocationBuilder
     public static LocationBuilder Create(IFhirSchemaProvider schemaProvider)
     {
         return new LocationBuilder(schemaProvider);
-    }
-
-    /// <summary>
-    /// Sets the location's resource ID.
-    /// </summary>
-    /// <param name="id">The resource ID</param>
-    /// <returns>This builder for method chaining</returns>
-    public LocationBuilder WithId(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-        _id = id;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a tag to be included in the location's meta.tag element.
-    /// </summary>
-    /// <param name="tag">The tag code for test isolation</param>
-    /// <returns>This builder for method chaining</returns>
-    public LocationBuilder WithTag(string tag)
-    {
-        ArgumentNullException.ThrowIfNull(tag);
-        _tag = tag;
-        return this;
     }
 
     /// <summary>
@@ -224,12 +195,12 @@ public sealed class LocationBuilder
     /// Builds the Location resource with all configured properties.
     /// </summary>
     /// <returns>A ResourceJsonNode representing the Location resource</returns>
-    public ResourceJsonNode Build()
+    public override ResourceJsonNode Build()
     {
         var locationJson = new JsonObject
         {
             ["resourceType"] = "Location",
-            ["id"] = _id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["status"] = _status
         };
@@ -260,37 +231,6 @@ public sealed class LocationBuilder
 
         var json = locationJson.ToJsonString();
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
-    }
-
-    private JsonObject BuildMeta()
-    {
-        var meta = new JsonObject
-        {
-            ["versionId"] = "1",
-            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-        };
-
-        if (_tag is not null)
-        {
-            meta["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
-            };
-        }
-
-        return meta;
-    }
-
-    private static JsonObject CreateReference(string resourceType, string id)
-    {
-        return new JsonObject
-        {
-            ["reference"] = $"{resourceType}/{id}"
-        };
     }
 
     private bool HasAddress()

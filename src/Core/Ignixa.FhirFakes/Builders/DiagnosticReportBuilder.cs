@@ -64,13 +64,9 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .Build();
 /// </code>
 /// </remarks>
-public sealed class DiagnosticReportBuilder
+public sealed class DiagnosticReportBuilder : FhirResourceBuilder<DiagnosticReportBuilder>
 {
-    private readonly IFhirSchemaProvider _schemaProvider;
-
     // Core fields
-    private string? _id;
-    private string? _tag;
     private string _status = "final";
 
     // Code (required)
@@ -85,9 +81,8 @@ public sealed class DiagnosticReportBuilder
     private readonly List<string> _resultObservationIds = [];
 
     private DiagnosticReportBuilder(IFhirSchemaProvider schemaProvider)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
-        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -103,39 +98,6 @@ public sealed class DiagnosticReportBuilder
     public static DiagnosticReportBuilder Create(IFhirSchemaProvider schemaProvider)
     {
         return new DiagnosticReportBuilder(schemaProvider);
-    }
-
-    /// <summary>
-    /// Sets the diagnostic report's resource ID.
-    /// </summary>
-    /// <param name="id">The resource ID.</param>
-    /// <returns>This builder for method chaining.</returns>
-    public DiagnosticReportBuilder WithId(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-        _id = id;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a tag to be included in the diagnostic report's meta.tag element.
-    /// Useful for test isolation when querying diagnostic reports.
-    /// </summary>
-    /// <param name="tag">The tag code for test isolation.</param>
-    /// <returns>This builder for method chaining.</returns>
-    /// <example>
-    /// <code>
-    /// var report = DiagnosticReportBuilder.Create(schemaProvider)
-    ///     .WithTag(testTag)
-    ///     .Build();
-    /// // Later: search with _tag={testTag} to isolate test data
-    /// </code>
-    /// </example>
-    public DiagnosticReportBuilder WithTag(string tag)
-    {
-        ArgumentNullException.ThrowIfNull(tag);
-        _tag = tag;
-        return this;
     }
 
     /// <summary>
@@ -280,12 +242,12 @@ public sealed class DiagnosticReportBuilder
     ///     .Build();
     /// </code>
     /// </example>
-    public ResourceJsonNode Build()
+    public override ResourceJsonNode Build()
     {
         var reportJson = new JsonObject
         {
             ["resourceType"] = "DiagnosticReport",
-            ["id"] = _id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["status"] = _status
         };
@@ -312,58 +274,6 @@ public sealed class DiagnosticReportBuilder
 
         var json = reportJson.ToJsonString();
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
-    }
-
-    private JsonObject BuildMeta()
-    {
-        var meta = new JsonObject
-        {
-            ["versionId"] = "1",
-            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-        };
-
-        if (_tag is not null)
-        {
-            meta["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
-            };
-        }
-
-        return meta;
-    }
-
-    private static JsonObject CreateReference(string resourceType, string id)
-    {
-        return new JsonObject
-        {
-            ["reference"] = $"{resourceType}/{id}"
-        };
-    }
-
-    private static JsonObject CreateCodeableConcept(string code, string system, string? display = null)
-    {
-        var coding = new JsonObject
-        {
-            ["system"] = system,
-            ["code"] = code
-        };
-
-        if (display is not null)
-        {
-            coding["display"] = display;
-        }
-
-        var concept = new JsonObject
-        {
-            ["coding"] = new JsonArray { coding }
-        };
-
-        return concept;
     }
 
     private JsonArray BuildResults()

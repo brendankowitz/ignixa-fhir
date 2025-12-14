@@ -32,21 +32,16 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .Build();
 /// </code>
 /// </remarks>
-public sealed class PractitionerBuilder
+public sealed class PractitionerBuilder : FhirResourceBuilder<PractitionerBuilder>
 {
-    private readonly IFhirSchemaProvider _schemaProvider;
-
-    private string? _id;
-    private string? _tag;
     private string? _familyName;
     private string? _givenName;
     private readonly List<(string? System, string Value)> _identifiers = [];
     private readonly List<(string Code, string? System, string? Display)> _specialties = [];
 
     private PractitionerBuilder(IFhirSchemaProvider schemaProvider)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
-        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -57,30 +52,6 @@ public sealed class PractitionerBuilder
     public static PractitionerBuilder Create(IFhirSchemaProvider schemaProvider)
     {
         return new PractitionerBuilder(schemaProvider);
-    }
-
-    /// <summary>
-    /// Sets the practitioner's resource ID.
-    /// </summary>
-    /// <param name="id">The resource ID</param>
-    /// <returns>This builder for method chaining</returns>
-    public PractitionerBuilder WithId(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-        _id = id;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a tag to be included in the practitioner's meta.tag element.
-    /// </summary>
-    /// <param name="tag">The tag code for test isolation</param>
-    /// <returns>This builder for method chaining</returns>
-    public PractitionerBuilder WithTag(string tag)
-    {
-        ArgumentNullException.ThrowIfNull(tag);
-        _tag = tag;
-        return this;
     }
 
     /// <summary>
@@ -194,12 +165,12 @@ public sealed class PractitionerBuilder
     /// Builds the Practitioner resource with all configured properties.
     /// </summary>
     /// <returns>A ResourceJsonNode representing the Practitioner resource</returns>
-    public ResourceJsonNode Build()
+    public override ResourceJsonNode Build()
     {
         var practitionerJson = new JsonObject
         {
             ["resourceType"] = "Practitioner",
-            ["id"] = _id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["active"] = true
         };
@@ -224,29 +195,6 @@ public sealed class PractitionerBuilder
 
         var json = practitionerJson.ToJsonString();
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
-    }
-
-    private JsonObject BuildMeta()
-    {
-        var meta = new JsonObject
-        {
-            ["versionId"] = "1",
-            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-        };
-
-        if (_tag is not null)
-        {
-            meta["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
-            };
-        }
-
-        return meta;
     }
 
     private JsonArray BuildName()

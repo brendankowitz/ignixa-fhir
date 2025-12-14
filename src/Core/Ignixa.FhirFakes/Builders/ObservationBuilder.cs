@@ -64,13 +64,9 @@ namespace Ignixa.FhirFakes.Builders;
 ///     .Build();
 /// </code>
 /// </remarks>
-public sealed class ObservationBuilder
+public sealed class ObservationBuilder : FhirResourceBuilder<ObservationBuilder>
 {
-    private readonly IFhirSchemaProvider _schemaProvider;
-
     // Core fields
-    private string? _id;
-    private string? _tag;
     private string _status = "final";
 
     // Code
@@ -108,9 +104,8 @@ public sealed class ObservationBuilder
     private readonly List<(string ResourceType, string Id)> _performers = [];
 
     private ObservationBuilder(IFhirSchemaProvider schemaProvider)
+        : base(schemaProvider)
     {
-        ArgumentNullException.ThrowIfNull(schemaProvider);
-        _schemaProvider = schemaProvider;
     }
 
     /// <summary>
@@ -126,39 +121,6 @@ public sealed class ObservationBuilder
     public static ObservationBuilder Create(IFhirSchemaProvider schemaProvider)
     {
         return new ObservationBuilder(schemaProvider);
-    }
-
-    /// <summary>
-    /// Sets the observation's resource ID.
-    /// </summary>
-    /// <param name="id">The resource ID.</param>
-    /// <returns>This builder for method chaining.</returns>
-    public ObservationBuilder WithId(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-        _id = id;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a tag to be included in the observation's meta.tag element.
-    /// Useful for test isolation when querying observations.
-    /// </summary>
-    /// <param name="tag">The tag code for test isolation.</param>
-    /// <returns>This builder for method chaining.</returns>
-    /// <example>
-    /// <code>
-    /// var obs = ObservationBuilder.Create(schemaProvider)
-    ///     .WithTag(testTag)
-    ///     .Build();
-    /// // Later: search with _tag={testTag} to isolate test data
-    /// </code>
-    /// </example>
-    public ObservationBuilder WithTag(string tag)
-    {
-        ArgumentNullException.ThrowIfNull(tag);
-        _tag = tag;
-        return this;
     }
 
     /// <summary>
@@ -497,12 +459,12 @@ public sealed class ObservationBuilder
     ///     .Build();
     /// </code>
     /// </example>
-    public ResourceJsonNode Build()
+    public override ResourceJsonNode Build()
     {
         var obsJson = new JsonObject
         {
             ["resourceType"] = "Observation",
-            ["id"] = _id ?? Guid.NewGuid().ToString(),
+            ["id"] = Id ?? Guid.NewGuid().ToString(),
             ["meta"] = BuildMeta(),
             ["status"] = _status
         };
@@ -593,65 +555,12 @@ public sealed class ObservationBuilder
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(json);
     }
 
-    private JsonObject BuildMeta()
-    {
-        var meta = new JsonObject
-        {
-            ["versionId"] = "1",
-            ["lastUpdated"] = DateTime.UtcNow.ToString("o")
-        };
-
-        if (_tag is not null)
-        {
-            meta["tag"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = "http://ignixa.dev/test-isolation",
-                    ["code"] = _tag
-                }
-            };
-        }
-
-        return meta;
-    }
-
     private static JsonObject CreateReference(string reference)
     {
         return new JsonObject
         {
             ["reference"] = reference
         };
-    }
-
-    private static JsonObject CreateCodeableConcept(string code, string? system, string? display = null, string? text = null)
-    {
-        var coding = new JsonObject
-        {
-            ["code"] = code
-        };
-
-        if (system is not null)
-        {
-            coding["system"] = system;
-        }
-
-        if (display is not null)
-        {
-            coding["display"] = display;
-        }
-
-        var concept = new JsonObject
-        {
-            ["coding"] = new JsonArray { coding }
-        };
-
-        if (text is not null)
-        {
-            concept["text"] = text;
-        }
-
-        return concept;
     }
 
     private static JsonObject CreateCodeableConceptWithCodings(List<(string Code, string? System, string? Display)> codings, string? text = null)
