@@ -84,6 +84,12 @@ public sealed class DiagnosticReportState : ScenarioState
             .WithCode(Code.Code, Code.System, Code.Display)
             .WithSubject(context.Patient.Id);
 
+        // Apply tag from faker if set (inherited from ScenarioBuilder.WithTag)
+        if (faker.Tag is not null)
+        {
+            builder.WithTag(faker.Tag);
+        }
+
         // Collect observation references for results
         var observationIds = new List<string>();
 

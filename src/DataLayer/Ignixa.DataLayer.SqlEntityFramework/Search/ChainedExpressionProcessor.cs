@@ -102,6 +102,7 @@ public class ChainedExpressionProcessor
                 targetResourceTypeIds[0],
                 searchParamExpr,
                 ct);
+
         }
         else if (chainedExpression.Expression is MultiaryExpression multiaryExpr)
         {
@@ -125,25 +126,34 @@ public class ChainedExpressionProcessor
             return Enumerable.Empty<long>().AsQueryable();
         }
 
+        _logger.LogDebug(
+            "Forward chain query params: SourceTypeId={SourceTypeId}, RefSearchParamId={RefSearchParamId}, RefParamCode={RefParamCode}, TargetTypeIds=[{TargetTypeIds}]",
+            sourceResourceTypeId,
+            refSearchParamId.Value,
+            chainedExpression.ReferenceSearchParameter.Code,
+            string.Join(",", targetResourceTypeIds));
+
         // Step 3: Find references from source to matching targets
         // Query: Find ReferenceSearchParams where:
         //   - ResourceTypeId = source type (e.g., Patient), or null for system-wide search
         //   - ReferenceResourceTypeId IN target types (e.g., Organization)
         //   - SearchParamId = reference parameter (e.g., organization) - the specific reference parameter
         //   - Join with Resource table to get surrogate ID of referenced resource
-        //   - Filter by matching target surrogate IDs
-        var referenceQuery = _context.ReferenceSearchParams
+        //   - Filter by matching target surrogate IDs (using subquery, not materialized list)
+        //   - IMPORTANT: Only join with current (non-history, non-deleted) resources
+        var referenceResults = _context.ReferenceSearchParams
             .Where(rsp => (!sourceResourceTypeId.HasValue || rsp.ResourceTypeId == sourceResourceTypeId.Value)
                 && EF.Constant(targetResourceTypeIds).Contains(rsp.ReferenceResourceTypeId ?? 0)
                 && rsp.SearchParamId == refSearchParamId.Value)
-            .Join(_context.Resources,
+            .Join(
+                _context.Resources.Where(r => !r.IsHistory && !r.IsDeleted),
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },
                 (rsp, res) => new { rsp.ResourceSurrogateId, TargetSurrogateId = res.ResourceSurrogateId })
             .Where(joined => targetResourceIds.Contains(joined.TargetSurrogateId))
             .Select(joined => joined.ResourceSurrogateId);
 
-        return referenceQuery;
+        return referenceResults;
     }
 
     /// <summary>
@@ -212,12 +222,14 @@ public class ChainedExpressionProcessor
         //   - ReferenceResourceTypeId = source type (e.g., Patient) - what they reference
         //   - SearchParamId = reference parameter (e.g., clinical-patient) - the specific reference parameter
         //   - Join with Resource table to get surrogate ID of the referenced source resource
+        //   - IMPORTANT: Only join with current (non-history, non-deleted) resources
         var reverseReferenceQuery = _context.ReferenceSearchParams
             .Where(rsp => EF.Constant(referencingResourceTypeIds).Contains(rsp.ResourceTypeId)
                 && referencingResourceIds.Contains(rsp.ResourceSurrogateId)
                 && (!sourceResourceTypeId.HasValue || rsp.ReferenceResourceTypeId == sourceResourceTypeId.Value)
                 && rsp.SearchParamId == refSearchParamId.Value)
-            .Join(_context.Resources,
+            .Join(
+                _context.Resources.Where(r => !r.IsHistory && !r.IsDeleted),
                 rsp => new { ResourceTypeId = rsp.ReferenceResourceTypeId ?? (short)0, ResourceId = rsp.ReferenceResourceId },
                 res => new { res.ResourceTypeId, res.ResourceId },
                 (rsp, res) => res.ResourceSurrogateId);
