@@ -59,6 +59,7 @@ public class CapabilityEnforcementHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(),
             UserId = "user123",
             Interaction = FhirInteraction.Capabilities,
             HttpContext = httpContext,
@@ -97,5 +98,12 @@ public class CapabilityEnforcementHandlerTests
 
         // Assert - no exception
         action.Should().NotThrow();
+    }
+
+    private static IFhirRequestContext CreateRequestContext(int tenantId = 1)
+    {
+        var context = Substitute.For<IFhirRequestContext>();
+        context.TenantId.Returns(tenantId);
+        return context;
     }
 }

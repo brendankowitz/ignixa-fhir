@@ -7,6 +7,7 @@ using FluentAssertions;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Smart;
+using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -49,6 +50,7 @@ public class RbacAuthorizationHandlerTests
 
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(),
             UserId = "user123",
             Roles = new List<string> { "Clinician" },
             SmartContext = smartContext,
@@ -76,6 +78,7 @@ public class RbacAuthorizationHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(),
             UserId = "user123",
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
@@ -97,8 +100,8 @@ public class RbacAuthorizationHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(1),
             UserId = "user123",
-            TenantId = "1",
             Roles = new List<string> { "Clinician" },
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
@@ -123,8 +126,8 @@ public class RbacAuthorizationHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(1),
             UserId = "user123",
-            TenantId = "1",
             Roles = new List<string> { "ReadOnly" },
             Interaction = FhirInteraction.Delete,
             ResourceType = "Patient",
@@ -148,5 +151,12 @@ public class RbacAuthorizationHandlerTests
     {
         // Assert
         _handler.Priority.Should().Be(30);
+    }
+
+    private static IFhirRequestContext CreateRequestContext(int tenantId = 1)
+    {
+        var context = Substitute.For<IFhirRequestContext>();
+        context.TenantId.Returns(tenantId);
+        return context;
     }
 }

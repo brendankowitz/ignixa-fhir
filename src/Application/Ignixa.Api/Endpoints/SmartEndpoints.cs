@@ -5,8 +5,10 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -17,6 +19,14 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class SmartEndpoints
 {
+    /// <summary>
+    /// Static JSON serialization options to avoid creating new instance on every request.
+    /// </summary>
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        WriteIndented = true
+    };
     public static IEndpointRouteBuilder MapSmartDiscoveryEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapSmartDiscoveryTenantEndpoints();
@@ -60,7 +70,7 @@ public static class SmartEndpoints
     /// </summary>
     private static async Task<IResult> HandleGetSmartConfiguration(
         HttpContext context,
-        [FromServices] IConfiguration configuration,
+        [FromServices] IOptions<SmartOptions> smartOptions,
         [FromServices] ISmartConfigurationProvider smartConfigurationProvider,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -68,9 +78,8 @@ public static class SmartEndpoints
         var logger = loggerFactory.CreateLogger("Ignixa.Api.Endpoints.SmartEndpoints");
         logger.LogInformation("GET /.well-known/smart-configuration (tenant-agnostic)");
 
-        // Check if SMART configuration is enabled
-        var smartEnabled = configuration.GetValue<bool>("Authorization:SmartOnFhir:EnableSmartConfiguration", true);
-        if (!smartEnabled)
+        // Check if SMART configuration is enabled using typed options
+        if (!smartOptions.Value.EnableSmartConfiguration)
         {
             logger.LogWarning("SMART configuration endpoint is disabled");
             return Results.NotFound();
@@ -78,11 +87,7 @@ public static class SmartEndpoints
 
         var configData = await smartConfigurationProvider.GetConfigurationAsync(tenantId: null, cancellationToken);
         var smartConfig = BuildSmartConfigurationResponse(context, configData, tenantId: null);
-        return Results.Json(smartConfig, options: new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            WriteIndented = true
-        });
+        return Results.Json(smartConfig, options: JsonOptions);
     }
 
     /// <summary>
@@ -92,7 +97,7 @@ public static class SmartEndpoints
     private static async Task<IResult> HandleGetTenantSmartConfiguration(
         HttpContext context,
         int tenantId,
-        [FromServices] IConfiguration configuration,
+        [FromServices] IOptions<SmartOptions> smartOptions,
         [FromServices] ISmartConfigurationProvider smartConfigurationProvider,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -100,9 +105,8 @@ public static class SmartEndpoints
         var logger = loggerFactory.CreateLogger("Ignixa.Api.Endpoints.SmartEndpoints");
         logger.LogInformation("GET /tenant/{TenantId}/.well-known/smart-configuration", tenantId);
 
-        // Check if SMART configuration is enabled
-        var smartEnabled = configuration.GetValue<bool>("Authorization:SmartOnFhir:EnableSmartConfiguration", true);
-        if (!smartEnabled)
+        // Check if SMART configuration is enabled using typed options
+        if (!smartOptions.Value.EnableSmartConfiguration)
         {
             logger.LogWarning("SMART configuration endpoint is disabled");
             return Results.NotFound();
@@ -110,11 +114,7 @@ public static class SmartEndpoints
 
         var configData = await smartConfigurationProvider.GetConfigurationAsync(tenantId.ToString(), cancellationToken);
         var smartConfig = BuildSmartConfigurationResponse(context, configData, tenantId);
-        return Results.Json(smartConfig, options: new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            WriteIndented = true
-        });
+        return Results.Json(smartConfig, options: JsonOptions);
     }
 
     /// <summary>

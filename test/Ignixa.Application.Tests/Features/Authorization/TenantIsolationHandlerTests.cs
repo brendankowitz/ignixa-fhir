@@ -6,8 +6,8 @@
 using FluentAssertions;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
+using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -15,11 +15,13 @@ namespace Ignixa.Application.Tests.Features.Authorization;
 
 public class TenantIsolationHandlerTests
 {
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly TenantIsolationHandler _handler;
 
     public TenantIsolationHandlerTests()
     {
-        _handler = new TenantIsolationHandler(NullLogger<TenantIsolationHandler>.Instance);
+        _fhirContextAccessor = Substitute.For<IFhirRequestContextAccessor>();
+        _handler = new TenantIsolationHandler(_fhirContextAccessor, NullLogger<TenantIsolationHandler>.Instance);
     }
 
     [Fact]
@@ -27,11 +29,14 @@ public class TenantIsolationHandlerTests
     {
         // Arrange
         var httpContext = Substitute.For<HttpContext>();
+        var requestContext = Substitute.For<IFhirRequestContext>();
+        requestContext.TenantId.Returns(1);
+
         var context = new FhirAuthorizationContext
         {
             UserId = "admin",
             Roles = new List<string> { "SystemAdmin" },
-            TenantId = "1",
+            RequestContext = requestContext,
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
             HttpContext = httpContext,
@@ -48,12 +53,18 @@ public class TenantIsolationHandlerTests
     [Fact]
     public async Task HandleAsync_NoTenantContext_ReturnsDenied()
     {
-        // Arrange
+        // Arrange - User from tenant 1 trying to access tenant 2 (cross-tenant access)
         var httpContext = Substitute.For<HttpContext>();
+        httpContext.Request.RouteValues.Returns(new Microsoft.AspNetCore.Routing.RouteValueDictionary { { "tenantId", "2" } });
+
+        var requestContext = Substitute.For<IFhirRequestContext>();
+        requestContext.TenantId.Returns(1); // User belongs to tenant 1
+
         var context = new FhirAuthorizationContext
         {
             UserId = "user123",
             Roles = new List<string> { "Clinician" },
+            RequestContext = requestContext,
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
             HttpContext = httpContext,
@@ -65,7 +76,7 @@ public class TenantIsolationHandlerTests
 
         // Assert
         result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Be("No tenant context");
+        result.DenialReason.Should().Contain("Access denied to tenant");
     }
 
     [Fact]
@@ -73,13 +84,16 @@ public class TenantIsolationHandlerTests
     {
         // Arrange
         var httpContext = Substitute.For<HttpContext>();
-        var routeValues = new RouteValueDictionary { { "tenantId", "1" } };
-        httpContext.Request.RouteValues.Returns(routeValues);
+        var requestContext = Substitute.For<IFhirRequestContext>();
+        requestContext.TenantId.Returns(1);
+
+        // Mock FhirRequestContextAccessor to return the request context
+        _fhirContextAccessor.RequestContext.Returns(requestContext);
 
         var context = new FhirAuthorizationContext
         {
             UserId = "user123",
-            TenantId = "1",
+            RequestContext = requestContext,
             Roles = new List<string> { "Clinician" },
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",

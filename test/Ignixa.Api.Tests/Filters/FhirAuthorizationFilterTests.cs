@@ -294,6 +294,8 @@ public class FhirAuthorizationFilterTests
         // Assert
         capturedContext.Should().NotBeNull();
         capturedContext!.UserId.Should().Be("user-123");
+        capturedContext.RequestContext.Should().NotBeNull();
+        capturedContext.RequestContext.TenantId.Should().Be(1);
     }
 
     [Fact]

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
+using Ignixa.Api.Authentication;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Services;
 using Ignixa.Application.Infrastructure;
@@ -14,7 +15,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IO;
-using Microsoft.IdentityModel.Tokens;
 
 namespace Ignixa.Api.Registrations;
 
@@ -147,16 +147,18 @@ public static class CoreServicesRegistration
                 "Disabling authentication in production is a security risk.");
         }
 
-        // Configure JWT Bearer authentication with support for multiple providers
         var authConfig = configuration.GetSection("Authentication");
-        var provider = authConfig["Provider"] ?? "JwtBearer";
+
+        // Use single OIDC configurator (works with all standard OIDC providers)
+        var configurator = new Ignixa.Api.Authentication.Providers.OidcJwtProviderConfigurator();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
-                // Configure based on provider type
-                ConfigureJwtBearerOptions(options, authConfig, provider, configuration);
+                // Configure OIDC settings
+                configurator.Configure(options, authConfig);
 
+                // Common configuration (applies to all providers)
                 // Map claims using FHIR claim types
                 // Use standard OpenID Connect "name" claim or fallback to "sub"
                 options.TokenValidationParameters.NameClaimType = "name";
@@ -188,133 +190,5 @@ public static class CoreServicesRegistration
             });
 
         services.AddAuthorization();
-    }
-
-    private static void ConfigureJwtBearerOptions(
-        JwtBearerOptions options,
-        IConfigurationSection authConfig,
-        string provider,
-        IConfiguration configuration)
-    {
-        switch (provider)
-        {
-            case "Entra":
-                ConfigureEntraAuthentication(options, authConfig);
-                break;
-            case "Okta":
-                ConfigureOktaAuthentication(options, authConfig);
-                break;
-            case "OIDC":
-                ConfigureOidcAuthentication(options, authConfig);
-                break;
-            case "OpenIddict":
-                ConfigureOpenIddictAuthentication(options, authConfig);
-                break;
-            case "JwtBearer":
-            default:
-                ConfigureGenericJwtAuthentication(options, authConfig);
-                break;
-        }
-    }
-
-    private static void ConfigureEntraAuthentication(JwtBearerOptions options, IConfigurationSection authConfig)
-    {
-        var entraConfig = authConfig.GetSection("Entra");
-        var instance = entraConfig["Instance"] ?? "https://login.microsoftonline.com/";
-        var tenantId = entraConfig["TenantId"] ?? throw new InvalidOperationException("Entra:TenantId is required");
-        var audience = entraConfig["Audience"] ?? throw new InvalidOperationException("Entra:Audience is required");
-
-        options.Authority = $"{instance}{tenantId}/v2.0";
-        options.Audience = audience;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true
-        };
-    }
-
-    private static void ConfigureOktaAuthentication(JwtBearerOptions options, IConfigurationSection authConfig)
-    {
-        var oktaConfig = authConfig.GetSection("Okta");
-        var domain = oktaConfig["Domain"] ?? throw new InvalidOperationException("Okta:Domain is required");
-        var audience = oktaConfig["Audience"] ?? throw new InvalidOperationException("Okta:Audience is required");
-
-        options.Authority = $"https://{domain}";
-        options.Audience = audience;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true
-        };
-    }
-
-    private static void ConfigureOidcAuthentication(JwtBearerOptions options, IConfigurationSection authConfig)
-    {
-        var oidcConfig = authConfig.GetSection("OIDC");
-        var authority = oidcConfig["Authority"] ?? throw new InvalidOperationException("OIDC:Authority is required");
-        var audience = oidcConfig["Audience"];
-
-        options.Authority = authority;
-        if (!string.IsNullOrEmpty(audience))
-        {
-            options.Audience = audience;
-        }
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = !string.IsNullOrEmpty(audience),
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true
-        };
-    }
-
-    private static void ConfigureOpenIddictAuthentication(JwtBearerOptions options, IConfigurationSection authConfig)
-    {
-        var openIddictConfig = authConfig.GetSection("OpenIddict");
-        var issuer = openIddictConfig["Issuer"] ?? throw new InvalidOperationException("OpenIddict:Issuer is required");
-        var audience = openIddictConfig["Audience"];
-
-        options.Authority = issuer;
-        if (!string.IsNullOrEmpty(audience))
-        {
-            options.Audience = audience;
-        }
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = !string.IsNullOrEmpty(audience),
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true
-        };
-    }
-
-    private static void ConfigureGenericJwtAuthentication(JwtBearerOptions options, IConfigurationSection authConfig)
-    {
-        var authority = authConfig["Authority"];
-        var audience = authConfig["Audience"];
-        var issuer = authConfig["Issuer"];
-
-        if (!string.IsNullOrEmpty(authority))
-        {
-            options.Authority = authority;
-        }
-
-        if (!string.IsNullOrEmpty(audience))
-        {
-            options.Audience = audience;
-        }
-
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = !string.IsNullOrEmpty(issuer) || !string.IsNullOrEmpty(authority),
-            ValidIssuer = issuer,
-            ValidateAudience = !string.IsNullOrEmpty(audience),
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true
-        };
     }
 }

@@ -5,6 +5,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Ignixa.Application.Features.Authorization.Smart;
+using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Application.Features.Authorization.Models;
@@ -15,6 +16,14 @@ namespace Ignixa.Application.Features.Authorization.Models;
 /// </summary>
 public record FhirAuthorizationContext
 {
+    // ========== Request Context ==========
+
+    /// <summary>
+    /// The FHIR request context (tenant, version, correlation).
+    /// Set by TenantResolutionMiddleware.
+    /// </summary>
+    public required IFhirRequestContext RequestContext { get; init; }
+
     // ========== User Identity ==========
 
     /// <summary>
@@ -25,8 +34,9 @@ public record FhirAuthorizationContext
 
     /// <summary>
     /// Tenant ID from route or claims.
+    /// For convenience, delegates to RequestContext.TenantId.
     /// </summary>
-    public string? TenantId { get; init; }
+    public string? TenantId => RequestContext?.TenantId.ToString();
 
     /// <summary>
     /// Roles assigned to the user (from role claims or database lookup).

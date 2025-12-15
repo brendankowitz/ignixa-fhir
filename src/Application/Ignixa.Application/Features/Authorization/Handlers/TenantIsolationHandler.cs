@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Authorization.Models;
+using Ignixa.Application.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Authorization.Handlers;
@@ -16,11 +17,15 @@ namespace Ignixa.Application.Features.Authorization.Handlers;
 /// </summary>
 public class TenantIsolationHandler : IAuthorizationHandler
 {
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<TenantIsolationHandler> _logger;
     private const string SystemAdminRole = "SystemAdmin";
 
-    public TenantIsolationHandler(ILogger<TenantIsolationHandler> logger)
+    public TenantIsolationHandler(
+        IFhirRequestContextAccessor fhirContextAccessor,
+        ILogger<TenantIsolationHandler> logger)
     {
+        _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -50,19 +55,23 @@ public class TenantIsolationHandler : IAuthorizationHandler
             return ValueTask.FromResult(AuthorizationResult.Denied("No tenant context"));
         }
 
-        // Extract tenant from request route
-        var requestTenant = ExtractTenantFromRoute(context);
+        // Get tenant from FhirRequestContext (set by TenantResolutionMiddleware)
+        var fhirContext = _fhirContextAccessor.RequestContext
+            ?? throw new InvalidOperationException(
+                "FhirRequestContext not set. Ensure TenantResolutionMiddleware runs before authorization.");
+
+        var requestTenantId = fhirContext.TenantId.ToString();
 
         // If request targets a specific tenant, validate access
-        if (!string.IsNullOrEmpty(requestTenant) &&
-            !string.Equals(requestTenant, context.TenantId, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrEmpty(requestTenantId) &&
+            !string.Equals(requestTenantId, context.TenantId, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning(
                 "Tenant isolation: Request denied - user {UserId} (tenant {UserTenant}) attempted to access tenant {RequestTenant}",
                 context.UserId,
                 context.TenantId,
-                requestTenant);
-            return ValueTask.FromResult(AuthorizationResult.TenantAccessDenied(requestTenant));
+                requestTenantId);
+            return ValueTask.FromResult(AuthorizationResult.TenantAccessDenied(requestTenantId));
         }
 
         _logger.LogDebug(
@@ -71,19 +80,5 @@ public class TenantIsolationHandler : IAuthorizationHandler
             context.TenantId);
 
         return ValueTask.FromResult(AuthorizationResult.Success());
-    }
-
-    /// <summary>
-    /// Extracts tenant ID from the request route.
-    /// </summary>
-    private static string? ExtractTenantFromRoute(FhirAuthorizationContext context)
-    {
-        // Try to get tenantId from route values
-        if (context.HttpContext.Request.RouteValues.TryGetValue("tenantId", out var tenantId))
-        {
-            return tenantId?.ToString();
-        }
-
-        return null;
     }
 }

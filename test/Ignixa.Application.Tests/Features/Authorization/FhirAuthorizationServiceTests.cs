@@ -7,6 +7,7 @@ using FluentAssertions;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
+using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -198,10 +199,13 @@ public class FhirAuthorizationServiceTests
     private static FhirAuthorizationContext CreateContext()
     {
         var httpContext = Substitute.For<HttpContext>();
+        var requestContext = Substitute.For<IFhirRequestContext>();
+        requestContext.TenantId.Returns(1);
+
         return new FhirAuthorizationContext
         {
+            RequestContext = requestContext,
             UserId = "user123",
-            TenantId = "1",
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
             ResourceId = "123",

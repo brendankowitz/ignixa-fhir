@@ -81,7 +81,10 @@ public class FhirAuditFilter(IAuditLogger auditLogger, ILogger<FhirAuditFilter> 
 
             var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             var method = httpContext.Request.Method;
-            var path = httpContext.Request.Path.Value ?? "/";
+            // Sanitize path to prevent log injection attacks (char overload avoids CA1307)
+            var path = (httpContext.Request.Path.Value ?? "/")
+                .Replace('\r', ' ')
+                .Replace('\n', ' ');
             var statusCode = httpContext.Response.StatusCode;
 
             var action = DetermineAuditAction(method);

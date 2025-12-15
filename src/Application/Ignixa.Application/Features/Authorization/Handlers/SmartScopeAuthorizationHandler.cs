@@ -98,6 +98,22 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
                 // Apply search constraints if present (SMART v2 feature)
                 if (matchingScope.SearchConstraints != null && matchingScope.SearchConstraints.Count > 0)
                 {
+                    // Security: POST _search with constrained scopes is not supported
+                    // because we don't parse POST body parameters for constraint validation
+                    if (context.Interaction == FhirInteraction.SearchType &&
+                        context.HttpContext.Request.Method == "POST")
+                    {
+                        _logger.LogWarning(
+                            "SMART scope check: POST _search with search constraints is not supported. " +
+                            "Scope: {Scope}, User: {UserId}",
+                            matchingScope.OriginalScope,
+                            context.UserId);
+
+                        return ValueTask.FromResult(AuthorizationResult.Denied(
+                            "POST _search is not supported with constrained SMART scopes. " +
+                            "Please use GET with query parameters instead."));
+                    }
+
                     filter = filter with
                     {
                         SearchFilters = new Dictionary<string, string>(matchingScope.SearchConstraints)
@@ -130,6 +146,22 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
                 // but may have search constraints
                 if (matchingScope.SearchConstraints != null && matchingScope.SearchConstraints.Count > 0)
                 {
+                    // Security: POST _search with constrained scopes is not supported
+                    // because we don't parse POST body parameters for constraint validation
+                    if (context.Interaction == FhirInteraction.SearchType &&
+                        context.HttpContext.Request.Method == "POST")
+                    {
+                        _logger.LogWarning(
+                            "SMART scope check: POST _search with search constraints is not supported. " +
+                            "Scope: {Scope}, User: {UserId}",
+                            matchingScope.OriginalScope,
+                            context.UserId);
+
+                        return ValueTask.FromResult(AuthorizationResult.Denied(
+                            "POST _search is not supported with constrained SMART scopes. " +
+                            "Please use GET with query parameters instead."));
+                    }
+
                     filter = new FhirAuthorizationFilter
                     {
                         SearchFilters = new Dictionary<string, string>(matchingScope.SearchConstraints)

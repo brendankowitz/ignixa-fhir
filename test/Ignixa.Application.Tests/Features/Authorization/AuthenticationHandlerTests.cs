@@ -6,6 +6,7 @@
 using FluentAssertions;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
+using Ignixa.Application.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -28,6 +29,7 @@ public class AuthenticationHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(),
             Interaction = FhirInteraction.Capabilities,
             HttpContext = httpContext,
             Timestamp = DateTimeOffset.UtcNow
@@ -47,6 +49,7 @@ public class AuthenticationHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(),
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
             HttpContext = httpContext,
@@ -68,6 +71,7 @@ public class AuthenticationHandlerTests
         var httpContext = Substitute.For<HttpContext>();
         var context = new FhirAuthorizationContext
         {
+            RequestContext = CreateRequestContext(),
             UserId = "user123",
             Interaction = FhirInteraction.Read,
             ResourceType = "Patient",
@@ -87,5 +91,12 @@ public class AuthenticationHandlerTests
     {
         // Assert
         _handler.Priority.Should().Be(10);
+    }
+
+    private static IFhirRequestContext CreateRequestContext(int tenantId = 1)
+    {
+        var context = Substitute.For<IFhirRequestContext>();
+        context.TenantId.Returns(tenantId);
+        return context;
     }
 }

@@ -101,13 +101,14 @@ public class FhirAuthorizationFilter : IEndpointFilter
         }
         catch (Exception ex)
         {
+            // Sanitize path to prevent log injection (char overload avoids CA1307)
+            var safePath = (httpContext.Request.Path.Value ?? "/")
+                .Replace('\r', ' ')
+                .Replace('\n', ' ');
             _logger.LogError(
                 ex,
                 "Authorization error for {Path}",
-                httpContext.Request.Path.Value
-                    ?.Replace("\r\n", "")
-                    ?.Replace("\n", "")
-                    ?.Replace("\r", ""));
+                safePath);
 
             // Return generic error to prevent internal error leakage
             return CreateErrorResponse("An error occurred during authorization");
@@ -157,13 +158,15 @@ public class FhirAuthorizationFilter : IEndpointFilter
     /// </summary>
     private Task<FhirAuthorizationContext> BuildAuthorizationContextAsync(HttpContext httpContext)
     {
+        // Get FhirRequestContext (set by TenantResolutionMiddleware)
+        var fhirContext = _fhirContextAccessor.RequestContext
+            ?? throw new InvalidOperationException(
+                "FhirRequestContext not set. Ensure TenantResolutionMiddleware runs before authorization.");
+
         // Extract user/tenant from claims
         var userId = httpContext.User.FindFirst(FhirClaimTypes.Subject)?.Value ??
                     httpContext.User.FindFirst(FhirClaimTypes.ObjectId)?.Value ??
                     httpContext.User.FindFirst(FhirClaimTypes.NameIdentifier)?.Value;
-
-        var tenantId = httpContext.User.FindFirst(FhirClaimTypes.TenantId)?.Value ??
-                      httpContext.User.FindFirst(FhirClaimTypes.ExtensionTenantId)?.Value;
 
         var roles = httpContext.User.FindAll(FhirClaimTypes.Role)
             .Concat(httpContext.User.FindAll(FhirClaimTypes.Roles))
@@ -171,16 +174,6 @@ public class FhirAuthorizationFilter : IEndpointFilter
             .Select(c => c.Value)
             .Distinct()
             .ToList();
-
-        // If no tenant from claims, use FhirRequestContext (set by TenantResolutionMiddleware)
-        if (string.IsNullOrEmpty(tenantId))
-        {
-            var fhirContext = _fhirContextAccessor.RequestContext;
-            if (fhirContext?.TenantId > 0)
-            {
-                tenantId = fhirContext.TenantId.ToString();
-            }
-        }
 
         // Extract SMART context if present
         SmartAuthorizationContext? smartContext = null;
@@ -227,8 +220,8 @@ public class FhirAuthorizationFilter : IEndpointFilter
 
         var authContext = new FhirAuthorizationContext
         {
+            RequestContext = fhirContext,
             UserId = userId,
-            TenantId = tenantId,
             Roles = roles.Count > 0 ? roles : null,
             SmartContext = smartContext,
             Interaction = interaction,
