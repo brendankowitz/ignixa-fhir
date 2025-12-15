@@ -4,53 +4,98 @@ option csharp_namespace = "Ignixa.Sidecar.Metrics";
 
 import "google/protobuf/timestamp.proto";
 
-// MetricsService handles generic FHIR operation metrics
-// Used for both billing (Azure Monitor) and telemetry (Application Insights)
+// MetricsService handles FHIR operation metrics collection.
+// Designed for observability, billing, and performance monitoring.
+// Sidecar can route metrics to multiple destinations:
+// - Billing systems (calculate Request Units for cost tracking)
+// - Application Insights / OpenTelemetry (performance monitoring)
+// - Prometheus / Grafana (operational dashboards)
+// - Custom analytics platforms
+//
+// Pattern: Fire-and-forget - Does not block application if sidecar is unavailable.
+// Service: Unary RPC for single metrics, Client streaming for batch operations.
 service MetricsService {
-  // Record metrics for a FHIR operation
-  // Sidecar decides what to do with this data (billing, telemetry, etc.)
+  // Record metrics for a single FHIR operation.
+  // Returns immediately with success/failure and optional computed values.
+  // Fire-and-forget: Client should log locally if this fails.
   rpc RecordMetric(FhirMetricsRequest) returns (FhirMetricsResponse);
 
-  // Batch record multiple metrics (for bundle operations)
+  // Batch record multiple metrics via client streaming.
+  // More efficient for high-throughput scenarios (e.g., bundle operations).
+  // Returns aggregate response after stream completes.
   rpc RecordMetricBatch(stream FhirMetricsRequest) returns (FhirMetricsResponse);
 }
 
+// Request message for recording FHIR operation metrics.
+// Captures performance, resource usage, and operation context for observability.
 message FhirMetricsRequest {
-  // Request context
+  // UTC timestamp when the FHIR operation completed
   google.protobuf.Timestamp timestamp = 1;
+
+  // Correlation ID (trace/request ID) for distributed tracing
   string correlation_id = 2;
-  string operation_id = 3;               // Application Insights operation ID
 
-  // Tenant and resource context
+  // Operation ID for Application Insights correlation
+  string operation_id = 3;
+
+  // Tenant identifier (multi-tenant isolation)
   string tenant_id = 4;
-  string resource_type = 5;
-  string resource_id = 6;
-  string fhir_version = 7;               // "4.0", "5.0", "3.0"
 
-  // Operation details
-  string http_method = 8;                // "GET", "POST", "PUT", "DELETE", "PATCH"
-  string fhir_operation = 9;             // "read", "create", "update", "delete", "search", "patch"
+  // FHIR resource type (e.g., "Patient", "Observation")
+  string resource_type = 5;
+
+  // FHIR resource ID (logical ID, empty for search operations)
+  string resource_id = 6;
+
+  // FHIR version: "4.0" (R4), "5.0" (R5), "3.0" (STU3), "4.3" (R4B)
+  string fhir_version = 7;
+
+  // HTTP method: "GET", "POST", "PUT", "DELETE", "PATCH"
+  string http_method = 8;
+
+  // FHIR interaction: "read", "create", "update", "delete", "search", "patch", "history", etc.
+  string fhir_operation = 9;
+
+  // HTTP status code from the FHIR operation response
   int32 http_status_code = 10;
+
+  // Whether the operation completed successfully (status < 400)
   bool success = 11;
 
-  // Performance metrics
+  // Size of HTTP request body in bytes (0 for GET requests)
   int64 request_size_bytes = 12;
+
+  // Size of HTTP response body in bytes
   int64 response_size_bytes = 13;
+
+  // Total operation duration in milliseconds (including database, serialization, etc.)
   int64 duration_milliseconds = 14;
 
-  // Resource counts (for search/bundle operations)
-  int32 resource_count = 15;             // Number of resources in response
-  int32 total_matches = 16;              // Total matches for search (if available)
+  // Number of resources in the response (e.g., Bundle.entry count for search)
+  int32 resource_count = 15;
 
-  // Custom properties (extensibility)
+  // Total number of matching resources for search operations (from Bundle.total)
+  // -1 if not applicable or unavailable
+  int32 total_matches = 16;
+
+  // Extensibility: Custom properties for additional metrics context
+  // Example: {"cache_hit": "true", "database_query_time_ms": "150"}
   map<string, string> custom_properties = 17;
 }
 
+// Response message for metrics recording operations.
 message FhirMetricsResponse {
+  // Whether the metrics were successfully recorded
   bool success = 1;
+
+  // Error message if success=false (empty if successful)
   string error_message = 2;
 
-  // Optional: Calculated values the sidecar computed
-  double request_units = 3;              // Billing RUs (if applicable)
+  // Optional: Request Units calculated by sidecar for billing
+  // Used for cost allocation in Azure Monitor or custom billing systems
+  double request_units = 3;
+
+  // Optional: Additional computed metrics from the sidecar
+  // Example: {"estimated_cost": "0.05", "tier": "premium"}
   map<string, string> computed_properties = 4;
 }

@@ -80,6 +80,8 @@ jobs:
           dotnet pack tools/Ignixa.FhirFakes.Cli/Ignixa.FhirFakes.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack tools/Ignixa.Validation.Cli/Ignixa.Validation.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack tools/Ignixa.SqlOnFhir.Cli/Ignixa.SqlOnFhir.Cli.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          # Sidecar contracts (for building custom sidecars)
+          dotnet pack src/Application/Ignixa.Sidecar.Contracts/Ignixa.Sidecar.Contracts.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
 
       - name: Pack Application projects (internal - GitHub Packages)
         if: "${{ !inputs.skip_nuget }}"
@@ -90,6 +92,7 @@ jobs:
           dotnet pack src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Application/Ignixa.Domain/Ignixa.Domain.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Application/Ignixa.Sidecar.Contracts/Ignixa.Sidecar.Contracts.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           # DataLayer (src/DataLayer/)
           dotnet pack src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/DataLayer/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj --configuration Release --no-build --output ./internal-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
