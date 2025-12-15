@@ -116,10 +116,8 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
 
             // Throw exception - will be caught by FhirExceptionMiddleware
             // and converted to 403 Forbidden with OperationOutcome
-
-            // TODO: we should throw, but we will warn for now, capability statement generation needs more work.
-            //throw new InvalidOperationException(
-            //    $"Server does not support this operation. Check GET /metadata for supported capabilities.");
+            throw new InvalidOperationException(
+                $"Server does not support this operation. Check GET /metadata for supported capabilities.");
         }
 
         // Capability requirement satisfied - continue pipeline

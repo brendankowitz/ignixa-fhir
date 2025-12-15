@@ -46,6 +46,8 @@ public record FhirAuthorizationFilter
 
     /// <summary>
     /// Creates a patient compartment filter.
+    /// PatientFilter is used for compartment-based filtering logic.
+    /// SearchFilters should only be added if there are explicit SMART v2 search constraints.
     /// </summary>
     /// <param name="patientId">The patient ID to filter by.</param>
     /// <returns>A filter configured for patient compartment.</returns>
@@ -53,16 +55,14 @@ public record FhirAuthorizationFilter
     {
         return new FhirAuthorizationFilter
         {
-            PatientFilter = patientId,
-            SearchFilters = new Dictionary<string, string>
-            {
-                ["patient"] = patientId
-            }
+            PatientFilter = patientId
         };
     }
 
     /// <summary>
     /// Creates a practitioner compartment filter (SMART v2).
+    /// PractitionerFilter is used for compartment-based filtering logic.
+    /// SearchFilters should only be added if there are explicit SMART v2 search constraints.
     /// </summary>
     /// <param name="practitionerId">The practitioner reference (e.g., "Practitioner/123").</param>
     /// <returns>A filter configured for practitioner compartment.</returns>
@@ -70,11 +70,7 @@ public record FhirAuthorizationFilter
     {
         return new FhirAuthorizationFilter
         {
-            PractitionerFilter = practitionerId,
-            SearchFilters = new Dictionary<string, string>
-            {
-                ["practitioner"] = practitionerId
-            }
+            PractitionerFilter = practitionerId
         };
     }
 

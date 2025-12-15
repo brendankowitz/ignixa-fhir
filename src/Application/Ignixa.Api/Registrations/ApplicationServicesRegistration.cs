@@ -520,10 +520,6 @@ public static class ApplicationServicesRegistration
             .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
             .InstancePerLifetimeScope();
 
-        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.CapabilityEnforcementHandler>()
-            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
-            .InstancePerLifetimeScope();
-
         // Role permission store
         builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.InMemoryRolePermissionStore>()
             .As<Ignixa.Application.Features.Authorization.Handlers.IRolePermissionStore>()
