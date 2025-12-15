@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Grpc.Core;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
@@ -99,6 +100,11 @@ public class FhirAuthorizationFilter : IEndpointFilter
             // Continue to next filter or handler
             return await next(context);
         }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        {
+            _logger.LogError(ex, "Authorization sidecar unavailable");
+            return CreateServiceUnavailableResponse("Authorization service is temporarily unavailable");
+        }
         catch (Exception ex)
         {
             // Sanitize path to prevent log injection (char overload avoids CA1307)
@@ -151,6 +157,25 @@ public class FhirAuthorizationFilter : IEndpointFilter
             outcome.SerializeToString(),
             KnownContentTypes.ApplicationFhirJson,
             statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    /// <summary>
+    /// Creates a 503 Service Unavailable response with FHIR OperationOutcome.
+    /// </summary>
+    private static IResult CreateServiceUnavailableResponse(string diagnostics)
+    {
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
+        {
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = OperationOutcomeJsonNode.IssueType.Transient,
+            Diagnostics = diagnostics
+        });
+
+        return Results.Content(
+            outcome.SerializeToString(),
+            KnownContentTypes.ApplicationFhirJson,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     /// <summary>

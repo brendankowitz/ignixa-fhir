@@ -48,6 +48,7 @@ public static class CompartmentEndpoints
             .MapGroup("/tenant/{tenantId:int}")
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // Tenant-explicit route: GET /{compartmentType}/{compartmentId}/{resourceType}
@@ -82,6 +83,7 @@ public static class CompartmentEndpoints
             .MapGroup(string.Empty)
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // Tenant-agnostic route: GET /{compartmentType}/{compartmentId}/{resourceType}

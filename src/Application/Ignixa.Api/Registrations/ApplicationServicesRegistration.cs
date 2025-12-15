@@ -95,6 +95,15 @@ public static class ApplicationServicesRegistration
         // Event handlers
         RegisterEventHandlers(builder, configuration);
 
+        // Sidecar configuration options
+        builder.Register(c =>
+        {
+            var config = c.Resolve<IConfiguration>();
+            var options = new Ignixa.Application.Infrastructure.SidecarOptions();
+            config.GetSection(Ignixa.Application.Infrastructure.SidecarOptions.SectionName).Bind(options);
+            return options;
+        }).As<Ignixa.Application.Infrastructure.SidecarOptions>().SingleInstance();
+
         // Authorization services
         RegisterAuthorizationServices(builder);
 
@@ -512,9 +521,27 @@ public static class ApplicationServicesRegistration
             .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
             .InstancePerLifetimeScope();
 
-        builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.RbacAuthorizationHandler>()
-            .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()
-            .InstancePerLifetimeScope();
+        // RBAC handler: Conditional registration based on Sidecar.Enabled
+        builder.Register<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>(c =>
+        {
+            var sidecarOptions = c.Resolve<Ignixa.Application.Infrastructure.SidecarOptions>();
+
+            if (sidecarOptions.Enabled)
+            {
+                // Sidecar mode: Use gRPC client
+                var client = c.Resolve<Ignixa.Sidecar.Rbac.RbacService.RbacServiceClient>();
+                var logger = c.Resolve<ILogger<Ignixa.Application.Features.Authorization.Handlers.SidecarRbacAuthorizationHandler>>();
+                return new Ignixa.Application.Features.Authorization.Handlers.SidecarRbacAuthorizationHandler(client, logger);
+            }
+            else
+            {
+                // Local mode: Use role permission store
+                var store = c.Resolve<Ignixa.Application.Features.Authorization.Handlers.IRolePermissionStore>();
+                var logger = c.Resolve<ILogger<Ignixa.Application.Features.Authorization.Handlers.RbacAuthorizationHandler>>();
+                return new Ignixa.Application.Features.Authorization.Handlers.RbacAuthorizationHandler(store, logger);
+            }
+        })
+        .InstancePerLifetimeScope();
 
         builder.RegisterType<Ignixa.Application.Features.Authorization.Handlers.SmartScopeAuthorizationHandler>()
             .As<Ignixa.Application.Features.Authorization.Handlers.IAuthorizationHandler>()

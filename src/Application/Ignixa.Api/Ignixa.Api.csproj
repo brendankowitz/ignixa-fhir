@@ -57,6 +57,7 @@
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
     <ProjectReference Include="..\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
+    <ProjectReference Include="..\Ignixa.Sidecar.Contracts\Ignixa.Sidecar.Contracts.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />

@@ -61,6 +61,7 @@ public static class PatchEndpoints
             .MapGroup("/tenant/{tenantId:int}")
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // PATCH /{resourceType} - Conditional Patch
@@ -100,6 +101,7 @@ public static class PatchEndpoints
             .MapGroup(string.Empty)
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // PATCH /{resourceType} - Conditional Patch (agnostic)
