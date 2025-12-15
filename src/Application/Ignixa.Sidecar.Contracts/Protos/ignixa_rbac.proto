@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Rbac";
+
+// RbacService handles Azure RBAC authorization checks
+service RbacService {
+  // Check Azure RBAC authorization for FHIR operation
+  rpc CheckAccess(AccessCheckRequest) returns (AccessCheckResponse);
+
+  // Batch check multiple permissions (for bundle operations)
+  rpc CheckAccessBatch(stream AccessCheckRequest) returns (stream AccessCheckResponse);
+}
+
+message AccessCheckRequest {
+  string user_id = 1;                    // Azure AD oid
+  string tenant_id = 2;
+  string data_action = 3;                // "Microsoft.HealthcareApis/fhir/read"
+  string resource_type = 4;
+  string resource_id = 5;
+  string correlation_id = 6;
+  map<string, string> user_claims = 7;   // Azure AD claims
+}
+
+message AccessCheckResponse {
+  bool authorized = 1;
+  string error_message = 2;
+  string decision_id = 3;                 // Cache key for decision
+}

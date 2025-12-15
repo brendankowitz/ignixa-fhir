@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Audit";
+
+import "google/protobuf/timestamp.proto";
+
+// AuditService handles security audit logging to Azure Event Hub
+service AuditService {
+  // Log audit event for compliance tracking
+  rpc LogAuditEvent(AuditEventRequest) returns (AuditEventResponse);
+
+  // Batch log multiple events
+  rpc LogAuditEventBatch(stream AuditEventRequest) returns (AuditEventResponse);
+}
+
+message AuditEventRequest {
+  google.protobuf.Timestamp timestamp = 1;
+  string tenant_id = 2;
+  string user_id = 3;                    // Azure AD oid
+  string user_principal_name = 4;        // Azure AD upn
+  string resource_type = 5;
+  string resource_id = 6;
+  string operation = 7;                  // "Read", "Create", "Update", "Delete", "Search"
+  int32 http_status_code = 8;
+  bool success = 9;
+  string ip_address = 10;
+  string correlation_id = 11;
+  map<string, string> custom_properties = 12;
+}
+
+message AuditEventResponse {
+  bool success = 1;
+  string error_message = 2;
+  string event_id = 3;                   // Event Hub sequence number
+}

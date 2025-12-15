@@ -158,6 +158,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Web", "src\Applicati
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Api.OpenIddict", "src\Application\Ignixa.Api.OpenIddict\Ignixa.Api.OpenIddict.csproj", "{80580F9D-FB5D-4817-8B13-6858562F887C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Sidecar.Contracts", "src\Application\Ignixa.Sidecar.Contracts\Ignixa.Sidecar.Contracts.csproj", "{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -660,6 +662,18 @@ Global
 		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x64.Build.0 = Release|Any CPU
 		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x86.ActiveCfg = Release|Any CPU
 		{80580F9D-FB5D-4817-8B13-6858562F887C}.Release|x86.Build.0 = Release|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Debug|x64.Build.0 = Debug|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Debug|x86.Build.0 = Debug|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Release|x64.ActiveCfg = Release|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Release|x64.Build.0 = Release|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Release|x86.ActiveCfg = Release|Any CPU
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -715,5 +729,6 @@ Global
 		{1AD75E11-43DB-4B66-86FD-FA710EF5DE98} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{6E378004-2030-492A-9E9B-F8A7B3256E12} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 		{80580F9D-FB5D-4817-8B13-6858562F887C} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
+		{5B5B1329-8C4C-4F1C-99ED-1A981DE9C83F} = {D52A6C36-F517-47E3-AD4E-C8F0CDAC3678}
 	EndGlobalSection
 EndGlobal

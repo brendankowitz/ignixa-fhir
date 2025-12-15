@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Metrics";
+
+import "google/protobuf/timestamp.proto";
+
+// MetricsService handles generic FHIR operation metrics
+// Used for both billing (Azure Monitor) and telemetry (Application Insights)
+service MetricsService {
+  // Record metrics for a FHIR operation
+  // Sidecar decides what to do with this data (billing, telemetry, etc.)
+  rpc RecordMetric(FhirMetricsRequest) returns (FhirMetricsResponse);
+
+  // Batch record multiple metrics (for bundle operations)
+  rpc RecordMetricBatch(stream FhirMetricsRequest) returns (FhirMetricsResponse);
+}
+
+message FhirMetricsRequest {
+  // Request context
+  google.protobuf.Timestamp timestamp = 1;
+  string correlation_id = 2;
+  string operation_id = 3;               // Application Insights operation ID
+
+  // Tenant and resource context
+  string tenant_id = 4;
+  string resource_type = 5;
+  string resource_id = 6;
+  string fhir_version = 7;               // "4.0", "5.0", "3.0"
+
+  // Operation details
+  string http_method = 8;                // "GET", "POST", "PUT", "DELETE", "PATCH"
+  string fhir_operation = 9;             // "read", "create", "update", "delete", "search", "patch"
+  int32 http_status_code = 10;
+  bool success = 11;
+
+  // Performance metrics
+  int64 request_size_bytes = 12;
+  int64 response_size_bytes = 13;
+  int64 duration_milliseconds = 14;
+
+  // Resource counts (for search/bundle operations)
+  int32 resource_count = 15;             // Number of resources in response
+  int32 total_matches = 16;              // Total matches for search (if available)
+
+  // Custom properties (extensibility)
+  map<string, string> custom_properties = 17;
+}
+
+message FhirMetricsResponse {
+  bool success = 1;
+  string error_message = 2;
+
+  // Optional: Calculated values the sidecar computed
+  double request_units = 3;              // Billing RUs (if applicable)
+  map<string, string> computed_properties = 4;
+}
