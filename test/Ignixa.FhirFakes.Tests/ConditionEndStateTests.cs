@@ -241,7 +241,7 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Timeline.Should().HaveCountGreaterOrEqualTo(2, "should have onset and end events");
+        scenario.Timeline.Should().HaveCountGreaterThanOrEqualTo(2, "should have onset and end events");
 
         var onsetEvents = scenario.Timeline.Where(e => e.EventType == "ConditionOnset").ToList();
         onsetEvents.Should().HaveCount(1, "should have one condition onset event");

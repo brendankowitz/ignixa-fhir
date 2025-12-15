@@ -250,17 +250,17 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - STU3 uses vaccinationProtocol instead of protocolApplied
-        immunization.MutableNode.AsObject().Should().ContainKey("vaccinationProtocol", "STU3 should use 'vaccinationProtocol'");
-        immunization.MutableNode.AsObject().Should().NotContainKey("protocolApplied", "STU3 should NOT use 'protocolApplied' (R4+ field)");
+        immunization.MutableNode["vaccinationProtocol"].Should().NotBeNull("STU3 should use 'vaccinationProtocol'");
+        immunization.MutableNode["protocolApplied"].Should().BeNull("STU3 should NOT use 'protocolApplied' (R4+ field)");
 
         // Assert - STU3 uses doseSequence instead of doseNumberPositiveInt
         var protocol = immunization.MutableNode["vaccinationProtocol"]?[0];
         protocol.Should().NotBeNull("vaccinationProtocol should have at least one entry");
-        protocol!.AsObject().Should().ContainKey("doseSequence", "STU3 should use 'doseSequence'");
-        protocol.AsObject().Should().NotContainKey("doseNumberPositiveInt", "STU3 should NOT use 'doseNumberPositiveInt' (R4+ field)");
+        protocol!["doseSequence"].Should().NotBeNull("STU3 should use 'doseSequence'");
+        protocol["doseNumberPositiveInt"].Should().BeNull("STU3 should NOT use 'doseNumberPositiveInt' (R4+ field)");
 
         // Assert - STU3 should NOT have seriesDosesPositiveInt
-        protocol.AsObject().Should().NotContainKey("seriesDosesPositiveInt", "STU3 doesn't have 'seriesDosesPositiveInt' field");
+        protocol["seriesDosesPositiveInt"].Should().BeNull("STU3 doesn't have 'seriesDosesPositiveInt' field");
     }
 
     [Fact]
@@ -280,17 +280,17 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - R4 uses protocolApplied instead of vaccinationProtocol
-        immunization.MutableNode.AsObject().Should().ContainKey("protocolApplied", "R4 should use 'protocolApplied'");
-        immunization.MutableNode.AsObject().Should().NotContainKey("vaccinationProtocol", "R4 should NOT use 'vaccinationProtocol' (STU3 field)");
+        immunization.MutableNode["protocolApplied"].Should().NotBeNull("R4 should use 'protocolApplied'");
+        immunization.MutableNode["vaccinationProtocol"].Should().BeNull("R4 should NOT use 'vaccinationProtocol' (STU3 field)");
 
         // Assert - R4 uses doseNumberPositiveInt instead of doseSequence
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
         protocol.Should().NotBeNull("protocolApplied should have at least one entry");
-        protocol!.AsObject().Should().ContainKey("doseNumberPositiveInt", "R4 should use 'doseNumberPositiveInt'");
-        protocol.AsObject().Should().NotContainKey("doseSequence", "R4 should NOT use 'doseSequence' (STU3 field)");
+        protocol!["doseNumberPositiveInt"].Should().NotBeNull("R4 should use 'doseNumberPositiveInt'");
+        protocol["doseSequence"].Should().BeNull("R4 should NOT use 'doseSequence' (STU3 field)");
 
         // Assert - R4 should have seriesDosesPositiveInt when SeriesDosesRecommended is set
-        protocol.AsObject().Should().ContainKey("seriesDosesPositiveInt", "R4 should have 'seriesDosesPositiveInt'");
+        protocol["seriesDosesPositiveInt"].Should().NotBeNull("R4 should have 'seriesDosesPositiveInt'");
     }
 
     [Fact]
@@ -310,10 +310,10 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - R4B uses same field names as R4
-        immunization.MutableNode.AsObject().Should().ContainKey("protocolApplied", "R4B should use 'protocolApplied'");
+        immunization.MutableNode["protocolApplied"].Should().NotBeNull("R4B should use 'protocolApplied'");
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
         protocol.Should().NotBeNull();
-        protocol!.AsObject().Should().ContainKey("doseNumberPositiveInt", "R4B should use 'doseNumberPositiveInt'");
+        protocol!["doseNumberPositiveInt"].Should().NotBeNull("R4B should use 'doseNumberPositiveInt'");
     }
 
     [Fact]
@@ -333,10 +333,10 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - R5 uses same field names as R4
-        immunization.MutableNode.AsObject().Should().ContainKey("protocolApplied", "R5 should use 'protocolApplied'");
+        immunization.MutableNode["protocolApplied"].Should().NotBeNull("R5 should use 'protocolApplied'");
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
         protocol.Should().NotBeNull();
-        protocol!.AsObject().Should().ContainKey("doseNumberPositiveInt", "R5 should use 'doseNumberPositiveInt'");
+        protocol!["doseNumberPositiveInt"].Should().NotBeNull("R5 should use 'doseNumberPositiveInt'");
     }
 
     #endregion

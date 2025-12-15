@@ -236,7 +236,7 @@ public class PopulationGeneratorTests
 
         // Assert
         states.Should().NotBeEmpty()
-            .And.HaveCountGreaterOrEqualTo(8, "should have at least 8 states")
+            .And.HaveCountGreaterThanOrEqualTo(8, "should have at least 8 states")
             .And.Contain("Massachusetts")
             .And.Contain("California")
             .And.Contain("Texas")
@@ -255,7 +255,7 @@ public class PopulationGeneratorTests
 
         // Assert
         cities.Should().NotBeEmpty()
-            .And.HaveCountGreaterOrEqualTo(11, "should have at least 11 cities");
+            .And.HaveCountGreaterThanOrEqualTo(11, "should have at least 11 cities");
 
         // Verify all cities have complete demographic data
         foreach (var city in cities)

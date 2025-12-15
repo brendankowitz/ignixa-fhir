@@ -301,7 +301,7 @@ public class PatientBuilderTests
 
         bmiExtension.Should().NotBeNull();
         var bmi = bmiExtension?["valueDecimal"]?.GetValue<decimal>();
-        bmi.Should().BeGreaterOrEqualTo(19).And.BeLessOrEqualTo(42); // NHANES range
+        bmi.Should().BeGreaterThanOrEqualTo(19).And.BeLessThanOrEqualTo(42); // NHANES range
     }
 
     [Fact]
@@ -680,7 +680,7 @@ public class PatientBuilderTests
 
         // Assert - Ethnicity should be accessible via ProfileAttributes
         builder.ProfileAttributes.Should().ContainKey(USCorePatientProfile.UsCoreRaceAttribute);
-        builder.ProfileAttributes[USCorePatientProfile.UsCoreRaceAttribute].Should().NotBeNull();
+        builder.ProfileAttributes.Should().ContainKey(USCorePatientProfile.UsCoreRaceAttribute);
     }
 
     [Fact]

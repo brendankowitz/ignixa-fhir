@@ -128,7 +128,7 @@ public class CareTeamBuilderTests
             .Build();
 
         var node = careTeam.MutableNode;
-        node.Should().NotContainKey("subject");
+        node["subject"].Should().BeNull();
     }
 
     #endregion
@@ -194,7 +194,7 @@ public class CareTeamBuilderTests
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
 
-        participant.Should().NotContainKey("role");
+        participant!["role"].Should().BeNull();
     }
 
     [Fact]
@@ -267,11 +267,11 @@ public class CareTeamBuilderTests
 
         // First participant should have role
         var participant1 = participants![0] as JsonObject;
-        participant1.Should().ContainKey("role");
+        participant1!["role"].Should().NotBeNull();
 
         // Second participant should not have role
         var participant2 = participants[1] as JsonObject;
-        participant2.Should().NotContainKey("role");
+        participant2!["role"].Should().BeNull();
     }
 
     #endregion

@@ -62,7 +62,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Conditions.Should().HaveCountGreaterOrEqualTo(1);
+        scenario.Conditions.Should().HaveCountGreaterThanOrEqualTo(1);
 
         var otitisMediaCondition = scenario.Conditions.FirstOrDefault(c =>
         {
@@ -125,7 +125,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Encounters.Should().HaveCountGreaterOrEqualTo(2, "should have initial visit and follow-up");
+        scenario.Encounters.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial visit and follow-up");
 
         // All encounters should reference the patient
         foreach (var encounter in scenario.Encounters)
@@ -167,8 +167,8 @@ public class EarInfectionScenarioTests
         // Initial visit should show elevated temperature (fever)
         var initialTemp = temperatureObservations.First();
         var value = initialTemp.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterOrEqualTo(38.0m, "initial temperature should indicate fever");
-        value.Should().BeLessOrEqualTo(39.5m, "temperature should be in expected range");
+        value.Should().BeGreaterThanOrEqualTo(38.0m, "initial temperature should indicate fever");
+        value.Should().BeLessThanOrEqualTo(39.5m, "temperature should be in expected range");
     }
 
     [Fact]
@@ -184,12 +184,12 @@ public class EarInfectionScenarioTests
             return code == "8310-5";
         }).ToList();
 
-        temperatureObservations.Should().HaveCountGreaterOrEqualTo(2, "should have initial and follow-up temperatures");
+        temperatureObservations.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial and follow-up temperatures");
 
         // Follow-up should show normal temperature
         var followUpTemp = temperatureObservations.Last();
         var value = followUpTemp.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeLessOrEqualTo(37.5m, "follow-up temperature should be normal or near-normal");
+        value.Should().BeLessThanOrEqualTo(37.5m, "follow-up temperature should be normal or near-normal");
     }
 
     [Fact]
@@ -210,8 +210,8 @@ public class EarInfectionScenarioTests
         // Initial visit should show moderate to severe pain
         var initialPain = painObservations.First();
         var value = initialPain.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterOrEqualTo(5m, "initial pain should be moderate to severe");
-        value.Should().BeLessOrEqualTo(8m, "pain should be in expected range");
+        value.Should().BeGreaterThanOrEqualTo(5m, "initial pain should be moderate to severe");
+        value.Should().BeLessThanOrEqualTo(8m, "pain should be in expected range");
     }
 
     [Fact]
@@ -227,12 +227,12 @@ public class EarInfectionScenarioTests
             return code == "72514-3";
         }).ToList();
 
-        painObservations.Should().HaveCountGreaterOrEqualTo(2, "should have initial and follow-up pain assessments");
+        painObservations.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial and follow-up pain assessments");
 
         // Follow-up should show minimal or no pain
         var followUpPain = painObservations.Last();
         var value = followUpPain.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeLessOrEqualTo(1m, "follow-up pain should be minimal or resolved");
+        value.Should().BeLessThanOrEqualTo(1m, "follow-up pain should be minimal or resolved");
     }
 
     #endregion
@@ -272,7 +272,7 @@ public class EarInfectionScenarioTests
             return code == "16247007";
         }).ToList();
 
-        otoscopyProcedures.Should().HaveCountGreaterOrEqualTo(2, "should have initial and follow-up examinations");
+        otoscopyProcedures.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial and follow-up examinations");
 
         // Follow-up should indicate resolution
         var followUpOtoscopy = otoscopyProcedures.Last();
@@ -291,7 +291,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Medications.Should().HaveCountGreaterOrEqualTo(1);
+        scenario.Medications.Should().HaveCountGreaterThanOrEqualTo(1);
 
         var amoxicillin = scenario.Medications.FirstOrDefault(m =>
         {

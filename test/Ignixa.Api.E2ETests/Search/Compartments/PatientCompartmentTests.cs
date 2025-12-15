@@ -456,7 +456,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
 
         // Assert: First page should respect count limit
         bundle.Entry.Should().NotBeEmpty();
-        bundle.Entry.Count.Should().BeLessOrEqualTo(pageSize, "page size should be respected");
+        bundle.Entry.Count.Should().BeLessThanOrEqualTo(pageSize, "page size should be respected");
 
         // Note: Pagination verification (next link) is optional based on server implementation
         // Some servers may not return next link even when there are more results

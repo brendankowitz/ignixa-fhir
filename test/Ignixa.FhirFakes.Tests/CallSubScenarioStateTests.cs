@@ -28,7 +28,7 @@ public class CallSubScenarioStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCountGreaterOrEqualTo(4, "should have at least height, weight, BMI, and blood pressure");
+        scenario.Observations.Should().HaveCountGreaterThanOrEqualTo(4, "should have at least height, weight, BMI, and blood pressure");
 
         // Verify specific vital signs were recorded
         var heightObs = scenario.Observations.FirstOrDefault(obs =>
@@ -57,8 +57,8 @@ public class CallSubScenarioStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCountGreaterOrEqualTo(4, "should have vital signs");
-        scenario.DiagnosticReports.Should().HaveCountGreaterOrEqualTo(2, "should have CMP and lipid panel");
+        scenario.Observations.Should().HaveCountGreaterThanOrEqualTo(4, "should have vital signs");
+        scenario.DiagnosticReports.Should().HaveCountGreaterThanOrEqualTo(2, "should have CMP and lipid panel");
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class CallSubScenarioStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCountGreaterOrEqualTo(4, "should have heart rate, BP, and O2 sat");
+        scenario.Observations.Should().HaveCountGreaterThanOrEqualTo(4, "should have heart rate, BP, and O2 sat");
 
         // Verify heart rate was recorded
         var heartRateObs = scenario.Observations.FirstOrDefault(obs =>
@@ -110,7 +110,7 @@ public class CallSubScenarioStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCountGreaterOrEqualTo(4, "should have temp, RR, HR, and O2 sat");
+        scenario.Observations.Should().HaveCountGreaterThanOrEqualTo(4, "should have temp, RR, HR, and O2 sat");
 
         // Verify temperature was recorded
         var tempObs = scenario.Observations.FirstOrDefault(obs =>
@@ -141,7 +141,7 @@ public class CallSubScenarioStateTests
 
         // Assert
         scenario.Encounters.Should().HaveCount(2, "should have initial and follow-up encounters");
-        scenario.Observations.Should().HaveCountGreaterOrEqualTo(8, "should have vitals from both visits");
+        scenario.Observations.Should().HaveCountGreaterThanOrEqualTo(8, "should have vitals from both visits");
 
         // Verify time advanced
         var firstEncounterTime = DateTime.Parse(scenario.Encounters[0].MutableNode["period"]?["start"]?.GetValue<string>()!);
@@ -174,6 +174,6 @@ public class CallSubScenarioStateTests
         heartRate.Should().NotBeNull("should have heart rate observation");
 
         var hrValue = heartRate!.MutableNode["valueQuantity"]!["value"]!.GetValue<decimal>();
-        hrValue.Should().BeGreaterOrEqualTo(100m, "heart rate should be elevated");
+        hrValue.Should().BeGreaterThanOrEqualTo(100m, "heart rate should be elevated");
     }
 }

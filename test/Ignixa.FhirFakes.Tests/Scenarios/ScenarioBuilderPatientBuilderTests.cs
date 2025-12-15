@@ -289,7 +289,7 @@ public class ScenarioBuilderPatientBuilderTests
 
         var tags = scenario.Patient.MutableNode["meta"]?["tag"]?.AsArray();
         tags.Should().NotBeNull();
-        tags.Should().HaveCountGreaterOrEqualTo(1);
+        tags.Should().HaveCountGreaterThanOrEqualTo(1);
 
         var metaTag = tags?[0]?.AsObject();
         metaTag?["code"]?.GetValue<string>().Should().Be(tag);
@@ -348,7 +348,7 @@ public class ScenarioBuilderPatientBuilderTests
         bundle.MutableNode["entry"].Should().NotBeNull();
 
         var entries = bundle.MutableNode["entry"]?.AsArray();
-        entries.Should().HaveCountGreaterOrEqualTo(2);
+        entries.Should().HaveCountGreaterThanOrEqualTo(2);
 
         // First entry should be the patient
         var firstResource = entries?[0]?["resource"];

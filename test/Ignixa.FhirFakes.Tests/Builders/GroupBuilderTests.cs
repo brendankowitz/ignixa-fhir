@@ -166,7 +166,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode.AsObject().Should().NotContainKey("name");
+        group.MutableNode.AsObject()["name"].Should().BeNull();
     }
 
     #endregion
@@ -361,7 +361,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode.AsObject().Should().NotContainKey("member");
+        group.MutableNode.AsObject()["member"].Should().BeNull();
     }
 
     #endregion
@@ -416,7 +416,7 @@ public class GroupBuilderTests
         // Assert
         group.MutableNode["actual"]?.GetValue<bool>().Should().BeFalse();
         group.MutableNode["name"]?.GetValue<string>().Should().Be("All diabetic patients over 65");
-        group.MutableNode.AsObject().Should().NotContainKey("member");
+        group.MutableNode.AsObject()["member"].Should().BeNull();
     }
 
     [Fact]

@@ -32,7 +32,7 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         context.Encounters.Should().ContainSingle();
         context.Encounters[0].ResourceType.Should().Be("Encounter");
         context.Observations.Should().NotBeEmpty();
-        context.Immunizations.Should().HaveCountGreaterOrEqualTo(4);
+        context.Immunizations.Should().HaveCountGreaterThanOrEqualTo(4);
         context.Procedures.Should().NotBeEmpty();
         context.Practitioners.Should().ContainSingle();
         context.Organizations.Should().ContainSingle();
@@ -45,7 +45,7 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetPediatricWellChildVisit(ageInMonths: 2, gender: "female");
 
         // Assert
-        context.Immunizations.Should().HaveCountGreaterOrEqualTo(5);
+        context.Immunizations.Should().HaveCountGreaterThanOrEqualTo(5);
     }
 
     [Theory]
@@ -92,7 +92,7 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         context.Patient!.ResourceType.Should().Be("Patient");
         context.Encounters.Should().ContainSingle();
         context.Observations.Should().NotBeEmpty();
-        context.DiagnosticReports.Should().HaveCountGreaterOrEqualTo(2);
+        context.DiagnosticReports.Should().HaveCountGreaterThanOrEqualTo(2);
         context.Procedures.Should().NotBeEmpty();
         context.Immunizations.Should().NotBeEmpty();
     }
@@ -153,9 +153,9 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         context.Patient!.ResourceType.Should().Be("Patient");
         context.Encounters.Should().ContainSingle();
         context.Observations.Should().NotBeEmpty();
-        context.DiagnosticReports.Should().HaveCountGreaterOrEqualTo(2);
-        context.Immunizations.Should().HaveCountGreaterOrEqualTo(3);
-        context.Procedures.Should().HaveCountGreaterOrEqualTo(3);
+        context.DiagnosticReports.Should().HaveCountGreaterThanOrEqualTo(2);
+        context.Immunizations.Should().HaveCountGreaterThanOrEqualTo(3);
+        context.Procedures.Should().HaveCountGreaterThanOrEqualTo(3);
     }
 
     [Fact]

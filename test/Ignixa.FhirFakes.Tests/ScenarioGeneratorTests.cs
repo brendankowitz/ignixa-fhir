@@ -41,7 +41,7 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Conditions.Should().HaveCountGreaterOrEqualTo(1);
+        scenario.Conditions.Should().HaveCountGreaterThanOrEqualTo(1);
 
         var diabetesCondition = scenario.Conditions.FirstOrDefault(c =>
         {
@@ -59,7 +59,7 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Encounters.Should().HaveCountGreaterOrEqualTo(3, "should have initial + follow-up encounters");
+        scenario.Encounters.Should().HaveCountGreaterThanOrEqualTo(3, "should have initial + follow-up encounters");
 
         // All encounters should reference the patient
         foreach (var encounter in scenario.Encounters)
@@ -82,7 +82,7 @@ public class ScenarioGeneratorTests
             return code == "4548-4"; // LOINC code for HbA1c
         }).ToList();
 
-        a1cObservations.Should().HaveCountGreaterOrEqualTo(2, "should have multiple A1C tests over time");
+        a1cObservations.Should().HaveCountGreaterThanOrEqualTo(2, "should have multiple A1C tests over time");
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Medications.Should().HaveCountGreaterOrEqualTo(1);
+        scenario.Medications.Should().HaveCountGreaterThanOrEqualTo(1);
 
         var metformin = scenario.Medications.FirstOrDefault(m =>
         {
@@ -208,7 +208,7 @@ public class ScenarioGeneratorTests
             return code == "85354-9"; // Blood pressure panel
         }).ToList();
 
-        bpObservations.Should().HaveCountGreaterOrEqualTo(3, "should have multiple BP readings");
+        bpObservations.Should().HaveCountGreaterThanOrEqualTo(3, "should have multiple BP readings");
 
         // Each BP observation should have systolic and diastolic components
         foreach (var bp in bpObservations)
@@ -231,7 +231,7 @@ public class ScenarioGeneratorTests
             return code == "314076" || code == "314077" || code == "329528"; // Lisinopril or Amlodipine
         }).ToList();
 
-        antihypertensives.Should().HaveCountGreaterOrEqualTo(1, "should have antihypertensive medication");
+        antihypertensives.Should().HaveCountGreaterThanOrEqualTo(1, "should have antihypertensive medication");
     }
 
     #endregion
@@ -277,7 +277,7 @@ public class ScenarioGeneratorTests
 
         // Assert
         // Standard prenatal care has many visits
-        scenario.Encounters.Should().HaveCountGreaterOrEqualTo(10, "should have many prenatal visits");
+        scenario.Encounters.Should().HaveCountGreaterThanOrEqualTo(10, "should have many prenatal visits");
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public class ScenarioGeneratorTests
             return code == "55283-6"; // Fetal heart rate
         }).ToList();
 
-        fhrObservations.Should().HaveCountGreaterOrEqualTo(5, "should have multiple fetal heart rate measurements");
+        fhrObservations.Should().HaveCountGreaterThanOrEqualTo(5, "should have multiple fetal heart rate measurements");
     }
 
     [Fact]
@@ -360,7 +360,7 @@ public class ScenarioGeneratorTests
             return code == "33452-4"; // Peak expiratory flow rate
         }).ToList();
 
-        peakFlowObservations.Should().HaveCountGreaterOrEqualTo(3, "should have peak flow measurements");
+        peakFlowObservations.Should().HaveCountGreaterThanOrEqualTo(3, "should have peak flow measurements");
     }
 
     [Fact]
@@ -392,7 +392,7 @@ public class ScenarioGeneratorTests
             return classCode == "EMER";
         }).ToList();
 
-        emergencyVisits.Should().HaveCountGreaterOrEqualTo(1, "should have at least one emergency/urgent visit for exacerbation");
+        emergencyVisits.Should().HaveCountGreaterThanOrEqualTo(1, "should have at least one emergency/urgent visit for exacerbation");
     }
 
     #endregion

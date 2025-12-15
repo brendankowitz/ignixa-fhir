@@ -268,7 +268,7 @@ public class StateIdPatternTests
         // Assert
         var org = scenario.Organizations[0];
         var identifiers = org.MutableNode["identifier"]!.AsArray();
-        identifiers.Should().HaveCountGreaterOrEqualTo(4, "NPI + TaxId + 2 custom");
+        identifiers.Should().HaveCountGreaterThanOrEqualTo(4, "NPI + TaxId + 2 custom");
         identifiers.Should().Contain(i => i!["value"]!.GetValue<string>() == id1);
         identifiers.Should().Contain(i => i!["value"]!.GetValue<string>() == id2);
     }

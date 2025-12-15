@@ -161,7 +161,7 @@ public class CarePlanStateTests
         // Assert
         var carePlan = scenario.CarePlans[0];
         var categoryArray = carePlan.MutableNode["category"] as System.Text.Json.Nodes.JsonArray;
-        categoryArray.Should().HaveCountGreaterOrEqualTo(1);
+        categoryArray.Should().HaveCountGreaterThanOrEqualTo(1);
     }
 
     #endregion

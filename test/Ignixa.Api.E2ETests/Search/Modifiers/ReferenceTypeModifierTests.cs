@@ -58,7 +58,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Patient={patientId}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCountGreaterOrEqualTo(2, "both observations have Patient1 as subject");
+        results.Should().HaveCountGreaterThanOrEqualTo(2, "both observations have Patient1 as subject");
         results.Should().AllSatisfy(obs =>
         {
             var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();

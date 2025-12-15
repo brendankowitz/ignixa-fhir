@@ -538,7 +538,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_count={count}&_tag={tag}");
 
         // Assert - First page should have at most 'count' entries
-        bundle.Entry.Count.Should().BeLessOrEqualTo(count);
+        bundle.Entry.Count.Should().BeLessThanOrEqualTo(count);
         bundle.Entry.Count.Should().BeGreaterThan(0);
 
         // Follow next links to collect all results
@@ -553,7 +553,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         while (!string.IsNullOrEmpty(nextLink) && iterations < 10)
         {
             var nextBundle = await Harness.GetBundleAsync(nextLink);
-            nextBundle.Entry.Count.Should().BeLessOrEqualTo(count);
+            nextBundle.Entry.Count.Should().BeLessThanOrEqualTo(count);
 
             allResources.AddRange(
                 nextBundle.Entry

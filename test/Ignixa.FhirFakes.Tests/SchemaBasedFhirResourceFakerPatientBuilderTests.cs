@@ -181,7 +181,7 @@ public class SchemaBasedFhirResourceFakerPatientBuilderTests
 
         bmiExtension.Should().NotBeNull();
         var bmi = bmiExtension?["valueDecimal"]?.GetValue<decimal>();
-        bmi.Should().BeGreaterOrEqualTo(19).And.BeLessOrEqualTo(42);
+        bmi.Should().BeGreaterThanOrEqualTo(19).And.BeLessThanOrEqualTo(42);
     }
 
     [Fact]
