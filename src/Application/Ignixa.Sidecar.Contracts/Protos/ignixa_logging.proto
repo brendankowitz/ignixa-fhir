@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Logging";
+
+import "google/protobuf/timestamp.proto";
+
+// LoggingService handles structured log forwarding to external sinks
+// Fire-and-forget: Does not block application logging if sidecar is unavailable
+service LoggingService {
+  // Log a single structured log entry
+  rpc LogEntry(LogEntryRequest) returns (LogEntryResponse);
+
+  // Batch log multiple entries for efficiency
+  rpc LogEntryBatch(LogBatchRequest) returns (LogEntryResponse);
+
+  // Stream log entries for high-throughput scenarios
+  rpc StreamLogEntries(stream LogEntryRequest) returns (LogEntryResponse);
+}
+
+// Log severity levels (maps to Microsoft.Extensions.Logging.LogLevel)
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_TRACE = 1;
+  LOG_LEVEL_DEBUG = 2;
+  LOG_LEVEL_INFORMATION = 3;
+  LOG_LEVEL_WARNING = 4;
+  LOG_LEVEL_ERROR = 5;
+  LOG_LEVEL_CRITICAL = 6;
+  LOG_LEVEL_NONE = 7;
+}
+
+message LogEntryRequest {
+  // Timing
+  google.protobuf.Timestamp timestamp = 1;
+
+  // Log level (severity)
+  LogLevel level = 2;
+
+  // Logger category (typically fully qualified class name)
+  string category = 3;
+
+  // Event ID (optional, for categorizing log events)
+  int32 event_id = 4;
+  string event_name = 5;
+
+  // The formatted log message
+  string message = 6;
+
+  // Exception details (if any)
+  ExceptionInfo exception = 7;
+
+  // Correlation and context
+  string correlation_id = 8;
+  string tenant_id = 9;
+  string trace_id = 10;
+  string span_id = 11;
+
+  // Structured state (key-value pairs from log state object)
+  map<string, string> state = 12;
+
+  // Scope properties (from ILogger.BeginScope)
+  repeated ScopeInfo scopes = 13;
+
+  // Custom properties for extensibility
+  map<string, string> custom_properties = 14;
+}
+
+message ExceptionInfo {
+  string type = 1;           // Exception type name (e.g., "System.InvalidOperationException")
+  string message = 2;        // Exception message
+  string stack_trace = 3;    // Full stack trace
+  ExceptionInfo inner = 4;   // Inner exception (recursive)
+}
+
+message ScopeInfo {
+  // Scope message (formatted)
+  string message = 1;
+
+  // Scope state (key-value pairs)
+  map<string, string> state = 2;
+}
+
+message LogBatchRequest {
+  repeated LogEntryRequest entries = 1;
+}
+
+message LogEntryResponse {
+  bool success = 1;
+  string error_message = 2;
+  int32 entries_processed = 3;
+}

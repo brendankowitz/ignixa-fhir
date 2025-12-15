@@ -6,8 +6,10 @@
 using Grpc.Net.Client;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Sidecar.Audit;
+using Ignixa.Sidecar.Logging;
 using Ignixa.Sidecar.Metrics;
 using Ignixa.Sidecar.Rbac;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Api.Registrations;
 
@@ -64,6 +66,46 @@ public static class GrpcServicesRegistration
         .ConfigureChannel(options =>
         {
             options.HttpHandler = CreateHttpHandler(timeout);
+        });
+
+        // Logging Service Client
+        services.AddGrpcClient<LoggingService.LoggingServiceClient>(o =>
+        {
+            o.Address = new Uri(sidecarOptions.LoggingServiceUrl);
+        })
+        .ConfigureChannel(options =>
+        {
+            options.HttpHandler = CreateHttpHandler(timeout);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds sidecar logger provider to the logging pipeline.
+    /// Must be called after AddSidecarGrpcClients.
+    /// </summary>
+    public static IServiceCollection AddSidecarLogging(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var sidecarOptions = new SidecarOptions();
+        configuration.GetSection(SidecarOptions.SectionName).Bind(sidecarOptions);
+
+        if (!sidecarOptions.Enabled)
+        {
+            // Sidecar disabled - skip logger provider registration
+            return services;
+        }
+
+        // Register SidecarLoggerProvider as ILoggerProvider
+        // This adds to the existing logging pipeline (doesn't replace other providers)
+        services.AddSingleton<ILoggerProvider>(sp =>
+        {
+            var loggingClient = sp.GetRequiredService<LoggingService.LoggingServiceClient>();
+            var options = new SidecarOptions();
+            configuration.GetSection(SidecarOptions.SectionName).Bind(options);
+            return new SidecarLoggerProvider(loggingClient, options);
         });
 
         return services;

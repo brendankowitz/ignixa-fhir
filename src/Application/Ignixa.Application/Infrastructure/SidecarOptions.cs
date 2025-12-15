@@ -29,6 +29,11 @@ public class SidecarOptions
     public string MetricsServiceUrl { get; set; } = "http://127.0.0.1:50053";
 
     /// <summary>
+    /// gRPC endpoint for logging sidecar service.
+    /// </summary>
+    public string LoggingServiceUrl { get; set; } = "http://127.0.0.1:50054";
+
+    /// <summary>
     /// gRPC call timeout in seconds. Default: 5.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 5;
@@ -38,4 +43,20 @@ public class SidecarOptions
     /// Phase 1: Not implemented. Future: Use Polly retry policies.
     /// </summary>
     public bool EnableRetry { get; set; }
+
+    /// <summary>
+    /// Minimum log level to send to sidecar. Default: Information.
+    /// Logs below this level are filtered out to reduce sidecar traffic.
+    /// </summary>
+    public string MinimumLogLevel { get; set; } = "Information";
+
+    /// <summary>
+    /// Maximum number of log entries to batch before sending. Default: 100.
+    /// </summary>
+    public int LogBatchSize { get; set; } = 100;
+
+    /// <summary>
+    /// Maximum time to wait before flushing buffered logs (milliseconds). Default: 1000.
+    /// </summary>
+    public int LogFlushIntervalMs { get; set; } = 1000;
 }

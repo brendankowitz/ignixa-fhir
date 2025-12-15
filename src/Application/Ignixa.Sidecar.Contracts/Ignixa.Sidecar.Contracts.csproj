@@ -21,5 +21,6 @@
     <Protobuf Include="Protos\ignixa_metrics.proto" GrpcServices="Both" />
     <Protobuf Include="Protos\ignixa_audit.proto" GrpcServices="Both" />
     <Protobuf Include="Protos\ignixa_rbac.proto" GrpcServices="Both" />
+    <Protobuf Include="Protos\ignixa_logging.proto" GrpcServices="Both" />
   </ItemGroup>
 </Project>
