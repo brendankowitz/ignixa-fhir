@@ -22,18 +22,21 @@ internal static class PreviewCommand
     {
         var previewCommand = new Command("preview", "Preview schema and sample rows from a ViewDefinition");
 
-        var viewDefinitionOption = new Option<string>("--viewdefinition", "Path to ViewDefinition JSON file") { IsRequired = true };
-        var inputOption = new Option<string>("--input", "Path to input NDJSON file containing FHIR resources") { IsRequired = true };
-        var rowsOption = new Option<int>("--rows", () => 5, "Number of sample rows to display");
+        var viewDefinitionOption = new Option<string>("--viewdefinition") { Description = "Path to ViewDefinition JSON file", Required = true };
+        var inputOption = new Option<string>("--input") { Description = "Path to input NDJSON file containing FHIR resources", Required = true };
+        var rowsOption = new Option<int>("--rows") { Description = "Number of sample rows to display", DefaultValueFactory = _ => 5 };
 
-        previewCommand.AddOption(viewDefinitionOption);
-        previewCommand.AddOption(inputOption);
-        previewCommand.AddOption(rowsOption);
+        previewCommand.Options.Add(viewDefinitionOption);
+        previewCommand.Options.Add(inputOption);
+        previewCommand.Options.Add(rowsOption);
 
-        previewCommand.SetHandler(async (viewDefinitionPath, inputPath, rows) =>
+        previewCommand.SetAction(async (parseResult, cancellationToken) =>
         {
+            var viewDefinitionPath = parseResult.GetValue(viewDefinitionOption)!;
+            var inputPath = parseResult.GetValue(inputOption)!;
+            var rows = parseResult.GetValue(rowsOption);
             await HandlePreviewCommand(schemaProvider, fhirVersion, viewDefinitionPath, inputPath, rows);
-        }, viewDefinitionOption, inputOption, rowsOption);
+        });
 
         return previewCommand;
     }

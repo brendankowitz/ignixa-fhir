@@ -26,18 +26,21 @@ internal static class ConvertCommand
     {
         var convertCommand = new Command("convert", "Convert FHIR resources using a ViewDefinition");
 
-        var viewDefinitionOption = new Option<string>("--viewdefinition", "Path to ViewDefinition JSON file") { IsRequired = true };
-        var inputOption = new Option<string>("--input", "Path to input NDJSON file containing FHIR resources") { IsRequired = true };
-        var outputOption = new Option<string>("--out", "Path to output file (extension determines format: .parquet or .csv)") { IsRequired = true };
+        var viewDefinitionOption = new Option<string>("--viewdefinition") { Description = "Path to ViewDefinition JSON file", Required = true };
+        var inputOption = new Option<string>("--input") { Description = "Path to input NDJSON file containing FHIR resources", Required = true };
+        var outputOption = new Option<string>("--out") { Description = "Path to output file (extension determines format: .parquet or .csv)", Required = true };
 
-        convertCommand.AddOption(viewDefinitionOption);
-        convertCommand.AddOption(inputOption);
-        convertCommand.AddOption(outputOption);
+        convertCommand.Options.Add(viewDefinitionOption);
+        convertCommand.Options.Add(inputOption);
+        convertCommand.Options.Add(outputOption);
 
-        convertCommand.SetHandler(async (viewDefinitionPath, inputPath, outputPath) =>
+        convertCommand.SetAction(async (parseResult, cancellationToken) =>
         {
+            var viewDefinitionPath = parseResult.GetValue(viewDefinitionOption)!;
+            var inputPath = parseResult.GetValue(inputOption)!;
+            var outputPath = parseResult.GetValue(outputOption)!;
             await HandleConvertCommand(schemaProvider, fhirVersion, viewDefinitionPath, inputPath, outputPath);
-        }, viewDefinitionOption, inputOption, outputOption);
+        });
 
         return convertCommand;
     }

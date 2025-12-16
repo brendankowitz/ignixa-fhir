@@ -27,7 +27,7 @@ class Program
         AddFhirVersionCommands(rootCommand, "r5", new R5CoreSchemaProvider());
         AddFhirVersionCommands(rootCommand, "r6", new R6CoreSchemaProvider());
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     /// <summary>
@@ -37,8 +37,8 @@ class Program
     private static void AddFhirVersionCommands(RootCommand root, string versionCode, IFhirSchemaProvider schemaProvider)
     {
         var command = ValidateCommand.Create(schemaProvider, versionCode);
-        command.Name = versionCode;
-        command.Description = $"Validate using FHIR {versionCode.ToUpperInvariant()} specification";
-        root.AddCommand(command);
+        
+        
+        root.Subcommands.Add(command);
     }
 }

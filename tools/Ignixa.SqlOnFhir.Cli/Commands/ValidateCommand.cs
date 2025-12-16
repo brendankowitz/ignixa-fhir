@@ -19,14 +19,15 @@ internal static class ValidateCommand
     {
         var validateCommand = new Command("validate", "Validate a ViewDefinition file");
 
-        var viewDefinitionOption = new Option<string>("--viewdefinition", "Path to ViewDefinition JSON file") { IsRequired = true };
+        var viewDefinitionOption = new Option<string>("--viewdefinition") { Description = "Path to ViewDefinition JSON file", Required = true };
 
-        validateCommand.AddOption(viewDefinitionOption);
+        validateCommand.Options.Add(viewDefinitionOption);
 
-        validateCommand.SetHandler(async (viewDefinitionPath) =>
+        validateCommand.SetAction(async (parseResult, cancellationToken) =>
         {
+            var viewDefinitionPath = parseResult.GetValue(viewDefinitionOption)!;
             await HandleValidateCommand(viewDefinitionPath);
-        }, viewDefinitionOption);
+        });
 
         return validateCommand;
     }

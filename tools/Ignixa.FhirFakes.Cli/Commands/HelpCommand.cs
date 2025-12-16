@@ -12,13 +12,20 @@ internal static class HelpCommand
     {
         var helpCommand = new Command("help", "Display detailed help for commands and available options");
 
-        var topicArg = new Argument<string?>("topic", () => null, "Topic to get help on (e.g., 'scenarios', 'states', 'cities')");
-        helpCommand.AddArgument(topicArg);
-
-        helpCommand.SetHandler((topic) =>
+        var topicArg = new Argument<string?>("topic")
         {
+            Description = "Topic to get help on (e.g., 'scenarios', 'states', 'cities')",
+            Arity = ArgumentArity.ZeroOrOne, DefaultValueFactory = _ => null
+        };
+        
+
+        helpCommand.Arguments.Add(topicArg);
+
+        helpCommand.SetAction(parseResult =>
+        {
+            var topic = parseResult.GetValue(topicArg);
             HandleHelpCommand(topic);
-        }, topicArg);
+        });
 
         return helpCommand;
     }
@@ -96,7 +103,7 @@ internal static class HelpCommand
         
         foreach (var scenario in scenarios)
         {
-            Console.WriteLine($"  • {scenario}");
+            Console.WriteLine($"  - {scenario}");
         }
         
         Console.WriteLine();
@@ -119,7 +126,7 @@ internal static class HelpCommand
         
         foreach (var state in states)
         {
-            Console.WriteLine($"  • {state}");
+            Console.WriteLine($"  - {state}");
         }
         
         Console.WriteLine();
@@ -147,7 +154,7 @@ internal static class HelpCommand
             Console.WriteLine($"{stateGroup.Key}:");
             foreach (var city in stateGroup)
             {
-                Console.WriteLine($"  • {city.Name} (population: {city.Population:N0})");
+                Console.WriteLine($"  - {city.Name} (population: {city.Population:N0})");
             }
             Console.WriteLine();
         }
@@ -163,11 +170,11 @@ internal static class HelpCommand
     {
         Console.WriteLine("Supported FHIR Versions:");
         Console.WriteLine();
-        Console.WriteLine("  • stu3  - FHIR STU3 (v3.0.2)");
-        Console.WriteLine("  • r4    - FHIR R4 (v4.0.1)");
-        Console.WriteLine("  • r4b   - FHIR R4B (v4.3.0)");
-        Console.WriteLine("  • r5    - FHIR R5 (v5.0.0)");
-        Console.WriteLine("  • r6    - FHIR R6 (v6.0.0)");
+        Console.WriteLine("  - stu3  - FHIR STU3 (v3.0.2)");
+        Console.WriteLine("  - r4    - FHIR R4 (v4.0.1)");
+        Console.WriteLine("  - r4b   - FHIR R4B (v4.3.0)");
+        Console.WriteLine("  - r5    - FHIR R5 (v5.0.0)");
+        Console.WriteLine("  - r6    - FHIR R6 (v6.0.0)");
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  ignixa-fakes <version> <command> --out <folder> [options]");

@@ -16,22 +16,26 @@ internal static class ValidateCommand
 {
     public static Command Create(IFhirSchemaProvider schemaProvider, string fhirVersion)
     {
-        var command = new Command("validate", "Validate a FHIR resource");
+        var command = new Command(fhirVersion, $"Validate using FHIR {fhirVersion.ToUpperInvariant()} specification");
 
-        var inputOption = new Option<string?>("--input", "Path to JSON file to validate");
-        var jsonOption = new Option<string?>("--json", "JSON string to validate");
-        var outOption = new Option<string?>("--out", "Output file for validation results (OperationOutcome JSON)");
-        var consoleOption = new Option<bool>("--console", () => false, "Display formatted validation results in console");
+        var inputOption = new Option<string?>("--input") { Description = "Path to JSON file to validate" };
+        var jsonOption = new Option<string?>("--json") { Description = "JSON string to validate" };
+        var outOption = new Option<string?>("--out") { Description = "Output file for validation results (OperationOutcome JSON)" };
+        var consoleOption = new Option<bool>("--console") { Description = "Display formatted validation results in console", DefaultValueFactory = _ => false };
 
-        command.AddOption(inputOption);
-        command.AddOption(jsonOption);
-        command.AddOption(outOption);
-        command.AddOption(consoleOption);
+        command.Options.Add(inputOption);
+        command.Options.Add(jsonOption);
+        command.Options.Add(outOption);
+        command.Options.Add(consoleOption);
 
-        command.SetHandler(async (input, json, output, console) =>
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
+            var input = parseResult.GetValue(inputOption);
+            var json = parseResult.GetValue(jsonOption);
+            var output = parseResult.GetValue(outOption);
+            var console = parseResult.GetValue(consoleOption);
             await HandleValidateCommand(schemaProvider, fhirVersion, input, json, output, console);
-        }, inputOption, jsonOption, outOption, consoleOption);
+        });
 
         return command;
     }

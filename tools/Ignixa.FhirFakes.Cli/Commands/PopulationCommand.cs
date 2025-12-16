@@ -16,22 +16,27 @@ internal static class PopulationCommand
     {
         var populationCommand = new Command("population", "Generate a population of patients");
 
-        var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
-        var fromOption = new Option<string?>("--from", "City or state to generate from");
-        var countOption = new Option<int>("--count", () => 10, "Number of patients to generate");
-        var resolvedReferencesOption = new Option<bool>("--resolved-references", "Create batch bundles instead of references");
-        var ndjsonOption = new Option<bool>("--ndjson", "Write ndjson files instead of bundles (implies --resolved-references)");
+        var outOption = new Option<string>("--out") { Description = "Output folder for generated files", Required = true };
+        var fromOption = new Option<string?>("--from") { Description = "City or state to generate from" };
+        var countOption = new Option<int>("--count") { Description = "Number of patients to generate", DefaultValueFactory = _ => 10 };
+        var resolvedReferencesOption = new Option<bool>("--resolved-references") { Description = "Create batch bundles instead of references" };
+        var ndjsonOption = new Option<bool>("--ndjson") { Description = "Write ndjson files instead of bundles (implies --resolved-references)" };
 
-        populationCommand.AddOption(outOption);
-        populationCommand.AddOption(fromOption);
-        populationCommand.AddOption(countOption);
-        populationCommand.AddOption(resolvedReferencesOption);
-        populationCommand.AddOption(ndjsonOption);
+        populationCommand.Options.Add(outOption);
+        populationCommand.Options.Add(fromOption);
+        populationCommand.Options.Add(countOption);
+        populationCommand.Options.Add(resolvedReferencesOption);
+        populationCommand.Options.Add(ndjsonOption);
 
-        populationCommand.SetHandler(async (outFolder, from, count, resolvedReferences, ndjson) =>
+        populationCommand.SetAction(async (parseResult, cancellationToken) =>
         {
+            var outFolder = parseResult.GetValue(outOption)!;
+            var from = parseResult.GetValue(fromOption);
+            var count = parseResult.GetValue(countOption);
+            var resolvedReferences = parseResult.GetValue(resolvedReferencesOption);
+            var ndjson = parseResult.GetValue(ndjsonOption);
             await HandlePopulationCommand(schemaProvider, fhirVersion, outFolder, from, count, resolvedReferences, ndjson);
-        }, outOption, fromOption, countOption, resolvedReferencesOption, ndjsonOption);
+        });
 
         return populationCommand;
     }

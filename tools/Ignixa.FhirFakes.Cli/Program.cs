@@ -21,7 +21,7 @@ class Program
         var rootCommand = new RootCommand("FHIR Fakes - Generate and model FHIR test data");
 
         // Add help command for discoverability
-        rootCommand.AddCommand(HelpCommand.Create());
+        rootCommand.Subcommands.Add(HelpCommand.Create());
 
         // Add version-specific commands
         AddFhirVersionCommands(rootCommand, "stu3", new STU3CoreSchemaProvider());
@@ -30,7 +30,7 @@ class Program
         AddFhirVersionCommands(rootCommand, "r5", new R5CoreSchemaProvider());
         AddFhirVersionCommands(rootCommand, "r6", new R6CoreSchemaProvider());
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     /// <summary>
@@ -40,9 +40,9 @@ class Program
     private static void AddFhirVersionCommands(RootCommand root, string versionCode, IFhirSchemaProvider schemaProvider)
     {
         var command = new Command(versionCode, $"Use FHIR {versionCode.ToUpperInvariant()} specification");
-        command.AddCommand(ResourceCommand.Create(schemaProvider, versionCode));
-        command.AddCommand(ScenarioCommand.Create(schemaProvider, versionCode));
-        command.AddCommand(PopulationCommand.Create(schemaProvider, versionCode));
-        root.AddCommand(command);
+        command.Subcommands.Add(ResourceCommand.Create(schemaProvider, versionCode));
+        command.Subcommands.Add(ScenarioCommand.Create(schemaProvider, versionCode));
+        command.Subcommands.Add(PopulationCommand.Create(schemaProvider, versionCode));
+        root.Subcommands.Add(command);
     }
 }

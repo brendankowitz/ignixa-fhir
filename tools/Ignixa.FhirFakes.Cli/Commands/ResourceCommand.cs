@@ -17,27 +17,34 @@ internal static class ResourceCommand
     {
         var resourceCommand = new Command("resource", "Generate a single FHIR resource");
 
-        var resourceTypeArg = new Argument<string>("resourceType", "The FHIR resource type (e.g., Patient, Observation)");
-        var stateNameArg = new Argument<string?>("stateName", () => null, "Optional state/builder name (e.g., BloodGlucose for Observation)");
+        var resourceTypeArg = new Argument<string>("resourceType") { Description = "The FHIR resource type (e.g., Patient, Observation)" };
+        var stateNameArg = new Argument<string?>("stateName") { Description = "Optional state/builder name (e.g., BloodGlucose for Observation)", Arity = ArgumentArity.ZeroOrOne, DefaultValueFactory = _ => null };
 
-        var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
-        var firstnameOption = new Option<string?>("--firstname", "Patient first name");
-        var surnameOption = new Option<string?>("--surname", "Patient surname");
-        var fromOption = new Option<string?>("--from", "City to generate from");
-        var validateOption = new Option<bool>("--validate", () => false, "Validate generated resource against schema");
+        var outOption = new Option<string>("--out") { Description = "Output folder for generated files", Required = true };
+        var firstnameOption = new Option<string?>("--firstname") { Description = "Patient first name" };
+        var surnameOption = new Option<string?>("--surname") { Description = "Patient surname" };
+        var fromOption = new Option<string?>("--from") { Description = "City to generate from" };
+        var validateOption = new Option<bool>("--validate") { Description = "Validate generated resource against schema", DefaultValueFactory = _ => false };
 
-        resourceCommand.AddArgument(resourceTypeArg);
-        resourceCommand.AddArgument(stateNameArg);
-        resourceCommand.AddOption(outOption);
-        resourceCommand.AddOption(firstnameOption);
-        resourceCommand.AddOption(surnameOption);
-        resourceCommand.AddOption(fromOption);
-        resourceCommand.AddOption(validateOption);
+        resourceCommand.Arguments.Add(resourceTypeArg);
+        resourceCommand.Arguments.Add(stateNameArg);
+        resourceCommand.Options.Add(outOption);
+        resourceCommand.Options.Add(firstnameOption);
+        resourceCommand.Options.Add(surnameOption);
+        resourceCommand.Options.Add(fromOption);
+        resourceCommand.Options.Add(validateOption);
 
-        resourceCommand.SetHandler(async (resourceType, stateName, outFolder, firstname, surname, from, validate) =>
+        resourceCommand.SetAction(async (parseResult, cancellationToken) =>
         {
+            var resourceType = parseResult.GetValue(resourceTypeArg)!;
+            var stateName = parseResult.GetValue(stateNameArg);
+            var outFolder = parseResult.GetValue(outOption)!;
+            var firstname = parseResult.GetValue(firstnameOption);
+            var surname = parseResult.GetValue(surnameOption);
+            var from = parseResult.GetValue(fromOption);
+            var validate = parseResult.GetValue(validateOption);
             await HandleResourceCommand(schemaProvider, fhirVersion, resourceType, stateName, outFolder, firstname, surname, from, validate);
-        }, resourceTypeArg, stateNameArg, outOption, firstnameOption, surnameOption, fromOption, validateOption);
+        });
 
         return resourceCommand;
     }

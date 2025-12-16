@@ -27,7 +27,7 @@ class Program
         AddFhirVersionCommands(rootCommand, "r5", new R5CoreSchemaProvider());
         AddFhirVersionCommands(rootCommand, "r6", new R6CoreSchemaProvider());
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     /// <summary>
@@ -37,9 +37,9 @@ class Program
     private static void AddFhirVersionCommands(RootCommand root, string versionCode, IFhirSchemaProvider schemaProvider)
     {
         var command = new Command(versionCode, $"Use FHIR {versionCode.ToUpperInvariant()} specification");
-        command.AddCommand(ConvertCommand.Create(schemaProvider, versionCode));
-        command.AddCommand(PreviewCommand.Create(schemaProvider, versionCode));
-        command.AddCommand(ValidateCommand.Create(schemaProvider, versionCode));
-        root.AddCommand(command);
+        command.Subcommands.Add(ConvertCommand.Create(schemaProvider, versionCode));
+        command.Subcommands.Add(PreviewCommand.Create(schemaProvider, versionCode));
+        command.Subcommands.Add(ValidateCommand.Create(schemaProvider, versionCode));
+        root.Subcommands.Add(command);
     }
 }

@@ -15,20 +15,42 @@ internal static class ScenarioCommand
     {
         var scenarioCommand = new Command("scenario", "Generate a predefined FHIR scenario");
 
-        var scenarioNameArg = new Argument<string>("scenarioName", "The scenario name (e.g., DiabeticPatient)");
-        var outOption = new Option<string>("--out", "Output folder for generated files") { IsRequired = true };
-        var resolvedReferencesOption = new Option<bool>("--resolved-references", "Create a batch bundle instead of references");
-        var validateOption = new Option<bool>("--validate", () => false, "Validate generated resources against schema");
-
-        scenarioCommand.AddArgument(scenarioNameArg);
-        scenarioCommand.AddOption(outOption);
-        scenarioCommand.AddOption(resolvedReferencesOption);
-        scenarioCommand.AddOption(validateOption);
-
-        scenarioCommand.SetHandler(async (scenarioName, outFolder, resolvedReferences, validate) =>
+        var scenarioNameArg = new Argument<string>("scenarioName")
         {
+            Description = "The scenario name (e.g., DiabeticPatient)"
+        };
+
+        var outOption = new Option<string>("--out")
+        {
+            Description = "Output folder for generated files",
+            Required = true
+        };
+
+        var resolvedReferencesOption = new Option<bool>("--resolved-references")
+        {
+            Description = "Create a batch bundle instead of references"
+        };
+
+        var validateOption = new Option<bool>("--validate")
+        {
+            Description = "Validate generated resources against schema", DefaultValueFactory = _ => false
+        };
+        
+
+        scenarioCommand.Arguments.Add(scenarioNameArg);
+        scenarioCommand.Options.Add(outOption);
+        scenarioCommand.Options.Add(resolvedReferencesOption);
+        scenarioCommand.Options.Add(validateOption);
+
+        scenarioCommand.SetAction(async (parseResult, cancellationToken) =>
+        {
+            var scenarioName = parseResult.GetValue(scenarioNameArg)!;
+            var outFolder = parseResult.GetValue(outOption)!;
+            var resolvedReferences = parseResult.GetValue(resolvedReferencesOption);
+            var validate = parseResult.GetValue(validateOption);
+
             await HandleScenarioCommand(schemaProvider, fhirVersion, scenarioName, outFolder, resolvedReferences, validate);
-        }, scenarioNameArg, outOption, resolvedReferencesOption, validateOption);
+        });
 
         return scenarioCommand;
     }
@@ -50,7 +72,7 @@ internal static class ScenarioCommand
             var context = ScenarioDiscovery.CreateScenario(schemaProvider, scenarioName);
             if (context == null)
             {
-                Console.WriteLine($"✗ Unknown scenario: {scenarioName}");
+                Console.WriteLine($"X Unknown scenario: {scenarioName}");
                 Console.WriteLine("Available scenarios:");
                 foreach (var name in ScenarioDiscovery.GetScenarioNames())
                 {
@@ -82,15 +104,15 @@ internal static class ScenarioCommand
             await File.WriteAllTextAsync(outputPath, json);
 
             var bundleType = resolvedReferences ? "batch" : "transaction";
-            Console.WriteLine($"✓ Generated scenario bundle ({bundleType}): {outputPath}");
+            Console.WriteLine($"Generated scenario bundle ({bundleType}): {outputPath}");
             Console.WriteLine($"  Resources: {context.AllResources.Count}");
 
             // Validate each resource in the scenario if requested
             if (validate)
             {
-                Console.WriteLine("\n───────────────────────────────────────────────────────────────");
+                Console.WriteLine("\n-------------------------------------------------------------------");
                 Console.WriteLine("Validating generated resources...");
-                Console.WriteLine("───────────────────────────────────────────────────────────────");
+                Console.WriteLine("-------------------------------------------------------------------");
 
                 var validationResults = new Dictionary<string, Ignixa.Validation.ValidationResult>();
                 foreach (var resource in context.AllResources)
@@ -110,17 +132,17 @@ internal static class ScenarioCommand
                 var invalidCount = validationResults.Count(r => !r.Value.IsValid);
                 if (invalidCount > 0)
                 {
-                    Console.WriteLine($"\n⚠️  {invalidCount} resource(s) have validation issues");
+                    Console.WriteLine($"\n  {invalidCount} resource(s) have validation issues");
                 }
                 else
                 {
-                    Console.WriteLine($"\n✓ All {context.AllResources.Count} resource(s) passed validation");
+                    Console.WriteLine($"\n  All {context.AllResources.Count} resource(s) passed validation");
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Error: {ex.Message}");
+            Console.WriteLine($"X Error: {ex.Message}");
         }
     }
 }
