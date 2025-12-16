@@ -15,21 +15,29 @@ public class SidecarOptions
 
     /// <summary>
     /// gRPC endpoint for audit sidecar service.
+    /// Default: http://127.0.0.1:50051 (localhost only).
+    /// Production: Use https:// with valid TLS certificates to protect sensitive audit data.
     /// </summary>
     public string AuditServiceUrl { get; set; } = "http://127.0.0.1:50051";
 
     /// <summary>
     /// gRPC endpoint for RBAC authorization sidecar service.
+    /// Default: http://127.0.0.1:50052 (localhost only).
+    /// Production: Use https:// with valid TLS certificates to protect authorization decisions.
     /// </summary>
     public string RbacServiceUrl { get; set; } = "http://127.0.0.1:50052";
 
     /// <summary>
     /// gRPC endpoint for metrics sidecar service.
+    /// Default: http://127.0.0.1:50053 (localhost only).
+    /// Production: Use https:// with valid TLS certificates to protect metrics data.
     /// </summary>
     public string MetricsServiceUrl { get; set; } = "http://127.0.0.1:50053";
 
     /// <summary>
     /// gRPC endpoint for logging sidecar service.
+    /// Default: http://127.0.0.1:50054 (localhost only).
+    /// Production: Use https:// with valid TLS certificates to protect log data.
     /// </summary>
     public string LoggingServiceUrl { get; set; } = "http://127.0.0.1:50054";
 

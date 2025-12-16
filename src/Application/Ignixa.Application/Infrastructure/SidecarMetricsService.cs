@@ -42,8 +42,8 @@ public class SidecarMetricsService(
                 ResourceType = metrics.ResourceType ?? string.Empty,
                 ResourceId = metrics.ResourceId ?? string.Empty,
                 FhirVersion = metrics.FhirVersion,
-                HttpMethod = metrics.HttpMethod,
-                FhirOperation = metrics.FhirOperation,
+                HttpMethod = ParseHttpMethod(metrics.HttpMethod),
+                FhirOperation = ParseFhirOperation(metrics.FhirOperation),
                 HttpStatusCode = metrics.StatusCode,
                 Success = metrics.Success,
                 RequestSizeBytes = metrics.RequestSizeBytes,
@@ -72,5 +72,40 @@ public class SidecarMetricsService(
         {
             logger.LogError(ex, "Failed to record metric");
         }
+    }
+
+    private static Ignixa.Sidecar.Metrics.HttpMethod ParseHttpMethod(string method)
+    {
+        return method.ToUpperInvariant() switch
+        {
+            "GET" => Ignixa.Sidecar.Metrics.HttpMethod.Get,
+            "POST" => Ignixa.Sidecar.Metrics.HttpMethod.Post,
+            "PUT" => Ignixa.Sidecar.Metrics.HttpMethod.Put,
+            "DELETE" => Ignixa.Sidecar.Metrics.HttpMethod.Delete,
+            "PATCH" => Ignixa.Sidecar.Metrics.HttpMethod.Patch,
+            "HEAD" => Ignixa.Sidecar.Metrics.HttpMethod.Head,
+            "OPTIONS" => Ignixa.Sidecar.Metrics.HttpMethod.Options,
+            _ => Ignixa.Sidecar.Metrics.HttpMethod.Unspecified
+        };
+    }
+
+    private static FhirOperation ParseFhirOperation(string operation)
+    {
+        return operation.ToUpperInvariant() switch
+        {
+            "READ" => FhirOperation.Read,
+            "VREAD" => FhirOperation.Vread,
+            "UPDATE" => FhirOperation.Update,
+            "PATCH" => FhirOperation.Patch,
+            "DELETE" => FhirOperation.Delete,
+            "CREATE" => FhirOperation.Create,
+            "SEARCH" => FhirOperation.Search,
+            "HISTORY" => FhirOperation.History,
+            "CAPABILITIES" => FhirOperation.Capabilities,
+            "BATCH" => FhirOperation.Batch,
+            "TRANSACTION" => FhirOperation.Transaction,
+            _ when operation.StartsWith("$", StringComparison.Ordinal) => FhirOperation.Operation,
+            _ => FhirOperation.Unspecified
+        };
     }
 }

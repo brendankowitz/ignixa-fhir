@@ -196,6 +196,29 @@ Ignixa uses a single configuration toggle to enable sidecar integration:
 
 When `Enabled = true`, Ignixa routes all audit/auth/metrics/logging to the sidecar services.
 
+### Security Note: TLS in Production
+
+⚠️ **Important**: The examples above use `http://` for local development simplicity.
+
+**Production deployments MUST use `https://` with valid TLS certificates** to protect sensitive data in transit:
+- Audit events contain user identities and resource access patterns
+- Authorization decisions include user claims and role information
+- Metrics may contain tenant-identifying information
+- Logs can include sensitive application data
+
+Example production configuration:
+```json
+{
+  "Sidecar": {
+    "Enabled": true,
+    "AuditServiceUrl": "https://audit-sidecar.internal:50051",
+    "RbacServiceUrl": "https://rbac-sidecar.internal:50052",
+    "MetricsServiceUrl": "https://metrics-sidecar.internal:50053",
+    "LoggingServiceUrl": "https://logging-sidecar.internal:50054"
+  }
+}
+```
+
 ---
 
 ## Building

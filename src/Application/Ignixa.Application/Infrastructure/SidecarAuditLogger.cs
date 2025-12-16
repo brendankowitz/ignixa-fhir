@@ -56,7 +56,7 @@ public class SidecarAuditLogger(
                 UserId = userId,
                 ResourceType = resourceType,
                 ResourceId = resourceId ?? string.Empty,
-                Operation = operation,
+                Operation = ParseAuditOperation(operation),
                 Success = authorized,
                 HttpStatusCode = authorized ? 200 : 403
             };
@@ -85,7 +85,7 @@ public class SidecarAuditLogger(
                 UserId = auditEvent.UserId,
                 ResourceType = auditEvent.ResourceType ?? string.Empty,
                 ResourceId = auditEvent.ResourceId ?? string.Empty,
-                Operation = auditEvent.Method,
+                Operation = ParseAuditOperation(auditEvent.Method),
                 HttpStatusCode = auditEvent.StatusCode,
                 Success = auditEvent.Outcome == "0",
                 IpAddress = auditEvent.ClientIp,
@@ -108,5 +108,22 @@ public class SidecarAuditLogger(
         {
             logger.LogError(ex, "Failed to log HTTP request audit event");
         }
+    }
+
+    private static AuditOperation ParseAuditOperation(string operation)
+    {
+        // Handle both FHIR operations (read, create, etc.) and HTTP methods (GET, POST, etc.)
+        return operation.ToUpperInvariant() switch
+        {
+            "READ" or "GET" => AuditOperation.Read,
+            "VREAD" => AuditOperation.Vread,
+            "CREATE" or "POST" => AuditOperation.Create,
+            "UPDATE" or "PUT" => AuditOperation.Update,
+            "PATCH" => AuditOperation.Patch,
+            "DELETE" => AuditOperation.Delete,
+            "SEARCH" => AuditOperation.Search,
+            "HISTORY" => AuditOperation.History,
+            _ => AuditOperation.Unspecified
+        };
     }
 }

@@ -93,9 +93,12 @@ public class FhirMetricsFilter(
         }
         catch (Exception ex)
         {
+            // Sanitize to prevent log injection in error path (char overload avoids CA1307)
+            var safeMethod = httpContext.Request.Method.Replace('\r', ' ').Replace('\n', ' ');
+            var safePath = (httpContext.Request.Path.Value ?? "/").Replace('\r', ' ').Replace('\n', ' ');
             logger.LogError(ex, "Failed to record metrics for {Method} {Path}",
-                httpContext.Request.Method,
-                httpContext.Request.Path);
+                safeMethod,
+                safePath);
         }
     }
 

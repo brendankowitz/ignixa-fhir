@@ -4,6 +4,20 @@ option csharp_namespace = "Ignixa.Sidecar.Audit";
 
 import "google/protobuf/timestamp.proto";
 
+// FHIR operation types for audit logging.
+// Maps to FHIR RESTful interactions.
+enum AuditOperation {
+  AUDIT_OPERATION_UNSPECIFIED = 0;  // Unknown/default
+  AUDIT_OPERATION_READ = 1;          // Read a single resource by ID
+  AUDIT_OPERATION_CREATE = 2;        // Create a new resource
+  AUDIT_OPERATION_UPDATE = 3;        // Update an existing resource
+  AUDIT_OPERATION_DELETE = 4;        // Delete a resource
+  AUDIT_OPERATION_SEARCH = 5;        // Search for resources
+  AUDIT_OPERATION_PATCH = 6;         // Patch an existing resource
+  AUDIT_OPERATION_HISTORY = 7;       // Get resource history
+  AUDIT_OPERATION_VREAD = 8;         // Read a specific version of a resource
+}
+
 // AuditService handles security audit logging for FHIR operations.
 // Designed for compliance tracking and security event forwarding to external sinks
 // (Azure Event Hub, Elasticsearch, custom audit systems).
@@ -19,6 +33,12 @@ service AuditService {
   // Batch log multiple audit events via client streaming.
   // More efficient for high-throughput scenarios (e.g., bundle operations).
   // Returns aggregate response after stream completes.
+  //
+  // Response semantics (fire-and-forget pattern):
+  // - success=true: All events were accepted for processing
+  // - success=false: Batch operation failed (e.g., sidecar unavailable)
+  // - Individual event failures are logged by the sidecar, not reported to client
+  // - event_id is empty for batch operations (use individual LogAuditEvent for tracking)
   rpc LogAuditEventBatch(stream AuditEventRequest) returns (AuditEventResponse);
 }
 
@@ -43,8 +63,8 @@ message AuditEventRequest {
   // FHIR resource ID (logical ID)
   string resource_id = 6;
 
-  // FHIR operation performed: "Read", "Create", "Update", "Delete", "Search", "Patch"
-  string operation = 7;
+  // FHIR operation performed
+  AuditOperation operation = 7;
 
   // HTTP status code from the FHIR operation response
   int32 http_status_code = 8;

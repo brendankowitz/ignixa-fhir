@@ -4,6 +4,36 @@ option csharp_namespace = "Ignixa.Sidecar.Metrics";
 
 import "google/protobuf/timestamp.proto";
 
+// HTTP methods used in FHIR operations.
+enum HttpMethod {
+  HTTP_METHOD_UNSPECIFIED = 0;  // Unknown/default
+  HTTP_METHOD_GET = 1;           // HTTP GET
+  HTTP_METHOD_POST = 2;          // HTTP POST
+  HTTP_METHOD_PUT = 3;           // HTTP PUT
+  HTTP_METHOD_DELETE = 4;        // HTTP DELETE
+  HTTP_METHOD_PATCH = 5;         // HTTP PATCH
+  HTTP_METHOD_HEAD = 6;          // HTTP HEAD
+  HTTP_METHOD_OPTIONS = 7;       // HTTP OPTIONS
+}
+
+// FHIR operation types for metrics.
+// Maps to FHIR RESTful interactions.
+enum FhirOperation {
+  FHIR_OPERATION_UNSPECIFIED = 0;  // Unknown/default
+  FHIR_OPERATION_READ = 1;          // Read a single resource by ID
+  FHIR_OPERATION_VREAD = 2;         // Read a specific version of a resource
+  FHIR_OPERATION_UPDATE = 3;        // Update an existing resource
+  FHIR_OPERATION_PATCH = 4;         // Patch an existing resource
+  FHIR_OPERATION_DELETE = 5;        // Delete a resource
+  FHIR_OPERATION_CREATE = 6;        // Create a new resource
+  FHIR_OPERATION_SEARCH = 7;        // Search for resources
+  FHIR_OPERATION_HISTORY = 8;       // Get resource history
+  FHIR_OPERATION_CAPABILITIES = 9;  // Get server capabilities
+  FHIR_OPERATION_BATCH = 10;        // Batch operation
+  FHIR_OPERATION_TRANSACTION = 11;  // Transaction operation
+  FHIR_OPERATION_OPERATION = 12;    // Named operation ($validate, $export, etc.)
+}
+
 // MetricsService handles FHIR operation metrics collection.
 // Designed for observability, billing, and performance monitoring.
 // Sidecar can route metrics to multiple destinations:
@@ -23,6 +53,12 @@ service MetricsService {
   // Batch record multiple metrics via client streaming.
   // More efficient for high-throughput scenarios (e.g., bundle operations).
   // Returns aggregate response after stream completes.
+  //
+  // Response semantics (fire-and-forget pattern):
+  // - success=true: All metrics were accepted for processing
+  // - success=false: Batch operation failed (e.g., sidecar unavailable)
+  // - Individual metric failures are logged by the sidecar, not reported to client
+  // - request_units is empty for batch operations (use individual RecordMetric for billing tracking)
   rpc RecordMetricBatch(stream FhirMetricsRequest) returns (FhirMetricsResponse);
 }
 
@@ -48,13 +84,14 @@ message FhirMetricsRequest {
   string resource_id = 6;
 
   // FHIR version: "4.0" (R4), "5.0" (R5), "3.0" (STU3), "4.3" (R4B)
+  // String for forward compatibility with future FHIR versions
   string fhir_version = 7;
 
-  // HTTP method: "GET", "POST", "PUT", "DELETE", "PATCH"
-  string http_method = 8;
+  // HTTP method used in the request
+  HttpMethod http_method = 8;
 
-  // FHIR interaction: "read", "create", "update", "delete", "search", "patch", "history", etc.
-  string fhir_operation = 9;
+  // FHIR interaction performed
+  FhirOperation fhir_operation = 9;
 
   // HTTP status code from the FHIR operation response
   int32 http_status_code = 10;
