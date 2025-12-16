@@ -48,6 +48,12 @@ public static class ServiceCollectionExtensions
         // MCP server services
         services.AddIgnixaMcpServices(configuration);
 
+        // Sidecar gRPC clients (if enabled)
+        services.AddSidecarGrpcClients(configuration);
+
+        // Sidecar logging provider (if enabled, must be after gRPC clients)
+        services.AddSidecarLogging(configuration);
+
         return services;
     }
 

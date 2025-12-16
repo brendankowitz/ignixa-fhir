@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>Shared gRPC contracts for Ignixa FHIR Server sidecar integration. Enables building custom sidecar services for audit, authorization (RBAC), metrics, and logging. Distributed as application-level package for internal use.</Description>
+    <Authors>Ignixa Contributors</Authors>
+    <Version>1.0.0</Version>
+    <PackageTags>fhir;grpc;sidecar;audit;rbac;metrics;logging;protobuf</PackageTags>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- gRPC tooling for code generation -->
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Include all .proto files and generate both client and server code -->
+    <Protobuf Include="Protos\ignixa_metrics.proto" GrpcServices="Both" />
+    <Protobuf Include="Protos\ignixa_audit.proto" GrpcServices="Both" />
+    <Protobuf Include="Protos\ignixa_rbac.proto" GrpcServices="Both" />
+    <Protobuf Include="Protos\ignixa_logging.proto" GrpcServices="Both" />
+  </ItemGroup>
+</Project>

@@ -82,6 +82,10 @@
     <PackageVersion Include="System.Text.Json" Version="8.0.0" />
     <!-- SearchParameter Conflict Resolution -->
     <PackageVersion Include="NuGet.Versioning" Version="6.8.0" />
+    <!-- gRPC (for Sidecar.Contracts) -->
+    <PackageVersion Include="Grpc.Tools" Version="2.60.0" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.60.0" />
+    <PackageVersion Include="Google.Protobuf" Version="3.25.1" />
     <!-- GitVersion for semantic versioning -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.0.5" />
     <!-- Source Link and Reproducible Builds -->

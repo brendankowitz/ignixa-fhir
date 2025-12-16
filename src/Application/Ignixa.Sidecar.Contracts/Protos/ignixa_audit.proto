@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Audit";
+
+import "google/protobuf/timestamp.proto";
+
+// FHIR operation types for audit logging.
+// Maps to FHIR RESTful interactions.
+enum AuditOperation {
+  AUDIT_OPERATION_UNSPECIFIED = 0;  // Unknown/default
+  AUDIT_OPERATION_READ = 1;          // Read a single resource by ID
+  AUDIT_OPERATION_CREATE = 2;        // Create a new resource
+  AUDIT_OPERATION_UPDATE = 3;        // Update an existing resource
+  AUDIT_OPERATION_DELETE = 4;        // Delete a resource
+  AUDIT_OPERATION_SEARCH = 5;        // Search for resources
+  AUDIT_OPERATION_PATCH = 6;         // Patch an existing resource
+  AUDIT_OPERATION_HISTORY = 7;       // Get resource history
+  AUDIT_OPERATION_VREAD = 8;         // Read a specific version of a resource
+}
+
+// AuditService handles security audit logging for FHIR operations.
+// Designed for compliance tracking and security event forwarding to external sinks
+// (Azure Event Hub, Elasticsearch, custom audit systems).
+//
+// Pattern: Fire-and-forget - Does not block application if sidecar is unavailable.
+// Service: Unary RPC for single events, Server streaming for batch operations.
+service AuditService {
+  // Log a single audit event for compliance tracking.
+  // Returns immediately with success/failure status.
+  // Fire-and-forget: Client should log locally if this fails.
+  rpc LogAuditEvent(AuditEventRequest) returns (AuditEventResponse);
+
+  // Batch log multiple audit events via client streaming.
+  // More efficient for high-throughput scenarios (e.g., bundle operations).
+  // Returns aggregate response after stream completes.
+  //
+  // Response semantics (fire-and-forget pattern):
+  // - success=true: All events were accepted for processing
+  // - success=false: Batch operation failed (e.g., sidecar unavailable)
+  // - Individual event failures are logged by the sidecar, not reported to client
+  // - event_id is empty for batch operations (use individual LogAuditEvent for tracking)
+  rpc LogAuditEventBatch(stream AuditEventRequest) returns (AuditEventResponse);
+}
+
+// Request message for logging a FHIR operation audit event.
+// Captures who did what to which resource, when, and with what result.
+message AuditEventRequest {
+  // UTC timestamp when the FHIR operation occurred
+  google.protobuf.Timestamp timestamp = 1;
+
+  // Tenant identifier (multi-tenant isolation)
+  string tenant_id = 2;
+
+  // User identifier (e.g., Azure AD object ID, SMART on FHIR sub claim)
+  string user_id = 3;
+
+  // User principal name (e.g., Azure AD UPN, email address)
+  string user_principal_name = 4;
+
+  // FHIR resource type (e.g., "Patient", "Observation")
+  string resource_type = 5;
+
+  // FHIR resource ID (logical ID)
+  string resource_id = 6;
+
+  // FHIR operation performed
+  AuditOperation operation = 7;
+
+  // HTTP status code from the FHIR operation response
+  int32 http_status_code = 8;
+
+  // Whether the operation completed successfully (status < 400)
+  bool success = 9;
+
+  // Client IP address (for security tracking)
+  string ip_address = 10;
+
+  // Correlation ID (trace/request ID) for distributed tracing
+  string correlation_id = 11;
+
+  // Extensibility: Custom properties for additional audit context
+  // Example: {"smart_scope": "patient/*.read", "consent_id": "xyz"}
+  map<string, string> custom_properties = 12;
+}
+
+// Response message for audit logging operations.
+message AuditEventResponse {
+  // Whether the audit event was successfully recorded
+  bool success = 1;
+
+  // Error message if success=false (empty if successful)
+  string error_message = 2;
+
+  // Event identifier from the audit sink (e.g., Event Hub sequence number)
+  // Can be used for audit trail verification
+  string event_id = 3;
+}

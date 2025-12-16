@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Rbac";
+
+// RbacService handles Role-Based Access Control (RBAC) authorization checks.
+// Designed for integration with external authorization systems:
+// - Azure RBAC (data plane actions)
+// - Open Policy Agent (OPA)
+// - Custom authorization engines
+// - SMART on FHIR scopes (patient-level access)
+//
+// Pattern: Fail-fast - Application returns 403/503 if authorization check fails or times out.
+// Service: Unary RPC for single checks, Bidirectional streaming for batch operations.
+service RbacService {
+  // Check authorization for a single FHIR operation.
+  // Returns authorization decision (authorized/denied) or error.
+  // Fail-fast: Timeout or unavailability returns 503 to client.
+  rpc CheckAccess(AccessCheckRequest) returns (AccessCheckResponse);
+
+  // Batch check multiple permissions via bidirectional streaming.
+  // More efficient for bundle operations with multiple resources.
+  // Returns stream of authorization decisions.
+  rpc CheckAccessBatch(stream AccessCheckRequest) returns (stream AccessCheckResponse);
+}
+
+// Request message for RBAC authorization check.
+// Captures user identity, requested action, and resource context.
+message AccessCheckRequest {
+  // User identifier (e.g., Azure AD object ID, SMART on FHIR sub claim)
+  string user_id = 1;
+
+  // Tenant identifier (multi-tenant isolation)
+  string tenant_id = 2;
+
+  // Data plane action being performed (Azure RBAC format)
+  // Examples:
+  // - "Microsoft.HealthcareApis/fhir/READ"
+  // - "Microsoft.HealthcareApis/fhir/WRITE"
+  // - "Microsoft.HealthcareApis/fhir/DELETE"
+  string data_action = 3;
+
+  // FHIR resource type being accessed (e.g., "Patient", "Observation")
+  string resource_type = 4;
+
+  // FHIR resource ID (logical ID, empty for search operations)
+  string resource_id = 5;
+
+  // Correlation ID (trace/request ID) for distributed tracing
+  string correlation_id = 6;
+
+  // User claims from identity provider (Azure AD, OAuth, etc.)
+  // Examples:
+  // - "role:fhir-reader"
+  // - "scope:patient/*.read"
+  // - "groups:healthcare-staff"
+  map<string, string> user_claims = 7;
+}
+
+// Response message for RBAC authorization check.
+message AccessCheckResponse {
+  // Whether the user is authorized to perform the requested action
+  bool authorized = 1;
+
+  // Error message if authorization fails or check encounters error
+  // Empty if authorized=true
+  string error_message = 2;
+
+  // Decision identifier for caching and audit trail
+  // Can be used as cache key to avoid repeated authorization checks
+  // Example: "user:abc123:action:READ:resource:Patient/xyz:decision:allow"
+  string decision_id = 3;
+}

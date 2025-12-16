@@ -58,6 +58,7 @@ public static class OperationEndpoints
             .MapGroup("/tenant/{tenantId:int}")
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // POST /{resourceType}/$validate - Type-level validation

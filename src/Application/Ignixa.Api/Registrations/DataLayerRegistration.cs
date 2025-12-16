@@ -73,10 +73,47 @@ public static class DataLayerRegistration
         // Register partition and query execution strategies
         RegisterStrategies(builder);
 
-        // Register audit logger
-        builder.RegisterType<AuditLogger>()
-            .As<IAuditLogger>()
-            .SingleInstance();
+        // Audit logger: Conditional registration based on Sidecar.Enabled
+        builder.Register<IAuditLogger>(c =>
+        {
+            var sidecarOptions = c.Resolve<Ignixa.Application.Infrastructure.SidecarOptions>();
+
+            if (sidecarOptions.Enabled)
+            {
+                // Sidecar mode: Use gRPC client
+                var client = c.Resolve<Ignixa.Sidecar.Audit.AuditService.AuditServiceClient>();
+                var logger = c.Resolve<ILogger<Ignixa.Application.Infrastructure.SidecarAuditLogger>>();
+                return new Ignixa.Application.Infrastructure.SidecarAuditLogger(client, logger);
+            }
+            else
+            {
+                // Local mode: Use structured logging
+                var logger = c.Resolve<ILogger<AuditLogger>>();
+                return new AuditLogger(logger);
+            }
+        })
+        .SingleInstance();
+
+        // Metrics service: Conditional registration based on Sidecar.Enabled
+        builder.Register<Ignixa.Domain.Abstractions.IMetricsService>(c =>
+        {
+            var sidecarOptions = c.Resolve<Ignixa.Application.Infrastructure.SidecarOptions>();
+
+            if (sidecarOptions.Enabled)
+            {
+                // Sidecar mode: Use gRPC client
+                var client = c.Resolve<Ignixa.Sidecar.Metrics.MetricsService.MetricsServiceClient>();
+                var logger = c.Resolve<ILogger<Ignixa.Application.Infrastructure.SidecarMetricsService>>();
+                return new Ignixa.Application.Infrastructure.SidecarMetricsService(client, logger);
+            }
+            else
+            {
+                // Local mode: Use structured logging
+                var logger = c.Resolve<ILogger<Ignixa.Application.Infrastructure.LocalMetricsService>>();
+                return new Ignixa.Application.Infrastructure.LocalMetricsService(logger);
+            }
+        })
+        .SingleInstance();
 
         // Register blob storage
         RegisterBlobStorage(builder, configuration);

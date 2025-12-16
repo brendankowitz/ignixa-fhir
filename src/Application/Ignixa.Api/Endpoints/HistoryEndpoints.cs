@@ -52,6 +52,7 @@ public static class HistoryEndpoints
             .MapGroup("/tenant/{tenantId:int}")
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history
@@ -87,6 +88,7 @@ public static class HistoryEndpoints
             .MapGroup(string.Empty)
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>()
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)

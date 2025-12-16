@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Logging";
+
+import "google/protobuf/timestamp.proto";
+
+// LoggingService handles structured log forwarding to external sinks.
+// Designed for centralized logging and observability:
+// - Azure Application Insights
+// - Elasticsearch / OpenSearch
+// - Splunk / Datadog
+// - Prometheus Loki
+// - Custom log aggregation systems
+//
+// Pattern: Fire-and-forget - Does not block application logging if sidecar is unavailable.
+// Service: Unary, batch, and streaming RPCs for different throughput needs.
+service LoggingService {
+  // Log a single structured log entry.
+  // Use for low-frequency, high-priority logs.
+  // Fire-and-forget: Client falls back to local logging if this fails.
+  rpc LogEntry(LogEntryRequest) returns (LogEntryResponse);
+
+  // Batch log multiple entries for improved efficiency.
+  // Use for moderate-frequency logging scenarios.
+  // Returns aggregate response after batch is processed.
+  rpc LogEntryBatch(LogBatchRequest) returns (LogEntryResponse);
+
+  // Stream log entries via client streaming for high-throughput scenarios.
+  // Use for continuous, high-volume logging (e.g., debug mode).
+  // Returns single response after stream completes.
+  rpc StreamLogEntries(stream LogEntryRequest) returns (LogEntryResponse);
+}
+
+// Log severity levels (maps to Microsoft.Extensions.Logging.LogLevel).
+// Used to filter and prioritize logs.
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;  // Unknown/default
+  LOG_LEVEL_TRACE = 1;         // Most verbose, typically disabled in production
+  LOG_LEVEL_DEBUG = 2;         // Debugging information
+  LOG_LEVEL_INFORMATION = 3;   // General informational messages
+  LOG_LEVEL_WARNING = 4;       // Potential issues, non-critical
+  LOG_LEVEL_ERROR = 5;         // Errors and exceptions
+  LOG_LEVEL_CRITICAL = 6;      // Critical failures requiring immediate attention
+  LOG_LEVEL_NONE = 7;          // Logging disabled
+}
+
+// Request message for logging a structured log entry.
+// Captures all context needed for centralized observability.
+message LogEntryRequest {
+  // UTC timestamp when the log was generated
+  google.protobuf.Timestamp timestamp = 1;
+
+  // Log severity level
+  LogLevel level = 2;
+
+  // Logger category (typically fully qualified class name)
+  // Example: "Ignixa.Api.Endpoints.FhirEndpoints"
+  string category = 3;
+
+  // Event ID for categorizing log events (Microsoft.Extensions.Logging convention)
+  int32 event_id = 4;
+
+  // Event name (semantic identifier for the log event)
+  // Example: "PatientCreated", "ValidationFailed"
+  string event_name = 5;
+
+  // Formatted log message (human-readable)
+  string message = 6;
+
+  // Exception details if this log is associated with an error
+  ExceptionInfo exception = 7;
+
+  // Correlation ID (trace/request ID) for distributed tracing
+  string correlation_id = 8;
+
+  // Tenant identifier (multi-tenant isolation)
+  string tenant_id = 9;
+
+  // Distributed tracing trace ID (W3C Trace Context or OpenTelemetry)
+  string trace_id = 10;
+
+  // Distributed tracing span ID (W3C Trace Context or OpenTelemetry)
+  string span_id = 11;
+
+  // Structured state from the log message template
+  // Example: {"PatientId": "123", "Operation": "Create"}
+  map<string, string> state = 12;
+
+  // Scope properties from ILogger.BeginScope (nested contexts)
+  // Example: Request scope → Operation scope → Transaction scope
+  repeated ScopeInfo scopes = 13;
+
+  // Extensibility: Custom properties for additional logging context
+  // Example: {"environment": "production", "region": "eastus"}
+  map<string, string> custom_properties = 14;
+}
+
+// Exception information for error logging.
+// Supports nested inner exceptions.
+message ExceptionInfo {
+  // Exception type name (e.g., "System.InvalidOperationException")
+  string type = 1;
+
+  // Exception message
+  string message = 2;
+
+  // Full stack trace with line numbers
+  string stack_trace = 3;
+
+  // Inner exception (recursive structure for nested exceptions)
+  ExceptionInfo inner = 4;
+}
+
+// Scope information from ILogger.BeginScope.
+// Represents nested logging contexts (e.g., request → operation → database call).
+message ScopeInfo {
+  // Formatted scope message
+  // Example: "Processing request for Patient/123"
+  string message = 1;
+
+  // Structured scope state (key-value pairs)
+  // Example: {"RequestId": "abc", "UserId": "xyz"}
+  map<string, string> state = 2;
+}
+
+// Request message for batch logging multiple entries.
+message LogBatchRequest {
+  // Collection of log entries to process in a single batch
+  repeated LogEntryRequest entries = 1;
+}
+
+// Response message for logging operations.
+message LogEntryResponse {
+  // Whether the log(s) were successfully processed
+  bool success = 1;
+
+  // Error message if success=false (empty if successful)
+  string error_message = 2;
+
+  // Number of log entries successfully processed (for batch operations)
+  int32 entries_processed = 3;
+}

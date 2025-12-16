@@ -30,6 +30,7 @@ COPY src/Application/Ignixa.Application/Ignixa.Application.csproj src/Applicatio
 COPY src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj src/Application/Ignixa.Application.BackgroundOperations/
 COPY src/Application/Ignixa.Application.Operations/Ignixa.Application.Operations.csproj src/Application/Ignixa.Application.Operations/
 COPY src/Application/Ignixa.Domain/Ignixa.Domain.csproj src/Application/Ignixa.Domain/
+COPY src/Application/Ignixa.Sidecar.Contracts/Ignixa.Sidecar.Contracts.csproj src/Application/Ignixa.Sidecar.Contracts/
 # Core layer
 COPY src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj src/Core/Ignixa.Abstractions/
 COPY src/Core/Ignixa.FhirMappingLanguage/Ignixa.FhirMappingLanguage.csproj src/Core/Ignixa.FhirMappingLanguage/

@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\Ignixa.Sidecar.Contracts\Ignixa.Sidecar.Contracts.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />

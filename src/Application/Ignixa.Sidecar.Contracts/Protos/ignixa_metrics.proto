@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+option csharp_namespace = "Ignixa.Sidecar.Metrics";
+
+import "google/protobuf/timestamp.proto";
+
+// HTTP methods used in FHIR operations.
+enum HttpMethod {
+  HTTP_METHOD_UNSPECIFIED = 0;  // Unknown/default
+  HTTP_METHOD_GET = 1;           // HTTP GET
+  HTTP_METHOD_POST = 2;          // HTTP POST
+  HTTP_METHOD_PUT = 3;           // HTTP PUT
+  HTTP_METHOD_DELETE = 4;        // HTTP DELETE
+  HTTP_METHOD_PATCH = 5;         // HTTP PATCH
+  HTTP_METHOD_HEAD = 6;          // HTTP HEAD
+  HTTP_METHOD_OPTIONS = 7;       // HTTP OPTIONS
+}
+
+// FHIR operation types for metrics.
+// Maps to FHIR RESTful interactions.
+enum FhirOperation {
+  FHIR_OPERATION_UNSPECIFIED = 0;  // Unknown/default
+  FHIR_OPERATION_READ = 1;          // Read a single resource by ID
+  FHIR_OPERATION_VREAD = 2;         // Read a specific version of a resource
+  FHIR_OPERATION_UPDATE = 3;        // Update an existing resource
+  FHIR_OPERATION_PATCH = 4;         // Patch an existing resource
+  FHIR_OPERATION_DELETE = 5;        // Delete a resource
+  FHIR_OPERATION_CREATE = 6;        // Create a new resource
+  FHIR_OPERATION_SEARCH = 7;        // Search for resources
+  FHIR_OPERATION_HISTORY = 8;       // Get resource history
+  FHIR_OPERATION_CAPABILITIES = 9;  // Get server capabilities
+  FHIR_OPERATION_BATCH = 10;        // Batch operation
+  FHIR_OPERATION_TRANSACTION = 11;  // Transaction operation
+  FHIR_OPERATION_OPERATION = 12;    // Named operation ($validate, $export, etc.)
+}
+
+// MetricsService handles FHIR operation metrics collection.
+// Designed for observability, billing, and performance monitoring.
+// Sidecar can route metrics to multiple destinations:
+// - Billing systems (calculate Request Units for cost tracking)
+// - Application Insights / OpenTelemetry (performance monitoring)
+// - Prometheus / Grafana (operational dashboards)
+// - Custom analytics platforms
+//
+// Pattern: Fire-and-forget - Does not block application if sidecar is unavailable.
+// Service: Unary RPC for single metrics, Client streaming for batch operations.
+service MetricsService {
+  // Record metrics for a single FHIR operation.
+  // Returns immediately with success/failure and optional computed values.
+  // Fire-and-forget: Client should log locally if this fails.
+  rpc RecordMetric(FhirMetricsRequest) returns (FhirMetricsResponse);
+
+  // Batch record multiple metrics via client streaming.
+  // More efficient for high-throughput scenarios (e.g., bundle operations).
+  // Returns aggregate response after stream completes.
+  //
+  // Response semantics (fire-and-forget pattern):
+  // - success=true: All metrics were accepted for processing
+  // - success=false: Batch operation failed (e.g., sidecar unavailable)
+  // - Individual metric failures are logged by the sidecar, not reported to client
+  // - request_units is empty for batch operations (use individual RecordMetric for billing tracking)
+  rpc RecordMetricBatch(stream FhirMetricsRequest) returns (FhirMetricsResponse);
+}
+
+// Request message for recording FHIR operation metrics.
+// Captures performance, resource usage, and operation context for observability.
+message FhirMetricsRequest {
+  // UTC timestamp when the FHIR operation completed
+  google.protobuf.Timestamp timestamp = 1;
+
+  // Correlation ID (trace/request ID) for distributed tracing
+  string correlation_id = 2;
+
+  // Operation ID for Application Insights correlation
+  string operation_id = 3;
+
+  // Tenant identifier (multi-tenant isolation)
+  string tenant_id = 4;
+
+  // FHIR resource type (e.g., "Patient", "Observation")
+  string resource_type = 5;
+
+  // FHIR resource ID (logical ID, empty for search operations)
+  string resource_id = 6;
+
+  // FHIR version: "4.0" (R4), "5.0" (R5), "3.0" (STU3), "4.3" (R4B)
+  // String for forward compatibility with future FHIR versions
+  string fhir_version = 7;
+
+  // HTTP method used in the request
+  HttpMethod http_method = 8;
+
+  // FHIR interaction performed
+  FhirOperation fhir_operation = 9;
+
+  // HTTP status code from the FHIR operation response
+  int32 http_status_code = 10;
+
+  // Whether the operation completed successfully (status < 400)
+  bool success = 11;
+
+  // Size of HTTP request body in bytes (0 for GET requests)
+  int64 request_size_bytes = 12;
+
+  // Size of HTTP response body in bytes
+  int64 response_size_bytes = 13;
+
+  // Total operation duration in milliseconds (including database, serialization, etc.)
+  int64 duration_milliseconds = 14;
+
+  // Number of resources in the response (e.g., Bundle.entry count for search)
+  int32 resource_count = 15;
+
+  // Total number of matching resources for search operations (from Bundle.total)
+  // -1 if not applicable or unavailable
+  int32 total_matches = 16;
+
+  // Extensibility: Custom properties for additional metrics context
+  // Example: {"cache_hit": "true", "database_query_time_ms": "150"}
+  map<string, string> custom_properties = 17;
+}
+
+// Response message for metrics recording operations.
+message FhirMetricsResponse {
+  // Whether the metrics were successfully recorded
+  bool success = 1;
+
+  // Error message if success=false (empty if successful)
+  string error_message = 2;
+
+  // Optional: Request Units calculated by sidecar for billing
+  // Used for cost allocation in Azure Monitor or custom billing systems
+  double request_units = 3;
+
+  // Optional: Additional computed metrics from the sidecar
+  // Example: {"estimated_cost": "0.05", "tier": "premium"}
+  map<string, string> computed_properties = 4;
+}
