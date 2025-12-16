@@ -23,5 +23,7 @@
     <Compile Remove="Schema\FhirJsonSchemaStructureDefinitionSummaryProvider.cs" />
   </ItemGroup>
 
+  <!-- Note: .resx files are automatically included as EmbeddedResource by the SDK -->
+
 </Project>
 

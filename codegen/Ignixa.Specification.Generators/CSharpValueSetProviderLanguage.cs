@@ -3,7 +3,9 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Resources;
 using System.Text;
+using System.Text.Json;
 using Hl7.Fhir.Model;
 using Microsoft.Health.Fhir.CodeGen.Language;
 using Microsoft.Health.Fhir.CodeGen.Models;
@@ -64,8 +66,13 @@ public sealed class CSharpValueSetProviderLanguage : ILanguage
 
         // Generate the version-specific ValueSetProvider class
         string className = $"{classPrefix}ValueSetProvider";
+
+        // Generate .resx file with valueset data
+        GenerateResxFile(config.OutputDirectory, fhirVersion, className, valueSets);
+
+        // Generate thin wrapper class that uses ResourceManager
         string classFile = Path.Combine(config.OutputDirectory, $"{className}.g.cs");
-        var code = GenerateValueSetProviderClass(className, fhirVersion, config.Namespace, valueSets);
+        var code = GenerateValueSetProviderThinWrapper(className, fhirVersion, config.Namespace, valueSets);
         File.WriteAllText(classFile, code, Encoding.UTF8);
         Console.WriteLine($"Generated: {className}.g.cs");
 
@@ -85,6 +92,11 @@ public sealed class CSharpValueSetProviderLanguage : ILanguage
         public required string Code { get; init; }
         public required string Display { get; init; }
     }
+
+    /// <summary>
+    /// DTO for JSON serialization of codes (compact property names to reduce size).
+    /// </summary>
+    private sealed record CodeDto(string s, string c, string d); // system, code, display
 
     /// <summary>
     /// Extracts ALL ValueSets from the FHIR package definitions with full code information.
@@ -244,6 +256,273 @@ public sealed class CSharpValueSetProviderLanguage : ILanguage
 
         ExtractConceptsRecursively(cs.Concept);
         return codes;
+    }
+
+    /// <summary>
+    /// Escapes a ValueSet URL for use as a .resx resource key.
+    /// Replaces special characters that are invalid in resource names.
+    /// </summary>
+    private static string EscapeUrlForResourceKey(string url)
+    {
+        return url
+            .Replace("://", "___")
+            .Replace("/", "_")
+            .Replace(":", "_")
+            .Replace("|", "_")
+            .Replace("?", "_")
+            .Replace("#", "_")
+            .Replace("[", "_")
+            .Replace("]", "_")
+            .Replace("@", "_")
+            .Replace("!", "_")
+            .Replace("$", "_")
+            .Replace("&", "_")
+            .Replace("'", "_")
+            .Replace("(", "_")
+            .Replace(")", "_")
+            .Replace("*", "_")
+            .Replace("+", "_")
+            .Replace(",", "_")
+            .Replace(";", "_")
+            .Replace("=", "_")
+            .Replace(" ", "_")
+            .Replace("%", "_");
+    }
+
+    /// <summary>
+    /// Generates a .resx file containing all valuesets as JSON strings.
+    /// We manually generate the XML format to avoid dependencies on System.Resources.Extensions.
+    /// </summary>
+    private static void GenerateResxFile(
+        string outputDir,
+        string fhirVersion,
+        string className,
+        Dictionary<string, List<CodeInfo>> valueSets)
+    {
+        var resourcesDir = Path.Combine(outputDir, "Resources");
+        Directory.CreateDirectory(resourcesDir);
+
+        var resxPath = Path.Combine(resourcesDir, $"{className}Resources.resx");
+
+        Console.WriteLine($"Generating .resx file: {resxPath}");
+
+        using var writer = new StreamWriter(resxPath, false, Encoding.UTF8);
+
+        // Write .resx XML header
+        writer.WriteLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+        writer.WriteLine("<root>");
+        writer.WriteLine("  <resheader name=\"resmimetype\">");
+        writer.WriteLine("    <value>text/microsoft-resx</value>");
+        writer.WriteLine("  </resheader>");
+        writer.WriteLine("  <resheader name=\"version\">");
+        writer.WriteLine("    <value>2.0</value>");
+        writer.WriteLine("  </resheader>");
+        writer.WriteLine("  <resheader name=\"reader\">");
+        writer.WriteLine("    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>");
+        writer.WriteLine("  </resheader>");
+        writer.WriteLine("  <resheader name=\"writer\">");
+        writer.WriteLine("    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>");
+        writer.WriteLine("  </resheader>");
+
+        foreach (var (url, codes) in valueSets.OrderBy(kv => kv.Key))
+        {
+            // Convert codes to DTO format (compact JSON)
+            var codeDtos = codes.Select(c => new CodeDto(c.System, c.Code, c.Display)).ToArray();
+
+            // Serialize to compact JSON (no indentation)
+            var json = JsonSerializer.Serialize(codeDtos, new JsonSerializerOptions
+            {
+                WriteIndented = false
+            });
+
+            // Escape URL for use as resource key
+            var key = EscapeUrlForResourceKey(url);
+
+            // XML-escape the JSON value
+            var xmlEscapedJson = System.Security.SecurityElement.Escape(json);
+
+            // Write data element
+            writer.WriteLine($"  <data name=\"{key}\" xml:space=\"preserve\">");
+            writer.WriteLine($"    <value>{xmlEscapedJson}</value>");
+            writer.WriteLine("  </data>");
+        }
+
+        writer.WriteLine("</root>");
+
+        Console.WriteLine($"Added {valueSets.Count} valuesets to {className}Resources.resx");
+    }
+
+    /// <summary>
+    /// Generates a thin wrapper ValueSetProvider that loads data from .resx resources.
+    /// </summary>
+    private static string GenerateValueSetProviderThinWrapper(
+        string className,
+        string fhirVersion,
+        string namespaceName,
+        Dictionary<string, List<CodeInfo>> valueSets)
+    {
+        var sb = new StringBuilder();
+
+        // Header
+        sb.AppendLine("// <auto-generated/>");
+        sb.AppendLine($"// <copyright file=\"{className}.g.cs\" company=\"Ignixa Contributors\">");
+        sb.AppendLine("//     Copyright (c) Ignixa Contributors. All rights reserved.");
+        sb.AppendLine("//     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.");
+        sb.AppendLine("// </copyright>");
+        sb.AppendLine();
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System;");
+        sb.AppendLine("using System.Collections.Concurrent;");
+        sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Linq;");
+        sb.AppendLine("using System.Resources;");
+        sb.AppendLine("using System.Text.Json;");
+        sb.AppendLine("using Ignixa.Abstractions;");
+        sb.AppendLine();
+        sb.AppendLine($"namespace {namespaceName};");
+        sb.AppendLine();
+        sb.AppendLine("/// <summary>");
+        sb.AppendLine($"/// Pre-generated ValueSet provider for FHIR {fhirVersion}.");
+        sb.AppendLine("/// Provides efficient lookup of ValueSet codes with full metadata (system, code, display).");
+        sb.AppendLine("/// Data is loaded lazily from embedded .resx resources to minimize memory footprint.");
+        sb.AppendLine("/// </summary>");
+        sb.AppendLine("[CLSCompliant(false)]");
+        sb.AppendLine($"public sealed class {className} : IValueSetProvider");
+        sb.AppendLine("{");
+
+        // DTO record
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// DTO for JSON deserialization of codes (compact property names).");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    private sealed record CodeDto(string s, string c, string d); // system, code, display");
+        sb.AppendLine();
+
+        // ResourceManager field
+        sb.AppendLine("    private static readonly ResourceManager _resources = new(");
+        sb.AppendLine($"        \"{namespaceName}.Resources.{className}Resources\",");
+        sb.AppendLine($"        typeof({className}).Assembly);");
+        sb.AppendLine();
+
+        // Cache
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Cache of loaded valuesets (lazy loading on first access).");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    private static readonly ConcurrentDictionary<string, FhirCode[]> _cache = new(StringComparer.Ordinal);");
+        sb.AppendLine();
+
+        // Validation sets cache
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Optimized lookup sets for code validation (lazily initialized on first access).");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    private static readonly ConcurrentDictionary<string, HashSet<string>?> _validationSets = new(StringComparer.Ordinal);");
+        sb.AppendLine();
+
+        // GetCodes method
+        sb.AppendLine("    /// <inheritdoc/>");
+        sb.AppendLine("    public IReadOnlyList<FhirCode>? GetCodes(string valueSetUrl)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        ArgumentNullException.ThrowIfNull(valueSetUrl);");
+        sb.AppendLine("        var normalized = NormalizeUrl(valueSetUrl);");
+        sb.AppendLine();
+        sb.AppendLine("        // Fast path: already cached");
+        sb.AppendLine("        if (_cache.TryGetValue(normalized, out var codes))");
+        sb.AppendLine("            return codes;");
+        sb.AppendLine();
+        sb.AppendLine("        // Load from .resx (lazy, on-demand)");
+        sb.AppendLine("        var key = EscapeUrl(normalized);");
+        sb.AppendLine("        var json = _resources.GetString(key); // ResourceManager handles caching");
+        sb.AppendLine("        if (json == null) return null;");
+        sb.AppendLine();
+        sb.AppendLine("        // Deserialize and cache");
+        sb.AppendLine("        var codeDtos = JsonSerializer.Deserialize<CodeDto[]>(json);");
+        sb.AppendLine("        if (codeDtos == null) return null;");
+        sb.AppendLine();
+        sb.AppendLine("        codes = codeDtos.Select(dto => new FhirCode(dto.s, dto.c, dto.d)).ToArray();");
+        sb.AppendLine("        _cache.TryAdd(normalized, codes);");
+        sb.AppendLine();
+        sb.AppendLine("        return codes;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // IsKnownValueSet method
+        sb.AppendLine("    /// <inheritdoc/>");
+        sb.AppendLine("    public bool IsKnownValueSet(string valueSetUrl)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        ArgumentNullException.ThrowIfNull(valueSetUrl);");
+        sb.AppendLine("        var normalized = NormalizeUrl(valueSetUrl);");
+        sb.AppendLine("        var key = EscapeUrl(normalized);");
+        sb.AppendLine("        return _resources.GetString(key) != null;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // IsValidCode method
+        sb.AppendLine("    /// <inheritdoc/>");
+        sb.AppendLine("    public bool? IsValidCode(string valueSetUrl, string code)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        ArgumentNullException.ThrowIfNull(valueSetUrl);");
+        sb.AppendLine("        ArgumentNullException.ThrowIfNull(code);");
+        sb.AppendLine();
+        sb.AppendLine("        var normalized = NormalizeUrl(valueSetUrl);");
+        sb.AppendLine();
+        sb.AppendLine("        // Get or create validation set");
+        sb.AppendLine("        var validCodes = _validationSets.GetOrAdd(normalized, url =>");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var codes = GetCodes(url);");
+        sb.AppendLine("            if (codes == null) return null;");
+        sb.AppendLine("            return codes.Select(static c => c.Code).ToHashSet(StringComparer.Ordinal);");
+        sb.AppendLine("        });");
+        sb.AppendLine();
+        sb.AppendLine("        return validCodes?.Contains(code);");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // EscapeUrl method
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Escapes a URL for use as a .resx resource key.");
+        sb.AppendLine("    /// Must match the escaping logic used during code generation.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    private static string EscapeUrl(string url)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        return url");
+        sb.AppendLine("            .Replace(\"://\", \"___\")");
+        sb.AppendLine("            .Replace(\"/\", \"_\")");
+        sb.AppendLine("            .Replace(\":\", \"_\")");
+        sb.AppendLine("            .Replace(\"|\", \"_\")");
+        sb.AppendLine("            .Replace(\"?\", \"_\")");
+        sb.AppendLine("            .Replace(\"#\", \"_\")");
+        sb.AppendLine("            .Replace(\"[\", \"_\")");
+        sb.AppendLine("            .Replace(\"]\", \"_\")");
+        sb.AppendLine("            .Replace(\"@\", \"_\")");
+        sb.AppendLine("            .Replace(\"!\", \"_\")");
+        sb.AppendLine("            .Replace(\"$\", \"_\")");
+        sb.AppendLine("            .Replace(\"&\", \"_\")");
+        sb.AppendLine("            .Replace(\"'\", \"_\")");
+        sb.AppendLine("            .Replace(\"(\", \"_\")");
+        sb.AppendLine("            .Replace(\")\", \"_\")");
+        sb.AppendLine("            .Replace(\"*\", \"_\")");
+        sb.AppendLine("            .Replace(\"+\", \"_\")");
+        sb.AppendLine("            .Replace(\",\", \"_\")");
+        sb.AppendLine("            .Replace(\";\", \"_\")");
+        sb.AppendLine("            .Replace(\"=\", \"_\")");
+        sb.AppendLine("            .Replace(\" \", \"_\")");
+        sb.AppendLine("            .Replace(\"%\", \"_\");");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // NormalizeUrl method
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// Normalizes a ValueSet URL by removing version suffix after '|'.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    private static string NormalizeUrl(string url)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var pipeIndex = url.IndexOf('|', StringComparison.Ordinal);");
+        sb.AppendLine("        return pipeIndex > 0 ? url[..pipeIndex] : url;");
+        sb.AppendLine("    }");
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
     }
 
     /// <summary>
