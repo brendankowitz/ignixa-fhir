@@ -95,7 +95,7 @@ public class DurableTaskHostedService : BackgroundService
                 _logger.LogInformation("DurableTask SQL Server initialization cancelled");
                 return false;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsSqlServerTransientError(ex))
             {
                 if (attempt == MaxRetries)
                 {
@@ -106,10 +106,16 @@ public class DurableTaskHostedService : BackgroundService
                 var delay = TimeSpan.FromSeconds(InitialRetryDelay.TotalSeconds * attempt);
                 _logger.LogWarning(
                     ex,
-                    "SQL Server orchestration service initialization failed. Retrying in {Delay}... (attempt {Attempt}/{MaxRetries})",
+                    "SQL Server transient error during initialization. Retrying in {Delay}... (attempt {Attempt}/{MaxRetries})",
                     delay, attempt, MaxRetries);
 
                 await Task.Delay(delay, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                // Non-transient errors (configuration, authentication, permissions) - fail fast
+                _logger.LogError(ex, "SQL Server orchestration service initialization failed with non-transient error");
+                return false;
             }
         }
 
@@ -163,6 +169,44 @@ public class DurableTaskHostedService : BackgroundService
         return ex.InnerException is RequestFailedException { Status: 403 }
             || ex.Message.Contains("AuthorizationFailure", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("not authorized", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSqlServerTransientError(Exception ex)
+    {
+        // Check for SqlException with transient error numbers
+        // See: https://learn.microsoft.com/en-us/azure/azure-sql/database/troubleshoot-common-errors-issues
+        if (ex is Microsoft.Data.SqlClient.SqlException sqlEx)
+        {
+            // Transient SQL Server error numbers
+            return sqlEx.Number switch
+            {
+                -2 => true,     // Timeout expired
+                20 => true,     // Instance does not support encryption
+                64 => true,     // Connection was successfully established but error occurred during login
+                233 => true,    // Connection initialization error
+                10053 => true,  // Connection was aborted
+                10054 => true,  // Connection was forcibly closed
+                10060 => true,  // Connection timeout
+                40143 => true,  // Connection could not be initialized
+                40197 => true,  // Service has encountered an error processing request
+                40501 => true,  // Service is busy
+                40613 => true,  // Database is not currently available
+                49918 => true,  // Not enough resources to process request
+                49919 => true,  // Cannot process create or update request
+                49920 => true,  // Cannot process request due to too many operations
+                _ => false
+            };
+        }
+
+        // Check inner exception
+        if (ex.InnerException is not null)
+        {
+            return IsSqlServerTransientError(ex.InnerException);
+        }
+
+        // Check for timeout patterns in message (fallback)
+        return ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase)
+            && !ex.Message.Contains("login failed", StringComparison.OrdinalIgnoreCase);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

@@ -114,7 +114,7 @@ public static class DurableTaskConfiguration
 
         // Get connection string from Tenant 0 (system partition) settings
         // Tenant 0 may inherit its connection string from another tenant (default: Tenant 1)
-        var connectionString = GetTenant0ConnectionString(configuration);
+        var connectionString = GetSystemPartitionConnectionString(configuration);
 
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -138,7 +138,7 @@ public static class DurableTaskConfiguration
     /// Gets the connection string from Tenant 0 (system partition).
     /// If Tenant 0 has no direct connection string, it inherits from the tenant specified by InheritConnectionStringFromTenant.
     /// </summary>
-    private static string? GetTenant0ConnectionString(IConfiguration configuration)
+    private static string? GetSystemPartitionConnectionString(IConfiguration configuration)
     {
         var tenantsSection = configuration.GetSection("Tenants:Configurations");
         if (!tenantsSection.Exists())

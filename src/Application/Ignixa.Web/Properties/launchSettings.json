@@ -22,7 +22,7 @@
         "BlobStorage__UseManagedIdentity": "false",
         "BlobStorage__ConnectionString": "UseDevelopmentStorage=true",
         "BlobStorage__ContainerName": "fhirstorage",
-        "DurableTask__Provider": "AzureStorage",
+        "DurableTask__Provider": "SqlServer",
         "DurableTask__AzureStorage__UseManagedIdentity": "false",
         "DurableTask__AzureStorage__ConnectionString": "UseDevelopmentStorage=true",
         "DurableTask__AzureStorage__TaskHubName": "ignixadev",
