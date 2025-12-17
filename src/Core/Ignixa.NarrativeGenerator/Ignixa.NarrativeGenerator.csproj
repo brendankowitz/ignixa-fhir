@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Ignixa.NarrativeGenerator</RootNamespace>
+  </PropertyGroup>
+
+  <!-- NuGet Package Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>FHIR narrative generation using Scriban templates with FHIRPath support</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Localization.Abstractions" />
+    <PackageReference Include="Scriban" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+  </ItemGroup>
+
+  <!-- Embedded Resource Configuration for Scriban templates -->
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\**\*.scriban" />
+  </ItemGroup>
+
+  <!-- Resource file for localization -->
+  <ItemGroup>
+    <EmbeddedResource Update="Resources\NarrativeStrings.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>NarrativeStrings.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Resources\NarrativeStrings.es.resx">
+      <DependentUpon>NarrativeStrings.resx</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="Resources\NarrativeStrings.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>NarrativeStrings.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.NarrativeGenerator.Tests" />
+  </ItemGroup>
+
+</Project>

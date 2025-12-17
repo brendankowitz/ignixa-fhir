@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" msdata:Ordinal="5" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- Common strings -->
+  <data name="Common.Yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Common.No" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="Common.Unknown" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="Common.ResourceId" xml:space="preserve">
+    <value>Resource ID</value>
+  </data>
+  <data name="Common.LastUpdated" xml:space="preserve">
+    <value>Last Updated</value>
+  </data>
+  <data name="Common.VersionId" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Common.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Common.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Common.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Common.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Common.EffectiveDateTime" xml:space="preserve">
+    <value>Effective Date/Time</value>
+  </data>
+  <data name="Common.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="Common.Issued" xml:space="preserve">
+    <value>Issued</value>
+  </data>
+  <data name="Common.Authored" xml:space="preserve">
+    <value>Authored</value>
+  </data>
+  <data name="Common.Recorded" xml:space="preserve">
+    <value>Recorded</value>
+  </data>
+  <data name="Common.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Common.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Common.Identifiers" xml:space="preserve">
+    <value>Identifiers</value>
+  </data>
+  <data name="Common.ExistingNarrative" xml:space="preserve">
+    <value>Existing Narrative</value>
+  </data>
+  <data name="Common.ResourceContent" xml:space="preserve">
+    <value>Resource Content</value>
+  </data>
+  <data name="Common.Metadata" xml:space="preserve">
+    <value>Metadata</value>
+  </data>
+  <data name="Common.To" xml:space="preserve">
+    <value>to</value>
+  </data>
+
+  <!-- Patient resource strings -->
+  <data name="Patient.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Patient.AriaLabel" xml:space="preserve">
+    <value>Patient Information</value>
+    <comment>ARIA label for the patient information region</comment>
+  </data>
+  <data name="Patient.Demographics" xml:space="preserve">
+    <value>Demographics</value>
+  </data>
+  <data name="Patient.UnknownName" xml:space="preserve">
+    <value>Unknown Patient</value>
+  </data>
+  <data name="Patient.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Patient.BirthDate" xml:space="preserve">
+    <value>Date of Birth</value>
+  </data>
+  <data name="Patient.Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="Patient.Gender.male" xml:space="preserve">
+    <value>Male</value>
+  </data>
+  <data name="Patient.Gender.female" xml:space="preserve">
+    <value>Female</value>
+  </data>
+  <data name="Patient.Gender.other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="Patient.Gender.unknown" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="Patient.MaritalStatus" xml:space="preserve">
+    <value>Marital Status</value>
+  </data>
+  <data name="Patient.MultipleBirth" xml:space="preserve">
+    <value>Multiple Birth</value>
+  </data>
+  <data name="Patient.MultipleBirthOrder" xml:space="preserve">
+    <value>Birth Order</value>
+  </data>
+  <data name="Patient.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Patient.Deceased" xml:space="preserve">
+    <value>Deceased</value>
+  </data>
+  <data name="Patient.Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="Patient.ContactInfo" xml:space="preserve">
+    <value>Contact Information</value>
+  </data>
+  <data name="Patient.Communication" xml:space="preserve">
+    <value>Languages</value>
+  </data>
+  <data name="Patient.Preferred" xml:space="preserve">
+    <value>Preferred</value>
+  </data>
+  <data name="Patient.PreferredLanguage" xml:space="preserve">
+    <value>Preferred Language</value>
+  </data>
+  <data name="Patient.EmergencyContacts" xml:space="preserve">
+    <value>Emergency Contacts</value>
+  </data>
+  <data name="Patient.ContactPerson" xml:space="preserve">
+    <value>Contact Person</value>
+  </data>
+  <data name="Patient.ContactName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Patient.ContactRelationship" xml:space="preserve">
+    <value>Relationship</value>
+  </data>
+  <data name="Patient.ContactOrganization" xml:space="preserve">
+    <value>Organization</value>
+  </data>
+  <data name="Patient.ContactPeriod" xml:space="preserve">
+    <value>Valid Period</value>
+  </data>
+  <data name="Patient.CareProviders" xml:space="preserve">
+    <value>Care Providers</value>
+  </data>
+  <data name="Patient.GeneralPractitioner" xml:space="preserve">
+    <value>General Practitioner</value>
+  </data>
+  <data name="Patient.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+
+  <!-- Observation resource strings -->
+  <data name="Observation.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Observation.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Observation.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Observation.Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Observation.EffectiveDateTime" xml:space="preserve">
+    <value>Effective Date/Time</value>
+  </data>
+
+  <!-- Address use types -->
+  <data name="Address.Use.home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Address.Use.work" xml:space="preserve">
+    <value>Work</value>
+  </data>
+  <data name="Address.Use.temp" xml:space="preserve">
+    <value>Temporary</value>
+  </data>
+  <data name="Address.Use.old" xml:space="preserve">
+    <value>Old/Previous</value>
+  </data>
+  <data name="Address.Use.billing" xml:space="preserve">
+    <value>Billing</value>
+  </data>
+
+  <!-- Address types -->
+  <data name="Address.Type.postal" xml:space="preserve">
+    <value>Postal</value>
+  </data>
+  <data name="Address.Type.physical" xml:space="preserve">
+    <value>Physical</value>
+  </data>
+  <data name="Address.Type.both" xml:space="preserve">
+    <value>Postal and Physical</value>
+  </data>
+
+  <!-- Telecom system types -->
+  <data name="Telecom.System.phone" xml:space="preserve">
+    <value>Phone</value>
+  </data>
+  <data name="Telecom.System.fax" xml:space="preserve">
+    <value>Fax</value>
+  </data>
+  <data name="Telecom.System.email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Telecom.System.pager" xml:space="preserve">
+    <value>Pager</value>
+  </data>
+  <data name="Telecom.System.url" xml:space="preserve">
+    <value>URL</value>
+  </data>
+  <data name="Telecom.System.sms" xml:space="preserve">
+    <value>SMS</value>
+  </data>
+  <data name="Telecom.System.other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+
+  <!-- Telecom use types -->
+  <data name="Telecom.Use.home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Telecom.Use.work" xml:space="preserve">
+    <value>Work</value>
+  </data>
+  <data name="Telecom.Use.temp" xml:space="preserve">
+    <value>Temporary</value>
+  </data>
+  <data name="Telecom.Use.old" xml:space="preserve">
+    <value>Old</value>
+  </data>
+  <data name="Telecom.Use.mobile" xml:space="preserve">
+    <value>Mobile</value>
+  </data>
+  <data name="Telecom.Rank" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+
+</root>

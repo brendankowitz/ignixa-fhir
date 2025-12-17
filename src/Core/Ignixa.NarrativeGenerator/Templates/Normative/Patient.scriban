@@ -1,0 +1,387 @@
+{{~##
+  Patient Narrative Template
+
+  This template generates WCAG 2.1 AA compliant XHTML narrative for Patient resources.
+  Works with FHIR R4, R4B, and R5 (Patient is normative).
+
+  Required helpers (from NarrativeTemplateEngine):
+  - fhir.path(resource, expression) - Evaluates FHIRPath expression
+  - fhir.exists(resource, expression) - Checks if FHIRPath expression has results
+  - fhir.format_date(date) - Formats FHIR date for display
+  - fhir.format_datetime(datetime) - Formats FHIR dateTime for display
+  - l10n.t(key) - Localization helper
+  - l10n.lang() - Current language code (e.g., "en")
+  - culture - Current culture name from context
+##~}}
+{{~
+  # Extract key patient identifiers
+  official_name_exists = fhir.exists resource "name.where(use='official').first()"
+  usual_name_exists = fhir.exists resource "name.where(use='usual').first()"
+  any_name_exists = fhir.exists resource "name.first()"
+
+  # Get first/family names based on priority
+  given_name = ""
+  family_name = ""
+  if official_name_exists
+    given_name = fhir.path resource "name.where(use='official').first().given.first()"
+    family_name = fhir.path resource "name.where(use='official').first().family"
+  else if usual_name_exists
+    given_name = fhir.path resource "name.where(use='usual').first().given.first()"
+    family_name = fhir.path resource "name.where(use='usual').first().family"
+  else if any_name_exists
+    given_name = fhir.path resource "name.first().given.first()"
+    family_name = fhir.path resource "name.first().family"
+  end
+
+  full_name = ""
+  if given_name && given_name != "" && family_name && family_name != ""
+    full_name = given_name + " " + family_name
+  else if given_name && given_name != ""
+    full_name = given_name
+  else if family_name && family_name != ""
+    full_name = family_name
+  else
+    full_name = l10n.t "Patient.UnknownName"
+  end
+
+  has_identifiers = fhir.exists resource "identifier"
+  birth_date = fhir.path resource "birthDate"
+  gender = fhir.path resource "gender"
+  active = fhir.path resource "active"
+  has_deceased = fhir.exists resource "deceased"
+  has_addresses = fhir.exists resource "address"
+  has_telecoms = fhir.exists resource "telecom"
+  has_contacts = fhir.exists resource "contact"
+  has_communication = fhir.exists resource "communication"
+  has_general_practitioner = fhir.exists resource "generalPractitioner"
+  has_managing_org = fhir.exists resource "managingOrganization"
+  has_marital_status = fhir.exists resource "maritalStatus"
+  has_multiple_birth = fhir.exists resource "multipleBirth"
+~}}
+<div class="fhir-patient" lang="{{ l10n.lang }}" role="region" aria-label="{{ l10n.t 'Patient.AriaLabel' }}">
+  <h3 id="patient-name">{{ full_name }}</h3>
+
+  {{~## Demographics Section ##~}}
+  <section aria-labelledby="demographics-heading">
+    <h4 id="demographics-heading" class="visually-hidden">{{ l10n.t "Patient.Demographics" }}</h4>
+    <dl class="fhir-demographics">
+      {{~## Identifiers ##~}}
+      {{~ if has_identifiers ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.Identifier" }}</dt>
+        {{~ identifier_count = fhir.count resource "identifier" ~}}
+        {{~ for i in 0..(identifier_count - 1) ~}}
+        <dd>
+          {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+          {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+          {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+          {{~ id_use = fhir.path resource ("identifier[" + i + "].use") ~}}
+          {{~ if id_type && id_type != "" ~}}
+          <span class="identifier-type">{{ id_type }}:</span>
+          {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}}
+          <span class="identifier-system">({{ id_system }})</span>
+          {{~ end ~}}
+          {{~ if id_use && id_use != "" ~}}
+          <span class="identifier-use">[{{ id_use }}]</span>
+          {{~ end ~}}
+        </dd>
+        {{~ end ~}}
+      </div>
+      {{~ end ~}}
+
+      {{~## Birth Date ##~}}
+      {{~ if birth_date && birth_date != "" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.BirthDate" }}</dt>
+        <dd>
+          <time datetime="{{ birth_date }}">{{ fhir.format_date birth_date }}</time>
+        </dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Gender ##~}}
+      {{~ if gender && gender != "" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.Gender" }}</dt>
+        <dd>{{ l10n.t ("Patient.Gender." + gender) }}</dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Marital Status ##~}}
+      {{~ if has_marital_status ~}}
+      {{~ marital_display = fhir.path resource "maritalStatus.coding.first().display" ~}}
+      {{~ marital_code = fhir.path resource "maritalStatus.coding.first().code" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.MaritalStatus" }}</dt>
+        <dd>{{ (marital_display && marital_display != "") ? marital_display : marital_code }}</dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Multiple Birth ##~}}
+      {{~ if has_multiple_birth ~}}
+      {{~ multiple_birth_bool = fhir.path resource "multipleBirthBoolean" ~}}
+      {{~ multiple_birth_int = fhir.path resource "multipleBirthInteger" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.MultipleBirth" }}</dt>
+        <dd>
+          {{~ if multiple_birth_bool == "true" ~}}
+          {{ l10n.t "Common.Yes" }}
+          {{~ else if multiple_birth_bool == "false" ~}}
+          {{ l10n.t "Common.No" }}
+          {{~ else if multiple_birth_int && multiple_birth_int != "" ~}}
+          {{ l10n.t "Patient.MultipleBirthOrder" }} {{ multiple_birth_int }}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Active Status ##~}}
+      {{~ if active && active != "" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.Active" }}</dt>
+        <dd>
+          {{~ if active == "true" ~}}
+          <span class="status-active">{{ l10n.t "Common.Yes" }}</span>
+          {{~ else ~}}
+          <span class="status-inactive">{{ l10n.t "Common.No" }}</span>
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Deceased ##~}}
+      {{~ if has_deceased ~}}
+      {{~ deceased_bool = fhir.path resource "deceasedBoolean" ~}}
+      {{~ deceased_datetime = fhir.path resource "deceasedDateTime" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.Deceased" }}</dt>
+        <dd>
+          {{~ if deceased_bool == "true" ~}}
+          {{ l10n.t "Common.Yes" }}
+          {{~ else if deceased_bool == "false" ~}}
+          {{ l10n.t "Common.No" }}
+          {{~ else if deceased_datetime && deceased_datetime != "" ~}}
+          <time datetime="{{ deceased_datetime }}">{{ fhir.format_datetime deceased_datetime }}</time>
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </section>
+
+  {{~## Address Section ##~}}
+  {{~ if has_addresses ~}}
+  <section aria-labelledby="address-heading">
+    <h4 id="address-heading">{{ l10n.t "Patient.Address" }}</h4>
+    {{~ address_count = fhir.count resource "address" ~}}
+    {{~ for i in 0..(address_count - 1) ~}}
+    {{~ addr_use = fhir.path resource ("address[" + i + "].use") ~}}
+    {{~ addr_type = fhir.path resource ("address[" + i + "].type") ~}}
+    {{~ addr_city = fhir.path resource ("address[" + i + "].city") ~}}
+    {{~ addr_state = fhir.path resource ("address[" + i + "].state") ~}}
+    {{~ addr_postal = fhir.path resource ("address[" + i + "].postalCode") ~}}
+    {{~ addr_country = fhir.path resource ("address[" + i + "].country") ~}}
+    {{~ addr_district = fhir.path resource ("address[" + i + "].district") ~}}
+    {{~ addr_period_start = fhir.path resource ("address[" + i + "].period.start") ~}}
+    {{~ addr_period_end = fhir.path resource ("address[" + i + "].period.end") ~}}
+    {{~ addr_line_count = fhir.count resource ("address[" + i + "].line") ~}}
+    <address class="fhir-address">
+      {{~ if (addr_use && addr_use != "") || (addr_type && addr_type != "") ~}}
+      <span class="address-header">
+        {{~ if addr_use && addr_use != "" ~}}<span class="address-use">{{ l10n.t ("Address.Use." + addr_use) }}</span>{{~ end ~}}
+        {{~ if addr_type && addr_type != "" ~}}<span class="address-type">{{ l10n.t ("Address.Type." + addr_type) }}</span>{{~ end ~}}
+      </span>
+      {{~ end ~}}
+      {{~ if addr_line_count > 0 ~}}
+      {{~ for j in 0..(addr_line_count - 1) ~}}
+      {{~ line = fhir.path resource ("address[" + i + "].line[" + j + "]") ~}}
+      <span class="address-line">{{ line }}</span><br aria-hidden="true">
+      {{~ end ~}}
+      {{~ end ~}}
+      <span class="address-locality">
+        {{~ if addr_city && addr_city != "" ~}}{{ addr_city }}{{~ end ~}}
+        {{~ if addr_state && addr_state != "" ~}}{{~ if addr_city && addr_city != "" ~}}, {{~ end ~}}{{ addr_state }}{{~ end ~}}
+        {{~ if addr_postal && addr_postal != "" ~}} {{ addr_postal }}{{~ end ~}}
+      </span>
+      {{~ if addr_district && addr_district != "" ~}}
+      <br aria-hidden="true"><span class="address-district">{{ addr_district }}</span>
+      {{~ end ~}}
+      {{~ if addr_country && addr_country != "" ~}}
+      <br aria-hidden="true"><span class="address-country">{{ addr_country }}</span>
+      {{~ end ~}}
+      {{~ if (addr_period_start && addr_period_start != "") || (addr_period_end && addr_period_end != "") ~}}
+      <span class="address-period">
+        ({{~ if addr_period_start && addr_period_start != "" ~}}{{ fhir.format_date addr_period_start }}{{~ end ~}}
+        {{~ if (addr_period_start && addr_period_start != "") && (addr_period_end && addr_period_end != "") ~}} - {{~ end ~}}
+        {{~ if addr_period_end && addr_period_end != "" ~}}{{ fhir.format_date addr_period_end }}{{~ end ~}})
+      </span>
+      {{~ end ~}}
+    </address>
+    {{~ end ~}}
+  </section>
+  {{~ end ~}}
+
+  {{~## Telecom/Contact Information Section ##~}}
+  {{~ if has_telecoms ~}}
+  <section aria-labelledby="telecom-heading">
+    <h4 id="telecom-heading">{{ l10n.t "Patient.ContactInfo" }}</h4>
+    <dl class="fhir-telecom">
+      {{~ telecom_count = fhir.count resource "telecom" ~}}
+      {{~ for i in 0..(telecom_count - 1) ~}}
+      {{~ telecom_system = fhir.path resource ("telecom[" + i + "].system") ~}}
+      {{~ telecom_value = fhir.path resource ("telecom[" + i + "].value") ~}}
+      {{~ telecom_use = fhir.path resource ("telecom[" + i + "].use") ~}}
+      {{~ telecom_rank = fhir.path resource ("telecom[" + i + "].rank") ~}}
+      <div class="fhir-field">
+        <dt>
+          {{ l10n.t ("Telecom.System." + ((telecom_system && telecom_system != "") ? telecom_system : "other")) }}
+          {{~ if telecom_use && telecom_use != "" ~}}
+          <span class="telecom-use">({{ l10n.t ("Telecom.Use." + telecom_use) }})</span>
+          {{~ end ~}}
+        </dt>
+        <dd>
+          {{~ if telecom_system == "phone" || telecom_system == "fax" || telecom_system == "pager" || telecom_system == "sms" ~}}
+          <a href="tel:{{ telecom_value }}">{{ telecom_value }}</a>
+          {{~ else if telecom_system == "email" ~}}
+          <a href="mailto:{{ telecom_value }}">{{ telecom_value }}</a>
+          {{~ else if telecom_system == "url" ~}}
+          <a href="{{ telecom_value }}" rel="noopener noreferrer" target="_blank">{{ telecom_value }}</a>
+          {{~ else ~}}
+          {{ telecom_value }}
+          {{~ end ~}}
+          {{~ if telecom_rank && telecom_rank != "" ~}}
+          <span class="telecom-rank">[{{ l10n.t "Telecom.Rank" }}: {{ telecom_rank }}]</span>
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </section>
+  {{~ end ~}}
+
+  {{~## Communication/Language Section ##~}}
+  {{~ if has_communication ~}}
+  <section aria-labelledby="communication-heading">
+    <h4 id="communication-heading">{{ l10n.t "Patient.Communication" }}</h4>
+    <ul class="fhir-communication">
+      {{~ comm_count = fhir.count resource "communication" ~}}
+      {{~ for i in 0..(comm_count - 1) ~}}
+      {{~ comm_language = fhir.path resource ("communication[" + i + "].language.coding.first().display") ~}}
+      {{~ comm_code = fhir.path resource ("communication[" + i + "].language.coding.first().code") ~}}
+      {{~ comm_preferred = fhir.path resource ("communication[" + i + "].preferred") ~}}
+      <li>
+        {{ (comm_language && comm_language != "") ? comm_language : comm_code }}
+        {{~ if comm_preferred == "true" ~}}
+        <span class="preferred-marker" aria-label="{{ l10n.t 'Patient.PreferredLanguage' }}">({{ l10n.t "Patient.Preferred" }})</span>
+        {{~ end ~}}
+      </li>
+      {{~ end ~}}
+    </ul>
+  </section>
+  {{~ end ~}}
+
+  {{~## Emergency Contacts Section ##~}}
+  {{~ if has_contacts ~}}
+  <section aria-labelledby="contacts-heading">
+    <h4 id="contacts-heading">{{ l10n.t "Patient.EmergencyContacts" }}</h4>
+    {{~ contact_count = fhir.count resource "contact" ~}}
+    {{~ for i in 0..(contact_count - 1) ~}}
+    {{~ contact_given = fhir.path resource ("contact[" + i + "].name.given.first()") ~}}
+    {{~ contact_family = fhir.path resource ("contact[" + i + "].name.family") ~}}
+    {{~ contact_relationship = fhir.path resource ("contact[" + i + "].relationship.first().coding.first().display") ~}}
+    {{~ contact_gender = fhir.path resource ("contact[" + i + "].gender") ~}}
+    {{~ contact_org = fhir.path resource ("contact[" + i + "].organization.display") ~}}
+    {{~ contact_period_start = fhir.path resource ("contact[" + i + "].period.start") ~}}
+    {{~ contact_period_end = fhir.path resource ("contact[" + i + "].period.end") ~}}
+    {{~ contact_telecom_count = fhir.count resource ("contact[" + i + "].telecom") ~}}
+    <div class="fhir-contact" role="group" aria-label="{{ l10n.t 'Patient.ContactPerson' }}">
+      <dl>
+        {{~ if (contact_given && contact_given != "") || (contact_family && contact_family != "") ~}}
+        <div class="fhir-field">
+          <dt>{{ l10n.t "Patient.ContactName" }}</dt>
+          <dd>{{ contact_given }} {{ contact_family }}</dd>
+        </div>
+        {{~ end ~}}
+        {{~ if contact_relationship && contact_relationship != "" ~}}
+        <div class="fhir-field">
+          <dt>{{ l10n.t "Patient.ContactRelationship" }}</dt>
+          <dd>{{ contact_relationship }}</dd>
+        </div>
+        {{~ end ~}}
+        {{~ if contact_gender && contact_gender != "" ~}}
+        <div class="fhir-field">
+          <dt>{{ l10n.t "Patient.Gender" }}</dt>
+          <dd>{{ l10n.t ("Patient.Gender." + contact_gender) }}</dd>
+        </div>
+        {{~ end ~}}
+        {{~ if contact_org && contact_org != "" ~}}
+        <div class="fhir-field">
+          <dt>{{ l10n.t "Patient.ContactOrganization" }}</dt>
+          <dd>{{ contact_org }}</dd>
+        </div>
+        {{~ end ~}}
+        {{~ if contact_telecom_count > 0 ~}}
+        {{~ for j in 0..(contact_telecom_count - 1) ~}}
+        {{~ ct_system = fhir.path resource ("contact[" + i + "].telecom[" + j + "].system") ~}}
+        {{~ ct_value = fhir.path resource ("contact[" + i + "].telecom[" + j + "].value") ~}}
+        <div class="fhir-field">
+          <dt>{{ l10n.t ("Telecom.System." + ((ct_system && ct_system != "") ? ct_system : "other")) }}</dt>
+          <dd>
+            {{~ if ct_system == "phone" ~}}
+            <a href="tel:{{ ct_value }}">{{ ct_value }}</a>
+            {{~ else if ct_system == "email" ~}}
+            <a href="mailto:{{ ct_value }}">{{ ct_value }}</a>
+            {{~ else ~}}
+            {{ ct_value }}
+            {{~ end ~}}
+          </dd>
+        </div>
+        {{~ end ~}}
+        {{~ end ~}}
+        {{~ if (contact_period_start && contact_period_start != "") || (contact_period_end && contact_period_end != "") ~}}
+        <div class="fhir-field">
+          <dt>{{ l10n.t "Patient.ContactPeriod" }}</dt>
+          <dd>
+            {{~ if contact_period_start && contact_period_start != "" ~}}{{ fhir.format_date contact_period_start }}{{~ end ~}}
+            {{~ if (contact_period_start && contact_period_start != "") && (contact_period_end && contact_period_end != "") ~}} - {{~ end ~}}
+            {{~ if contact_period_end && contact_period_end != "" ~}}{{ fhir.format_date contact_period_end }}{{~ end ~}}
+          </dd>
+        </div>
+        {{~ end ~}}
+      </dl>
+    </div>
+    {{~ end ~}}
+  </section>
+  {{~ end ~}}
+
+  {{~## Care Providers Section ##~}}
+  {{~ if has_general_practitioner || has_managing_org ~}}
+  <section aria-labelledby="care-heading">
+    <h4 id="care-heading">{{ l10n.t "Patient.CareProviders" }}</h4>
+    <dl class="fhir-care-providers">
+      {{~ if has_general_practitioner ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.GeneralPractitioner" }}</dt>
+        {{~ gp_count = fhir.count resource "generalPractitioner" ~}}
+        {{~ for i in 0..(gp_count - 1) ~}}
+        {{~ gp_display = fhir.path resource ("generalPractitioner[" + i + "].display") ~}}
+        {{~ gp_reference = fhir.path resource ("generalPractitioner[" + i + "].reference") ~}}
+        <dd>{{ (gp_display && gp_display != "") ? gp_display : gp_reference }}</dd>
+        {{~ end ~}}
+      </div>
+      {{~ end ~}}
+      {{~ if has_managing_org ~}}
+      {{~ org_display = fhir.path resource "managingOrganization.display" ~}}
+      {{~ org_reference = fhir.path resource "managingOrganization.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Patient.ManagingOrganization" }}</dt>
+        <dd>{{ (org_display && org_display != "") ? org_display : org_reference }}</dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </section>
+  {{~ end ~}}
+
+</div>
