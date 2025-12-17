@@ -33,6 +33,7 @@ This folder contains the **Core** libraries that are published as NuGet packages
 |---------|-------------|---------------|
 | **Ignixa.FhirPath** | FHIRPath expression parser and evaluator with compiled delegate optimization | [README](Ignixa.FhirPath/README.md) |
 | **Ignixa.FhirMappingLanguage** | FHIR Mapping Language (FML) parser and StructureMap support | [README](Ignixa.FhirMappingLanguage/README.md) |
+| **Ignixa.NarrativeGenerator** | FHIR narrative generation using Scriban templates with FHIRPath support | [README](Ignixa.NarrativeGenerator/README.md) |
 | **Ignixa.SqlOnFhir** | SQL on FHIR v2 implementation for tabular queries | [README](Ignixa.SqlOnFhir/README.md) |
 | **Ignixa.PackageManagement** | FHIR package manager for loading and caching packages | [README](Ignixa.PackageManagement/README.md) |
 

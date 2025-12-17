@@ -165,6 +165,7 @@ The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** 
 | **[Ignixa.FhirFakes](src/Core/Ignixa.FhirFakes)** | **Schema-based test data generator** for creating realistic synthetic FHIR resources and clinical scenarios. |
 | **[Ignixa.FhirMappingLanguage](src/Core/Ignixa.FhirMappingLanguage)** | **FHIR Mapping Language (FML)** parser and StructureMap engine. |
 | **[Ignixa.FhirPath](src/Core/Ignixa.FhirPath)** | A **fast, compiled FHIRPath engine**. |
+| **[Ignixa.NarrativeGenerator](src/Core/Ignixa.NarrativeGenerator)** | **FHIR narrative generation** using Scriban templates with FHIRPath support. |
 | **[Ignixa.PackageManagement](src/Core/Ignixa.PackageManagement)** | **NPM-based package manager** for downloading and caching FHIR implementation guides. |
 | **[Ignixa.Search](src/Core/Ignixa.Search)** | **Search parameter definitions**, indexing, and high-speed value extraction. |
 | **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **System.Text.Json** based serialization optimized for high-throughput. |

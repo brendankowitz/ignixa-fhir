@@ -73,6 +73,7 @@ jobs:
           dotnet pack src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.SqlOnFhir.Writers/Ignixa.SqlOnFhir.Writers.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Ignixa.Validation/Ignixa.Validation.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
+          dotnet pack src/Core/Ignixa.NarrativeGenerator/Ignixa.NarrativeGenerator.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           # Extensions
           dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Ignixa.Extensions.FirelySdk5.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
           dotnet pack src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySdk6.csproj --configuration Release --no-build --output ./core-packages -p:PackageVersion=${{ steps.build.outputs.nuget-version }}
