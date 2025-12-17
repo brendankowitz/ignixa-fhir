@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
+using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -88,7 +90,7 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             return MemberMatchResult.InvalidInput("Required parameter 'MemberPatient' is missing.");
         }
 
-        if (request.MemberPatient.ResourceType != "Patient")
+        if (request.MemberPatient.ResourceType != KnownResourceTypes.Patient)
         {
             return MemberMatchResult.InvalidInput(
                 $"Parameter 'MemberPatient' must be a Patient resource, but was '{request.MemberPatient.ResourceType}'.");
@@ -100,21 +102,21 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             return MemberMatchResult.InvalidInput("Required parameter 'CoverageToMatch' is missing.");
         }
 
-        if (request.CoverageToMatch.ResourceType != "Coverage")
+        if (request.CoverageToMatch.ResourceType != KnownResourceTypes.Coverage)
         {
             return MemberMatchResult.InvalidInput(
                 $"Parameter 'CoverageToMatch' must be a Coverage resource, but was '{request.CoverageToMatch.ResourceType}'.");
         }
 
         // CoverageToLink is optional, but if provided must be Coverage
-        if (request.CoverageToLink is not null && request.CoverageToLink.ResourceType != "Coverage")
+        if (request.CoverageToLink is not null && request.CoverageToLink.ResourceType != KnownResourceTypes.Coverage)
         {
             return MemberMatchResult.InvalidInput(
                 $"Parameter 'CoverageToLink' must be a Coverage resource, but was '{request.CoverageToLink.ResourceType}'.");
         }
 
         // Consent is optional, but if provided must be Consent
-        if (request.Consent is not null && request.Consent.ResourceType != "Consent")
+        if (request.Consent is not null && request.Consent.ResourceType != KnownResourceTypes.Consent)
         {
             return MemberMatchResult.InvalidInput(
                 $"Parameter 'Consent' must be a Consent resource, but was '{request.Consent.ResourceType}'.");
@@ -125,7 +127,7 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
     }
 
     /// <summary>
-    /// Builds the response Parameters resource from the match result.
+    /// Builds the response Parameters resource from the match result using ParametersJsonNode.
     /// </summary>
     public static JsonNode BuildResponseParameters(MemberMatchResult result)
     {
@@ -134,45 +136,34 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             throw new InvalidOperationException("Cannot build response parameters for failed match result.");
         }
 
-        var parameters = new JsonObject
-        {
-            ["resourceType"] = "Parameters"
-        };
-
-        var parameterArray = new JsonArray();
+        var parameters = new ParametersJsonNode();
 
         // Add MemberIdentifier parameter
         if (result.MemberIdentifier is not null)
         {
-            var memberIdentifierParam = new JsonObject
-            {
-                ["name"] = "MemberIdentifier",
-                ["valueIdentifier"] = result.MemberIdentifier.DeepClone()
-            };
-            parameterArray.Add(memberIdentifierParam);
+            var memberIdentifierParam = new ParameterJsonNode();
+            memberIdentifierParam.Name = "MemberIdentifier";
+            memberIdentifierParam.SetValue("valueIdentifier", result.MemberIdentifier.DeepClone());
+            parameters.Parameter.Add(memberIdentifierParam);
         }
 
         // Add Patient reference parameter (optional)
         if (!string.IsNullOrEmpty(result.PatientReference))
         {
-            var patientParam = new JsonObject
+            var patientParam = new ParameterJsonNode();
+            patientParam.Name = "Patient";
+            patientParam.SetValue("valueReference", new JsonObject
             {
-                ["name"] = "Patient",
-                ["valueReference"] = new JsonObject
-                {
-                    ["reference"] = result.PatientReference
-                }
-            };
-            parameterArray.Add(patientParam);
+                ["reference"] = result.PatientReference
+            });
+            parameters.Parameter.Add(patientParam);
         }
 
-        parameters["parameter"] = parameterArray;
-
-        return parameters;
+        return parameters.MutableNode;
     }
 
     /// <summary>
-    /// Builds an OperationOutcome for error responses.
+    /// Builds an OperationOutcome for error responses using OperationOutcomeJsonNode.
     /// </summary>
     public static JsonNode BuildErrorOperationOutcome(MemberMatchResult result)
     {
@@ -181,26 +172,22 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             throw new InvalidOperationException("Cannot build error OperationOutcome for successful match result.");
         }
 
-        var issueCode = result.ErrorCode switch
+        var issueType = result.ErrorCode switch
         {
-            "no-match" => "not-found",
-            "multiple-matches" => "multiple-matches",
-            "invalid" => "invalid",
-            _ => "processing"
+            "no-match" => OperationOutcomeJsonNode.IssueType.NotFound,
+            "multiple-matches" => OperationOutcomeJsonNode.IssueType.MultipleMatches,
+            "invalid" => OperationOutcomeJsonNode.IssueType.Invalid,
+            _ => OperationOutcomeJsonNode.IssueType.Processing
         };
 
-        return new JsonObject
+        var outcome = new OperationOutcomeJsonNode();
+        outcome.Issue.Add(new OperationOutcomeJsonNode.IssueComponent
         {
-            ["resourceType"] = "OperationOutcome",
-            ["issue"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["severity"] = "error",
-                    ["code"] = issueCode,
-                    ["diagnostics"] = result.ErrorMessage ?? "Unknown error during member matching."
-                }
-            }
-        };
+            Severity = OperationOutcomeJsonNode.IssueSeverity.Error,
+            Code = issueType,
+            Diagnostics = result.ErrorMessage ?? "Unknown error during member matching."
+        });
+
+        return outcome.MutableNode;
     }
 }

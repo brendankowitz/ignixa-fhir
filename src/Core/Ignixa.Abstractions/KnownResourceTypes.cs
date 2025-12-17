@@ -17,6 +17,10 @@ public static class KnownResourceTypes
 
     public const string CompartmentDefinition = "CompartmentDefinition";
 
+    public const string Consent = "Consent";
+
+    public const string Coverage = "Coverage";
+
     public const string Device = "Device";
 
     public const string DiagnosticReport = "DiagnosticReport";

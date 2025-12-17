@@ -4,9 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Serialization;
@@ -35,15 +38,18 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
 
     private readonly ISearchServiceFactory _searchServiceFactory;
     private readonly IFhirRequestContextAccessor _contextAccessor;
+    private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<DefaultMemberMatchStrategy> _logger;
 
     public DefaultMemberMatchStrategy(
         ISearchServiceFactory searchServiceFactory,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext versionContext,
         ILogger<DefaultMemberMatchStrategy> logger)
     {
         _searchServiceFactory = searchServiceFactory ?? throw new ArgumentNullException(nameof(searchServiceFactory));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -58,9 +64,16 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
 
         _logger.LogDebug("Executing member match with default strategy");
 
-        // Extract identifiers from input resources
-        var patientIdentifiers = ExtractIdentifiers(memberPatient);
-        var subscriberId = ExtractSubscriberId(coverageToMatch);
+        // Get schema provider for FhirPath evaluation
+        var schemaProvider = _versionContext.GetBaseSchemaProvider(context.FhirVersion);
+
+        // Convert to IElement for FhirPath extraction
+        var patientElement = memberPatient.ToElement(schemaProvider);
+        var coverageElement = coverageToMatch.ToElement(schemaProvider);
+
+        // Extract identifiers from input resources using FhirPath
+        var patientIdentifiers = ExtractIdentifiers(patientElement);
+        var subscriberId = ExtractSubscriberId(coverageElement);
 
         if (patientIdentifiers.Count == 0 && string.IsNullOrEmpty(subscriberId))
         {
@@ -85,10 +98,11 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
         // Add identifier search from Coverage.subscriberId
         if (!string.IsNullOrEmpty(subscriberId))
         {
-            var subscriberExpression = new SearchParameterExpression(
-                new SearchParameterInfo(IdentifierSearchParamName, IdentifierSearchParamName, SearchParamType.Token),
-                new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, subscriberId, ignoreCase: false));
-            searchExpressions.Add(subscriberExpression);
+            var subscriberExpression = BuildIdentifierExpression(new IdentifierInfo(null, subscriberId));
+            if (subscriberExpression != null)
+            {
+                searchExpressions.Add(subscriberExpression);
+            }
         }
 
         if (searchExpressions.Count == 0)
@@ -104,7 +118,7 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
         // Execute search
         var searchOptions = new SearchOptions
         {
-            ResourceType = "Patient",
+            ResourceType = KnownResourceTypes.Patient,
             Expression = combinedExpression,
             MaxItemCount = 10, // Limit to detect multiple matches
             Total = TotalType.Accurate
@@ -137,8 +151,10 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
 
         // Single match found - build response
         var matchedResource = results[0];
-        var memberIdentifier = BuildMemberIdentifier(matchedResource);
-        var patientReference = $"Patient/{matchedResource.ResourceId}";
+        var matchedNode = JsonSourceNodeFactory.Parse(matchedResource.ResourceBytes);
+        var matchedElement = matchedNode.ToElement(schemaProvider);
+        var memberIdentifier = BuildMemberIdentifier(matchedElement);
+        var patientReference = $"{KnownResourceTypes.Patient}/{matchedResource.ResourceId}";
 
         _logger.LogInformation(
             "Member match successful: Patient/{PatientId}",
@@ -148,27 +164,20 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     }
 
     /// <summary>
-    /// Extracts identifiers from a Patient resource.
+    /// Extracts identifiers from a Patient resource using FhirPath.
     /// </summary>
-    private static List<IdentifierInfo> ExtractIdentifiers(ResourceJsonNode patient)
+    private static List<IdentifierInfo> ExtractIdentifiers(IElement patient)
     {
         var identifiers = new List<IdentifierInfo>();
 
-        var identifierArray = patient.MutableNode["identifier"];
-        if (identifierArray is JsonArray array)
+        foreach (var identifier in patient.Select("identifier"))
         {
-            foreach (var item in array)
-            {
-                if (item is JsonObject identifierObj)
-                {
-                    var system = identifierObj["system"]?.GetValue<string>();
-                    var value = identifierObj["value"]?.GetValue<string>();
+            var system = identifier.Scalar("system") as string;
+            var value = identifier.Scalar("value") as string;
 
-                    if (!string.IsNullOrEmpty(value))
-                    {
-                        identifiers.Add(new IdentifierInfo(system, value));
-                    }
-                }
+            if (!string.IsNullOrEmpty(value))
+            {
+                identifiers.Add(new IdentifierInfo(system, value));
             }
         }
 
@@ -176,11 +185,11 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     }
 
     /// <summary>
-    /// Extracts subscriberId from a Coverage resource.
+    /// Extracts subscriberId from a Coverage resource using FhirPath.
     /// </summary>
-    private static string? ExtractSubscriberId(ResourceJsonNode coverage)
+    private static string? ExtractSubscriberId(IElement coverage)
     {
-        return coverage.MutableNode["subscriberId"]?.GetValue<string>();
+        return coverage.Scalar("subscriberId") as string;
     }
 
     /// <summary>
@@ -194,42 +203,31 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     }
 
     /// <summary>
-    /// Builds the MemberIdentifier response from a matched patient.
+    /// Builds the MemberIdentifier response from a matched patient using FhirPath.
     /// </summary>
-    private static JsonNode BuildMemberIdentifier(SearchEntryResult matchedResource)
+    private static JsonNode BuildMemberIdentifier(IElement matchedPatient)
     {
-        // Try to extract the first identifier from the matched patient
-        // Use JsonSourceNodeFactory for efficient parsing from bytes
-        var resourceNode = JsonSourceNodeFactory.Parse(matchedResource.ResourceBytes);
-        var identifierArray = resourceNode.MutableNode["identifier"];
-
-        if (identifierArray is JsonArray array && array.Count > 0)
+        // Extract the first identifier with a value using FhirPath
+        foreach (var identifier in matchedPatient.Select("identifier"))
         {
-            // Return the first identifier (preferably one with a system)
-            foreach (var item in array)
-            {
-                if (item is JsonObject identifierObj)
-                {
-                    var system = identifierObj["system"]?.GetValue<string>();
-                    var value = identifierObj["value"]?.GetValue<string>();
+            var system = identifier.Scalar("system") as string;
+            var value = identifier.Scalar("value") as string;
 
-                    if (!string.IsNullOrEmpty(value))
-                    {
-                        // Return a copy of the identifier
-                        return new JsonObject
-                        {
-                            ["system"] = system != null ? JsonValue.Create(system) : null,
-                            ["value"] = JsonValue.Create(value)
-                        };
-                    }
-                }
+            if (!string.IsNullOrEmpty(value))
+            {
+                return new JsonObject
+                {
+                    ["system"] = system != null ? JsonValue.Create(system) : null,
+                    ["value"] = JsonValue.Create(value)
+                };
             }
         }
 
         // Fallback: create identifier from resource ID
+        var resourceId = matchedPatient.Scalar("id") as string ?? "";
         return new JsonObject
         {
-            ["value"] = JsonValue.Create(matchedResource.ResourceId)
+            ["value"] = JsonValue.Create(resourceId)
         };
     }
 
