@@ -1988,4 +1988,161 @@
     <value>Priority</value>
   </data>
 
+
+  <!-- Common strings -->
+  <data name="Common.TechnicalDetails" xml:space="preserve">
+    <value>Technical Details</value>
+  </data>
+
+  <!-- Patient resource - additional keys -->
+  <data name="Patient.Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Patient.Contact.Name" xml:space="preserve">
+    <value>Contact Name</value>
+  </data>
+  <data name="Patient.Contact.Relationship" xml:space="preserve">
+    <value>Contact Relationship</value>
+  </data>
+  <data name="Patient.Status.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Patient.Status.Inactive" xml:space="preserve">
+    <value>Inactive</value>
+  </data>
+
+  <!-- Patient sections -->
+  <data name="Patient.Section.Demographics" xml:space="preserve">
+    <value>Demographics</value>
+  </data>
+  <data name="Patient.Section.Names" xml:space="preserve">
+    <value>Names</value>
+  </data>
+  <data name="Patient.Section.Identifiers" xml:space="preserve">
+    <value>Identifiers</value>
+  </data>
+  <data name="Patient.Section.Contact" xml:space="preserve">
+    <value>Contact Information</value>
+  </data>
+  <data name="Patient.Section.Communication" xml:space="preserve">
+    <value>Communication Preferences</value>
+  </data>
+  <data name="Patient.Section.EmergencyContacts" xml:space="preserve">
+    <value>Emergency Contacts</value>
+  </data>
+  <data name="Patient.Section.CareTeam" xml:space="preserve">
+    <value>Care Team</value>
+  </data>
+  <data name="Patient.Section.LinkedPatients" xml:space="preserve">
+    <value>Linked Patients</value>
+  </data>
+
+  <!-- Condition resource - additional keys -->
+  <data name="Condition.Abatement" xml:space="preserve">
+    <value>Abatement</value>
+  </data>
+  <data name="Condition.Participant" xml:space="preserve">
+    <value>Participant</value>
+  </data>
+  <data name="Condition.Stage.Type" xml:space="preserve">
+    <value>Stage Type</value>
+  </data>
+  <data name="Condition.Stage.Summary" xml:space="preserve">
+    <value>Stage Summary</value>
+  </data>
+  <data name="Condition.Stage.Assessment" xml:space="preserve">
+    <value>Stage Assessment</value>
+  </data>
+  <data name="Condition.Evidence.Code" xml:space="preserve">
+    <value>Evidence Code</value>
+  </data>
+  <data name="Condition.Evidence.Detail" xml:space="preserve">
+    <value>Evidence Detail</value>
+  </data>
+
+  <!-- Condition sections -->
+  <data name="Condition.Section.ClinicalSummary" xml:space="preserve">
+    <value>Clinical Summary</value>
+  </data>
+  <data name="Condition.Section.Timeline" xml:space="preserve">
+    <value>Timeline</value>
+  </data>
+  <data name="Condition.Section.Stage" xml:space="preserve">
+    <value>Stage Information</value>
+  </data>
+  <data name="Condition.Section.Evidence" xml:space="preserve">
+    <value>Evidence</value>
+  </data>
+  <data name="Condition.Section.Participants" xml:space="preserve">
+    <value>Participants</value>
+  </data>
+  <data name="Condition.Section.Context" xml:space="preserve">
+    <value>Clinical Context</value>
+  </data>
+  <data name="Condition.Section.Notes" xml:space="preserve">
+    <value>Additional Notes</value>
+  </data>
+
+  <!-- Observation resource - additional keys -->
+  <data name="Observation.Method" xml:space="preserve">
+    <value>Method</value>
+  </data>
+  <data name="Observation.DataAbsent" xml:space="preserve">
+    <value>Data Absent Reason</value>
+  </data>
+
+  <!-- Observation sections -->
+  <data name="Observation.Section.Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Observation.Section.ClinicalContext" xml:space="preserve">
+    <value>Clinical Context</value>
+  </data>
+  <data name="Observation.Section.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="Observation.Section.Components" xml:space="preserve">
+    <value>Components</value>
+  </data>
+  <data name="Observation.Section.Related" xml:space="preserve">
+    <value>Related Observations</value>
+  </data>
+  <data name="Observation.Section.Notes" xml:space="preserve">
+    <value>Additional Notes</value>
+  </data>
+
+  <!-- DiagnosticReport resource - additional keys -->
+  <data name="DiagnosticReport.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="DiagnosticReport.Attachment" xml:space="preserve">
+    <value>Attachment</value>
+  </data>
+
+  <!-- DiagnosticReport sections -->
+  <data name="DiagnosticReport.Section.Results" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="DiagnosticReport.Section.Conclusion" xml:space="preserve">
+    <value>Conclusion</value>
+  </data>
+  <data name="DiagnosticReport.Section.Specimens" xml:space="preserve">
+    <value>Specimens</value>
+  </data>
+  <data name="DiagnosticReport.Section.Media" xml:space="preserve">
+    <value>Media</value>
+  </data>
+  <data name="DiagnosticReport.Section.PresentedForm" xml:space="preserve">
+    <value>Presented Form</value>
+  </data>
+  <data name="DiagnosticReport.Section.Context" xml:space="preserve">
+    <value>Clinical Context</value>
+  </data>
+  <data name="DiagnosticReport.Section.Details" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="DiagnosticReport.Section.Notes" xml:space="preserve">
+    <value>Additional Notes</value>
+  </data>
+
 </root>

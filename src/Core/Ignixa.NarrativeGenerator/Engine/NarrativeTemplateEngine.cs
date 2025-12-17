@@ -219,6 +219,7 @@ internal class NarrativeTemplateEngine
         fhirObject.Import("format_datetime", (Func<string?, string>)(datetime => _fhirPathFunctions.FormatDateTime(datetime, culture)));
         fhirObject.Import("calculate_age", (Func<string?, string>)FhirPathScriptFunctions.CalculateAge);
         fhirObject.Import("display", (Func<JsonNode?, string>)FhirPathScriptFunctions.Display);
+        fhirObject.Import("code_display", new Func<string?, string?, string>((system, code) => _fhirPathFunctions.CodeDisplay(system, code)));
         fhirObject.Import("get_structure_elements", new Func<string, object, IEnumerable<ElementMetadata>>((resourceType, fhirVersion) => _fhirPathFunctions.GetStructureElements(resourceType, fhirVersion)));
         fhirObject.Import("format_by_type", new Func<string?, string, string>((value, type) => _fhirPathFunctions.FormatByType(value, type, culture)));
         scriptObject.SetValue("fhir", fhirObject, readOnly: true);

@@ -45,7 +45,7 @@
       {{~ if (fhir.exists resource "gender") ~}}
       <div class="fhir-field">
         <dt>{{ l10n.t "Patient.Gender" }}</dt>
-        <dd>{{ l10n.t ("Patient.Gender." + (fhir.path resource "gender")) }}</dd>
+        <dd>{{ fhir.code_display "http://hl7.org/fhir/administrative-gender" (fhir.path resource "gender") }}</dd>
       </div>
       {{~ end ~}}
       {{~ # Birth Date with Age ~}}
@@ -105,7 +105,7 @@
       <div class="fhir-field">
         <dt>
           {{~ if name_use && name_use != "" ~}}
-          {{ l10n.t ("HumanName.Use." + name_use) }}
+          {{ fhir.code_display "http://hl7.org/fhir/name-use" name_use }}
           {{~ else ~}}
           {{ l10n.t "Patient.Name" }}
           {{~ end ~}}
@@ -137,8 +137,8 @@
       {{~ cp_use = fhir.path resource ("telecom[" + i + "].use") ~}}
       <div class="fhir-field">
         <dt>
-          {{~ if cp_system && cp_system != "" ~}}{{ l10n.t ("Telecom.System." + cp_system) }}{{~ else ~}}{{ l10n.t "Patient.Telecom" }}{{~ end ~}}
-          {{~ if cp_use && cp_use != "" ~}} <span class="fhir-use-tag">({{ l10n.t ("Telecom.Use." + cp_use) }})</span>{{~ end ~}}
+          {{~ if cp_system && cp_system != "" ~}}{{ fhir.code_display "http://hl7.org/fhir/contact-point-system" cp_system }}{{~ else ~}}{{ l10n.t "Patient.Telecom" }}{{~ end ~}}
+          {{~ if cp_use && cp_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/contact-point-use" cp_use }})</span>{{~ end ~}}
         </dt>
         <dd>
           {{~ if cp_system == "phone" || cp_system == "fax" ~}}
@@ -167,7 +167,7 @@
       <div class="fhir-field fhir-address">
         <dt>
           {{ l10n.t "Patient.Address" }}
-          {{~ if addr_use && addr_use != "" ~}} <span class="fhir-use-tag">({{ l10n.t ("Address.Use." + addr_use) }})</span>{{~ end ~}}
+          {{~ if addr_use && addr_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/address-use" addr_use }})</span>{{~ end ~}}
         </dt>
         <dd>
           <address>
@@ -202,11 +202,11 @@
           {{~ if id_type && id_type != "" ~}}
           {{ id_type }}
           {{~ else if id_type_code && id_type_code != "" ~}}
-          {{ l10n.t ("Identifier.Type." + id_type_code) }}
+          {{ fhir.display id_type_coding }}
           {{~ else ~}}
           {{ l10n.t "Patient.Identifier" }}
           {{~ end ~}}
-          {{~ if id_use && id_use != "" ~}} <span class="fhir-use-tag">({{ l10n.t ("Identifier.Use." + id_use) }})</span>{{~ end ~}}
+          {{~ if id_use && id_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/identifier-use" id_use }})</span>{{~ end ~}}
         </dt>
         <dd>
           <code class="fhir-identifier-value">{{ id_value }}</code>
@@ -305,7 +305,7 @@
       {{~ ct_system = fhir.path resource ("contact[" + i + "].telecom[" + j + "].system") ~}}
       {{~ ct_value = fhir.path resource ("contact[" + i + "].telecom[" + j + "].value") ~}}
       <div class="fhir-field">
-        <dt>{{ l10n.t ("Telecom.System." + ct_system) }}</dt>
+        <dt>{{ fhir.code_display "http://hl7.org/fhir/contact-point-system" ct_system }}</dt>
         <dd>
           {{~ if ct_system == "phone" || ct_system == "fax" ~}}
           <a href="tel:{{ ct_value }}">{{ ct_value }}</a>
@@ -336,7 +336,7 @@
       {{~ link_other_display = fhir.path resource ("link[" + i + "].other.display") ~}}
       {{~ link_other_ref = fhir.path resource ("link[" + i + "].other.reference") ~}}
       <div class="fhir-field">
-        <dt>{{ l10n.t ("Patient.Link.Type." + link_type) }}</dt>
+        <dt>{{ fhir.code_display "http://hl7.org/fhir/link-type" link_type }}</dt>
         <dd>{{ (link_other_display && link_other_display != "") ? link_other_display : link_other_ref }}</dd>
       </div>
       {{~ end ~}}

@@ -9,6 +9,7 @@ using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 
 namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 
@@ -681,6 +682,68 @@ internal class FhirPathScriptFunctions
         catch
         {
             return value;
+        }
+    }
+
+    /// <summary>
+    /// Gets the display text for a code from a FHIR ValueSet using the schema.
+    /// </summary>
+    /// <param name="system">The code system URL (e.g., "http://hl7.org/fhir/name-use").</param>
+    /// <param name="code">The code value (e.g., "official").</param>
+    /// <returns>The display text from the ValueSet, or the code itself if not found.</returns>
+    /// <example>
+    /// {{ fhir.code_display "http://hl7.org/fhir/name-use" name_use }}
+    /// </example>
+    /// <remarks>
+    /// This method looks up the code in FHIR ValueSets using the schema's ValueSetProvider.
+    /// ValueSet URLs follow the pattern: http://hl7.org/fhir/ValueSet/{name} (derived from system URL).
+    /// If the code is not found in any ValueSet, it falls back to returning the code itself.
+    /// </remarks>
+    public string CodeDisplay(string? system, string? code)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrEmpty(system))
+        {
+            return code;
+        }
+
+        try
+        {
+            // Cast to IFhirSchemaProvider to access ValueSetProvider
+            if (_schema is not IFhirSchemaProvider schemaProvider)
+            {
+                return code;
+            }
+
+            var valueSetProvider = schemaProvider.ValueSetProvider;
+
+            // Try to find a ValueSet for this system
+            // FHIR ValueSet URLs typically follow the pattern: http://hl7.org/fhir/ValueSet/{name}
+            // where {name} is derived from the code system URL
+            var valueSetUrl = system.Replace("/fhir/", "/fhir/ValueSet/", StringComparison.Ordinal);
+
+            var codes = valueSetProvider.GetCodes(valueSetUrl);
+            if (codes is not null)
+            {
+                var matchingCode = codes.FirstOrDefault(c =>
+                    string.Equals(c.Code, code, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingCode.Display is not null && !string.IsNullOrEmpty(matchingCode.Display))
+                {
+                    return matchingCode.Display;
+                }
+            }
+
+            // Fall back to the code itself
+            return code;
+        }
+        catch
+        {
+            return code;
         }
     }
 }

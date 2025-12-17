@@ -20,7 +20,7 @@
     {{~ # Status Badge ~}}
     {{~ status = fhir.path resource "status" ~}}
     <span class="fhir-status-badge fhir-status-{{ status }}" title="{{ l10n.t "DiagnosticReport.Status" }}">
-      {{ l10n.t ("DiagnosticReport.Status." + status) }}
+      {{ fhir.code_display "http://hl7.org/fhir/diagnostic-report-status" status }}
     </span>
   </div>
 

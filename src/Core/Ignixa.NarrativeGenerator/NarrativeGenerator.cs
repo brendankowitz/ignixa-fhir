@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Resources;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.NarrativeGenerator.Engine;
@@ -88,8 +89,15 @@ public class FhirNarrativeGenerator : INarrativeGenerator
     {
         ArgumentNullException.ThrowIfNull(schema);
 
-        // Create default localizer if not provided
-        localizer ??= new NullStringLocalizer();
+        // Create default localizer if not provided - use ResourceManager for NarrativeStrings.resx
+        if (localizer is null)
+        {
+            var resourceManager = new ResourceManager(
+                "Ignixa.NarrativeGenerator.NarrativeStrings",
+                typeof(FhirNarrativeGenerator).Assembly);
+
+            localizer = new ResourceManagerStringLocalizer(resourceManager);
+        }
 
         // Create template resolver
         var templateResolver = new TemplateResolver();

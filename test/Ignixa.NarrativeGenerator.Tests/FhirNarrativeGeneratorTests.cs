@@ -6,9 +6,6 @@
 using System.Globalization;
 using FluentAssertions;
 using Ignixa.Abstractions;
-using Ignixa.NarrativeGenerator.Engine;
-using Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
-using Ignixa.NarrativeGenerator.Security;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -19,22 +16,18 @@ namespace Ignixa.NarrativeGenerator.Tests;
 
 /// <summary>
 /// Integration tests for <see cref="FhirNarrativeGenerator"/> orchestration.
+/// Uses the Create() factory method to test with real ResourceManager localization.
 /// </summary>
 public class FhirNarrativeGeneratorTests
 {
-    private readonly FhirNarrativeGenerator _generator;
+    private readonly INarrativeGenerator _generator;
     private readonly IFhirSchemaProvider _schema;
 
     public FhirNarrativeGeneratorTests()
     {
-        // Setup dependencies
+        // Use the Create() factory method which loads NarrativeStrings.resx by default
         _schema = new R4CoreSchemaProvider();
-        var templateResolver = new TemplateResolver();
-        var fhirPathFunctions = new FhirPathScriptFunctions(_schema);
-        var templateEngine = new NarrativeTemplateEngine(fhirPathFunctions, new MockStringLocalizer());
-        var sanitizer = new XhtmlSanitizer();
-
-        _generator = new FhirNarrativeGenerator(templateResolver, templateEngine, sanitizer, _schema);
+        _generator = FhirNarrativeGenerator.Create(_schema);
     }
 
     #region Patient Narrative Tests
@@ -745,6 +738,40 @@ public class FhirNarrativeGeneratorTests
         htmlNarrative.Should().Contain("<"); // HTML tags
         mdNarrative.Should().Contain("#"); // Markdown headers
         compactNarrative.Should().NotStartWith("["); // Compact has no resource type prefix
+    }
+
+    [Fact]
+    public async Task GivenNoLocalizer_WhenUsingCreate_ThenUsesDefaultResourceManagerLocalization()
+    {
+        // Arrange - use Create() factory which should load NarrativeStrings.resx by default
+        var schema = new R4CoreSchemaProvider();
+        var generator = FhirNarrativeGenerator.Create(schema);
+
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "example",
+                "name": [{
+                    "family": "Smith",
+                    "given": ["John"]
+                }],
+                "gender": "male"
+            }
+            """;
+
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(schema);
+
+        // Act
+        var result = await generator.GenerateNarrativeAsync(element, "Patient");
+
+        // Assert - verify that localized strings from NarrativeStrings.resx are used
+        // NOT the keys like "Patient.Title" but the actual values like "Patient"
+        result.Should().Contain("Patient");  // From Patient.Title = "Patient"
+        result.Should().Contain("Male");      // From Patient.Gender.male = "Male"
+        result.Should().NotContain("Patient.Title");     // Should NOT contain the key
+        result.Should().NotContain("Patient.Gender.male"); // Should NOT contain the key
     }
 
     #endregion
