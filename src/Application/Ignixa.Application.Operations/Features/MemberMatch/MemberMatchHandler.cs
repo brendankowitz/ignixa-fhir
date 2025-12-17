@@ -129,7 +129,7 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
     /// <summary>
     /// Builds the response Parameters resource from the match result using ParametersJsonNode.
     /// </summary>
-    public static JsonNode BuildResponseParameters(MemberMatchResult result)
+    public static ParametersJsonNode BuildResponseParameters(MemberMatchResult result)
     {
         if (!result.Success)
         {
@@ -159,13 +159,13 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             parameters.Parameter.Add(patientParam);
         }
 
-        return parameters.MutableNode;
+        return parameters;
     }
 
     /// <summary>
     /// Builds an OperationOutcome for error responses using OperationOutcomeJsonNode.
     /// </summary>
-    public static JsonNode BuildErrorOperationOutcome(MemberMatchResult result)
+    public static OperationOutcomeJsonNode BuildErrorOperationOutcome(MemberMatchResult result)
     {
         if (result.Success)
         {
@@ -188,6 +188,6 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             Diagnostics = result.ErrorMessage ?? "Unknown error during member matching."
         });
 
-        return outcome.MutableNode;
+        return outcome;
     }
 }

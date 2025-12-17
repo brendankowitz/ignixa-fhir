@@ -1,0 +1,377 @@
+@hostname = https://localhost:7058
+
+###############################################################################
+# $member-match Operation Tests
+# FHIR Da Vinci HRex $member-match operation
+# Used for payer-to-payer member identification
+###############################################################################
+
+### Setup: Create test patient and coverage for matching
+# @name setupData
+POST {{hostname}}
+Content-Type: application/fhir+json
+Prefer: return=minimal
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        {
+            "resource": {
+                "resourceType": "Patient",
+                "id": "member-match-test-patient",
+                "identifier": [
+                    {
+                        "system": "http://example.org/member-id",
+                        "value": "MEMBER-12345"
+                    },
+                    {
+                        "system": "http://hl7.org/fhir/sid/us-ssn",
+                        "value": "999-99-9999"
+                    }
+                ],
+                "name": [{ "family": "TestMember", "given": ["John"] }],
+                "birthDate": "1980-05-15",
+                "gender": "male",
+                "address": [
+                    {
+                        "line": ["123 Main St"],
+                        "city": "Anytown",
+                        "state": "CA",
+                        "postalCode": "12345"
+                    }
+                ]
+            },
+            "request": { "method": "PUT", "url": "Patient/member-match-test-patient" }
+        },
+        {
+            "resource": {
+                "resourceType": "Coverage",
+                "id": "member-match-test-coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345",
+                "beneficiary": { "reference": "Patient/member-match-test-patient" },
+                "payor": [{ "reference": "Organization/example-payer" }]
+            },
+            "request": { "method": "PUT", "url": "Coverage/member-match-test-coverage" }
+        }
+    ]
+}
+
+###############################################################################
+# Basic $member-match Operations
+###############################################################################
+
+### Successful member match - Match by identifier
+# Expected: 200 OK with Parameters containing MemberIdentifier and Patient reference
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [
+                    {
+                        "system": "http://example.org/member-id",
+                        "value": "MEMBER-12345"
+                    }
+                ],
+                "name": [{ "family": "TestMember", "given": ["John"] }],
+                "birthDate": "1980-05-15",
+                "gender": "male"
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345",
+                "beneficiary": { "reference": "Patient/unknown" },
+                "payor": [{ "reference": "Organization/old-payer" }]
+            }
+        }
+    ]
+}
+
+### Member match with CoverageToLink (optional)
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [
+                    {
+                        "system": "http://example.org/member-id",
+                        "value": "MEMBER-12345"
+                    }
+                ],
+                "name": [{ "family": "TestMember", "given": ["John"] }],
+                "birthDate": "1980-05-15"
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345",
+                "beneficiary": { "reference": "Patient/unknown" },
+                "payor": [{ "reference": "Organization/old-payer" }]
+            }
+        },
+        {
+            "name": "CoverageToLink",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "NEW-SUBSCRIBER-ID",
+                "beneficiary": { "reference": "Patient/unknown" },
+                "payor": [{ "reference": "Organization/new-payer" }]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# No Match Scenarios (HTTP 422)
+###############################################################################
+
+### No match found - Unknown identifier
+# Expected: 422 Unprocessable Entity with OperationOutcome
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [
+                    {
+                        "system": "http://example.org/member-id",
+                        "value": "UNKNOWN-MEMBER-ID"
+                    }
+                ],
+                "name": [{ "family": "Unknown", "given": ["Person"] }]
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "UNKNOWN-SUBSCRIBER",
+                "beneficiary": { "reference": "Patient/unknown" },
+                "payor": [{ "reference": "Organization/some-payer" }]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# Validation Error Scenarios (HTTP 400)
+###############################################################################
+
+### Missing required MemberPatient parameter
+# Expected: 400 Bad Request
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345"
+            }
+        }
+    ]
+}
+
+### Missing required CoverageToMatch parameter
+# Expected: 400 Bad Request
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [{ "system": "http://example.org/member-id", "value": "MEMBER-12345" }]
+            }
+        }
+    ]
+}
+
+### Invalid resource type for MemberPatient (should be Patient)
+# Expected: 400 Bad Request
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Organization",
+                "name": "Not a Patient"
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345"
+            }
+        }
+    ]
+}
+
+### Invalid resource type for CoverageToMatch (should be Coverage)
+# Expected: 400 Bad Request
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [{ "system": "http://example.org/member-id", "value": "MEMBER-12345" }]
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Patient",
+                "name": [{ "family": "Not a Coverage" }]
+            }
+        }
+    ]
+}
+
+### Invalid request body (not a Parameters resource)
+# Expected: 400 Bad Request
+POST {{hostname}}/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Patient",
+    "name": [{ "family": "InvalidRequest" }]
+}
+
+###############################################################################
+# Tenant-Explicit Routes (Multi-tenant mode)
+###############################################################################
+
+### Member match using tenant-explicit route
+POST {{hostname}}/tenant/1/Patient/$member-match
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [
+                    {
+                        "system": "http://example.org/member-id",
+                        "value": "MEMBER-12345"
+                    }
+                ],
+                "name": [{ "family": "TestMember", "given": ["John"] }],
+                "birthDate": "1980-05-15"
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345",
+                "beneficiary": { "reference": "Patient/unknown" },
+                "payor": [{ "reference": "Organization/old-payer" }]
+            }
+        }
+    ]
+}
+
+###############################################################################
+# With _pretty parameter
+###############################################################################
+
+### Member match with pretty-printed response
+POST {{hostname}}/Patient/$member-match?_pretty=true
+Content-Type: application/fhir+json
+Accept: application/fhir+json
+
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "MemberPatient",
+            "resource": {
+                "resourceType": "Patient",
+                "identifier": [{ "system": "http://example.org/member-id", "value": "MEMBER-12345" }]
+            }
+        },
+        {
+            "name": "CoverageToMatch",
+            "resource": {
+                "resourceType": "Coverage",
+                "status": "active",
+                "subscriberId": "MEMBER-12345"
+            }
+        }
+    ]
+}
+
+###############################################################################
+# Cleanup
+###############################################################################
+
+### Delete test patient and coverage
+POST {{hostname}}
+Content-Type: application/fhir+json
+
+{
+    "resourceType": "Bundle",
+    "type": "batch",
+    "entry": [
+        { "request": { "method": "DELETE", "url": "Coverage/member-match-test-coverage" } },
+        { "request": { "method": "DELETE", "url": "Patient/member-match-test-patient" } }
+    ]
+}

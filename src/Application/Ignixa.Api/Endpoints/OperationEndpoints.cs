@@ -777,21 +777,19 @@ public static class OperationEndpoints
 
         if (result.Success)
         {
-            // Build and return successful response
+            // Build and return successful response using FhirResults
             var responseParameters = MemberMatchHandler.BuildResponseParameters(result);
-            var bytes = System.Text.Encoding.UTF8.GetBytes(responseParameters.ToJsonString());
-            return FhirResults.Ok(bytes);
+            return FhirResults.Ok(responseParameters, context);
         }
 
         // Build error response
         var errorOutcome = MemberMatchHandler.BuildErrorOperationOutcome(result);
-        var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorOutcome.ToJsonString());
 
         // Return appropriate HTTP status based on error type
         return result.ErrorCode switch
         {
-            "no-match" or "multiple-matches" => Results.UnprocessableEntity(errorOutcome),
-            _ => Results.BadRequest(errorOutcome)
+            "no-match" or "multiple-matches" => Results.UnprocessableEntity(errorOutcome.MutableNode),
+            _ => Results.BadRequest(errorOutcome.MutableNode)
         };
     }
 

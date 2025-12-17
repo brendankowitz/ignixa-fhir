@@ -8,6 +8,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.Application.Operations.Features.MemberMatch;
 using Ignixa.Serialization;
+using Ignixa.Serialization.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
@@ -336,15 +337,12 @@ public class MemberMatchHandlerTests
         var parameters = MemberMatchHandler.BuildResponseParameters(result);
 
         // Assert
-        parameters["resourceType"]?.GetValue<string>().ShouldBe("Parameters");
-        parameters["parameter"].ShouldNotBeNull();
-
-        var parameterArray = parameters["parameter"] as JsonArray;
-        parameterArray.ShouldNotBeNull();
-        parameterArray.Count.ShouldBeGreaterThanOrEqualTo(1);
+        parameters.ResourceType.ShouldBe("Parameters");
+        parameters.Parameter.ShouldNotBeNull();
+        parameters.Parameter.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         // Verify MemberIdentifier parameter
-        var memberIdParam = parameterArray.FirstOrDefault(p => p?["name"]?.GetValue<string>() == "MemberIdentifier");
+        var memberIdParam = parameters.FindParameter("MemberIdentifier");
         memberIdParam.ShouldNotBeNull();
     }
 
@@ -358,16 +356,13 @@ public class MemberMatchHandlerTests
         var outcome = MemberMatchHandler.BuildErrorOperationOutcome(result);
 
         // Assert
-        outcome["resourceType"]?.GetValue<string>().ShouldBe("OperationOutcome");
-        outcome["issue"].ShouldNotBeNull();
+        outcome.ResourceType.ShouldBe("OperationOutcome");
+        outcome.Issue.ShouldNotBeNull();
+        outcome.Issue.Count.ShouldBeGreaterThanOrEqualTo(1);
 
-        var issueArray = outcome["issue"] as JsonArray;
-        issueArray.ShouldNotBeNull();
-        issueArray.Count.ShouldBeGreaterThanOrEqualTo(1);
-
-        var firstIssue = issueArray[0];
-        firstIssue?["severity"]?.GetValue<string>().ShouldBe("error");
-        firstIssue?["code"]?.GetValue<string>().ShouldBe("not-found");
+        var firstIssue = outcome.Issue[0];
+        firstIssue.Severity.ShouldBe(OperationOutcomeJsonNode.IssueSeverity.Error);
+        firstIssue.Code.ShouldBe(OperationOutcomeJsonNode.IssueType.NotFound);
     }
 
     [Fact]
@@ -380,13 +375,12 @@ public class MemberMatchHandlerTests
         var outcome = MemberMatchHandler.BuildErrorOperationOutcome(result);
 
         // Assert
-        outcome["resourceType"]?.GetValue<string>().ShouldBe("OperationOutcome");
-        var issueArray = outcome["issue"] as JsonArray;
-        issueArray.ShouldNotBeNull();
+        outcome.ResourceType.ShouldBe("OperationOutcome");
+        outcome.Issue.ShouldNotBeNull();
 
-        var firstIssue = issueArray[0];
-        firstIssue?["severity"]?.GetValue<string>().ShouldBe("error");
-        firstIssue?["code"]?.GetValue<string>().ShouldBe("multiple-matches");
+        var firstIssue = outcome.Issue[0];
+        firstIssue.Severity.ShouldBe(OperationOutcomeJsonNode.IssueSeverity.Error);
+        firstIssue.Code.ShouldBe(OperationOutcomeJsonNode.IssueType.MultipleMatches);
     }
 
     #endregion
