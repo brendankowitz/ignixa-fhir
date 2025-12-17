@@ -32,12 +32,10 @@ public static class DurableTaskConfiguration
             var configuration = sp.GetRequiredService<IConfiguration>();
             var provider = configuration["DurableTask:Provider"] ?? "SqlServer";
 
-            return provider switch
+            return provider.ToUpperInvariant() switch
             {
-                var p when p.Equals("SqlServer", StringComparison.OrdinalIgnoreCase) =>
-                    CreateSqlServerOrchestrationService(sp, configuration),
-                var p when p.Equals("AzureStorage", StringComparison.OrdinalIgnoreCase) =>
-                    CreateAzureStorageOrchestrationService(sp, configuration),
+                "SQLSERVER" => CreateSqlServerOrchestrationService(sp, configuration),
+                "AZURESTORAGE" => CreateAzureStorageOrchestrationService(sp, configuration),
                 _ => CreateFileBasedOrchestrationService(sp, configuration),
             };
         });
@@ -154,7 +152,8 @@ public static class DurableTaskConfiguration
             return null;
         }
 
-        // Iterate through tenant configurations to find the first active non-system tenant with SQL storage
+        // Iterate through tenant configurations to find the first active tenant with SQL storage
+        // (excluding system partitions which only store transaction IDs)
         foreach (var tenantSection in tenantsSection.GetChildren())
         {
             var isActive = tenantSection.GetValue<bool>("IsActive", false);
