@@ -8,6 +8,7 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Operations.Features.Ips.Generator;
 using Ignixa.Application.Operations.Features.MemberMatch;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Validate;
@@ -39,6 +40,8 @@ public static class OperationEndpoints
     /// - POST /{resourceType}/{id}/$validate - Instance-level validation
     /// - GET /Patient/{id}/$everything - Patient $everything operation
     /// - POST /Patient/$member-match - Member match operation
+    /// - GET /Patient/{id}/$summary - Patient $summary (IPS) operation
+    /// - GET /Patient/$summary?identifier=... - Patient $summary by identifier
     ///
     /// NOTE: $transform endpoints moved to Experimental/TransformEndpoints.cs
     /// </summary>
@@ -79,6 +82,28 @@ public static class OperationEndpoints
         // GET /Patient/{id}/$everything - Patient $everything operation (tenant-explicit)
         tenantGroup.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
             .WithName("PatientEverything")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // GET /Patient/{id}/$summary - Patient $summary (IPS) operation (tenant-explicit)
+        tenantGroup.MapGet("/Patient/{id}/$summary", HandlePatientSummaryById)
+            .WithName("PatientSummaryById")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // GET /Patient/$summary?identifier=... - Patient $summary by identifier (tenant-explicit)
+        tenantGroup.MapGet("/Patient/$summary", HandlePatientSummaryByIdentifier)
+            .WithName("PatientSummaryByIdentifier")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // POST /Patient/{id}/$summary - Patient $summary (IPS) operation POST variant (tenant-explicit)
+        tenantGroup.MapPost("/Patient/{id}/$summary", HandlePatientSummaryByIdPost)
+            .WithName("PatientSummaryByIdPost")
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -126,6 +151,28 @@ public static class OperationEndpoints
         // GET /Patient/{id}/$everything - Patient $everything operation (agnostic route)
         endpoints.MapGet("/Patient/{id}/$everything", HandlePatientEverything)
             .WithName("PatientEverythingAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // GET /Patient/{id}/$summary - Patient $summary (IPS) operation (agnostic route)
+        endpoints.MapGet("/Patient/{id}/$summary", HandlePatientSummaryById)
+            .WithName("PatientSummaryByIdAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // GET /Patient/$summary?identifier=... - Patient $summary by identifier (agnostic route)
+        endpoints.MapGet("/Patient/$summary", HandlePatientSummaryByIdentifier)
+            .WithName("PatientSummaryByIdentifierAgnostic")
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // POST /Patient/{id}/$summary - Patient $summary (IPS) operation POST variant (agnostic route)
+        endpoints.MapPost("/Patient/{id}/$summary", HandlePatientSummaryByIdPost)
+            .WithName("PatientSummaryByIdPostAgnostic")
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
@@ -604,5 +651,125 @@ public static class OperationEndpoints
         }
 
         return await HandleMemberMatch(context, tenantId, mediator, memoryStreamManager, cancellationToken);
+    }
+
+    // ==================== $summary (IPS) Operation Handlers ====================
+
+    /// <summary>
+    /// Handles GET /Patient/{id}/$summary - Patient $summary (IPS) operation.
+    /// GET /tenant/{tenantId}/Patient/{id}/$summary (tenant-explicit)
+    /// GET /Patient/{id}/$summary (agnostic, single-tenant only)
+    /// </summary>
+    private static async Task<IResult> HandlePatientSummaryById(
+        HttpContext context,
+        string id,
+        [FromServices] IMediator mediator,
+        [FromQuery] string? profile,
+        CancellationToken cancellationToken)
+    {
+        var query = new IpsGeneratorQuery(
+            PatientId: id,
+            PatientIdentifier: null,
+            Profile: profile);
+
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
+        var bundleJson = result.IpsBundle.SerializeToString(pretty);
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
+        await context.Response.WriteAsync(bundleJson, cancellationToken);
+
+        return Results.Empty;
+    }
+
+    /// <summary>
+    /// Handles GET /Patient/$summary?identifier=... - Patient $summary by identifier.
+    /// GET /tenant/{tenantId}/Patient/$summary?identifier=... (tenant-explicit)
+    /// GET /Patient/$summary?identifier=... (agnostic, single-tenant only)
+    /// </summary>
+    private static async Task<IResult> HandlePatientSummaryByIdentifier(
+        HttpContext context,
+        [FromServices] IMediator mediator,
+        [FromQuery] string identifier,
+        [FromQuery] string? profile,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(identifier))
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Required,
+                "Patient identifier is required when patient ID is not provided in URL"));
+        }
+
+        var query = new IpsGeneratorQuery(
+            PatientId: null,
+            PatientIdentifier: identifier,
+            Profile: profile);
+
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
+        var bundleJson = result.IpsBundle.SerializeToString(pretty);
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
+        await context.Response.WriteAsync(bundleJson, cancellationToken);
+
+        return Results.Empty;
+    }
+
+    /// <summary>
+    /// Handles POST /Patient/{id}/$summary - Patient $summary (IPS) operation POST variant.
+    /// POST /tenant/{tenantId}/Patient/{id}/$summary (tenant-explicit)
+    /// POST /Patient/{id}/$summary (agnostic, single-tenant only)
+    /// </summary>
+    private static async Task<IResult> HandlePatientSummaryByIdPost(
+        HttpContext context,
+        string id,
+        [FromServices] IMediator mediator,
+        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+        CancellationToken cancellationToken)
+    {
+        // Parse Parameters from request body if provided
+        string? profile = null;
+
+        if (context.Request.ContentLength > 0)
+        {
+            try
+            {
+                await using var memoryStream = memoryStreamManager.GetStream("summary-request");
+                await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                if (memoryStream.Length > 0)
+                {
+                    var parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+                    profile = parameters?.GetParameterStringValue("profile");
+                }
+            }
+            catch
+            {
+                // Ignore parsing errors, proceed without profile parameter
+            }
+        }
+
+        var query = new IpsGeneratorQuery(
+            PatientId: id,
+            PatientIdentifier: null,
+            Profile: profile);
+
+        var result = await mediator.SendAsync(query, cancellationToken);
+
+        // Check for _pretty parameter
+        bool pretty = context.Request.Query.GetPrettyParameter();
+
+        var bundleJson = result.IpsBundle.SerializeToString(pretty);
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJsonUtf8;
+        await context.Response.WriteAsync(bundleJson, cancellationToken);
+
+        return Results.Empty;
     }
 }
