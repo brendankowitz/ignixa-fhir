@@ -223,8 +223,13 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
             }
         }
 
-        // Fallback: create identifier from resource ID
-        var resourceId = matchedPatient.Scalar("id") as string ?? "";
+        // Fallback: create identifier from resource ID (should always exist for stored resources)
+        var resourceId = matchedPatient.Scalar("id") as string;
+        if (string.IsNullOrEmpty(resourceId))
+        {
+            throw new InvalidOperationException("Matched patient resource has no id or identifier - this indicates a data integrity issue.");
+        }
+
         return new JsonObject
         {
             ["value"] = JsonValue.Create(resourceId)
