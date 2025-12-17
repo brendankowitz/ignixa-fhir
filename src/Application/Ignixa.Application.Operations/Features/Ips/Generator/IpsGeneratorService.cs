@@ -29,6 +29,11 @@ namespace Ignixa.Application.Operations.Features.Ips.Generator;
 /// </summary>
 public class IpsGeneratorService : IIpsGeneratorService
 {
+    /// <summary>
+    /// Default maximum number of resources to include in an IPS document.
+    /// </summary>
+    private const int DefaultMaxIpsResources = 1000;
+
     private readonly FrozenDictionary<string, IIpsGenerationStrategy> _strategyByProfile;
     private readonly IIpsGenerationStrategy _defaultStrategy;
     private readonly IQueryExecutionStrategy _executionStrategy;
@@ -123,6 +128,10 @@ public class IpsGeneratorService : IIpsGeneratorService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// TODO: Implement identifier-based patient lookup using token search parameter.
+    /// This will require building a proper SearchParameterExpression for the identifier parameter.
+    /// </remarks>
     public Task<BundleJsonNode> GenerateIpsByIdentifierAsync(
         string? identifierSystem,
         string identifierValue,
@@ -130,9 +139,14 @@ public class IpsGeneratorService : IIpsGeneratorService
         CancellationToken cancellationToken = default)
     {
         // Identifier-based IPS generation not yet implemented
-        // This requires a search query with identifier token search parameter
+        // This requires building a SearchParameterExpression for the identifier token search parameter
+        _logger.LogWarning(
+            "Identifier-based IPS generation requested but not yet implemented. System: {System}, Value: {Value}",
+            identifierSystem,
+            identifierValue);
+
         throw new NotSupportedException(
-            "Identifier-based IPS generation is not yet supported. Please use patient ID directly.");
+            "Identifier-based IPS generation is not yet supported. Please use patient ID directly via GET /Patient/{id}/$summary");
     }
 
     private IIpsGenerationStrategy SelectStrategy(string? profile)
@@ -169,7 +183,7 @@ public class IpsGeneratorService : IIpsGeneratorService
         {
             ResourceType = null, // Multi-resource type search
             Expression = expression,
-            MaxItemCount = 1000, // Reasonable limit for IPS
+            MaxItemCount = DefaultMaxIpsResources,
             Total = TotalType.None
         };
 

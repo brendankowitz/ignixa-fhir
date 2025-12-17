@@ -750,9 +750,10 @@ public static class OperationEndpoints
                     profile = parameters?.GetParameterStringValue("profile");
                 }
             }
-            catch
+            catch (System.Text.Json.JsonException)
             {
-                // Ignore parsing errors, proceed without profile parameter
+                // Malformed JSON in request body - proceed without profile parameter
+                // This is acceptable since the profile parameter is optional
             }
         }
 
