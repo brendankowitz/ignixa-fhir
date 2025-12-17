@@ -73,7 +73,7 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
         catch (Exception ex)
         {
             _logger.LogError(ex, "$member-match strategy threw an exception");
-            return MemberMatchResult.InvalidInput($"Internal error during member matching: {ex.Message}");
+            return MemberMatchResult.InvalidInput("Internal error during member matching. Please contact the system administrator.");
         }
     }
 

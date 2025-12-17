@@ -3,13 +3,13 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text;
 using System.Text.Json.Nodes;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
@@ -28,6 +28,11 @@ namespace Ignixa.Application.Operations.Features.MemberMatch;
 /// </summary>
 public class DefaultMemberMatchStrategy : IMemberMatchStrategy
 {
+    /// <summary>
+    /// The search parameter name for identifier-based searches.
+    /// </summary>
+    private const string IdentifierSearchParamName = "identifier";
+
     private readonly ISearchServiceFactory _searchServiceFactory;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DefaultMemberMatchStrategy> _logger;
@@ -81,7 +86,7 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
         if (!string.IsNullOrEmpty(subscriberId))
         {
             var subscriberExpression = new SearchParameterExpression(
-                new SearchParameterInfo("identifier", "identifier", SearchParamType.Token),
+                new SearchParameterInfo(IdentifierSearchParamName, IdentifierSearchParamName, SearchParamType.Token),
                 new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, subscriberId, ignoreCase: false));
             searchExpressions.Add(subscriberExpression);
         }
@@ -184,7 +189,7 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     private static Expression? BuildIdentifierExpression(IdentifierInfo identifier)
     {
         return new SearchParameterExpression(
-            new SearchParameterInfo("identifier", "identifier", SearchParamType.Token),
+            new SearchParameterInfo(IdentifierSearchParamName, IdentifierSearchParamName, SearchParamType.Token),
             new StringExpression(StringOperator.Equals, FieldName.TokenCode, null, identifier.Value, ignoreCase: false));
     }
 
@@ -194,12 +199,9 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     private static JsonNode BuildMemberIdentifier(SearchEntryResult matchedResource)
     {
         // Try to extract the first identifier from the matched patient
-        var resourceBytes = matchedResource.ResourceBytes;
-        var resourceJson = Encoding.UTF8.GetString(resourceBytes.Span);
-
-        // Parse the resource to get identifier
-        var resourceNode = JsonNode.Parse(resourceJson);
-        var identifierArray = resourceNode?["identifier"];
+        // Use JsonSourceNodeFactory for efficient parsing from bytes
+        var resourceNode = JsonSourceNodeFactory.Parse(matchedResource.ResourceBytes);
+        var identifierArray = resourceNode.MutableNode["identifier"];
 
         if (identifierArray is JsonArray array && array.Count > 0)
         {
