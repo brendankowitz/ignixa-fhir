@@ -4,10 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using System.Reflection;
 using Microsoft.Extensions.Localization;
-using Scriban.Runtime;
-using Scriban.Syntax;
 
 namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 
@@ -24,7 +21,7 @@ namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 /// {{ l10n.lang }}
 /// </code>
 /// </remarks>
-public class LocalizationScriptFunctions : ScriptObject
+public class LocalizationScriptFunctions
 {
     private readonly IStringLocalizer _localizer;
 
@@ -37,13 +34,8 @@ public class LocalizationScriptFunctions : ScriptObject
         ArgumentNullException.ThrowIfNull(localizer);
         _localizer = localizer;
 
-        // Register methods as callable members
-        // Scriban requires functions to be registered as lambda expressions
-        this["t"] = (Func<string, string>)(key => T(key));
-        this["format"] = (Func<string, object[], string>)((key, args) => Format(key, args));
-        this["get_or_default"] = (Func<string, string, string>)((key, defaultValue) => GetOrDefault(key, defaultValue));
-        this["lang"] = (Func<string>)(() => Lang());
-        this["culture"] = (Func<string>)(() => Culture());
+        // Public methods will be auto-discovered when this object is imported
+        // via scriptObject.Import(this) in NarrativeTemplateEngine
     }
 
     /// <summary>

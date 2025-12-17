@@ -185,10 +185,28 @@
   <data name="Common.To" xml:space="preserve">
     <value>to</value>
   </data>
+  <data name="Common.Fields" xml:space="preserve">
+    <value>Fields</value>
+  </data>
 
   <!-- Patient resource strings -->
+  <data name="Patient.Title" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="Patient.Id" xml:space="preserve">
+    <value>Patient ID</value>
+  </data>
   <data name="Patient.Name" xml:space="preserve">
     <value>Name</value>
+  </data>
+  <data name="Patient.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Patient.Telecom" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="Patient.Link" xml:space="preserve">
+    <value>Linked Records</value>
   </data>
   <data name="Patient.AriaLabel" xml:space="preserve">
     <value>Patient Information</value>

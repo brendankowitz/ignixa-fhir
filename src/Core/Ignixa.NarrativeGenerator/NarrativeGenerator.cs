@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
+using Ignixa.Abstractions;
 using Ignixa.NarrativeGenerator.Engine;
 using Ignixa.NarrativeGenerator.Security;
-using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.NarrativeGenerator;
 
@@ -33,15 +33,16 @@ public class FhirNarrativeGenerator(
 {
     /// <inheritdoc />
     public async Task<string> GenerateNarrativeAsync(
-        ResourceJsonNode resource,
+        IElement element,
+        string resourceType,
+        FhirVersion fhirVersion,
         CultureInfo? culture = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentException.ThrowIfNullOrEmpty(resourceType);
 
         var actualCulture = culture ?? CultureInfo.CurrentCulture;
-        var resourceType = resource.ResourceType ?? throw new InvalidOperationException("Resource must have ResourceType");
-        var fhirVersion = resource.FhirVersion ?? Ignixa.Abstractions.FhirVersion.R4;
 
         // 1. Resolve template (version-specific → Normative → Generic fallback)
         var resolution = await templateResolver.ResolveTemplateAsync(resourceType, fhirVersion, cancellationToken);
@@ -52,10 +53,12 @@ public class FhirNarrativeGenerator(
                 $"No template found for resource type '{resourceType}' (FHIR version: {fhirVersion})");
         }
 
-        // 2. Render template with resource context
+        // 2. Render template with element (already IElement - no conversion needed)
         var rendered = await templateEngine.RenderAsync(
             resolution.Content,
-            resource,
+            element,
+            resourceType,
+            fhirVersion,
             actualCulture,
             cancellationToken);
 

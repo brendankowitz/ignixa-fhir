@@ -2,51 +2,43 @@
   Generic Narrative Template (Fallback)
 
   This template generates WCAG 2.1 AA compliant XHTML narrative for any FHIR resource
-  that doesn't have a specific template. It provides basic information display using
-  common FHIR patterns.
+  that doesn't have a specific template. It provides metadata-driven information display
+  using structure definitions to dynamically render all resource fields.
 
-  Works with all FHIR versions (STU3, R4, R4B, R5).
+  Works with all FHIR versions (STU3, R4, R4B, R5, R6).
 
   Required helpers:
   - fhirpath(resource, expression) - Evaluates FHIRPath expression
+  - exists(resource, path) - Checks if field exists
   - t(key) - Localization helper
   - format_date(date) - Formats FHIR date for display
   - format_datetime(datetime) - Formats FHIR dateTime for display
+  - format_by_type(value, type) - Formats value by FHIR type
   - display(codeableConcept) - Formats CodeableConcept for display
+  - display_reference(reference) - Formats Reference for display
+  - display_quantity(quantity) - Formats Quantity for display
+  - get_structure_elements(resourceType, fhirVersion) - Gets element metadata
   - lang - Current language code (e.g., "en")
 ##~}}
 {{~
   # Extract common resource fields
-  resource_type = fhirpath resource "resourceType"
+  resource_type = resourceType
   resource_id = fhirpath resource "id"
   meta_last_updated = fhirpath resource "meta.lastUpdated"
   meta_version_id = fhirpath resource "meta.versionId"
 
   # Try to extract a human-readable display value using common patterns
-  display_title = fhirpath resource "title"  # Composition, DocumentReference, etc.
-  display_name = fhirpath resource "name"    # Patient, Practitioner, Organization, etc.
-  display_code = fhirpath resource "code.coding.first().display"  # Many clinical resources
-  display_code_text = fhirpath resource "code.text"  # CodeableConcept text fallback
-  display_description = fhirpath resource "description"  # StructureDefinition, etc.
+  display_title = fhirpath resource "title"
+  display_name = fhirpath resource "name"
+  display_code = fhirpath resource "code.coding.first().display"
+  display_code_text = fhirpath resource "code.text"
+  display_description = fhirpath resource "description"
 
   # Select best display value
   display_value = display_title ?? display_name ?? display_code ?? display_code_text ?? display_description
 
-  # Extract common fields that many resources share
-  status = fhirpath resource "status"
-  subject = fhirpath resource "subject"
-  subject_display = fhirpath subject "display" if subject
-  subject_reference = fhirpath subject "reference" if subject
-  effective_datetime = fhirpath resource "effective"
-  effective_period_start = fhirpath resource "effectivePeriod.start"
-  effective_period_end = fhirpath resource "effectivePeriod.end"
-  issued = fhirpath resource "issued"
-  authored = fhirpath resource "authored"
-  recorded = fhirpath resource "recorded"
-  date = fhirpath resource "date"
-  category = fhirpath resource "category"
-  category_display = fhirpath category "coding.first().display" if category
-  category_text = fhirpath category "text" if category
+  # Get structure elements for dynamic rendering
+  elements = get_structure_elements resourceType fhirVersion
 ~}}
 <div class="fhir-resource fhir-{{ resource_type | string.downcase }}" lang="{{ lang }}" role="region" aria-label="{{ t 'Common.ResourceContent' }}">
   {{~## Resource Type Header ##~}}
@@ -71,86 +63,6 @@
       </div>
       {{~ end ~}}
 
-      {{~## Status ##~}}
-      {{~ if status ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Status" }}</dt>
-        <dd><span class="status status-{{ status | string.downcase }}">{{ status }}</span></dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Category ##~}}
-      {{~ if category ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Category" }}</dt>
-        <dd>{{ category_display ?? category_text ?? category }}</dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Subject/Patient ##~}}
-      {{~ if subject ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Subject" }}</dt>
-        <dd>{{ subject_display ?? subject_reference }}</dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Effective DateTime ##~}}
-      {{~ if effective_datetime ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.EffectiveDateTime" }}</dt>
-        <dd><time datetime="{{ effective_datetime }}">{{ format_datetime effective_datetime }}</time></dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Effective Period ##~}}
-      {{~ if effective_period_start || effective_period_end ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.EffectivePeriod" }}</dt>
-        <dd>
-          {{~ if effective_period_start ~}}
-          <time datetime="{{ effective_period_start }}">{{ format_datetime effective_period_start }}</time>
-          {{~ end ~}}
-          {{~ if effective_period_start && effective_period_end ~}} {{ t "Common.To" }} {{~ end ~}}
-          {{~ if effective_period_end ~}}
-          <time datetime="{{ effective_period_end }}">{{ format_datetime effective_period_end }}</time>
-          {{~ end ~}}
-        </dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Issued ##~}}
-      {{~ if issued ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Issued" }}</dt>
-        <dd><time datetime="{{ issued }}">{{ format_datetime issued }}</time></dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Authored ##~}}
-      {{~ if authored ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Authored" }}</dt>
-        <dd><time datetime="{{ authored }}">{{ format_datetime authored }}</time></dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Recorded ##~}}
-      {{~ if recorded ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Recorded" }}</dt>
-        <dd><time datetime="{{ recorded }}">{{ format_datetime recorded }}</time></dd>
-      </div>
-      {{~ end ~}}
-
-      {{~## Date ##~}}
-      {{~ if date ~}}
-      <div class="fhir-field">
-        <dt>{{ t "Common.Date" }}</dt>
-        <dd><time datetime="{{ date }}">{{ format_datetime date }}</time></dd>
-      </div>
-      {{~ end ~}}
-
       {{~## Version ID ##~}}
       {{~ if meta_version_id ~}}
       <div class="fhir-field">
@@ -168,6 +80,38 @@
       {{~ end ~}}
     </dl>
   </section>
+
+  {{~## Dynamic Fields Section (Metadata-Driven) ##~}}
+  {{~ if elements && (elements | array.size) > 0 ~}}
+  <section aria-labelledby="fields-heading">
+    <h4 id="fields-heading" class="visually-hidden">{{ t "Common.Fields" }}</h4>
+    <dl class="fhir-details">
+      {{~ for element in elements ~}}
+        {{~ # Check if field exists using FHIRPath ~}}
+        {{~ if (exists resource element.path) ~}}
+          <div class="fhir-field">
+            <dt>{{ t (resource_type + "." + element.name) }}</dt>
+            <dd>
+              {{~ if element.is_primitive ~}}
+                {{~ value = fhirpath resource element.path ~}}
+                {{ format_by_type value element.type }}
+              {{~ else if element.is_codeable_concept ~}}
+                {{ display (fhirpath resource element.path) }}
+              {{~ else if element.is_reference ~}}
+                {{ display_reference (fhirpath resource element.path) }}
+              {{~ else if element.is_quantity ~}}
+                {{ display_quantity (fhirpath resource element.path) }}
+              {{~ else ~}}
+                {{~ # Complex type - try FHIRPath display ~}}
+                {{ fhirpath resource element.path }}
+              {{~ end ~}}
+            </dd>
+          </div>
+        {{~ end ~}}
+      {{~ end ~}}
+    </dl>
+  </section>
+  {{~ end ~}}
 
   {{~## Note/Comment Section (if exists) ##~}}
   {{~ notes = fhirpath resource "note" ~}}

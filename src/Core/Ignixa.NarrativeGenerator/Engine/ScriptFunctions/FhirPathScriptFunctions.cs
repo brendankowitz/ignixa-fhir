@@ -4,14 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using System.Reflection;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
-using Scriban.Runtime;
-using Scriban.Syntax;
 
 namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 
@@ -29,7 +26,7 @@ namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 /// {{ fhir.display resource.code }}
 /// </code>
 /// </remarks>
-public class FhirPathScriptFunctions : ScriptObject
+public class FhirPathScriptFunctions
 {
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
@@ -47,22 +44,8 @@ public class FhirPathScriptFunctions : ScriptObject
         _evaluator = new FhirPathEvaluator();
         _schema = schema;
 
-        // Register methods as callable members
-        // Scriban requires functions to be registered as lambda expressions
-        this["path"] = (Func<object, object, string?>)((resource, expression) => Path(resource, expression));
-        this["fhirpath"] = (Func<object, object, string?>)((resource, expression) => Path(resource, expression));
-        this["path_first"] = (Func<object, object, string?>)((resource, expression) => PathFirst(resource, expression));
-        this["path_all"] = (Func<object, object, IEnumerable<string>>)((resource, expression) => PathAll(resource, expression));
-        this["format_date"] = (Func<string?, CultureInfo?, string>)((date, culture) => FormatDate(date, culture));
-        this["format_datetime"] = (Func<string?, CultureInfo?, string>)((datetime, culture) => FormatDateTime(datetime, culture));
-        this["display"] = (Func<JsonNode?, string>)(node => Display(node));
-        this["display_coding"] = (Func<JsonNode?, string>)(coding => DisplayCoding(coding));
-        this["display_reference"] = (Func<JsonNode?, string>)(reference => DisplayReference(reference));
-        this["display_quantity"] = (Func<JsonNode?, string>)(quantity => DisplayQuantity(quantity));
-        this["exists"] = (Func<object, object, bool>)((resource, expression) => Exists(resource, expression));
-        this["is_empty"] = (Func<JsonNode?, bool>)(node => IsEmpty(node));
-        this["count"] = (Func<object, object, int>)((resource, expression) => Count(resource, expression));
-        this["safe_html"] = (Func<string?, string>)(text => SafeHtml(text));
+        // Public methods will be auto-discovered when this object is imported
+        // via scriptObject.Import(this) in NarrativeTemplateEngine
     }
 
     /// <summary>
@@ -76,7 +59,7 @@ public class FhirPathScriptFunctions : ScriptObject
     /// </example>
     public string? Path(object resource, object expression)
     {
-        if (resource is not ResourceJsonNode resourceNode || expression is not string exprString || string.IsNullOrEmpty(exprString))
+        if (resource is not IElement element || expression is not string exprString || string.IsNullOrEmpty(exprString))
         {
             return string.Empty;
         }
@@ -84,7 +67,6 @@ public class FhirPathScriptFunctions : ScriptObject
         try
         {
             var parsedExpression = _parser.Parse(exprString);
-            var element = resourceNode.ToElement(_schema);
             var results = _evaluator.Evaluate(element, parsedExpression);
 
             var firstResult = results.FirstOrDefault();
@@ -134,7 +116,7 @@ public class FhirPathScriptFunctions : ScriptObject
     /// </example>
     public IEnumerable<string> PathAll(object resource, object expression)
     {
-        if (resource is not ResourceJsonNode resourceNode || expression is not string exprString || string.IsNullOrEmpty(exprString))
+        if (resource is not IElement element || expression is not string exprString || string.IsNullOrEmpty(exprString))
         {
             return [];
         }
@@ -142,7 +124,6 @@ public class FhirPathScriptFunctions : ScriptObject
         try
         {
             var parsedExpression = _parser.Parse(exprString);
-            var element = resourceNode.ToElement(_schema);
             var results = _evaluator.Evaluate(element, parsedExpression);
 
             return results.Select(r => r.Value?.ToString() ?? string.Empty);
@@ -166,7 +147,7 @@ public class FhirPathScriptFunctions : ScriptObject
     /// </example>
     public bool Exists(object resource, object expression)
     {
-        if (resource is not ResourceJsonNode resourceNode || expression is not string exprString || string.IsNullOrEmpty(exprString))
+        if (resource is not IElement element || expression is not string exprString || string.IsNullOrEmpty(exprString))
         {
             return false;
         }
@@ -174,7 +155,6 @@ public class FhirPathScriptFunctions : ScriptObject
         try
         {
             var parsedExpression = _parser.Parse(exprString);
-            var element = resourceNode.ToElement(_schema);
             var results = _evaluator.Evaluate(element, parsedExpression);
 
             return results.Any();
@@ -191,9 +171,9 @@ public class FhirPathScriptFunctions : ScriptObject
     /// <param name="resource">The FHIR resource to evaluate against.</param>
     /// <param name="expression">The FHIRPath expression to evaluate.</param>
     /// <returns>The number of results.</returns>
-    public new int Count(object resource, object expression)
+    public int Count(object resource, object expression)
     {
-        if (resource is not ResourceJsonNode resourceNode || expression is not string exprString || string.IsNullOrEmpty(exprString))
+        if (resource is not IElement element || expression is not string exprString || string.IsNullOrEmpty(exprString))
         {
             return 0;
         }
@@ -201,7 +181,6 @@ public class FhirPathScriptFunctions : ScriptObject
         try
         {
             var parsedExpression = _parser.Parse(exprString);
-            var element = resourceNode.ToElement(_schema);
             var results = _evaluator.Evaluate(element, parsedExpression);
 
             return results.Count();
@@ -517,5 +496,122 @@ public class FhirPathScriptFunctions : ScriptObject
         }
 
         return System.Web.HttpUtility.HtmlEncode(text);
+    }
+
+    /// <summary>
+    /// Gets structure elements for a resource type.
+    /// Returns top-level elements only (depth 1) for template iteration.
+    /// </summary>
+    public IEnumerable<ElementMetadata> GetStructureElements(string resourceType, object fhirVersionObj)
+    {
+        if (string.IsNullOrEmpty(resourceType))
+        {
+            return [];
+        }
+
+        try
+        {
+            var typeDefinition = _schema.GetTypeDefinition(resourceType);
+            if (typeDefinition is null)
+            {
+                return [];
+            }
+
+            // Get top-level children elements
+            var elements = typeDefinition.Children
+                .Where(e => !string.Equals(e.Info.Name, "id", StringComparison.Ordinal))  // Skip 'id' (shown elsewhere)
+                .Where(e => !string.Equals(e.Info.Name, "meta", StringComparison.Ordinal))  // Skip 'meta' (shown elsewhere)
+                .Where(e => !string.Equals(e.Info.Name, "implicitRules", StringComparison.Ordinal))  // Skip technical fields
+                .Where(e => !string.Equals(e.Info.Name, "language", StringComparison.Ordinal))
+                .Where(e => !string.Equals(e.Info.Name, "text", StringComparison.Ordinal))  // Skip narrative (we're generating it!)
+                .Where(e => !string.Equals(e.Info.Name, "contained", StringComparison.Ordinal))  // Skip contained (complex)
+                .Where(e => !string.Equals(e.Info.Name, "extension", StringComparison.Ordinal))  // Skip extensions (for now)
+                .Where(e => !string.Equals(e.Info.Name, "modifierExtension", StringComparison.Ordinal))
+                .Select(e =>
+                {
+                    var typeName = e.Info.Name;
+
+                    // If ITypeExtended, use Types collection to get first type
+                    string typeCode = "unknown";
+                    bool isPrimitive = false;
+                    bool isCodeableConcept = false;
+                    bool isReference = false;
+                    bool isQuantity = false;
+                    int min = 0;
+                    int max = 1;
+
+                    if (e is ITypeExtended extended)
+                    {
+                        var firstType = extended.Types.Count > 0 ? extended.Types[0] : null;
+                        typeCode = firstType?.Code ?? e.Info.Name;
+                        isPrimitive = firstType?.Code is not null &&
+                                      _schema.GetTypeDefinition(firstType.Code)?.Info.IsPrimitive == true;
+                        isCodeableConcept = extended.Types.Any(t => string.Equals(t.Code, "CodeableConcept", StringComparison.Ordinal));
+                        isReference = extended.Types.Any(t => string.Equals(t.Code, "Reference", StringComparison.Ordinal));
+                        isQuantity = extended.Types.Any(t => string.Equals(t.Code, "Quantity", StringComparison.Ordinal));
+                        min = extended.Min;
+                        max = extended.Max == "*" ? int.MaxValue : int.Parse(extended.Max, CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        // Fall back to Info properties
+                        typeCode = e.Info.Name;
+                        isPrimitive = e.Info.IsPrimitive;
+                        min = e.IsRequired ? 1 : 0;
+                        max = e.IsCollection ? int.MaxValue : 1;
+                    }
+
+                    return new ElementMetadata
+                    {
+                        Name = typeName,
+                        Path = $"{resourceType}.{typeName}",
+                        Type = typeCode,
+                        IsPrimitive = isPrimitive,
+                        IsCodeableConcept = isCodeableConcept,
+                        IsReference = isReference,
+                        IsQuantity = isQuantity,
+                        IsArray = max > 1,
+                        Min = min,
+                        Max = max,
+                        Description = null  // Short description not available in IType interface
+                    };
+                })
+                .ToList();
+
+            return elements;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Formats a value based on its FHIR type.
+    /// Handles dates, booleans, and other common types.
+    /// </summary>
+    public string FormatByType(string? value, string type, CultureInfo? culture = null)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return type switch
+            {
+                "date" => FormatDate(value, culture),
+                "dateTime" or "instant" => FormatDateTime(value, culture),
+                "boolean" when value == "true" => "Yes",  // Could use localization here
+                "boolean" when value == "false" => "No",
+                "boolean" => value,
+                _ => value
+            };
+        }
+        catch
+        {
+            return value;
+        }
     }
 }

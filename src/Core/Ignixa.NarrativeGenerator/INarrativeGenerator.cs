@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Abstractions;
 
 namespace Ignixa.NarrativeGenerator;
 
@@ -14,14 +14,26 @@ namespace Ignixa.NarrativeGenerator;
 public interface INarrativeGenerator
 {
     /// <summary>
-    /// Generates XHTML narrative for a FHIR resource.
+    /// Generates a WCAG 2.1 AA compliant XHTML narrative for a FHIR resource.
     /// </summary>
-    /// <param name="resource">The FHIR resource to generate narrative for.</param>
-    /// <param name="culture">Optional culture for localized strings. Defaults to <see cref="CultureInfo.CurrentCulture"/>.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The generated XHTML narrative as a string.</returns>
+    /// <param name="element">The FHIR resource element to generate narrative for. Must be created with an appropriate <see cref="ISchema"/> that matches the <paramref name="fhirVersion"/>.</param>
+    /// <param name="resourceType">The FHIR resource type (e.g., "Patient", "Observation"). This is required because <see cref="IElement"/> doesn't carry type information.</param>
+    /// <param name="fhirVersion">The FHIR version of the resource. Used to select version-appropriate narrative templates.</param>
+    /// <param name="culture">The culture for localization (defaults to current culture).</param>
+    /// <param name="cancellationToken">Cancellation token for async operations.</param>
+    /// <returns>Sanitized XHTML narrative content.</returns>
+    /// <remarks>
+    /// This API uses <see cref="IElement"/> instead of <see cref="Ignixa.Serialization.SourceNodes.ResourceJsonNode"/> to provide:
+    /// <list type="bullet">
+    ///   <item>A cleaner abstraction that works with any source (JSON, XML, or in-memory)</item>
+    ///   <item>Type-safe access to FHIR elements through the element tree</item>
+    ///   <item>Consistency with internal template engine architecture</item>
+    /// </list>
+    /// </remarks>
     Task<string> GenerateNarrativeAsync(
-        ResourceJsonNode resource,
+        IElement element,
+        string resourceType,
+        FhirVersion fhirVersion,
         CultureInfo? culture = null,
         CancellationToken cancellationToken = default);
 }

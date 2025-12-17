@@ -399,49 +399,107 @@ public sealed class CSharpNarrativeTemplateLanguage : ILanguage
         switch (typeCode)
         {
             case "dateTime":
-            case "date":
             case "instant":
+                sb.AppendLine($"    <dd>{{{{ fhir.format_datetime (fhir.path resource \"{elementName}\") }}}}</dd>");
+                break;
+
+            case "date":
                 sb.AppendLine($"    <dd>{{{{ fhir.format_date (fhir.path resource \"{elementName}\") }}}}</dd>");
                 break;
 
             case "Period":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_period (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build period display inline (start - end)
+                sb.AppendLine($"    {{{{~ period_start = fhir.path resource \"{elementName}.start\" ~}}}}");
+                sb.AppendLine($"    {{{{~ period_end = fhir.path resource \"{elementName}.end\" ~}}}}");
+                sb.AppendLine($"    <dd>");
+                sb.AppendLine($"      {{{{~ if period_start && period_start != \"\" ~}}}}{{{{ fhir.format_date period_start }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"      {{{{~ if (period_start && period_start != \"\") && (period_end && period_end != \"\") ~}}}} - {{{{~ end ~}}}}");
+                sb.AppendLine($"      {{{{~ if period_end && period_end != \"\" ~}}}}{{{{ fhir.format_date period_end }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"    </dd>");
                 break;
 
             case "CodeableConcept":
-                sb.AppendLine($"    <dd>{{{{ fhir.display_codeable_concept (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Use display helper for CodeableConcept (this helper exists)
+                sb.AppendLine($"    {{{{~ cc_display = fhir.path resource \"{elementName}.coding.first().display\" ~}}}}");
+                sb.AppendLine($"    {{{{~ cc_code = fhir.path resource \"{elementName}.coding.first().code\" ~}}}}");
+                sb.AppendLine($"    <dd>{{{{ (cc_display && cc_display != \"\") ? cc_display : cc_code }}}}</dd>");
                 break;
 
             case "Coding":
-                sb.AppendLine($"    <dd>{{{{ fhir.display_coding (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Use display helper for Coding (this helper exists)
+                sb.AppendLine($"    {{{{~ coding_display = fhir.path resource \"{elementName}.display\" ~}}}}");
+                sb.AppendLine($"    {{{{~ coding_code = fhir.path resource \"{elementName}.code\" ~}}}}");
+                sb.AppendLine($"    <dd>{{{{ (coding_display && coding_display != \"\") ? coding_display : coding_code }}}}</dd>");
                 break;
 
             case "Reference":
-                sb.AppendLine($"    <dd>{{{{ fhir.display_reference (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build reference display inline (display or reference)
+                sb.AppendLine($"    {{{{~ ref_display = fhir.path resource \"{elementName}.display\" ~}}}}");
+                sb.AppendLine($"    {{{{~ ref_reference = fhir.path resource \"{elementName}.reference\" ~}}}}");
+                sb.AppendLine($"    <dd>{{{{ (ref_display && ref_display != \"\") ? ref_display : ref_reference }}}}</dd>");
                 break;
 
             case "Quantity":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_quantity (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build quantity display inline (value unit)
+                sb.AppendLine($"    {{{{~ qty_value = fhir.path resource \"{elementName}.value\" ~}}}}");
+                sb.AppendLine($"    {{{{~ qty_unit = fhir.path resource \"{elementName}.unit\" ~}}}}");
+                sb.AppendLine($"    {{{{~ qty_code = fhir.path resource \"{elementName}.code\" ~}}}}");
+                sb.AppendLine($"    <dd>{{{{ qty_value }}}}{{{{~ if qty_unit && qty_unit != \"\" ~}}}} {{{{ qty_unit }}}}{{{{~ else if qty_code && qty_code != \"\" ~}}}} {{{{ qty_code }}}}{{{{~ end ~}}}}</dd>");
                 break;
 
             case "HumanName":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_human_name (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build name display inline (given family)
+                sb.AppendLine($"    {{{{~ name_given = fhir.path resource \"{elementName}.given.first()\" ~}}}}");
+                sb.AppendLine($"    {{{{~ name_family = fhir.path resource \"{elementName}.family\" ~}}}}");
+                sb.AppendLine($"    <dd>{{{{ name_given }}}}{{{{~ if name_given && name_given != \"\" && name_family && name_family != \"\" ~}}}} {{{{~ end ~}}}}{{{{ name_family }}}}</dd>");
                 break;
 
             case "Address":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_address (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build address display inline (city, state postal)
+                sb.AppendLine($"    {{{{~ addr_city = fhir.path resource \"{elementName}.city\" ~}}}}");
+                sb.AppendLine($"    {{{{~ addr_state = fhir.path resource \"{elementName}.state\" ~}}}}");
+                sb.AppendLine($"    {{{{~ addr_postal = fhir.path resource \"{elementName}.postalCode\" ~}}}}");
+                sb.AppendLine($"    <dd>");
+                sb.AppendLine($"      {{{{~ if addr_city && addr_city != \"\" ~}}}}{{{{ addr_city }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"      {{{{~ if addr_state && addr_state != \"\" ~}}}}{{{{~ if addr_city && addr_city != \"\" ~}}}}, {{{{~ end ~}}}}{{{{ addr_state }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"      {{{{~ if addr_postal && addr_postal != \"\" ~}}}} {{{{ addr_postal }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"    </dd>");
                 break;
 
             case "Identifier":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_identifier (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build identifier display inline (type: value)
+                sb.AppendLine($"    {{{{~ id_value = fhir.path resource \"{elementName}.value\" ~}}}}");
+                sb.AppendLine($"    {{{{~ id_system = fhir.path resource \"{elementName}.system\" ~}}}}");
+                sb.AppendLine($"    {{{{~ id_type = fhir.path resource \"{elementName}.type.coding.first().display\" ~}}}}");
+                sb.AppendLine($"    <dd>");
+                sb.AppendLine($"      {{{{~ if id_type && id_type != \"\" ~}}}}<span class=\"identifier-type\">{{{{ id_type }}}}:</span> {{{{~ end ~}}}}");
+                sb.AppendLine($"      <span class=\"identifier-value\">{{{{ id_value }}}}</span>");
+                sb.AppendLine($"      {{{{~ if id_system && id_system != \"\" ~}}}} <span class=\"identifier-system\">({{{{ id_system }}}})</span>{{{{~ end ~}}}}");
+                sb.AppendLine($"    </dd>");
                 break;
 
             case "ContactPoint":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_contact_point (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build contact point display inline (system: value)
+                sb.AppendLine($"    {{{{~ cp_system = fhir.path resource \"{elementName}.system\" ~}}}}");
+                sb.AppendLine($"    {{{{~ cp_value = fhir.path resource \"{elementName}.value\" ~}}}}");
+                sb.AppendLine($"    {{{{~ cp_use = fhir.path resource \"{elementName}.use\" ~}}}}");
+                sb.AppendLine($"    <dd>");
+                sb.AppendLine($"      {{{{~ if cp_system && cp_system != \"\" ~}}}}{{{{ l10n.t (\"Telecom.System.\" + cp_system) }}}}: {{{{~ end ~}}}}");
+                sb.AppendLine($"      {{{{ cp_value }}}}");
+                sb.AppendLine($"      {{{{~ if cp_use && cp_use != \"\" ~}}}} ({{{{ l10n.t (\"Telecom.Use.\" + cp_use) }}}}){{{{~ end ~}}}}");
+                sb.AppendLine($"    </dd>");
                 break;
 
             case "boolean":
-                sb.AppendLine($"    <dd>{{{{ fhir.format_boolean (fhir.path resource \"{elementName}\") }}}}</dd>");
+                // Build boolean display inline using localization
+                sb.AppendLine($"    {{{{~ bool_value = fhir.path resource \"{elementName}\" ~}}}}");
+                sb.AppendLine($"    <dd>");
+                sb.AppendLine($"      {{{{~ if bool_value == \"true\" ~}}}}");
+                sb.AppendLine($"        {{{{ l10n.t \"Common.Yes\" }}}}");
+                sb.AppendLine($"      {{{{~ else ~}}}}");
+                sb.AppendLine($"        {{{{ l10n.t \"Common.No\" }}}}");
+                sb.AppendLine($"      {{{{~ end ~}}}}");
+                sb.AppendLine($"    </dd>");
                 break;
 
             case "code":
@@ -469,40 +527,97 @@ public sealed class CSharpNarrativeTemplateLanguage : ILanguage
         sb.AppendLine($"    <dt>{{{{ l10n.t \"{labelKey}\" }}}}</dt>");
         sb.AppendLine($"    <dd>");
         sb.AppendLine($"      <ul class=\"fhir-list\">");
-        sb.AppendLine($"      {{{{~ for item in (fhir.path resource \"{elementName}\") ~}}}}");
+        sb.AppendLine($"      {{{{~ item_count = fhir.count resource \"{elementName}\" ~}}}}");
+        sb.AppendLine($"      {{{{~ for i in 0..(item_count - 1) ~}}}}");
 
         switch (typeCode)
         {
             case "CodeableConcept":
-                sb.AppendLine($"        <li>{{{{ fhir.display_codeable_concept item }}}}</li>");
+                // Build CodeableConcept display inline
+                sb.AppendLine($"      {{{{~ cc_display = fhir.path resource (\"{elementName}[\" + i + \"].coding.first().display\") ~}}}}");
+                sb.AppendLine($"      {{{{~ cc_code = fhir.path resource (\"{elementName}[\" + i + \"].coding.first().code\") ~}}}}");
+                sb.AppendLine($"        <li>{{{{ (cc_display && cc_display != \"\") ? cc_display : cc_code }}}}</li>");
                 break;
 
             case "Coding":
-                sb.AppendLine($"        <li>{{{{ fhir.display_coding item }}}}</li>");
+                // Build Coding display inline
+                sb.AppendLine($"      {{{{~ coding_display = fhir.path resource (\"{elementName}[\" + i + \"].display\") ~}}}}");
+                sb.AppendLine($"      {{{{~ coding_code = fhir.path resource (\"{elementName}[\" + i + \"].code\") ~}}}}");
+                sb.AppendLine($"        <li>{{{{ (coding_display && coding_display != \"\") ? coding_display : coding_code }}}}</li>");
                 break;
 
             case "Reference":
-                sb.AppendLine($"        <li>{{{{ fhir.display_reference item }}}}</li>");
+                // Build Reference display inline
+                sb.AppendLine($"      {{{{~ ref_display = fhir.path resource (\"{elementName}[\" + i + \"].display\") ~}}}}");
+                sb.AppendLine($"      {{{{~ ref_reference = fhir.path resource (\"{elementName}[\" + i + \"].reference\") ~}}}}");
+                sb.AppendLine($"        <li>{{{{ (ref_display && ref_display != \"\") ? ref_display : ref_reference }}}}</li>");
                 break;
 
             case "Identifier":
-                sb.AppendLine($"        <li>{{{{ fhir.format_identifier item }}}}</li>");
+                // Build Identifier display inline
+                sb.AppendLine($"      {{{{~ id_value = fhir.path resource (\"{elementName}[\" + i + \"].value\") ~}}}}");
+                sb.AppendLine($"      {{{{~ id_system = fhir.path resource (\"{elementName}[\" + i + \"].system\") ~}}}}");
+                sb.AppendLine($"      {{{{~ id_type = fhir.path resource (\"{elementName}[\" + i + \"].type.coding.first().display\") ~}}}}");
+                sb.AppendLine($"        <li>");
+                sb.AppendLine($"          {{{{~ if id_type && id_type != \"\" ~}}}}<span class=\"identifier-type\">{{{{ id_type }}}}:</span> {{{{~ end ~}}}}");
+                sb.AppendLine($"          <span class=\"identifier-value\">{{{{ id_value }}}}</span>");
+                sb.AppendLine($"          {{{{~ if id_system && id_system != \"\" ~}}}} <span class=\"identifier-system\">({{{{ id_system }}}})</span>{{{{~ end ~}}}}");
+                sb.AppendLine($"        </li>");
                 break;
 
             case "HumanName":
-                sb.AppendLine($"        <li>{{{{ fhir.format_human_name item }}}}</li>");
+                // Build HumanName display inline
+                sb.AppendLine($"      {{{{~ name_given = fhir.path resource (\"{elementName}[\" + i + \"].given.first()\") ~}}}}");
+                sb.AppendLine($"      {{{{~ name_family = fhir.path resource (\"{elementName}[\" + i + \"].family\") ~}}}}");
+                sb.AppendLine($"        <li>{{{{ name_given }}}}{{{{~ if name_given && name_given != \"\" && name_family && name_family != \"\" ~}}}} {{{{~ end ~}}}}{{{{ name_family }}}}</li>");
                 break;
 
             case "Address":
-                sb.AppendLine($"        <li>{{{{ fhir.format_address item }}}}</li>");
+                // Build Address display inline
+                sb.AppendLine($"      {{{{~ addr_city = fhir.path resource (\"{elementName}[\" + i + \"].city\") ~}}}}");
+                sb.AppendLine($"      {{{{~ addr_state = fhir.path resource (\"{elementName}[\" + i + \"].state\") ~}}}}");
+                sb.AppendLine($"      {{{{~ addr_postal = fhir.path resource (\"{elementName}[\" + i + \"].postalCode\") ~}}}}");
+                sb.AppendLine($"        <li>");
+                sb.AppendLine($"          {{{{~ if addr_city && addr_city != \"\" ~}}}}{{{{ addr_city }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"          {{{{~ if addr_state && addr_state != \"\" ~}}}}{{{{~ if addr_city && addr_city != \"\" ~}}}}, {{{{~ end ~}}}}{{{{ addr_state }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"          {{{{~ if addr_postal && addr_postal != \"\" ~}}}} {{{{ addr_postal }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"        </li>");
                 break;
 
             case "ContactPoint":
-                sb.AppendLine($"        <li>{{{{ fhir.format_contact_point item }}}}</li>");
+                // Build ContactPoint display inline
+                sb.AppendLine($"      {{{{~ cp_system = fhir.path resource (\"{elementName}[\" + i + \"].system\") ~}}}}");
+                sb.AppendLine($"      {{{{~ cp_value = fhir.path resource (\"{elementName}[\" + i + \"].value\") ~}}}}");
+                sb.AppendLine($"      {{{{~ cp_use = fhir.path resource (\"{elementName}[\" + i + \"].use\") ~}}}}");
+                sb.AppendLine($"        <li>");
+                sb.AppendLine($"          {{{{~ if cp_system && cp_system != \"\" ~}}}}{{{{ l10n.t (\"Telecom.System.\" + cp_system) }}}}: {{{{~ end ~}}}}");
+                sb.AppendLine($"          {{{{ cp_value }}}}");
+                sb.AppendLine($"          {{{{~ if cp_use && cp_use != \"\" ~}}}} ({{{{ l10n.t (\"Telecom.Use.\" + cp_use) }}}}){{{{~ end ~}}}}");
+                sb.AppendLine($"        </li>");
+                break;
+
+            case "Quantity":
+                // Build Quantity display inline
+                sb.AppendLine($"      {{{{~ qty_value = fhir.path resource (\"{elementName}[\" + i + \"].value\") ~}}}}");
+                sb.AppendLine($"      {{{{~ qty_unit = fhir.path resource (\"{elementName}[\" + i + \"].unit\") ~}}}}");
+                sb.AppendLine($"      {{{{~ qty_code = fhir.path resource (\"{elementName}[\" + i + \"].code\") ~}}}}");
+                sb.AppendLine($"        <li>{{{{ qty_value }}}}{{{{~ if qty_unit && qty_unit != \"\" ~}}}} {{{{ qty_unit }}}}{{{{~ else if qty_code && qty_code != \"\" ~}}}} {{{{ qty_code }}}}{{{{~ end ~}}}}</li>");
+                break;
+
+            case "Period":
+                // Build Period display inline
+                sb.AppendLine($"      {{{{~ period_start = fhir.path resource (\"{elementName}[\" + i + \"].start\") ~}}}}");
+                sb.AppendLine($"      {{{{~ period_end = fhir.path resource (\"{elementName}[\" + i + \"].end\") ~}}}}");
+                sb.AppendLine($"        <li>");
+                sb.AppendLine($"          {{{{~ if period_start && period_start != \"\" ~}}}}{{{{ fhir.format_date period_start }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"          {{{{~ if (period_start && period_start != \"\") && (period_end && period_end != \"\") ~}}}} - {{{{~ end ~}}}}");
+                sb.AppendLine($"          {{{{~ if period_end && period_end != \"\" ~}}}}{{{{ fhir.format_date period_end }}}}{{{{~ end ~}}}}");
+                sb.AppendLine($"        </li>");
                 break;
 
             default:
-                sb.AppendLine($"        <li>{{{{ item }}}}</li>");
+                sb.AppendLine($"      {{{{~ item_value = fhir.path resource (\"{elementName}[\" + i + \"]\") ~}}}}");
+                sb.AppendLine($"        <li>{{{{ item_value }}}}</li>");
                 break;
         }
 

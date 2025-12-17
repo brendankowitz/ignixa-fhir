@@ -1,21 +1,21 @@
-﻿{{~ # Auto-generated Scriban narrative template for Patient ~}}
-{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Patient ~}}
+﻿{{~ # Auto-generated Scriban narrative template for RelatedPerson ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/RelatedPerson ~}}
 
-<div class="fhir-narrative fhir-patient" lang="{{ l10n.lang }}">
+<div class="fhir-narrative fhir-relatedperson" lang="{{ l10n.lang }}">
   <header class="fhir-header">
-    <h3 class="fhir-resource-type">{{ l10n.t "Patient.Title" }}</h3>
+    <h3 class="fhir-resource-type">{{ l10n.t "RelatedPerson.Title" }}</h3>
     {{~ if (fhir.exists resource "id") ~}}
-    <span class="fhir-id" aria-label="{{ l10n.t "Patient.Id" }}">{{ fhir.path resource "id" }}</span>
+    <span class="fhir-id" aria-label="{{ l10n.t "RelatedPerson.Id" }}">{{ fhir.path resource "id" }}</span>
     {{~ end ~}}
   </header>
 
   <dl class="fhir-details">
     {{~ if (fhir.exists resource "id") ~}}
-    <dt>{{ l10n.t "Patient.Id" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Id" }}</dt>
     <dd>{{ fhir.path resource "id" }}</dd>
     {{~ end ~}}
     {{~ if (fhir.exists resource "identifier") ~}}
-    <dt>{{ l10n.t "Patient.Identifier" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Identifier" }}</dt>
     <dd>
       <ul class="fhir-list">
       {{~ item_count = fhir.count resource "identifier" ~}}
@@ -33,7 +33,7 @@
     </dd>
     {{~ end ~}}
     {{~ if (fhir.exists resource "name") ~}}
-    <dt>{{ l10n.t "Patient.Name" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Name" }}</dt>
     <dd>
       <ul class="fhir-list">
       {{~ item_count = fhir.count resource "name" ~}}
@@ -45,12 +45,16 @@
       </ul>
     </dd>
     {{~ end ~}}
+    <dt>{{ l10n.t "RelatedPerson.Patient" }}</dt>
+    {{~ ref_display = fhir.path resource "patient.display" ~}}
+    {{~ ref_reference = fhir.path resource "patient.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
     {{~ if (fhir.exists resource "text") ~}}
-    <dt>{{ l10n.t "Patient.Text" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Text" }}</dt>
     <dd>{{ fhir.path resource "text" }}</dd>
     {{~ end ~}}
     {{~ if (fhir.exists resource "active") ~}}
-    <dt>{{ l10n.t "Patient.Active" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Active" }}</dt>
     {{~ bool_value = fhir.path resource "active" ~}}
     <dd>
       {{~ if bool_value == "true" ~}}
@@ -60,8 +64,34 @@
       {{~ end ~}}
     </dd>
     {{~ end ~}}
+    {{~ if (fhir.exists resource "relationship") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Relationship" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "relationship" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("relationship[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("relationship[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "role") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Role" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "role" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("role[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("role[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
     {{~ if (fhir.exists resource "telecom") ~}}
-    <dt>{{ l10n.t "Patient.Telecom" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Telecom" }}</dt>
     <dd>
       <ul class="fhir-list">
       {{~ item_count = fhir.count resource "telecom" ~}}
@@ -79,26 +109,15 @@
     </dd>
     {{~ end ~}}
     {{~ if (fhir.exists resource "gender") ~}}
-    <dt>{{ l10n.t "Patient.Gender" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Gender" }}</dt>
     <dd>{{ fhir.path resource "gender" }}</dd>
     {{~ end ~}}
     {{~ if (fhir.exists resource "birthDate") ~}}
-    <dt>{{ l10n.t "Patient.BirthDate" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.BirthDate" }}</dt>
     <dd>{{ fhir.format_date (fhir.path resource "birthDate") }}</dd>
     {{~ end ~}}
-    {{~ if (fhir.exists resource "deceased[x]") ~}}
-    <dt>{{ l10n.t "Patient.Deceased" }}</dt>
-    {{~ bool_value = fhir.path resource "deceased[x]" ~}}
-    <dd>
-      {{~ if bool_value == "true" ~}}
-        {{ l10n.t "Common.Yes" }}
-      {{~ else ~}}
-        {{ l10n.t "Common.No" }}
-      {{~ end ~}}
-    </dd>
-    {{~ end ~}}
     {{~ if (fhir.exists resource "address") ~}}
-    <dt>{{ l10n.t "Patient.Address" }}</dt>
+    <dt>{{ l10n.t "RelatedPerson.Address" }}</dt>
     <dd>
       <ul class="fhir-list">
       {{~ item_count = fhir.count resource "address" ~}}
@@ -111,24 +130,6 @@
           {{~ if addr_state && addr_state != "" ~}}{{~ if addr_city && addr_city != "" ~}}, {{~ end ~}}{{ addr_state }}{{~ end ~}}
           {{~ if addr_postal && addr_postal != "" ~}} {{ addr_postal }}{{~ end ~}}
         </li>
-      {{~ end ~}}
-      </ul>
-    </dd>
-    {{~ end ~}}
-    {{~ if (fhir.exists resource "managingOrganization") ~}}
-    <dt>{{ l10n.t "Patient.ManagingOrganization" }}</dt>
-    {{~ ref_display = fhir.path resource "managingOrganization.display" ~}}
-    {{~ ref_reference = fhir.path resource "managingOrganization.reference" ~}}
-    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
-    {{~ end ~}}
-    {{~ if (fhir.exists resource "link") ~}}
-    <dt>{{ l10n.t "Patient.Link" }}</dt>
-    <dd>
-      <ul class="fhir-list">
-      {{~ item_count = fhir.count resource "link" ~}}
-      {{~ for i in 0..(item_count - 1) ~}}
-      {{~ item_value = fhir.path resource ("link[" + i + "]") ~}}
-        <li>{{ item_value }}</li>
       {{~ end ~}}
       </ul>
     </dd>

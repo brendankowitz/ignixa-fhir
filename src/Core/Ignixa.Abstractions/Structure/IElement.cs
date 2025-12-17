@@ -12,7 +12,7 @@ namespace Ignixa.Abstractions;
 /// This interface provides the minimal metadata required for:
 /// - FHIRPath evaluation
 /// - FHIR validation (Tier 1/2)
-/// - Serialization (JSON/XML)
+/// - Serialization (JSON)
 /// - Error reporting
 ///
 /// PERFORMANCE: Uses <see cref="IReadOnlyList{T}"/> for Children() instead of ReadOnlySpan

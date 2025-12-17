@@ -76,10 +76,7 @@ public class TemplateResolver : ITemplateResolver
 
         foreach (var (resourceName, templatePath, isGeneric, resolvedVersion) in candidates)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return null;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             var content = await LoadTemplateContentAsync(resourceName, cancellationToken);
 

@@ -4,15 +4,16 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using System.Text.Json;
 using FluentAssertions;
 using Ignixa.Abstractions;
 using Ignixa.NarrativeGenerator.Engine;
 using Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 using Ignixa.NarrativeGenerator.Security;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
+using Microsoft.Extensions.Localization;
 
 namespace Ignixa.NarrativeGenerator.Tests;
 
@@ -30,7 +31,7 @@ public class FhirNarrativeGeneratorTests
         _schema = new R4CoreSchemaProvider();
         var templateResolver = new TemplateResolver();
         var fhirPathFunctions = new FhirPathScriptFunctions(_schema);
-        var templateEngine = new NarrativeTemplateEngine(fhirPathFunctions);
+        var templateEngine = new NarrativeTemplateEngine(fhirPathFunctions, new MockStringLocalizer());
         var sanitizer = new XhtmlSanitizer();
 
         _generator = new FhirNarrativeGenerator(templateResolver, templateEngine, sanitizer);
@@ -55,11 +56,12 @@ public class FhirNarrativeGeneratorTests
                 "birthDate": "1980-01-01"
             }
             """;
-        var patient = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
         patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(patient);
+        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -80,12 +82,13 @@ public class FhirNarrativeGeneratorTests
                 }]
             }
             """;
-        var patient = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
         patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
         var culture = new CultureInfo("en-US");
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(patient, culture);
+        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4, culture);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -107,11 +110,12 @@ public class FhirNarrativeGeneratorTests
                 "status": "final"
             }
             """;
-        var observation = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
+        var observation = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
         observation.FhirVersion = FhirVersion.R4;
+        var element = observation.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(observation);
+        var narrative = await _generator.GenerateNarrativeAsync(element, observation.ResourceType, observation.FhirVersion ?? FhirVersion.R4);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -123,37 +127,39 @@ public class FhirNarrativeGeneratorTests
     #region Error Handling Tests
 
     [Fact]
-    public async Task GivenNullResource_WhenGeneratingNarrative_ThenThrowsArgumentNullException()
+    public async Task GivenNullElement_WhenGeneratingNarrative_ThenThrowsArgumentNullException()
     {
         // Arrange
-        ResourceJsonNode? resource = null;
+        IElement? element = null;
 
         // Act
-        var act = async () => await _generator.GenerateNarrativeAsync(resource!);
+        var act = async () => await _generator.GenerateNarrativeAsync(element!, "Patient", FhirVersion.R4);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentNullException>()
-            .WithParameterName("resource");
+            .WithParameterName("element");
     }
 
     [Fact]
-    public async Task GivenResourceWithoutResourceType_WhenGeneratingNarrative_ThenThrowsInvalidOperationException()
+    public async Task GivenEmptyResourceType_WhenGeneratingNarrative_ThenThrowsArgumentException()
     {
         // Arrange
         var json = """
             {
+                "resourceType": "Patient",
                 "id": "example"
             }
             """;
-        var resource = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
-        resource.FhirVersion = FhirVersion.R4;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
 
         // Act
-        var act = async () => await _generator.GenerateNarrativeAsync(resource);
+        var act = async () => await _generator.GenerateNarrativeAsync(element, string.Empty, FhirVersion.R4);
 
         // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("Resource must have ResourceType");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("resourceType");
     }
 
     #endregion
@@ -173,11 +179,12 @@ public class FhirNarrativeGeneratorTests
                 }]
             }
             """;
-        var patient = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
         patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(patient);
+        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4);
 
         // Assert
         narrative.Should().NotContain("<script");
@@ -200,14 +207,15 @@ public class FhirNarrativeGeneratorTests
                 "id": "example"
             }
             """;
-        var patient = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
         patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
 
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
         // Act
-        var act = async () => await _generator.GenerateNarrativeAsync(patient, cancellationToken: cts.Token);
+        var act = async () => await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4, cancellationToken: cts.Token);
 
         // Assert
         // May either complete quickly before cancellation is observed, or throw
@@ -223,4 +231,142 @@ public class FhirNarrativeGeneratorTests
     }
 
     #endregion
+
+    #region Generic Template Metadata Tests
+
+    [Fact]
+    public async Task GenerateNarrative_ForAccount_UsesGenericTemplateWithMetadata()
+    {
+        // Arrange: Account is a Trial-Use resource (no version-specific template embedded)
+        var json = """
+            {
+              "resourceType": "Account",
+              "id": "example",
+              "status": "active",
+              "name": "HACC Funded Billing for Peter James Chalmers",
+              "type": {
+                "coding": [{
+                  "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                  "code": "PBILLACCT",
+                  "display": "patient billing account"
+                }]
+              },
+              "subject": [{
+                "reference": "Patient/example",
+                "display": "Peter James Chalmers"
+              }],
+              "servicePeriod": {
+                "start": "2016-01-01",
+                "end": "2016-06-30"
+              }
+            }
+            """;
+
+        var account = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        account.FhirVersion = FhirVersion.R4;
+        var element = account.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, account.ResourceType, account.FhirVersion ?? FhirVersion.R4);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Account");  // Resource type should be displayed in badge
+        narrative.Should().Contain("fhir-account");  // CSS class should be present
+    }
+
+    [Fact]
+    public async Task GenerateNarrative_ForClaim_UsesGenericTemplateWithMetadata()
+    {
+        // Arrange: Claim is a Trial-Use resource
+        var json = """
+            {
+              "resourceType": "Claim",
+              "id": "100150",
+              "status": "active",
+              "type": {
+                "coding": [{
+                  "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+                  "code": "oral"
+                }]
+              },
+              "use": "claim",
+              "patient": {
+                "reference": "Patient/1"
+              },
+              "created": "2014-08-16",
+              "insurer": {
+                "reference": "Organization/2"
+              },
+              "provider": {
+                "reference": "Organization/1"
+              },
+              "priority": {
+                "coding": [{
+                  "code": "normal"
+                }]
+              }
+            }
+            """;
+
+        var claim = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        claim.FhirVersion = FhirVersion.R4;
+        var element = claim.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, claim.ResourceType, claim.FhirVersion ?? FhirVersion.R4);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Claim");  // Resource type should be displayed in badge
+        narrative.Should().Contain("fhir-claim");  // CSS class should be present
+    }
+
+    [Fact]
+    public async Task GenerateNarrative_ForDevice_UsesGenericTemplateWithMetadata()
+    {
+        // Arrange: Device is a Trial-Use resource
+        var json = """
+            {
+              "resourceType": "Device",
+              "id": "example",
+              "status": "active",
+              "manufacturer": "Acme Devices, Inc",
+              "modelNumber": "AB-123",
+              "type": {
+                "coding": [{
+                  "system": "http://snomed.info/sct",
+                  "code": "25062003",
+                  "display": "Electrocardiographic monitor and recorder"
+                }]
+              },
+              "patient": {
+                "reference": "Patient/example"
+              }
+            }
+            """;
+
+        var device = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        device.FhirVersion = FhirVersion.R4;
+        var element = device.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, device.ResourceType, device.FhirVersion ?? FhirVersion.R4);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Device");  // Resource type should be displayed in badge
+        narrative.Should().Contain("fhir-device");  // CSS class should be present
+    }
+
+    #endregion
+}
+
+internal class MockStringLocalizer : IStringLocalizer
+{
+    public LocalizedString this[string name] => new LocalizedString(name, name, resourceNotFound: false);
+
+    public LocalizedString this[string name, params object[] arguments] => new LocalizedString(name, string.Format(name, arguments), resourceNotFound: false);
+
+    public IEnumerable<LocalizedString> GetAllStrings(bool includeParentCultures) => [];
 }
