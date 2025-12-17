@@ -20,6 +20,7 @@ mode = mode switch
     "invariant" => "invariant",
     "coreschema" => "coreschema",
     "validation-terminology" => "validation-terminology",
+    "narrative-template" => "narrative-template",
     _ => "structure"
 };
 
@@ -32,6 +33,7 @@ string defaultOutputDir = mode switch
     "valueset-provider" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "validation-terminology" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Validation", "Generated"),
+    "narrative-template" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.NarrativeGenerator", "Generated"),
     _ => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated")  // structure mode: use Ignixa
 };
 
@@ -49,6 +51,7 @@ string title = mode switch
     "invariant" => "Ignixa FHIR Invariant Provider Generator",
     "coreschema" => "Ignixa FHIR Core Schema Provider Generator",
     "validation-terminology" => "Ignixa FHIR In-Memory Terminology Service Generator",
+    "narrative-template" => "Ignixa FHIR Narrative Template Generator",
     _ => "Ignixa FHIR Structure Definition Provider Generator"
 };
 
@@ -183,6 +186,17 @@ switch (mode)
             Namespace = "Ignixa.Specification.Generated"
         };
         valueSetProviderLanguage.Export(valueSetProviderConfig, definitions);
+        break;
+
+    case "narrative-template":
+        Console.WriteLine("Generating Scriban narrative templates...");
+        var narrativeLanguage = new CSharpNarrativeTemplateLanguage();
+        var narrativeConfig = new CSharpNarrativeTemplateConfig
+        {
+            OutputDirectory = Path.GetFullPath(outputDir),
+            Namespace = "Ignixa.NarrativeGenerator.Generated"
+        };
+        narrativeLanguage.Export(narrativeConfig, definitions);
         break;
 
     default: // structure
