@@ -3,6 +3,7 @@ using Azure.Identity;
 using Azure.Storage.Common;
 using DurableTask.AzureStorage;
 using DurableTask.Core;
+using DurableTask.SqlServer;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
@@ -22,18 +23,23 @@ public static class DurableTaskConfiguration
 {
     /// <summary>
     /// Registers DurableTask services with the service collection.
-    /// Supports FileSystem and AzureStorage orchestration service providers.
+    /// Supports FileSystem, SqlServer, and AzureStorage orchestration service providers.
     /// </summary>
     public static IServiceCollection AddDurableTask(this IServiceCollection services)
     {
         services.AddSingleton<IOrchestrationService>(sp =>
         {
             var configuration = sp.GetRequiredService<IConfiguration>();
-            var provider = configuration["DurableTask:Provider"] ?? "FileSystem";
+            var provider = configuration["DurableTask:Provider"] ?? "SqlServer";
 
-            return provider.Equals("AzureStorage", StringComparison.OrdinalIgnoreCase)
-                ? CreateAzureStorageOrchestrationService(sp, configuration)
-                : CreateFileBasedOrchestrationService(sp, configuration);
+            return provider switch
+            {
+                var p when p.Equals("SqlServer", StringComparison.OrdinalIgnoreCase) =>
+                    CreateSqlServerOrchestrationService(sp, configuration),
+                var p when p.Equals("AzureStorage", StringComparison.OrdinalIgnoreCase) =>
+                    CreateAzureStorageOrchestrationService(sp, configuration),
+                _ => CreateFileBasedOrchestrationService(sp, configuration),
+            };
         });
 
         // Register TaskHubWorker
@@ -96,6 +102,38 @@ public static class DurableTaskConfiguration
             },
             logger,
             innerLogger);
+    }
+
+    /// <summary>
+    /// Creates a SQL Server-based orchestration service for production use.
+    /// Uses SQL Server for orchestration state with no additional dependencies beyond existing SQL Server.
+    /// Schema is automatically initialized via CreateIfNotExistsAsync in the hosted service.
+    /// </summary>
+    private static IOrchestrationService CreateSqlServerOrchestrationService(IServiceProvider sp, IConfiguration configuration)
+    {
+        var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger("DurableTask.SqlServer");
+
+        // Get connection string from tenant configuration (uses same database as FHIR resources)
+        // Falls back to explicit DurableTask:SqlServer:ConnectionString if needed
+        var connectionString = configuration["DurableTask:SqlServer:ConnectionString"]
+            ?? configuration["Tenants:Configurations:1:Storage:ConnectionString"];
+
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            throw new InvalidOperationException(
+                "DurableTask:SqlServer:ConnectionString or Tenants:Configurations:1:Storage:ConnectionString is required when using SqlServer provider");
+        }
+
+        var taskHubName = configuration["DurableTask:SqlServer:TaskHubName"] ?? "ignixa";
+
+        logger.LogInformation(
+            "Initializing DurableTask with SQL Server backend (TaskHub: {TaskHubName})",
+            taskHubName);
+
+        var settings = new SqlOrchestrationServiceSettings(connectionString, taskHubName);
+
+        return new SqlOrchestrationService(settings);
     }
 
     /// <summary>

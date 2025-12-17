@@ -1,5 +1,6 @@
 using Azure;
 using DurableTask.Core;
+using DurableTask.SqlServer;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -8,6 +9,7 @@ namespace Ignixa.Api.Infrastructure;
 /// Starts the worker in the background without blocking application startup.
 /// Stops it gracefully on shutdown.
 /// Includes retry logic for storage permission propagation delays (RBAC can take up to 5 minutes).
+/// Automatically initializes database schema for SqlServer provider.
 /// </summary>
 public class DurableTaskHostedService : BackgroundService
 {
@@ -61,11 +63,61 @@ public class DurableTaskHostedService : BackgroundService
 
     private async Task<bool> InitializeWithRetryAsync(CancellationToken stoppingToken)
     {
-        if (_orchestrationService is not DurableTask.AzureStorage.AzureStorageOrchestrationService azureService)
+        // Handle SqlServer provider - initialize schema
+        if (_orchestrationService is SqlOrchestrationService sqlService)
         {
-            return true; // Non-Azure backends don't need retry logic
+            return await InitializeSqlServerAsync(sqlService, stoppingToken);
         }
 
+        // Handle Azure Storage provider - may need retry for RBAC propagation
+        if (_orchestrationService is DurableTask.AzureStorage.AzureStorageOrchestrationService azureService)
+        {
+            return await InitializeAzureStorageAsync(azureService, stoppingToken);
+        }
+
+        // FileSystem and InMemory providers don't need initialization
+        return true;
+    }
+
+    private async Task<bool> InitializeSqlServerAsync(SqlOrchestrationService sqlService, CancellationToken stoppingToken)
+    {
+        for (int attempt = 1; attempt <= MaxRetries; attempt++)
+        {
+            try
+            {
+                _logger.LogInformation("Initializing SQL Server orchestration service schema (attempt {Attempt}/{MaxRetries})...", attempt, MaxRetries);
+                await sqlService.CreateIfNotExistsAsync();
+                _logger.LogInformation("SQL Server orchestration service schema initialized successfully");
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("DurableTask SQL Server initialization cancelled");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == MaxRetries)
+                {
+                    _logger.LogError(ex, "SQL Server orchestration service failed to initialize after {MaxRetries} attempts", MaxRetries);
+                    return false;
+                }
+
+                var delay = TimeSpan.FromSeconds(InitialRetryDelay.TotalSeconds * attempt);
+                _logger.LogWarning(
+                    ex,
+                    "SQL Server orchestration service initialization failed. Retrying in {Delay}... (attempt {Attempt}/{MaxRetries})",
+                    delay, attempt, MaxRetries);
+
+                await Task.Delay(delay, stoppingToken);
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> InitializeAzureStorageAsync(DurableTask.AzureStorage.AzureStorageOrchestrationService azureService, CancellationToken stoppingToken)
+    {
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             try
@@ -83,7 +135,7 @@ public class DurableTaskHostedService : BackgroundService
                     return false;
                 }
 
-                var delay = TimeSpan.FromSeconds(InitialRetryDelay.TotalSeconds * attempt); // 10s, 20s, 30s...
+                var delay = TimeSpan.FromSeconds(InitialRetryDelay.TotalSeconds * attempt);
                 _logger.LogWarning(
                     "Storage authorization failed (403). RBAC permissions may still be propagating. Retrying in {Delay}... (attempt {Attempt}/{MaxRetries})",
                     delay, attempt, MaxRetries);

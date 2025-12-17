@@ -46,6 +46,7 @@
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
     <PackageReference Include="Microsoft.Azure.DurableTask.AzureStorage" />
+    <PackageReference Include="Microsoft.DurableTask.SqlServer" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="Polly.Extensions.Http" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
