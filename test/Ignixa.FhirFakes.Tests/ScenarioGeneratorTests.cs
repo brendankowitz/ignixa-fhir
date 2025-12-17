@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.Predefined;
@@ -29,9 +29,9 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
-        scenario.Patient.Id.Should().NotBeNullOrEmpty();
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
+        scenario.Patient.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Conditions.Should().HaveCountGreaterThanOrEqualTo(1);
+        scenario.Conditions.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         var diabetesCondition = scenario.Conditions.FirstOrDefault(c =>
         {
@@ -49,7 +49,7 @@ public class ScenarioGeneratorTests
             return code == "44054006"; // SNOMED CT code for Type 2 Diabetes
         });
 
-        diabetesCondition.Should().NotBeNull("should have a diabetes diagnosis");
+        diabetesCondition.ShouldNotBeNull("should have a diabetes diagnosis");
     }
 
     [Fact]
@@ -59,13 +59,13 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Encounters.Should().HaveCountGreaterThanOrEqualTo(3, "should have initial + follow-up encounters");
+        scenario.Encounters.Count.ShouldBeGreaterThanOrEqualTo(3, "should have initial + follow-up encounters");
 
         // All encounters should reference the patient
         foreach (var encounter in scenario.Encounters)
         {
             var subjectRef = encounter.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Contain(scenario.Patient!.Id);
+            subjectRef!.ShouldContain(scenario.Patient!.Id);
         }
     }
 
@@ -82,7 +82,7 @@ public class ScenarioGeneratorTests
             return code == "4548-4"; // LOINC code for HbA1c
         }).ToList();
 
-        a1cObservations.Should().HaveCountGreaterThanOrEqualTo(2, "should have multiple A1C tests over time");
+        a1cObservations.Count.ShouldBeGreaterThanOrEqualTo(2, "should have multiple A1C tests over time");
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Medications.Should().HaveCountGreaterThanOrEqualTo(1);
+        scenario.Medications.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         var metformin = scenario.Medications.FirstOrDefault(m =>
         {
@@ -100,7 +100,7 @@ public class ScenarioGeneratorTests
             return code == "860975" || code == "861007"; // Metformin 500mg or 1000mg
         });
 
-        metformin.Should().NotBeNull("should have Metformin prescription");
+        metformin.ShouldNotBeNull("should have Metformin prescription");
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class ScenarioGeneratorTests
 
         // Assert
         var timestamps = scenario.Timeline.Select(e => e.Timestamp).ToList();
-        timestamps.Should().BeInAscendingOrder("timeline events should be chronologically ordered");
+        timestamps.SequenceEqual(timestamps.OrderBy(t => t)).ShouldBeTrue("timeline events should be chronologically ordered");
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class ScenarioGeneratorTests
                 var refId = encounterRef
                     .Replace("urn:uuid:", string.Empty, StringComparison.Ordinal)
                     .Replace("Encounter/", string.Empty, StringComparison.Ordinal);
-                encounterIds.Should().Contain(refId, "observation should reference a valid encounter");
+                encounterIds.ShouldContain(refId, "observation should reference a valid encounter");
             }
         }
     }
@@ -153,14 +153,14 @@ public class ScenarioGeneratorTests
             return code == "4548-4";
         }).ToList();
 
-        a1cObservations.Should().NotBeEmpty();
+        a1cObservations.ShouldNotBeEmpty();
 
         // Higher severity should correlate with higher A1C values
         // Just verify we got valid values (detailed correlation testing would be brittle)
         foreach (var obs in a1cObservations)
         {
             var value = obs.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-            value.Should().BeGreaterThan(6.0m, "A1C should be in diabetic range");
+            value!.Value.ShouldBeGreaterThan(6.0m);
         }
     }
 
@@ -175,8 +175,8 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetHypertensivePatient();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class ScenarioGeneratorTests
             return code == "38341003"; // SNOMED CT code for Hypertension
         });
 
-        hypertension.Should().NotBeNull("should have hypertension diagnosis");
+        hypertension.ShouldNotBeNull("should have hypertension diagnosis");
     }
 
     [Fact]
@@ -208,13 +208,13 @@ public class ScenarioGeneratorTests
             return code == "85354-9"; // Blood pressure panel
         }).ToList();
 
-        bpObservations.Should().HaveCountGreaterThanOrEqualTo(3, "should have multiple BP readings");
+        bpObservations.Count.ShouldBeGreaterThanOrEqualTo(3, "should have multiple BP readings");
 
         // Each BP observation should have systolic and diastolic components
         foreach (var bp in bpObservations)
         {
             var components = bp.MutableNode["component"];
-            components.Should().NotBeNull("BP observation should have components");
+            components.ShouldNotBeNull("BP observation should have components");
         }
     }
 
@@ -231,7 +231,7 @@ public class ScenarioGeneratorTests
             return code == "314076" || code == "314077" || code == "329528"; // Lisinopril or Amlodipine
         }).ToList();
 
-        antihypertensives.Should().HaveCountGreaterThanOrEqualTo(1, "should have antihypertensive medication");
+        antihypertensives.Count.ShouldBeGreaterThanOrEqualTo(1, "should have antihypertensive medication");
     }
 
     #endregion
@@ -245,12 +245,12 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetPregnantPatient();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should be female
         var gender = scenario.Patient.MutableNode["gender"]?.GetValue<string>();
-        gender.Should().Be("female");
+        gender.ShouldBe("female");
     }
 
     [Fact]
@@ -266,7 +266,7 @@ public class ScenarioGeneratorTests
             return code == "72892002"; // Normal pregnancy
         });
 
-        pregnancy.Should().NotBeNull("should have pregnancy condition");
+        pregnancy.ShouldNotBeNull("should have pregnancy condition");
     }
 
     [Fact]
@@ -277,7 +277,7 @@ public class ScenarioGeneratorTests
 
         // Assert
         // Standard prenatal care has many visits
-        scenario.Encounters.Should().HaveCountGreaterThanOrEqualTo(10, "should have many prenatal visits");
+        scenario.Encounters.Count.ShouldBeGreaterThanOrEqualTo(10, "should have many prenatal visits");
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public class ScenarioGeneratorTests
             return code == "55283-6"; // Fetal heart rate
         }).ToList();
 
-        fhrObservations.Should().HaveCountGreaterThanOrEqualTo(5, "should have multiple fetal heart rate measurements");
+        fhrObservations.Count.ShouldBeGreaterThanOrEqualTo(5, "should have multiple fetal heart rate measurements");
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public class ScenarioGeneratorTests
             return code == "315246"; // Prenatal vitamins
         });
 
-        prenatalVitamins.Should().NotBeNull("should have prenatal vitamins");
+        prenatalVitamins.ShouldNotBeNull("should have prenatal vitamins");
     }
 
     #endregion
@@ -323,12 +323,12 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetAsthmaticChild(age: 7);
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Verify age (should be around 7 years old)
         var birthDate = scenario.Patient.MutableNode["birthDate"]?.GetValue<string>();
-        birthDate.Should().NotBeNullOrEmpty();
+        birthDate.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -344,7 +344,7 @@ public class ScenarioGeneratorTests
             return code == "195967001"; // Asthma
         });
 
-        asthma.Should().NotBeNull("should have asthma diagnosis");
+        asthma.ShouldNotBeNull("should have asthma diagnosis");
     }
 
     [Fact]
@@ -360,7 +360,7 @@ public class ScenarioGeneratorTests
             return code == "33452-4"; // Peak expiratory flow rate
         }).ToList();
 
-        peakFlowObservations.Should().HaveCountGreaterThanOrEqualTo(3, "should have peak flow measurements");
+        peakFlowObservations.Count.ShouldBeGreaterThanOrEqualTo(3, "should have peak flow measurements");
     }
 
     [Fact]
@@ -376,7 +376,7 @@ public class ScenarioGeneratorTests
             return code == "435"; // Albuterol
         });
 
-        albuterol.Should().NotBeNull("should have albuterol (rescue inhaler)");
+        albuterol.ShouldNotBeNull("should have albuterol (rescue inhaler)");
     }
 
     [Fact]
@@ -392,7 +392,7 @@ public class ScenarioGeneratorTests
             return classCode == "EMER";
         }).ToList();
 
-        emergencyVisits.Should().HaveCountGreaterThanOrEqualTo(1, "should have at least one emergency/urgent visit for exacerbation");
+        emergencyVisits.Count.ShouldBeGreaterThanOrEqualTo(1, "should have at least one emergency/urgent visit for exacerbation");
     }
 
     #endregion
@@ -412,11 +412,11 @@ public class ScenarioGeneratorTests
             .Build();
 
         // Assert
-        scenario.ScenarioName.Should().Be("Custom Test Scenario");
-        scenario.Description.Should().Be("A test scenario for unit testing");
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
-        scenario.Observations.Should().HaveCount(1);
+        scenario.ScenarioName.ShouldBe("Custom Test Scenario");
+        scenario.Description.ShouldBe("A test scenario for unit testing");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
+        scenario.Observations.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -434,18 +434,18 @@ public class ScenarioGeneratorTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(2);
+        scenario.Encounters.Count.ShouldBe(2);
 
         var visit1Start = scenario.Encounters[0].MutableNode["period"]?["start"]?.GetValue<string>();
         var visit2Start = scenario.Encounters[1].MutableNode["period"]?["start"]?.GetValue<string>();
 
-        visit1Start.Should().NotBeNull();
-        visit2Start.Should().NotBeNull();
+        visit1Start.ShouldNotBeNull();
+        visit2Start.ShouldNotBeNull();
 
         var date1 = DateTime.Parse(visit1Start!);
         var date2 = DateTime.Parse(visit2Start!);
 
-        (date2 - date1).TotalDays.Should().BeApproximately(91.3125, 2, "visit 2 should be ~3 months after visit 1 (3 * 30.4375 days)");
+        (date2 - date1).TotalDays.ShouldBe(91.3125, 2);
     }
 
     [Fact]
@@ -459,9 +459,9 @@ public class ScenarioGeneratorTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("test_attribute");
-        scenario.GetAttribute<string>("test_attribute").Should().Be("test_value");
-        scenario.GetAttribute<int>("severity").Should().Be(3);
+        scenario.Attributes.ShouldContainKey("test_attribute");
+        scenario.GetAttribute<string>("test_attribute").ShouldBe("test_value");
+        scenario.GetAttribute<int>("severity").ShouldBe(3);
     }
 
     [Fact]
@@ -477,7 +477,7 @@ public class ScenarioGeneratorTests
             .Build();
 
         // Assert
-        scenario.GetAttribute<int>("counter").Should().Be(3);
+        scenario.GetAttribute<int>("counter").ShouldBe(3);
     }
 
     #endregion
@@ -496,21 +496,21 @@ public class ScenarioGeneratorTests
         foreach (var observation in scenario.Observations)
         {
             var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "observation should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "observation should reference the patient");
         }
 
         // Check all conditions reference the patient
         foreach (var condition in scenario.Conditions)
         {
             var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "condition should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "condition should reference the patient");
         }
 
         // Check all medications reference the patient
         foreach (var medication in scenario.Medications)
         {
             var subjectRef = medication.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "medication should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "medication should reference the patient");
         }
     }
 
@@ -529,7 +529,7 @@ public class ScenarioGeneratorTests
                             scenario.Procedures.Count;
 
         // Assert
-        scenario.AllResources.Should().HaveCount(expectedCount, "AllResources should contain all generated resources including patient");
+        scenario.AllResources.Count.ShouldBe(expectedCount, "AllResources should contain all generated resources including patient");
     }
 
     #endregion
@@ -543,13 +543,13 @@ public class ScenarioGeneratorTests
         var scenario = _schemaProvider.GetDiabeticPatient();
 
         // Assert
-        scenario.Timeline.Should().NotBeEmpty();
+        scenario.Timeline.ShouldNotBeEmpty();
 
         foreach (var evt in scenario.Timeline)
         {
-            evt.Description.Should().NotBeNullOrEmpty("each event should have a description");
-            evt.EventType.Should().NotBeNullOrEmpty("each event should have a type");
-            evt.ResourceId.Should().NotBeNullOrEmpty("each event should reference a resource");
+            evt.Description.ShouldNotBeNullOrEmpty("each event should have a description");
+            evt.EventType.ShouldNotBeNullOrEmpty("each event should have a type");
+            evt.ResourceId.ShouldNotBeNullOrEmpty("each event should reference a resource");
         }
     }
 

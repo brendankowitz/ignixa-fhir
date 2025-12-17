@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -47,11 +47,8 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address-city=Seattle&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2);
-        results.Should().AllSatisfy(r =>
-        {
-            r.ResourceType.Should().Be("Patient");
-        });
+        results.Length.ShouldBe(2);
+        results.ShouldAllBe(r => r.ResourceType == "Patient");
     }
 
     [Fact]
@@ -86,7 +83,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"family=Smith&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
     }
 
     [Fact]
@@ -124,7 +121,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"family=Smith&given=John&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1);
+        results.Length.ShouldBe(1);
     }
 
     [Fact]
@@ -147,7 +144,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"gender=male&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
     }
 
     [Fact]
@@ -202,7 +199,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"code=29463-7&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
     }
 
     [Fact]
@@ -225,7 +222,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address-state=Washington&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1);
+        results.Length.ShouldBe(1);
     }
 
     [Fact]
@@ -249,7 +246,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address-country=AU&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1);
+        results.Length.ShouldBe(1);
     }
 
     [Fact]
@@ -283,11 +280,11 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2);
-        results.Should().AllSatisfy(patient =>
+        results.Length.ShouldBe(2);
+        foreach (var patient in results)
         {
-            patient.MutableNode["extension"].Should().NotBeNull("Patient should have BMI extension");
-        });
+            patient.MutableNode["extension"].ShouldNotBeNull("Patient should have BMI extension");
+        }
     }
 
     [Fact]
@@ -310,12 +307,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={tag}");
 
         // Assert - All patients should have names and demographic extensions
-        results.Should().HaveCount(3);
-        results.Should().AllSatisfy(patient =>
+        results.Length.ShouldBe(3);
+        foreach (var patient in results)
         {
-            patient.MutableNode["name"].Should().NotBeNull("Patient should have name");
-            patient.MutableNode["extension"].Should().NotBeNull("Patient should have race/ethnicity extensions");
-        });
+            patient.MutableNode["name"].ShouldNotBeNull("Patient should have name");
+            patient.MutableNode["extension"].ShouldNotBeNull("Patient should have race/ethnicity extensions");
+        }
     }
 
     #region Ported Tests - Phase 1: Core Search Functionality
@@ -357,9 +354,9 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address-city=Seattle&family=Jones&_tag={tag}");
 
         // Assert - Only patient3 matches both criteria
-        results.Should().HaveCount(1);
+        results.Length.ShouldBe(1);
         var matchedPatient = results[0];
-        matchedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>().Should().Be("Jones");
+        matchedPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>().ShouldBe("Jones");
     }
 
     /// <summary>
@@ -389,8 +386,8 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={tag}");
 
         // Assert - Should return only Patient resources
-        results.Should().HaveCount(3);
-        results.Should().AllSatisfy(r => r.ResourceType.Should().Be("Patient"));
+        results.Length.ShouldBe(3);
+        results.ShouldAllBe(r => r.ResourceType == "Patient");
     }
 
     /// <summary>
@@ -424,12 +421,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
 
         // Act & Assert - Search for patients with gender missing
         var missingResults = await Harness.SearchAsync("Patient", $"gender:missing=true&_tag={tag}");
-        missingResults.Should().HaveCount(1);
+        missingResults.Length.ShouldBe(1);
 
         // Act & Assert - Search for patients with gender present
         var presentResults = await Harness.SearchAsync("Patient", $"gender:missing=false&_tag={tag}");
-        presentResults.Should().HaveCount(1);
-        presentResults[0].MutableNode["gender"]?.GetValue<string>().Should().Be("female");
+        presentResults.Length.ShouldBe(1);
+        presentResults[0].MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
     }
 
     /// <summary>
@@ -471,11 +468,11 @@ public class BasicSearchTests : CapabilityDrivenTestBase
 
         // Act - Search with matching reference
         var matchingResults = await Harness.SearchAsync("Patient", $"_id={patient1Id}&organization=Organization/123");
-        matchingResults.Should().HaveCount(1);
+        matchingResults.Length.ShouldBe(1);
 
         // Act - Search with non-matching reference
         var nonMatchingResults = await Harness.SearchAsync("Patient", $"_id={patient1Id}&organization=Organization/234");
-        nonMatchingResults.Should().BeEmpty();
+        nonMatchingResults.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -508,8 +505,11 @@ public class BasicSearchTests : CapabilityDrivenTestBase
             .Select(e => e.Resource!)
             .ToArray();
 
-        resources.Should().HaveCount(3);
-        resources.Should().AllSatisfy(r => r.ResourceType.Should().Be("Patient"));
+        resources.Length.ShouldBe(3);
+        foreach (var r in resources)
+        {
+            r.ResourceType.ShouldBe("Patient");
+        }
     }
 
     #endregion
@@ -538,8 +538,8 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_count={count}&_tag={tag}");
 
         // Assert - First page should have at most 'count' entries
-        bundle.Entry.Count.Should().BeLessThanOrEqualTo(count);
-        bundle.Entry.Count.Should().BeGreaterThan(0);
+        bundle.Entry.Count.ShouldBeLessThanOrEqualTo(count);
+        bundle.Entry.Count.ShouldBeGreaterThan(0);
 
         // Follow next links to collect all results
         var allResources = bundle.Entry
@@ -553,7 +553,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         while (!string.IsNullOrEmpty(nextLink) && iterations < 10)
         {
             var nextBundle = await Harness.GetBundleAsync(nextLink);
-            nextBundle.Entry.Count.Should().BeLessThanOrEqualTo(count);
+            nextBundle.Entry.Count.ShouldBeLessThanOrEqualTo(count);
 
             allResources.AddRange(
                 nextBundle.Entry
@@ -565,7 +565,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         }
 
         // Assert - All resources should be retrieved across pages
-        allResources.Should().HaveCount(numberOfResources);
+        allResources.Count.ShouldBe(numberOfResources);
     }
 
     /// <summary>
@@ -591,8 +591,8 @@ public class BasicSearchTests : CapabilityDrivenTestBase
 
         // Assert - Should have next link since we have more results
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next");
-        nextLink.Should().NotBeNull("There should be a next link when results exceed count");
-        nextLink!.Url.Should().NotBeNullOrEmpty();
+        nextLink.ShouldNotBeNull("There should be a next link when results exceed count");
+        nextLink!.Url.ShouldNotBeNullOrEmpty();
 
         // Follow all pages and collect resources
         var allResources = bundle.Entry
@@ -616,7 +616,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         }
 
         // All resources should be retrieved
-        allResources.Should().HaveCount(numberOfResources);
+        allResources.Count.ShouldBe(numberOfResources);
     }
 
     /// <summary>
@@ -640,9 +640,9 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=count");
 
         // Assert
-        bundle.Should().NotBeNull();
-        bundle.Total.Should().Be(numberOfResources);
-        bundle.Entry.Should().BeEmpty("_summary=count should not return any entries");
+        bundle.ShouldNotBeNull();
+        bundle.Total.ShouldBe(numberOfResources);
+        bundle.Entry.ShouldBeEmpty("_summary=count should not return any entries");
     }
 
     #endregion
@@ -670,9 +670,9 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_total=accurate");
 
         // Assert
-        bundle.Should().NotBeNull();
-        bundle.Entry.Should().NotBeEmpty();
-        bundle.Total.Should().Be(numberOfResources);
+        bundle.ShouldNotBeNull();
+        bundle.Entry.ShouldNotBeEmpty();
+        bundle.Total.ShouldBe(numberOfResources);
     }
 
     /// <summary>
@@ -696,9 +696,9 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_total=none");
 
         // Assert
-        bundle.Should().NotBeNull();
-        bundle.Entry.Should().NotBeEmpty();
-        bundle.Total.Should().BeNull("_total=none should not include total count");
+        bundle.ShouldNotBeNull();
+        bundle.Entry.ShouldNotBeEmpty();
+        bundle.Total.ShouldBeNull("_total=none should not include total count");
     }
 
     /// <summary>
@@ -740,13 +740,13 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var searchResults = await Harness.SearchAsync("Observation", $"code=8867-4&_tag={tag}");
 
         // Assert
-        searchResults.Should().HaveCount(1, "only the current version should be returned, not historical versions");
+        searchResults.Length.ShouldBe(1, "only the current version should be returned, not historical versions");
 
         var returnedObservation = searchResults.First();
         var returnedValue = returnedObservation.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
 
-        returnedValue.Should().Be(85m, "the returned observation should have the updated value");
-        returnedObservation.Id.Should().Be(observation.Id, "the returned observation should have the same ID");
+        returnedValue.ShouldBe(85m, "the returned observation should have the updated value");
+        returnedObservation.Id.ShouldBe(observation.Id, "the returned observation should have the same ID");
     }
 
     /// <summary>
@@ -774,12 +774,12 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address-city=Seattle&_tag={tag}");
 
         // Assert - Should match both Seattle patients
-        results.Should().HaveCount(2);
-        results.Should().AllSatisfy(r =>
+        results.Length.ShouldBe(2);
+        foreach (var r in results)
         {
             var city = r.MutableNode["address"]?[0]?["city"]?.GetValue<string>();
-            city.Should().BeEquivalentTo("Seattle", "City search should be case-insensitive");
-        });
+            city.ShouldBe("Seattle", "City search should be case-insensitive");
+        }
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -107,19 +107,19 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync($"Patient/{createdPatient.Id}/*", $"_tag={tag}");
 
         // Assert: Should return observations linked to this patient
-        results.Should().NotBeEmpty("compartment should contain resources linked to the patient");
-        results.Should().Contain(r => r.ResourceType == "Observation", "patient compartment should include observations");
+        results.ShouldNotBeEmpty("compartment should contain resources linked to the patient");
+        results.ShouldContain(r => r.ResourceType == "Observation", "patient compartment should include observations");
 
         // Verify all returned resources are tagged with our test tag
-        results.Should().AllSatisfy(r =>
+        foreach (var r in results)
         {
             var meta = r.MutableNode["meta"];
-            meta.Should().NotBeNull();
+            meta.ShouldNotBeNull();
             var tagArray = meta?["tag"];
-            tagArray.Should().NotBeNull();
+            tagArray.ShouldNotBeNull();
             var tags = tagArray?.AsArray().Select(t => t?["code"]?.GetValue<string>());
-            tags.Should().Contain(tag);
-        });
+            tags!.ShouldContain(tag);
+        }
     }
 
     /// <summary>
@@ -183,14 +183,14 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync($"Patient/{patient1Id}/Observation", $"_tag={tag}");
 
         // Assert: Should return only observations for patient1
-        results.Should().HaveCount(2, "patient1 has exactly 2 observations");
-        results.Should().AllSatisfy(r => r.ResourceType.Should().Be("Observation"));
+        results.Length.ShouldBe(2, "patient1 has exactly 2 observations");
+        results.ShouldAllBe(r => r.ResourceType == "Observation");
 
         // Verify the correct observations are returned
         var resultIds = results.Select(r => r.Id).ToArray();
-        resultIds.Should().Contain(obs1Id);
-        resultIds.Should().Contain(obs2Id);
-        resultIds.Should().NotContain(createdObservations[2].Id, "observations from other patients should not be returned");
+        resultIds.ShouldContain(obs1Id);
+        resultIds.ShouldContain(obs2Id);
+        resultIds.ShouldNotContain(createdObservations[2].Id, "observations from other patients should not be returned");
     }
 
     /// <summary>
@@ -248,20 +248,20 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
             $"code=29463-7&_tag={tag}");
 
         // Assert: Should return only Body Weight observations
-        results.Should().HaveCount(2, "patient has exactly 2 Body Weight observations");
-        results.Should().AllSatisfy(obs =>
+        results.Length.ShouldBe(2, "patient has exactly 2 Body Weight observations");
+        foreach (var obs in results)
         {
-            obs.ResourceType.Should().Be("Observation");
+            obs.ResourceType.ShouldBe("Observation");
             var codeNode = obs.MutableNode["code"]?["coding"]?[0]?["code"];
-            codeNode.Should().NotBeNull();
-            codeNode!.GetValue<string>().Should().Be("29463-7");
-        });
+            codeNode.ShouldNotBeNull();
+            codeNode!.GetValue<string>().ShouldBe("29463-7");
+        }
 
         // Verify correct observations are returned
         var resultIds = results.Select(r => r.Id).ToArray();
-        resultIds.Should().Contain(createdObservations[0].Id);
-        resultIds.Should().Contain(createdObservations[2].Id);
-        resultIds.Should().NotContain(createdObservations[1].Id, "Heart Rate observation should be filtered out");
+        resultIds.ShouldContain(createdObservations[0].Id);
+        resultIds.ShouldContain(createdObservations[2].Id);
+        resultIds.ShouldNotContain(createdObservations[1].Id, "Heart Rate observation should be filtered out");
     }
 
     /// <summary>
@@ -323,19 +323,19 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
             .ToArray();
 
         // Assert: Should return observations linked to this patient
-        results.Should().NotBeEmpty("compartment should contain resources linked to the patient");
-        results.Should().Contain(r => r.ResourceType == "Observation", "patient compartment should include observations");
+        results.ShouldNotBeEmpty("compartment should contain resources linked to the patient");
+        results.ShouldContain(r => r.ResourceType == "Observation", "patient compartment should include observations");
 
         // Verify all returned resources are tagged with our test tag
-        results.Should().AllSatisfy(r =>
+        foreach (var r in results)
         {
             var meta = r.MutableNode["meta"];
-            meta.Should().NotBeNull();
+            meta.ShouldNotBeNull();
             var tagArray = meta?["tag"];
-            tagArray.Should().NotBeNull();
+            tagArray.ShouldNotBeNull();
             var tags = tagArray?.AsArray().Select(t => t?["code"]?.GetValue<string>());
-            tags.Should().Contain(tag);
-        });
+            tags!.ShouldContain(tag);
+        }
     }
 
     /// <summary>
@@ -366,7 +366,7 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
             $"_tag={tag}");
 
         // Assert: Should return empty results
-        results.Should().BeEmpty("patient has no observations");
+        results.ShouldBeEmpty("patient has no observations");
     }
 
     /// <summary>
@@ -417,11 +417,11 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync($"Patient/{createdPatient.Id}/*", $"_tag={tag}");
 
         // Assert: Should return resources of different types
-        results.Should().NotBeEmpty("compartment should contain resources");
+        results.ShouldNotBeEmpty("compartment should contain resources");
 
         var resourceTypes = results.Select(r => r.ResourceType).Distinct().ToArray();
-        resourceTypes.Should().Contain("Observation", "compartment should include observations");
-        resourceTypes.Should().Contain("Encounter", "compartment should include encounters");
+        resourceTypes.ShouldContain("Observation", "compartment should include observations");
+        resourceTypes.ShouldContain("Encounter", "compartment should include encounters");
     }
 
     /// <summary>
@@ -455,8 +455,8 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
             $"_tag={tag}&_count={pageSize}");
 
         // Assert: First page should respect count limit
-        bundle.Entry.Should().NotBeEmpty();
-        bundle.Entry.Count.Should().BeLessThanOrEqualTo(pageSize, "page size should be respected");
+        bundle.Entry.ShouldNotBeEmpty();
+        bundle.Entry.Count.ShouldBeLessThanOrEqualTo(pageSize, "page size should be respected");
 
         // Note: Pagination verification (next link) is optional based on server implementation
         // Some servers may not return next link even when there are more results
@@ -529,14 +529,14 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
             $"_tag={tag}");
 
         // Assert: Each compartment should contain only its own observations
-        patient1Results.Should().HaveCount(2, "patient1 has exactly 2 observations");
-        patient1Results.Select(r => r.Id).Should().Contain(createdObs[0].Id);
-        patient1Results.Select(r => r.Id).Should().Contain(createdObs[1].Id);
-        patient1Results.Select(r => r.Id).Should().NotContain(createdObs[2].Id, "patient2's observation should not be in patient1's compartment");
+        patient1Results.Length.ShouldBe(2, "patient1 has exactly 2 observations");
+        patient1Results.Select(r => r.Id).ShouldContain(createdObs[0].Id);
+        patient1Results.Select(r => r.Id).ShouldContain(createdObs[1].Id);
+        patient1Results.Select(r => r.Id).ShouldNotContain(createdObs[2].Id, "patient2's observation should not be in patient1's compartment");
 
-        patient2Results.Should().HaveCount(1, "patient2 has exactly 1 observation");
-        patient2Results.Select(r => r.Id).Should().Contain(createdObs[2].Id);
-        patient2Results.Select(r => r.Id).Should().NotContain(createdObs[0].Id, "patient1's observations should not be in patient2's compartment");
-        patient2Results.Select(r => r.Id).Should().NotContain(createdObs[1].Id, "patient1's observations should not be in patient2's compartment");
+        patient2Results.Length.ShouldBe(1, "patient2 has exactly 1 observation");
+        patient2Results.Select(r => r.Id).ShouldContain(createdObs[2].Id);
+        patient2Results.Select(r => r.Id).ShouldNotContain(createdObs[0].Id, "patient1's observations should not be in patient2's compartment");
+        patient2Results.Select(r => r.Id).ShouldNotContain(createdObs[1].Id, "patient1's observations should not be in patient2's compartment");
     }
 }

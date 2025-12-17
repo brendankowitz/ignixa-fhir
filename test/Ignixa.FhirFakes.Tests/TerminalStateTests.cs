@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
@@ -30,8 +30,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("scenario_completed");
-        scenario.Attributes["scenario_completed"].Should().Be(true);
+        scenario.Attributes.ShouldContainKey("scenario_completed");
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
     }
 
     [Fact]
@@ -44,8 +44,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("terminal_reason");
-        scenario.Attributes["terminal_reason"].Should().Be("Completed");
+        scenario.Attributes.ShouldContainKey("terminal_reason");
+        scenario.Attributes["terminal_reason"].ShouldBe("Completed");
     }
 
     [Fact]
@@ -58,8 +58,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("scenario_completed");
-        scenario.Attributes["scenario_completed"].Should().Be(true);
+        scenario.Attributes.ShouldContainKey("scenario_completed");
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
     }
 
     [Fact]
@@ -72,8 +72,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("terminal_reason");
-        scenario.Attributes["terminal_reason"].Should().Be("Death");
+        scenario.Attributes.ShouldContainKey("terminal_reason");
+        scenario.Attributes["terminal_reason"].ShouldBe("Death");
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("terminal_reason");
-        scenario.Attributes["terminal_reason"].Should().Be(customReason);
+        scenario.Attributes.ShouldContainKey("terminal_reason");
+        scenario.Attributes["terminal_reason"].ShouldBe(customReason);
     }
 
     #endregion
@@ -102,7 +102,7 @@ public class TerminalStateTests
         var state = TerminalState.Completed();
 
         // Assert
-        state.Reason.Should().Be("Completed");
+        state.Reason.ShouldBe("Completed");
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class TerminalStateTests
         var state = TerminalState.Death();
 
         // Assert
-        state.Reason.Should().Be("Death");
+        state.Reason.ShouldBe("Death");
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class TerminalStateTests
         var state = TerminalState.Custom(customReason);
 
         // Assert
-        state.Reason.Should().Be(customReason);
+        state.Reason.ShouldBe(customReason);
     }
 
     #endregion
@@ -142,9 +142,9 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(1);
-        scenario.Observations.Should().HaveCount(1);
-        scenario.Attributes["scenario_completed"].Should().Be(true);
+        scenario.Encounters.Count.ShouldBe(1);
+        scenario.Observations.Count.ShouldBe(1);
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
     }
 
     [Fact]
@@ -158,8 +158,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(1);
-        scenario.Attributes["terminal_reason"].Should().Be("Death");
+        scenario.Encounters.Count.ShouldBe(1);
+        scenario.Attributes["terminal_reason"].ShouldBe("Death");
     }
 
     [Fact]
@@ -177,10 +177,10 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(2);
-        scenario.Observations.Should().HaveCount(2);
-        scenario.Attributes["scenario_completed"].Should().Be(true);
-        scenario.Attributes["terminal_reason"].Should().Be("Completed");
+        scenario.Encounters.Count.ShouldBe(2);
+        scenario.Observations.Count.ShouldBe(2);
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
+        scenario.Attributes["terminal_reason"].ShouldBe("Completed");
     }
 
     #endregion
@@ -197,8 +197,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().HaveCount(1); // Only patient exists in AllResources
-        scenario.Attributes["scenario_completed"].Should().Be(true);
+        scenario.AllResources.Count.ShouldBe(1); // Only patient exists in AllResources
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes["terminal_reason"].Should().Be("Death");
+        scenario.Attributes["terminal_reason"].ShouldBe("Death");
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes["terminal_reason"].Should().Be(string.Empty);
+        scenario.Attributes["terminal_reason"].ShouldBe(string.Empty);
     }
 
     #endregion
@@ -243,7 +243,7 @@ public class TerminalStateTests
 
         // Assert
         var isCompleted = scenario.GetAttribute<bool>("scenario_completed");
-        isCompleted.Should().BeTrue();
+        isCompleted.ShouldBeTrue();
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class TerminalStateTests
 
         // Assert
         var reason = scenario.GetAttribute<string>("terminal_reason");
-        reason.Should().Be("Transferred to specialist");
+        reason.ShouldBe("Transferred to specialist");
     }
 
     [Fact]
@@ -270,8 +270,8 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().NotContainKey("scenario_completed");
-        scenario.Attributes.Should().NotContainKey("terminal_reason");
+        scenario.Attributes.ShouldNotContainKey("scenario_completed");
+        scenario.Attributes.ShouldNotContainKey("terminal_reason");
     }
 
     #endregion
@@ -297,10 +297,10 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(3);
-        scenario.Encounters.Should().HaveCount(3);
-        scenario.Attributes["scenario_completed"].Should().Be(true);
-        scenario.Attributes["terminal_reason"].Should().Be("Completed");
+        scenario.Observations.Count.ShouldBe(3);
+        scenario.Encounters.Count.ShouldBe(3);
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
+        scenario.Attributes["terminal_reason"].ShouldBe("Completed");
     }
 
     [Fact]
@@ -317,10 +317,10 @@ public class TerminalStateTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(1);
-        scenario.Observations.Should().HaveCount(1);
-        scenario.Attributes["scenario_completed"].Should().Be(true);
-        scenario.Attributes["terminal_reason"].Should().Be("Death");
+        scenario.Encounters.Count.ShouldBe(1);
+        scenario.Observations.Count.ShouldBe(1);
+        scenario.Attributes["scenario_completed"].ShouldBe(true);
+        scenario.Attributes["terminal_reason"].ShouldBe("Death");
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -34,12 +34,12 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.Should().NotBeNull();
-        request.ResourceType.Should().Be("MedicationRequest");
-        request.Id.Should().NotBeNullOrEmpty();
-        request.MutableNode["status"]?.GetValue<string>().Should().Be("active");
-        request.MutableNode["intent"]?.GetValue<string>().Should().Be("order");
-        request.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        request.ShouldNotBeNull();
+        request.ResourceType.ShouldBe("MedicationRequest");
+        request.Id.ShouldNotBeNullOrEmpty();
+        request.MutableNode["status"]?.GetValue<string>().ShouldBe("active");
+        request.MutableNode["intent"]?.GetValue<string>().ShouldBe("order");
+        request.MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -51,8 +51,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*subject is required*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("subject is required");
     }
 
     [Fact]
@@ -64,8 +63,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Medication is required*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Medication is required");
     }
 
     [Fact]
@@ -83,7 +81,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.Id.Should().Be(expectedId);
+        request.Id.ShouldBe(expectedId);
     }
 
     [Fact]
@@ -101,13 +99,13 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["meta"]?["tag"].Should().NotBeNull();
+        request.MutableNode["meta"]?["tag"].ShouldNotBeNull();
         var tags = request.MutableNode["meta"]?["tag"]?.AsArray();
-        tags.Should().HaveCount(1);
+        tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
-        metaTag?["code"]?.GetValue<string>().Should().Be(tag);
-        metaTag?["system"]?.GetValue<string>().Should().Be("http://ignixa.dev/test-isolation");
+        metaTag?["code"]?.GetValue<string>().ShouldBe(tag);
+        metaTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
     }
 
     #endregion
@@ -128,7 +126,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["status"]?.GetValue<string>().Should().Be("completed");
+        request.MutableNode["status"]?.GetValue<string>().ShouldBe("completed");
     }
 
     [Fact]
@@ -145,7 +143,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["status"]?.GetValue<string>().Should().Be("cancelled");
+        request.MutableNode["status"]?.GetValue<string>().ShouldBe("cancelled");
     }
 
     [Fact]
@@ -162,7 +160,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["intent"]?.GetValue<string>().Should().Be("plan");
+        request.MutableNode["intent"]?.GetValue<string>().ShouldBe("plan");
     }
 
     [Fact]
@@ -179,7 +177,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["intent"]?.GetValue<string>().Should().Be("proposal");
+        request.MutableNode["intent"]?.GetValue<string>().ShouldBe("proposal");
     }
 
     #endregion
@@ -199,14 +197,14 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["medicationCodeableConcept"].Should().NotBeNull();
-        request.MutableNode["medicationReference"].Should().BeNull();
+        request.MutableNode["medicationCodeableConcept"].ShouldNotBeNull();
+        request.MutableNode["medicationReference"].ShouldBeNull();
 
         var medicationCC = request.MutableNode["medicationCodeableConcept"]?.AsObject();
         var coding = medicationCC?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("16590-619-30");
-        coding?["system"]?.GetValue<string>().Should().Be("http://snomed.info/sct");
-        coding?["display"]?.GetValue<string>().Should().Be("Amoxicillin 500mg");
+        coding?["code"]?.GetValue<string>().ShouldBe("16590-619-30");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        coding?["display"]?.GetValue<string>().ShouldBe("Amoxicillin 500mg");
     }
 
     [Fact]
@@ -224,9 +222,9 @@ public class MedicationRequestBuilderTests
         // Assert
         var medicationCC = request.MutableNode["medicationCodeableConcept"]?.AsObject();
         var coding = medicationCC?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("aspirin");
-        coding?["system"]?.GetValue<string>().Should().Be("http://example.org");
-        coding?["display"].Should().BeNull();
+        coding?["code"]?.GetValue<string>().ShouldBe("aspirin");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://example.org");
+        coding?["display"].ShouldBeNull();
     }
 
     #endregion
@@ -247,11 +245,11 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["medicationReference"].Should().NotBeNull();
-        request.MutableNode["medicationCodeableConcept"].Should().BeNull();
+        request.MutableNode["medicationReference"].ShouldNotBeNull();
+        request.MutableNode["medicationCodeableConcept"].ShouldBeNull();
 
         var medicationRef = request.MutableNode["medicationReference"]?.AsObject();
-        medicationRef?["reference"]?.GetValue<string>().Should().Be($"Medication/{medicationId}");
+        medicationRef?["reference"]?.GetValue<string>().ShouldBe($"Medication/{medicationId}");
     }
 
     [Fact]
@@ -269,11 +267,11 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["medicationReference"].Should().NotBeNull();
-        request.MutableNode["medicationCodeableConcept"].Should().BeNull();
+        request.MutableNode["medicationReference"].ShouldNotBeNull();
+        request.MutableNode["medicationCodeableConcept"].ShouldBeNull();
 
         var medicationRef = request.MutableNode["medicationReference"]?.AsObject();
-        medicationRef?["reference"]?.GetValue<string>().Should().Be($"Medication/{medicationId}");
+        medicationRef?["reference"]?.GetValue<string>().ShouldBe($"Medication/{medicationId}");
     }
 
     [Fact]
@@ -290,8 +288,8 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["medicationCodeableConcept"].Should().NotBeNull();
-        request.MutableNode["medicationReference"].Should().BeNull();
+        request.MutableNode["medicationCodeableConcept"].ShouldNotBeNull();
+        request.MutableNode["medicationReference"].ShouldBeNull();
     }
 
     #endregion
@@ -313,9 +311,9 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["requester"].Should().NotBeNull();
+        request.MutableNode["requester"].ShouldNotBeNull();
         var requester = request.MutableNode["requester"]?.AsObject();
-        requester?["reference"]?.GetValue<string>().Should().Be($"Practitioner/{practitionerId}");
+        requester?["reference"]?.GetValue<string>().ShouldBe($"Practitioner/{practitionerId}");
     }
 
     [Fact]
@@ -331,7 +329,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["requester"].Should().BeNull();
+        request.MutableNode["requester"].ShouldBeNull();
     }
 
     #endregion
@@ -353,7 +351,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["authoredOn"]?.GetValue<string>().Should().Be(authoredOn);
+        request.MutableNode["authoredOn"]?.GetValue<string>().ShouldBe(authoredOn);
     }
 
     [Fact]
@@ -371,7 +369,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["authoredOn"]?.GetValue<string>().Should().Be(authoredOn);
+        request.MutableNode["authoredOn"]?.GetValue<string>().ShouldBe(authoredOn);
     }
 
     [Fact]
@@ -387,7 +385,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.MutableNode["authoredOn"].Should().BeNull();
+        request.MutableNode["authoredOn"].ShouldBeNull();
     }
 
     #endregion
@@ -416,24 +414,24 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.Should().NotBeNull();
-        request.ResourceType.Should().Be("MedicationRequest");
-        request.Id.Should().Be("medreq-789");
-        request.MutableNode["status"]?.GetValue<string>().Should().Be("completed");
-        request.MutableNode["intent"]?.GetValue<string>().Should().Be("order");
-        request.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
-        request.MutableNode["requester"]?["reference"]?.GetValue<string>().Should().Be($"Practitioner/{practitionerId}");
-        request.MutableNode["authoredOn"]?.GetValue<string>().Should().Be(authoredOn);
+        request.ShouldNotBeNull();
+        request.ResourceType.ShouldBe("MedicationRequest");
+        request.Id.ShouldBe("medreq-789");
+        request.MutableNode["status"]?.GetValue<string>().ShouldBe("completed");
+        request.MutableNode["intent"]?.GetValue<string>().ShouldBe("order");
+        request.MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
+        request.MutableNode["requester"]?["reference"]?.GetValue<string>().ShouldBe($"Practitioner/{practitionerId}");
+        request.MutableNode["authoredOn"]?.GetValue<string>().ShouldBe(authoredOn);
 
         var medicationCC = request.MutableNode["medicationCodeableConcept"]?.AsObject();
         var coding = medicationCC?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("16590-619-30");
-        coding?["system"]?.GetValue<string>().Should().Be("http://snomed.info/sct");
-        coding?["display"]?.GetValue<string>().Should().Be("Amoxicillin 500mg");
+        coding?["code"]?.GetValue<string>().ShouldBe("16590-619-30");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        coding?["display"]?.GetValue<string>().ShouldBe("Amoxicillin 500mg");
 
         var tags = request.MutableNode["meta"]?["tag"]?.AsArray();
-        tags.Should().HaveCount(1);
-        tags?[0]?["code"]?.GetValue<string>().Should().Be(tag);
+        tags!.Count.ShouldBe(1);
+        tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     [Fact]
@@ -455,9 +453,9 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request.Should().NotBeNull();
-        request.MutableNode["medicationReference"]?["reference"]?.GetValue<string>().Should().Be($"Medication/{medicationId}");
-        request.MutableNode["medicationCodeableConcept"].Should().BeNull();
+        request.ShouldNotBeNull();
+        request.MutableNode["medicationReference"]?["reference"]?.GetValue<string>().ShouldBe($"Medication/{medicationId}");
+        request.MutableNode["medicationCodeableConcept"].ShouldBeNull();
     }
 
     #endregion
@@ -482,7 +480,7 @@ public class MedicationRequestBuilderTests
             .Build();
 
         // Assert
-        request1.Id.Should().NotBe(request2.Id);
+        request1.Id.ShouldNotBe(request2.Id);
     }
 
     [Fact]
@@ -501,8 +499,8 @@ public class MedicationRequestBuilderTests
 
         // Assert
         var profiles = request.MutableNode["meta"]?["profile"]?.AsArray();
-        profiles.Should().HaveCount(1);
-        profiles?[0]?.GetValue<string>().Should().Be(profileUrl);
+        profiles!.Count.ShouldBe(1);
+        profiles?[0]?.GetValue<string>().ShouldBe(profileUrl);
     }
 
     #endregion
@@ -525,8 +523,8 @@ public class MedicationRequestBuilderTests
             .WithAuthoredOn("2023-01-15");
 
         // Assert
-        builder.Should().NotBeNull();
-        builder.Should().BeOfType<MedicationRequestBuilder>();
+        builder.ShouldNotBeNull();
+        builder.ShouldBeOfType<MedicationRequestBuilder>();
     }
 
     #endregion

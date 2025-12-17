@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 
@@ -51,18 +51,18 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             $"_tag={tag}&_include=DiagnosticReport:patient:Patient&code={snomedCode}&_count=1");
 
         // Assert - first page should have 1 match + 1 include
-        GetCountBySearchMode(bundle, "match").Should().Be(1);
-        GetCountBySearchMode(bundle, "include").Should().Be(1);
+        GetCountBySearchMode(bundle, "match").ShouldBe(1);
+        GetCountBySearchMode(bundle, "include").ShouldBe(1);
 
         // Follow next link
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
-        nextLink.Should().NotBeNullOrEmpty();
+        nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
 
         // Assert - second page should have 1 match + 1 include
-        GetCountBySearchMode(nextBundle, "match").Should().Be(1);
-        GetCountBySearchMode(nextBundle, "include").Should().Be(1);
+        GetCountBySearchMode(nextBundle, "match").ShouldBe(1);
+        GetCountBySearchMode(nextBundle, "include").ShouldBe(1);
     }
 
     /// <summary>
@@ -99,18 +99,18 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             $"_tag={tag}&_revinclude=DiagnosticReport:result&code={snomedCode}&_count=1");
 
         // Assert - first page
-        GetCountBySearchMode(bundle, "match").Should().Be(1);
-        GetCountBySearchMode(bundle, "include").Should().Be(1);
+        GetCountBySearchMode(bundle, "match").ShouldBe(1);
+        GetCountBySearchMode(bundle, "include").ShouldBe(1);
 
         // Follow next link
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
-        nextLink.Should().NotBeNullOrEmpty();
+        nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
 
         // Assert - second page
-        GetCountBySearchMode(nextBundle, "match").Should().Be(1);
-        GetCountBySearchMode(nextBundle, "include").Should().Be(1);
+        GetCountBySearchMode(nextBundle, "match").ShouldBe(1);
+        GetCountBySearchMode(nextBundle, "include").ShouldBe(1);
     }
 
     #endregion
@@ -150,7 +150,7 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             $"_include=MedicationDispense:prescription&_sort=-whenPrepared&_count=3&_tag={tag}");
 
         // Assert - verify bundle link
-        bundle.Link.Should().Contain(l => l.Relation == "self");
+        bundle.Link.ShouldContain(l => l.Relation == "self");
 
         // Verify all expected resources are present
         ValidateBundleContains(bundle,
@@ -162,10 +162,10 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
 
         // Verify search modes
         var matches = bundle.Entry.Where(e => e.Search?.Mode == "match").Select(e => e.Resource!.ResourceType).ToList();
-        matches.Should().AllBe("MedicationDispense");
+        matches.ShouldAllBe(x => x == "MedicationDispense");
 
         var includes = bundle.Entry.Where(e => e.Search?.Mode == "include").Select(e => e.Resource!.ResourceType).ToList();
-        includes.Should().AllBe("MedicationRequest");
+        includes.ShouldAllBe(x => x == "MedicationRequest");
 
         // Verify sorting - matches should be sorted descending by whenPrepared
         var matchedDispenses = bundle.Entry
@@ -173,11 +173,11 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             .Select(e => e.Resource)
             .ToList();
 
-        matchedDispenses.Should().HaveCount(3);
+        matchedDispenses.Count.ShouldBe(3);
         // Adams (2000-01-01) should be first, Smith (1990-01-01) second, Truman (null) last
-        matchedDispenses[0]!.Id.Should().Be(adamsMedDispense.Id);
-        matchedDispenses[1]!.Id.Should().Be(smithMedDispense.Id);
-        matchedDispenses[2]!.Id.Should().Be(trumanMedDispense.Id);
+        matchedDispenses[0]!.Id.ShouldBe(adamsMedDispense.Id);
+        matchedDispenses[1]!.Id.ShouldBe(smithMedDispense.Id);
+        matchedDispenses[2]!.Id.ShouldBe(trumanMedDispense.Id);
     }
 
     /// <summary>
@@ -227,26 +227,29 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
 
         // Verify search modes
         var matches = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        matches.Should().AllSatisfy(e => e.Resource!.ResourceType.Should().Be("Patient"));
+        foreach (var e in matches)
+        {
+            e.Resource!.ResourceType.ShouldBe("Patient");
+        }
 
         var includes = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
-        includes.Should().NotBeEmpty();
+        includes.ShouldNotBeEmpty();
 
         // Verify sorting - patient matches should be sorted ascending by birthdate
         var matchedPatients = matches.Select(e => e.Resource).ToList();
 
-        matchedPatients.Should().HaveCount(5);
+        matchedPatients.Count.ShouldBe(5);
         // Should be in ascending order by birthdate
-        matchedPatients[0]!.Id.Should().Be(patiPatient.Id); // 1950-01-01
-        matchedPatients[1]!.Id.Should().Be(adamsPatient.Id); // 1960-01-01
-        matchedPatients[2]!.Id.Should().Be(smithPatient.Id); // 1970-01-01
-        matchedPatients[3]!.Id.Should().Be(trumanPatient.Id); // 1980-01-01
-        matchedPatients[4]!.Id.Should().Be(deletedOrgPatient.Id); // 1990-01-01
+        matchedPatients[0]!.Id.ShouldBe(patiPatient.Id); // 1950-01-01
+        matchedPatients[1]!.Id.ShouldBe(adamsPatient.Id); // 1960-01-01
+        matchedPatients[2]!.Id.ShouldBe(smithPatient.Id); // 1970-01-01
+        matchedPatients[3]!.Id.ShouldBe(trumanPatient.Id); // 1980-01-01
+        matchedPatients[4]!.Id.ShouldBe(deletedOrgPatient.Id); // 1990-01-01
 
         // Verify total count excludes included resources
         var countBundle = await Harness.SearchBundleAsync("Patient",
             $"_revinclude=MedicationRequest:patient&_revinclude:iterate=MedicationDispense:prescription&_tag={tag}&_sort=birthdate&_summary=count");
-        countBundle.Total.Should().Be(5);
+        countBundle.Total.ShouldBe(5);
     }
 
     #endregion
@@ -299,40 +302,43 @@ public class IncludeSearchTests_Advanced : IncludeTestBase
             .ToDictionary(g => g.Key, g => g.Select(e => e.Resource!.Id).ToList());
 
         // Verify Organizations (main results) are present
-        resourceTypeToIds.Should().ContainKey("Organization");
-        resourceTypeToIds["Organization"].Should().Contain(createdOrgs[0].Id);
-        resourceTypeToIds["Organization"].Should().Contain(createdOrgs[1].Id);
+        resourceTypeToIds.ShouldContainKey("Organization");
+        resourceTypeToIds["Organization"].ShouldContain(createdOrgs[0].Id);
+        resourceTypeToIds["Organization"].ShouldContain(createdOrgs[1].Id);
 
         // Verify Location (references org1) is included
-        resourceTypeToIds.Should().ContainKey("Location");
-        resourceTypeToIds["Location"].Should().Contain(createdLocation.Id);
+        resourceTypeToIds.ShouldContainKey("Location");
+        resourceTypeToIds["Location"].ShouldContain(createdLocation.Id);
 
         // Verify Patients (reference orgs) are included
-        resourceTypeToIds.Should().ContainKey("Patient");
-        resourceTypeToIds["Patient"].Should().Contain(createdPatients[0].Id);
-        resourceTypeToIds["Patient"].Should().Contain(createdPatients[1].Id);
+        resourceTypeToIds.ShouldContainKey("Patient");
+        resourceTypeToIds["Patient"].ShouldContain(createdPatients[0].Id);
+        resourceTypeToIds["Patient"].ShouldContain(createdPatients[1].Id);
 
         // Verify Observations (reference orgs via performer) are included
-        resourceTypeToIds.Should().ContainKey("Observation");
-        resourceTypeToIds["Observation"].Should().Contain(createdObs[0].Id);
-        resourceTypeToIds["Observation"].Should().Contain(createdObs[1].Id);
+        resourceTypeToIds.ShouldContainKey("Observation");
+        resourceTypeToIds["Observation"].ShouldContain(createdObs[0].Id);
+        resourceTypeToIds["Observation"].ShouldContain(createdObs[1].Id);
 
         // Verify CareTeam (references org1 via participant.member) is included
-        resourceTypeToIds.Should().ContainKey("CareTeam");
-        resourceTypeToIds["CareTeam"].Should().Contain(createdCareTeam.Id);
+        resourceTypeToIds.ShouldContainKey("CareTeam");
+        resourceTypeToIds["CareTeam"].ShouldContain(createdCareTeam.Id);
 
         // Verify search modes
         var matches = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
-        matches.Should().HaveCount(2); // 2 Organizations
-        matches.Should().AllSatisfy(e => e.Resource!.ResourceType.Should().Be("Organization"));
+        matches.Count.ShouldBe(2); // 2 Organizations
+        foreach (var e in matches)
+        {
+            e.Resource!.ResourceType.ShouldBe("Organization");
+        }
 
         var includes = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
-        includes.Should().HaveCount(6); // 1 Location + 2 Patients + 2 Observations + 1 CareTeam
+        includes.Count.ShouldBe(6); // 1 Location + 2 Patients + 2 Observations + 1 CareTeam
 
         // Verify total count excludes includes (only counts main results)
         var countBundle = await Harness.SearchBundleAsync("Organization",
             $"_revinclude=*:*&_tag={tag}&_summary=count");
-        countBundle.Total.Should().Be(2); // Only the 2 Organizations
+        countBundle.Total.ShouldBe(2); // Only the 2 Organizations
     }
 
     #endregion

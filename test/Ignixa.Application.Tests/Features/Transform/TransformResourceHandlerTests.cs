@@ -5,7 +5,7 @@
 
 #nullable disable
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
@@ -114,7 +114,7 @@ public class TransformResourceHandlerTests
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await _handler.HandleAsync(command, CancellationToken.None));
 
-        exception.Message.Should().Contain("Content parameter is required");
+        exception.Message.ShouldContain("Content parameter is required");
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class TransformResourceHandlerTests
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await _handler.HandleAsync(command, CancellationToken.None));
 
-        exception.Message.Should().Contain("No mapping source provided");
+        exception.Message.ShouldContain("No mapping source provided");
     }
 
     [Fact]
@@ -211,31 +211,31 @@ public class TransformResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert - Verify target resource was actually mutated
-        result.Should().NotBeNull("transform should return a result");
-        result.ResourceType.Should().Be("Patient", "target should be a Patient resource");
+        result.ShouldNotBeNull("transform should return a result");
+        result.ResourceType.ShouldBe("Patient", "target should be a Patient resource");
 
         // Verify MutableNode has the copied properties
-        result.MutableNode.Should().NotBeNull("MutableNode should be populated");
+        result.MutableNode.ShouldNotBeNull("MutableNode should be populated");
 
         // Check primitive values
-        result.MutableNode!["id"]?.GetValue<string>().Should().Be("patient-123", "id should be copied");
-        result.MutableNode["gender"]?.GetValue<string>().Should().Be("male", "gender should be copied");
-        result.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1990-01-15", "birthDate should be copied");
-        result.MutableNode["active"]?.GetValue<bool>().Should().Be(true, "active should be copied");
+        result.MutableNode!["id"]?.GetValue<string>().ShouldBe("patient-123", "id should be copied");
+        result.MutableNode["gender"]?.GetValue<string>().ShouldBe("male", "gender should be copied");
+        result.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-01-15", "birthDate should be copied");
+        result.MutableNode["active"]?.GetValue<bool>().ShouldBe(true, "active should be copied");
 
         // Check complex object (name array)
-        result.MutableNode["name"].Should().NotBeNull("name should be copied");
+        result.MutableNode["name"].ShouldNotBeNull("name should be copied");
         var nameArray = result.MutableNode["name"]!.AsArray();
-        nameArray.Should().HaveCount(1, "should have one name");
+        nameArray.Count.ShouldBe(1, "should have one name");
 
         var name = nameArray[0]!.AsObject();
-        name["use"]?.GetValue<string>().Should().Be("official", "name.use should be copied");
-        name["family"]?.GetValue<string>().Should().Be("Doe", "name.family should be copied");
+        name["use"]?.GetValue<string>().ShouldBe("official", "name.use should be copied");
+        name["family"]?.GetValue<string>().ShouldBe("Doe", "name.family should be copied");
 
         var givenArray = name["given"]!.AsArray();
-        givenArray.Should().HaveCount(2, "should have two given names");
-        givenArray[0]?.GetValue<string>().Should().Be("John");
-        givenArray[1]?.GetValue<string>().Should().Be("Jacob");
+        givenArray.Count.ShouldBe(2, "should have two given names");
+        givenArray[0]?.GetValue<string>().ShouldBe("John");
+        givenArray[1]?.GetValue<string>().ShouldBe("Jacob");
     }
 
     /// <summary>
@@ -286,15 +286,15 @@ public class TransformResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert - Verify copied fields
-        result.Should().NotBeNull();
-        result.MutableNode!["id"]?.GetValue<string>().Should().Be("patient-456", "id should be copied");
-        result.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1990-01-01", "birthDate should be copied");
-        result.MutableNode["name"].Should().NotBeNull("name should be copied");
+        result.ShouldNotBeNull();
+        result.MutableNode!["id"]?.GetValue<string>().ShouldBe("patient-456", "id should be copied");
+        result.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-01-01", "birthDate should be copied");
+        result.MutableNode["name"].ShouldNotBeNull("name should be copied");
 
         // CRITICAL: Verify literal values were added via mutation (not just stored in variables)
-        result.MutableNode["active"]?.GetValue<bool>().Should().Be(true,
+        result.MutableNode["active"]?.GetValue<bool>().ShouldBe(true,
             "active literal value should be mutated into target - if this fails, mutation is not working");
-        result.MutableNode["gender"]?.GetValue<string>().Should().Be("unknown",
+        result.MutableNode["gender"]?.GetValue<string>().ShouldBe("unknown",
             "gender literal value should be mutated into target - if this fails, mutation is not working");
     }
 

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Cli.Discovery;
 using Ignixa.Specification.Generated;
 
@@ -13,10 +13,10 @@ public class ScenarioDiscoveryTests
         var names = ScenarioDiscovery.GetScenarioNames().ToList();
 
         // Assert
-        names.Should().NotBeEmpty();
-        names.Should().Contain("DiabeticPatient");
-        names.Should().Contain("AsthmaticChild");
-        names.Should().Contain("PediatricEarInfection");
+        names.ShouldNotBeEmpty();
+        names.ShouldContain("DiabeticPatient");
+        names.ShouldContain("AsthmaticChild");
+        names.ShouldContain("PediatricEarInfection");
     }
 
     [Fact]
@@ -29,9 +29,9 @@ public class ScenarioDiscoveryTests
         var context = ScenarioDiscovery.CreateScenario(schemaProvider, "DiabeticPatient");
 
         // Assert
-        context.Should().NotBeNull();
-        context!.Patient.Should().NotBeNull();
-        context.AllResources.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context!.Patient.ShouldNotBeNull();
+        context.AllResources.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class ScenarioDiscoveryTests
         var context = ScenarioDiscovery.CreateScenario(schemaProvider, "InvalidScenario");
 
         // Assert
-        context.Should().BeNull();
+        context.ShouldBeNull();
     }
 
     [Fact]
@@ -57,6 +57,6 @@ public class ScenarioDiscoveryTests
         var context = ScenarioDiscovery.CreateScenario(schemaProvider, "diabeticpatient");
 
         // Assert
-        context.Should().NotBeNull();
+        context.ShouldNotBeNull();
     }
 }

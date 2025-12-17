@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
@@ -56,7 +56,7 @@ public class HybridTerminologyServiceTests
             null,
             Arg.Any<CancellationToken>());
         await fallback.DidNotReceiveWithAnyArgs().ValidateBindingAsync(default!, default, default, default, default, default, default);
-        result.IsValid.Should().BeTrue();
+        result.IsValid.ShouldBeTrue();
     }
 
     [Fact]
@@ -105,6 +105,6 @@ public class HybridTerminologyServiceTests
             Arg.Any<string?>(),
             Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
-        result.IsValid.Should().BeTrue();
+        result.IsValid.ShouldBeTrue();
     }
 }

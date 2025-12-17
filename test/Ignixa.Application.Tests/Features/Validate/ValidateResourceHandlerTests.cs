@@ -5,7 +5,7 @@
 
 #nullable disable
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.Validate;
@@ -71,8 +71,8 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.OperationOutcome.Should().NotBeNull();
+        result.ShouldNotBeNull();
+        result.OperationOutcome.ShouldNotBeNull();
     }
 
     [Fact]
@@ -98,12 +98,12 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var operationOutcome = result.OperationOutcome;
         var issues = operationOutcome["issue"]?.AsArray();
-        issues.Should().NotBeNull();
-        issues.Count.Should().BeGreaterThan(0);
-        issues[0]["severity"]?.GetValue<string>().Should().Be("error");
+        issues.ShouldNotBeNull();
+        issues.Count.ShouldBeGreaterThan(0);
+        issues[0]["severity"]?.GetValue<string>().ShouldBe("error");
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         // The handler should extract resourceType from the JsonNode
     }
 
@@ -175,7 +175,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         // With ValidationTier.None, no validation errors should be reported
     }
 
@@ -215,7 +215,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     [Fact]
@@ -254,7 +254,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     #endregion
@@ -288,7 +288,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         // Verify that the schema resolver was called with the custom profile
     }
 
@@ -317,7 +317,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         // Verify that the schema resolver was called with the base definition
     }
 
@@ -350,11 +350,11 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var operationOutcome = result.OperationOutcome;
         var issues = operationOutcome["issue"]?.AsArray();
-        issues.Should().NotBeNull();
-        issues[0]["code"]?.GetValue<string>().Should().Be("not-found");
+        issues.ShouldNotBeNull();
+        issues[0]["code"]?.GetValue<string>().ShouldBe("not-found");
     }
 
     #endregion
@@ -397,7 +397,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         // Verify that R4 specification was used
     }
 
@@ -437,7 +437,7 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     #endregion
@@ -469,9 +469,9 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var operationOutcome = result.OperationOutcome;
-        operationOutcome["resourceType"]?.GetValue<string>().Should().Be("OperationOutcome");
+        operationOutcome["resourceType"]?.GetValue<string>().ShouldBe("OperationOutcome");
     }
 
     [Fact]
@@ -499,10 +499,10 @@ public class ValidateResourceHandlerTests
         var result = await _handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var operationOutcome = result.OperationOutcome;
         var issues = operationOutcome["issue"];
-        issues.Should().NotBeNull();
+        issues.ShouldNotBeNull();
     }
 
     #endregion

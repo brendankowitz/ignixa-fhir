@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -31,8 +31,7 @@ public class GuardStateTests
 
         // Act & Assert
         var act = () => scenario.Build();
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Guard condition not met*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Guard condition not met");
     }
 
     [Fact]
@@ -46,8 +45,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class GuardStateTests
 
         // Act & Assert
         var act = () => scenario.Build();
-        act.Should().Throw<InvalidOperationException>();
+        Should.Throw<InvalidOperationException>(act);
     }
 
     [Fact]
@@ -74,8 +73,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -89,8 +88,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     #endregion
@@ -107,8 +106,7 @@ public class GuardStateTests
 
         // Act & Assert
         var act = () => scenario.Build();
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Guard condition not met*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Guard condition not met");
     }
 
     [Fact]
@@ -123,8 +121,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -139,8 +137,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -154,7 +152,7 @@ public class GuardStateTests
 
         // Act & Assert
         var act = () => scenario.Build();
-        act.Should().Throw<InvalidOperationException>();
+        Should.Throw<InvalidOperationException>(act);
     }
 
     [Fact]
@@ -169,8 +167,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -185,8 +183,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -201,8 +199,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     #endregion
@@ -221,8 +219,7 @@ public class GuardStateTests
 
         // Act & Assert
         var act = () => scenario.Build();
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Guard condition not met*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Guard condition not met");
     }
 
     [Fact]
@@ -237,10 +234,10 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Immunizations.Should().HaveCount(1);
+        scenario.Immunizations.Count.ShouldBe(1);
         var hpv = scenario.Immunizations[0];
         var code = hpv.MutableNode["vaccineCode"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be(Immunizations.HPV.Code);
+        code.ShouldBe(Immunizations.HPV.Code);
     }
 
     #endregion
@@ -269,9 +266,9 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(3);
-        scenario.Medications.Should().HaveCount(2);
-        scenario.GetAttribute<int>("severity").Should().Be(3);
+        scenario.Encounters.Count.ShouldBe(3);
+        scenario.Medications.Count.ShouldBe(2);
+        scenario.GetAttribute<int>("severity").ShouldBe(3);
     }
 
     #endregion
@@ -296,11 +293,10 @@ public class GuardStateTests
 
         // Act & Assert
         var actUnder45 = () => scenarioUnder45.Build();
-        actUnder45.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Guard condition not met*");
+        Should.Throw<InvalidOperationException>(actUnder45).Message.ShouldContain("Guard condition not met");
 
         var contextOver45 = scenarioOver45.Build();
-        contextOver45.Procedures.Should().HaveCount(1);
+        contextOver45.Procedures.Count.ShouldBe(1);
     }
 
     #endregion
@@ -323,8 +319,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -342,7 +338,7 @@ public class GuardStateTests
 
         // Act & Assert
         var act = () => scenario.Build();
-        act.Should().Throw<InvalidOperationException>();
+        Should.Throw<InvalidOperationException>(act);
     }
 
     #endregion
@@ -362,8 +358,8 @@ public class GuardStateTests
             .Build();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(2);
-        scenario.CurrentAge.Should().Be(19);
+        scenario.Encounters.Count.ShouldBe(2);
+        scenario.CurrentAge.ShouldBe(19);
     }
 
     #endregion

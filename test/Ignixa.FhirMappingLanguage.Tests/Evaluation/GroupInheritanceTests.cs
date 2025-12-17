@@ -4,7 +4,7 @@
  * Unit tests for group inheritance in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
@@ -141,7 +141,7 @@ group SimpleGroup(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "SimpleGroup", context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -182,7 +182,7 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends MiddleGro
         var act = () => evaluator.ExecuteGroup(map, "DerivedGroup", context);
 
         // Assert - should execute BaseGroup, then MiddleGroup, then DerivedGroup
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -219,8 +219,9 @@ group GroupB (source src : Patient, target tgt : Bundle) extends GroupA {
         var act = () => evaluator.ExecuteGroup(map, "GroupA", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*circular*inheritance*");
+        var exception = Should.Throw<InvalidOperationException>(act);
+        exception.Message.ShouldContain("circular");
+        exception.Message.ShouldContain("inheritance");
     }
 
     [Fact]
@@ -249,8 +250,9 @@ group RecursiveGroup (source src : Patient, target tgt : Bundle) extends Recursi
         var act = () => evaluator.ExecuteGroup(map, "RecursiveGroup", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*circular*inheritance*");
+        var exception = Should.Throw<InvalidOperationException>(act);
+        exception.Message.ShouldContain("circular");
+        exception.Message.ShouldContain("inheritance");
     }
 
     [Fact]
@@ -279,8 +281,7 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends NonExiste
         var act = () => evaluator.ExecuteGroup(map, "DerivedGroup", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*base group not found*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("base group not found");
     }
 
     [Fact]
@@ -321,8 +322,9 @@ group GroupD (source src : Patient, target tgt : Bundle) extends GroupB {
         var act = () => evaluator.ExecuteGroup(map, "GroupA", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*circular*inheritance*");
+        var exception = Should.Throw<InvalidOperationException>(act);
+        exception.Message.ShouldContain("circular");
+        exception.Message.ShouldContain("inheritance");
     }
 
     #endregion
@@ -359,8 +361,9 @@ group GROUPB (source src : Patient, target tgt : Bundle) extends groupa {
         var act = () => evaluator.ExecuteGroup(map, "GroupA", context);
 
         // Assert - Should detect circular inheritance even with different casing
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*circular*inheritance*");
+        var exception = Should.Throw<InvalidOperationException>(act);
+        exception.Message.ShouldContain("circular");
+        exception.Message.ShouldContain("inheritance");
     }
 
     #endregion
@@ -401,7 +404,7 @@ group Group3 (source src : Patient, target tgt : Bundle) extends Group1 {
         var act = () => evaluator.ExecuteGroup(map, "Group2", context);
 
         // Assert - Should execute only Group2, not Group1 or Group3
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -438,7 +441,7 @@ group Group3 (source src : Patient, target tgt : Bundle) extends Group1 {
         var act = () => evaluator.ExecuteGroup(map, "Group3", context);
 
         // Assert - Should execute Group1 then Group3
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -466,15 +469,15 @@ group DerivedGroup (source src : Patient, target tgt : Bundle) extends BaseGroup
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(2);
+        map.Groups.Count.ShouldBe(2);
 
         var baseGroup = map.Groups.FirstOrDefault(g => g.Name == "BaseGroup");
-        baseGroup.Should().NotBeNull();
-        baseGroup!.Extends.Should().BeNull();
+        baseGroup.ShouldNotBeNull();
+        baseGroup!.Extends.ShouldBeNull();
 
         var derivedGroup = map.Groups.FirstOrDefault(g => g.Name == "DerivedGroup");
-        derivedGroup.Should().NotBeNull();
-        derivedGroup!.Extends.Should().Be("BaseGroup");
+        derivedGroup.ShouldNotBeNull();
+        derivedGroup!.Extends.ShouldBe("BaseGroup");
     }
 
     [Fact]
@@ -502,10 +505,10 @@ group C (source src : Patient, target tgt : Bundle) extends B {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(3);
-        map.Groups[0].Extends.Should().BeNull();
-        map.Groups[1].Extends.Should().Be("A");
-        map.Groups[2].Extends.Should().Be("B");
+        map.Groups.Count.ShouldBe(3);
+        map.Groups[0].Extends.ShouldBeNull();
+        map.Groups[1].Extends.ShouldBe("A");
+        map.Groups[2].Extends.ShouldBe("B");
     }
 
     #endregion

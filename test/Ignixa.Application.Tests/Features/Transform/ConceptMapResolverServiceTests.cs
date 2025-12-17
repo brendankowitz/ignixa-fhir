@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
@@ -63,7 +63,7 @@ public class ConceptMapResolverServiceTests
         var result = await _service.TranslateAsync(sourceCode, sourceSystem, mapUrl, targetSystem, CancellationToken.None);
 
         // Assert
-        result.Should().Be("M");
+        result.ShouldBe("M");
     }
 
     #endregion
@@ -92,7 +92,7 @@ public class ConceptMapResolverServiceTests
         var result = await _service.TranslateAsync(sourceCode, sourceSystem, mapUrl, null, CancellationToken.None);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -121,7 +121,7 @@ public class ConceptMapResolverServiceTests
         var result = await _service.TranslateAsync(sourceCode, sourceSystem, mapUrl, null, CancellationToken.None);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -165,7 +165,7 @@ public class ConceptMapResolverServiceTests
         var result = await _service.TranslateAsync(sourceCode, sourceSystem, mapUrl, targetSystem, CancellationToken.None);
 
         // Assert
-        result.Should().Be("M");
+        result.ShouldBe("M");
 
         // Verify that ITerminologyService was called with correct targetSystem filter
         await _mockTerminologyService.Received(1).TranslateCodeAsync(
@@ -209,7 +209,7 @@ public class ConceptMapResolverServiceTests
         var result = _service.Translate(sourceCode, sourceSystem, mapUrl, null);
 
         // Assert
-        result.Should().Be("M");
+        result.ShouldBe("M");
     }
 
     #endregion
@@ -233,8 +233,8 @@ public class ConceptMapResolverServiceTests
         var act = async () => await _service.TranslateAsync(sourceCode, sourceSystem, mapUrl, null, CancellationToken.None);
 
         // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage($"ConceptMap translation failed for '{sourceSystem}#{sourceCode}' using map '{mapUrl}':*");
+        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
+        ex.Message.ShouldStartWith($"ConceptMap translation failed for '{sourceSystem}#{sourceCode}' using map '{mapUrl}':");
     }
 
     #endregion

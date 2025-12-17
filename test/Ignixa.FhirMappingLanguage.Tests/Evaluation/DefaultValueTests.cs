@@ -4,7 +4,7 @@
  * Unit tests for default value functionality in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
@@ -79,10 +79,10 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
-        map.Groups[0].Rules.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources[0].Default.Should().NotBeNull();
+        map.Groups.Count.ShouldBe(1);
+        map.Groups[0].Rules.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources[0].Default.ShouldNotBeNull();
     }
 
     [Fact]
@@ -103,10 +103,10 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = map.Groups[0].Rules[0].Sources[0];
-        source.Default.Should().NotBeNull();
-        source.Condition.Should().NotBeNull();
-        source.Check.Should().NotBeNull();
-        source.Log.Should().NotBeNull();
+        source.Default.ShouldNotBeNull();
+        source.Condition.ShouldNotBeNull();
+        source.Check.ShouldNotBeNull();
+        source.Log.ShouldNotBeNull();
     }
 
     #endregion
@@ -210,8 +210,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - default value should have been logged
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("unknown");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("unknown");
     }
 
     [Fact]
@@ -245,8 +245,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("0");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("0");
     }
 
     [Fact]
@@ -280,8 +280,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("True");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("True");
     }
 
     [Fact]
@@ -316,7 +316,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         // Assert - where clause filters everything out, default should not be used
         // because where is applied after default
-        logMessages.Should().BeEmpty();
+        logMessages.ShouldBeEmpty();
     }
 
     #endregion
@@ -354,7 +354,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - no elements, so log should not execute
-        logMessages.Should().BeEmpty();
+        logMessages.ShouldBeEmpty();
     }
 
     [Fact]
@@ -388,8 +388,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - should only have one default value
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("Unknown");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("Unknown");
     }
 
     [Fact]
@@ -421,7 +421,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - should not throw, default applies only to status source
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -461,7 +461,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - should log message for active patient using default
-        logMessages.Should().Contain("active patient");
+        logMessages.ShouldContain("active patient");
     }
 
     #endregion

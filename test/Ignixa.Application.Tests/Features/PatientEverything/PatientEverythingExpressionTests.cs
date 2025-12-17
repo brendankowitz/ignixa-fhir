@@ -5,7 +5,7 @@
 
 #nullable disable
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Search.Expressions;
 using Xunit;
 
@@ -29,9 +29,9 @@ public class PatientEverythingExpressionTests
         var expression = new PatientEverythingExpression(patientId);
 
         // Assert
-        expression.PatientIds.Should().NotBeNull();
-        expression.PatientIds.Should().HaveCount(1);
-        expression.PatientIds[0].Should().Be(patientId);
+        expression.PatientIds.ShouldNotBeNull();
+        expression.PatientIds.Count.ShouldBe(1);
+        expression.PatientIds[0].ShouldBe(patientId);
     }
 
     [Fact]
@@ -44,9 +44,9 @@ public class PatientEverythingExpressionTests
         var expression = new PatientEverythingExpression(patientIds);
 
         // Assert
-        expression.PatientIds.Should().NotBeNull();
-        expression.PatientIds.Should().HaveCount(3);
-        expression.PatientIds.Should().BeEquivalentTo(patientIds);
+        expression.PatientIds.ShouldNotBeNull();
+        expression.PatientIds.Count.ShouldBe(3);
+        expression.PatientIds.ShouldBe(patientIds);
     }
 
     [Fact]
@@ -59,8 +59,8 @@ public class PatientEverythingExpressionTests
         var act = () => new PatientEverythingExpression(patientIds);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("patientIds");
+        Should.Throw<ArgumentNullException>(act)
+            .ParamName.ShouldBe("patientIds");
     }
 
     [Fact]
@@ -73,8 +73,8 @@ public class PatientEverythingExpressionTests
         var act = () => new PatientEverythingExpression(patientIds);
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithParameterName("patientIds");
+        Should.Throw<ArgumentException>(act)
+            .ParamName.ShouldBe("patientIds");
     }
 
     #endregion
@@ -96,8 +96,8 @@ public class PatientEverythingExpressionTests
             endDate: endDate);
 
         // Assert
-        expression.StartDate.Should().Be(startDate);
-        expression.EndDate.Should().Be(endDate);
+        expression.StartDate.ShouldBe(startDate);
+        expression.EndDate.ShouldBe(endDate);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class PatientEverythingExpressionTests
             sinceDate: sinceDate);
 
         // Assert
-        expression.SinceDate.Should().Be(sinceDate);
+        expression.SinceDate.ShouldBe(sinceDate);
     }
 
     [Fact]
@@ -129,8 +129,8 @@ public class PatientEverythingExpressionTests
             filteredResourceTypes: filteredTypes);
 
         // Assert
-        expression.FilteredResourceTypes.Should().NotBeNull();
-        expression.FilteredResourceTypes.Should().BeEquivalentTo(filteredTypes);
+        expression.FilteredResourceTypes.ShouldNotBeNull();
+        expression.FilteredResourceTypes.ShouldBe(filteredTypes);
     }
 
     [Fact]
@@ -143,8 +143,8 @@ public class PatientEverythingExpressionTests
         var expression = new PatientEverythingExpression(patientId, filteredResourceTypes: null);
 
         // Assert
-        expression.FilteredResourceTypes.Should().NotBeNull();
-        expression.FilteredResourceTypes.Should().BeEmpty();
+        expression.FilteredResourceTypes.ShouldNotBeNull();
+        expression.FilteredResourceTypes.ShouldBeEmpty();
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public class PatientEverythingExpressionTests
             includeReferencedResources: true);
 
         // Assert
-        expression.IncludeReferencedResources.Should().BeTrue();
+        expression.IncludeReferencedResources.ShouldBeTrue();
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class PatientEverythingExpressionTests
             includeReferencedResources: false);
 
         // Assert
-        expression.IncludeReferencedResources.Should().BeFalse();
+        expression.IncludeReferencedResources.ShouldBeFalse();
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class PatientEverythingExpressionTests
         var expression = new PatientEverythingExpression(patientId);
 
         // Assert
-        expression.IncludeReferencedResources.Should().BeTrue();
+        expression.IncludeReferencedResources.ShouldBeTrue();
     }
 
     #endregion
@@ -213,7 +213,7 @@ public class PatientEverythingExpressionTests
         var result = expression1.ValueInsensitiveEquals(expression2);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public class PatientEverythingExpressionTests
         var result = expression1.ValueInsensitiveEquals(expression2);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public class PatientEverythingExpressionTests
         var result = expression1.ValueInsensitiveEquals(expression2);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class PatientEverythingExpressionTests
         var result = expression1.ValueInsensitiveEquals(expression2);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public class PatientEverythingExpressionTests
         var result = expression.ValueInsensitiveEquals(null);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class PatientEverythingExpressionTests
         var result = expression.ValueInsensitiveEquals(otherExpression);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     #endregion
@@ -304,9 +304,9 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("'patient-123'");
-        result.Should().StartWith("(PatientEverything");
-        result.Should().EndWith(")");
+        result.ShouldContain("'patient-123'");
+        result.ShouldStartWith("(PatientEverything");
+        result.ShouldEndWith(")");
     }
 
     [Fact]
@@ -320,9 +320,9 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("['patient-1', 'patient-2', 'patient-3']");
-        result.Should().StartWith("(PatientEverything");
-        result.Should().EndWith(")");
+        result.ShouldContain("['patient-1', 'patient-2', 'patient-3']");
+        result.ShouldStartWith("(PatientEverything");
+        result.ShouldEndWith(")");
     }
 
     [Fact]
@@ -337,7 +337,7 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("start=2024-01-15");
+        result.ShouldContain("start=2024-01-15");
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("end=2024-12-31");
+        result.ShouldContain("end=2024-12-31");
     }
 
     [Fact]
@@ -367,8 +367,8 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("_since=");
-        result.Should().Contain("2024-06-01");
+        result.ShouldContain("_since=");
+        result.ShouldContain("2024-06-01");
     }
 
     [Fact]
@@ -383,8 +383,8 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("_type=");
-        result.Should().Match(s => s.Contains("Observation") || s.Contains("Condition"));
+        result.ShouldContain("_type=");
+        (result.Contains("Observation") || result.Contains("Condition")).ShouldBeTrue();
     }
 
     [Fact]
@@ -407,10 +407,10 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Contain("start=2024-01-01");
-        result.Should().Contain("end=2024-12-31");
-        result.Should().Contain("_since=");
-        result.Should().Contain("_type=Observation");
+        result.ShouldContain("start=2024-01-01");
+        result.ShouldContain("end=2024-12-31");
+        result.ShouldContain("_since=");
+        result.ShouldContain("_type=Observation");
     }
 
     [Fact]
@@ -424,7 +424,7 @@ public class PatientEverythingExpressionTests
         var result = expression.ToString();
 
         // Assert
-        result.Should().Be("(PatientEverything 'patient-123')");
+        result.ShouldBe("(PatientEverything 'patient-123')");
     }
 
     #endregion

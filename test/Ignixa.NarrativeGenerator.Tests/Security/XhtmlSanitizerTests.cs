@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Shouldly;
 using Ignixa.NarrativeGenerator.Security;
 
 namespace Ignixa.NarrativeGenerator.Tests.Security;
@@ -22,9 +22,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<script");
-        result.Should().NotContain("alert");
-        result.Should().Contain("<p>Safe content</p>");
+        result.ShouldNotContain("<script");
+        result.ShouldNotContain("alert");
+        result.ShouldContain("<p>Safe content</p>");
     }
 
     [Fact]
@@ -39,8 +39,7 @@ public class XhtmlSanitizerTests
 
         // Assert
         // Invalid XML should throw - this protects against malformed input
-        act.Should().Throw<System.Xml.XmlException>()
-            .WithMessage("*invalid attribute character*");
+        Should.Throw<System.Xml.XmlException>(act).Message.ShouldContain("invalid attribute character");
     }
 
     [Fact]
@@ -53,8 +52,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<style");
-        result.Should().Contain("<p>Content</p>");
+        result.ShouldNotContain("<style");
+        result.ShouldContain("<p>Content</p>");
     }
 
     #endregion
@@ -71,10 +70,10 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("javascript:");
-        result.Should().Contain("<a");
-        result.Should().Contain("Click me");
-        result.Should().NotContain("href");
+        result.ShouldNotContain("javascript:");
+        result.ShouldContain("<a");
+        result.ShouldContain("Click me");
+        result.ShouldNotContain("href");
     }
 
     [Fact]
@@ -87,9 +86,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("javascript:", "sanitizer should be case-insensitive");
-        result.Should().NotContain("JaVaScRiPt:");
-        result.Should().NotContain("href");
+        result.ShouldNotContain("javascript:");
+        result.ShouldNotContain("JaVaScRiPt:");
+        result.ShouldNotContain("href");
     }
 
     [Fact]
@@ -102,8 +101,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("vbscript:");
-        result.Should().NotContain("href");
+        result.ShouldNotContain("vbscript:");
+        result.ShouldNotContain("href");
     }
 
     #endregion
@@ -121,9 +120,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("data:");
-        result.Should().NotContain("href");
-        result.Should().Contain("Click me");
+        result.ShouldNotContain("data:");
+        result.ShouldNotContain("href");
+        result.ShouldContain("Click me");
     }
 
     [Fact]
@@ -137,9 +136,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("data:");
-        result.Should().NotContain("src");
-        result.Should().Contain("alt=\"Image\"");
+        result.ShouldNotContain("data:");
+        result.ShouldNotContain("src");
+        result.ShouldContain("alt=\"Image\"");
     }
 
     #endregion
@@ -156,8 +155,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("onclick");
-        result.Should().NotContain("alert");
+        result.ShouldNotContain("onclick");
+        result.ShouldNotContain("alert");
     }
 
     [Fact]
@@ -170,8 +169,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("onerror");
-        result.Should().NotContain("alert");
+        result.ShouldNotContain("onerror");
+        result.ShouldNotContain("alert");
     }
 
     [Fact]
@@ -184,8 +183,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("onload");
-        result.Should().NotContain("alert");
+        result.ShouldNotContain("onload");
+        result.ShouldNotContain("alert");
     }
 
     [Fact]
@@ -198,11 +197,11 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("onmouseover");
-        result.Should().NotContain("onmouseout");
-        result.Should().NotContain("onclick");
-        result.Should().NotContain("alert");
-        result.Should().Contain("Hover me");
+        result.ShouldNotContain("onmouseover");
+        result.ShouldNotContain("onmouseout");
+        result.ShouldNotContain("onclick");
+        result.ShouldNotContain("alert");
+        result.ShouldContain("Hover me");
     }
 
     #endregion
@@ -219,8 +218,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("xmlns=\"http://www.w3.org/1999/xhtml\"");
-        result.Should().StartWith("<div xmlns=\"http://www.w3.org/1999/xhtml\"");
+        result.ShouldContain("xmlns=\"http://www.w3.org/1999/xhtml\"");
+        result.ShouldStartWith("<div xmlns=\"http://www.w3.org/1999/xhtml\"");
     }
 
     [Fact]
@@ -235,7 +234,7 @@ public class XhtmlSanitizerTests
         // Assert
         // Should only have one xmlns declaration
         var namespaceCount = result.Split("xmlns=\"http://www.w3.org/1999/xhtml\"").Length - 1;
-        namespaceCount.Should().Be(1);
+        namespaceCount.ShouldBe(1);
     }
 
     [Fact]
@@ -249,7 +248,7 @@ public class XhtmlSanitizerTests
 
         // Assert
         // Child elements should NOT have xmlns="" (empty namespace)
-        result.Should().NotContain("xmlns=\"\"");
+        result.ShouldNotContain("xmlns=\"\"");
     }
 
     [Fact]
@@ -262,8 +261,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<header");
-        result.Should().Contain("<p>Safe</p>");
+        result.ShouldNotContain("<header");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     [Fact]
@@ -276,8 +275,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<section");
-        result.Should().Contain("<p>Safe</p>");
+        result.ShouldNotContain("<section");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     [Fact]
@@ -290,8 +289,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("aria-label");
-        result.Should().NotContain("aria-labelledby");
+        result.ShouldNotContain("aria-label");
+        result.ShouldNotContain("aria-labelledby");
     }
 
     [Fact]
@@ -304,7 +303,7 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("role=");
+        result.ShouldNotContain("role=");
     }
 
     #endregion
@@ -322,12 +321,12 @@ public class XhtmlSanitizerTests
 
         // Assert
         // The sanitizer adds xmlns="http://www.w3.org/1999/xhtml" to the root div per FHIR spec
-        result.Should().Contain("<div");
-        result.Should().Contain("xmlns=\"http://www.w3.org/1999/xhtml\"");
-        result.Should().Contain("<p>Paragraph</p>");
-        result.Should().Contain("<span>Span</span>");
-        result.Should().Contain("<br");
-        result.Should().Contain("<hr");
+        result.ShouldContain("<div");
+        result.ShouldContain("xmlns=\"http://www.w3.org/1999/xhtml\"");
+        result.ShouldContain("<p>Paragraph</p>");
+        result.ShouldContain("<span>Span</span>");
+        result.ShouldContain("<br");
+        result.ShouldContain("<hr");
     }
 
     [Fact]
@@ -340,12 +339,12 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<h1>H1</h1>");
-        result.Should().Contain("<h2>H2</h2>");
-        result.Should().Contain("<h3>H3</h3>");
-        result.Should().Contain("<h4>H4</h4>");
-        result.Should().Contain("<h5>H5</h5>");
-        result.Should().Contain("<h6>H6</h6>");
+        result.ShouldContain("<h1>H1</h1>");
+        result.ShouldContain("<h2>H2</h2>");
+        result.ShouldContain("<h3>H3</h3>");
+        result.ShouldContain("<h4>H4</h4>");
+        result.ShouldContain("<h5>H5</h5>");
+        result.ShouldContain("<h6>H6</h6>");
     }
 
     [Fact]
@@ -358,10 +357,10 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<ul>");
-        result.Should().Contain("<ol>");
-        result.Should().Contain("<li>Item 1</li>");
-        result.Should().Contain("<li>First</li>");
+        result.ShouldContain("<ul>");
+        result.ShouldContain("<ol>");
+        result.ShouldContain("<li>Item 1</li>");
+        result.ShouldContain("<li>First</li>");
     }
 
     [Fact]
@@ -383,13 +382,13 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<table>");
-        result.Should().Contain("<caption>Test Table</caption>");
-        result.Should().Contain("<thead>");
-        result.Should().Contain("<tbody>");
-        result.Should().Contain("<tfoot>");
-        result.Should().Contain("<th>Header</th>");
-        result.Should().Contain("<td>Data</td>");
+        result.ShouldContain("<table>");
+        result.ShouldContain("<caption>Test Table</caption>");
+        result.ShouldContain("<thead>");
+        result.ShouldContain("<tbody>");
+        result.ShouldContain("<tfoot>");
+        result.ShouldContain("<th>Header</th>");
+        result.ShouldContain("<td>Data</td>");
     }
 
     [Fact]
@@ -402,15 +401,15 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<b>Bold</b>");
-        result.Should().Contain("<i>Italic</i>");
-        result.Should().Contain("<u>Underline</u>");
-        result.Should().Contain("<strong>Strong</strong>");
-        result.Should().Contain("<em>Emphasis</em>");
-        result.Should().Contain("<small>Small</small>");
-        result.Should().Contain("<big>Big</big>");
-        result.Should().Contain("<sub>Sub</sub>");
-        result.Should().Contain("<sup>Sup</sup>");
+        result.ShouldContain("<b>Bold</b>");
+        result.ShouldContain("<i>Italic</i>");
+        result.ShouldContain("<u>Underline</u>");
+        result.ShouldContain("<strong>Strong</strong>");
+        result.ShouldContain("<em>Emphasis</em>");
+        result.ShouldContain("<small>Small</small>");
+        result.ShouldContain("<big>Big</big>");
+        result.ShouldContain("<sub>Sub</sub>");
+        result.ShouldContain("<sup>Sup</sup>");
     }
 
     #endregion
@@ -427,12 +426,12 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("class=\"container\"");
-        result.Should().Contain("id=\"main\"");
-        result.Should().Contain("title=\"Main content\"");
-        result.Should().Contain("lang=\"en\"");
-        result.Should().Contain("xml:lang=\"en\"");
-        result.Should().Contain("dir=\"ltr\"");
+        result.ShouldContain("class=\"container\"");
+        result.ShouldContain("id=\"main\"");
+        result.ShouldContain("title=\"Main content\"");
+        result.ShouldContain("lang=\"en\"");
+        result.ShouldContain("xml:lang=\"en\"");
+        result.ShouldContain("dir=\"ltr\"");
     }
 
     [Fact]
@@ -445,8 +444,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("style=\"color: red; font-size: 14px;\"");
-        result.Should().Contain("<p>Styled content</p>");
+        result.ShouldContain("style=\"color: red; font-size: 14px;\"");
+        result.ShouldContain("<p>Styled content</p>");
     }
 
     [Fact]
@@ -459,8 +458,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("href=\"https://example.com\"");
-        result.Should().Contain("Link");
+        result.ShouldContain("href=\"https://example.com\"");
+        result.ShouldContain("Link");
     }
 
     [Fact]
@@ -473,7 +472,7 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("href=\"http://example.com\"");
+        result.ShouldContain("href=\"http://example.com\"");
     }
 
     [Fact]
@@ -486,8 +485,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("src=\"https://example.com/image.jpg\"");
-        result.Should().Contain("alt=\"Test image\"");
+        result.ShouldContain("src=\"https://example.com/image.jpg\"");
+        result.ShouldContain("alt=\"Test image\"");
     }
 
     #endregion
@@ -504,9 +503,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<iframe");
-        result.Should().NotContain("evil.com");
-        result.Should().Contain("<p>Safe</p>");
+        result.ShouldNotContain("<iframe");
+        result.ShouldNotContain("evil.com");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     [Fact]
@@ -519,9 +518,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<object");
-        result.Should().NotContain("malicious.swf");
-        result.Should().Contain("<p>Safe</p>");
+        result.ShouldNotContain("<object");
+        result.ShouldNotContain("malicious.swf");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     [Fact]
@@ -534,8 +533,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("<embed");
-        result.Should().Contain("<p>Safe</p>");
+        result.ShouldNotContain("<embed");
+        result.ShouldContain("<p>Safe</p>");
     }
 
     #endregion
@@ -552,8 +551,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("data-value");
-        result.Should().Contain("class=\"container\"");
+        result.ShouldNotContain("data-value");
+        result.ShouldContain("class=\"container\"");
     }
 
     [Fact]
@@ -566,8 +565,8 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("href");
-        result.Should().Contain("Link");
+        result.ShouldNotContain("href");
+        result.ShouldContain("Link");
     }
 
     [Fact]
@@ -580,9 +579,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().NotContain("href");
-        result.Should().NotContain("ftp:");
-        result.Should().Contain("Download");
+        result.ShouldNotContain("href");
+        result.ShouldNotContain("ftp:");
+        result.ShouldContain("Download");
     }
 
     #endregion
@@ -599,8 +598,7 @@ public class XhtmlSanitizerTests
         var act = () => _sanitizer.Sanitize(xhtml!);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("xhtml");
+        Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("xhtml");
     }
 
     [Fact]
@@ -613,7 +611,7 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -626,7 +624,7 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -639,7 +637,7 @@ public class XhtmlSanitizerTests
         var act = () => _sanitizer.Sanitize(xhtml);
 
         // Assert
-        act.Should().Throw<System.Xml.XmlException>();
+        Should.Throw<System.Xml.XmlException>(act);
     }
 
     [Fact]
@@ -677,13 +675,13 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<h1>Patient Summary</h1>");
-        result.Should().Contain("<strong>John Doe</strong>");
-        result.Should().Contain("<table");
-        result.Should().Contain("<caption>Vital Signs</caption>");
-        result.Should().Contain("<small>mmHg</small>");
-        result.Should().Contain("<sup>°F</sup>");
-        result.Should().Contain("href=\"https://example.com/details\"");
+        result.ShouldContain("<h1>Patient Summary</h1>");
+        result.ShouldContain("<strong>John Doe</strong>");
+        result.ShouldContain("<table");
+        result.ShouldContain("<caption>Vital Signs</caption>");
+        result.ShouldContain("<small>mmHg</small>");
+        result.ShouldContain("<sup>°F</sup>");
+        result.ShouldContain("href=\"https://example.com/details\"");
     }
 
     [Fact]
@@ -706,14 +704,14 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<p>Safe paragraph</p>");
-        result.Should().Contain("href=\"https://safe.com\"");
-        result.Should().Contain("src=\"https://safe.com/image.jpg\"");
-        result.Should().NotContain("<script");
-        result.Should().NotContain("javascript:");
-        result.Should().NotContain("data:");
-        result.Should().Contain("Dangerous link"); // Text preserved
-        result.Should().Contain("alt=\"Dangerous\""); // Safe attribute preserved
+        result.ShouldContain("<p>Safe paragraph</p>");
+        result.ShouldContain("href=\"https://safe.com\"");
+        result.ShouldContain("src=\"https://safe.com/image.jpg\"");
+        result.ShouldNotContain("<script");
+        result.ShouldNotContain("javascript:");
+        result.ShouldNotContain("data:");
+        result.ShouldContain("Dangerous link"); // Text preserved
+        result.ShouldContain("alt=\"Dangerous\""); // Safe attribute preserved
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -35,14 +35,14 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Conditions.Should().HaveCount(1);
+        scenario.Conditions.Count.ShouldBe(1);
         var condition = scenario.Conditions[0];
 
         var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("resolved", "condition should be marked as resolved");
+        clinicalStatus.ShouldBe("resolved", "condition should be marked as resolved");
 
         var abatementDateTime = condition.MutableNode["abatementDateTime"]?.GetValue<string>();
-        abatementDateTime.Should().NotBeNullOrEmpty("abatement date should be set");
+        abatementDateTime.ShouldNotBeNullOrEmpty("abatement date should be set");
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class ConditionEndStateTests
         // Assert
         var condition = scenario.Conditions[0];
         var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("inactive", "condition should be marked as inactive");
+        clinicalStatus.ShouldBe("inactive", "condition should be marked as inactive");
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class ConditionEndStateTests
         // Assert
         var condition = scenario.Conditions[0];
         var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("remission", "condition should be marked as in remission");
+        clinicalStatus.ShouldBe("remission", "condition should be marked as in remission");
     }
 
     [Fact]
@@ -89,8 +89,7 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*No condition found*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("No condition found");
     }
 
     #endregion
@@ -111,14 +110,14 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Conditions.Should().HaveCount(1);
+        scenario.Conditions.Count.ShouldBe(1);
         var condition = scenario.Conditions[0];
 
         var clinicalStatus = condition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("resolved", "condition should be marked as resolved");
+        clinicalStatus.ShouldBe("resolved", "condition should be marked as resolved");
 
         var abatementDateTime = condition.MutableNode["abatementDateTime"]?.GetValue<string>();
-        abatementDateTime.Should().NotBeNullOrEmpty("abatement date should be set");
+        abatementDateTime.ShouldNotBeNullOrEmpty("abatement date should be set");
     }
 
     [Fact]
@@ -135,20 +134,20 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Conditions.Should().HaveCount(2);
+        scenario.Conditions.Count.ShouldBe(2);
 
         // First condition should still be active
         var firstCondition = scenario.Conditions[0];
         var firstAbatementDateTime = firstCondition.MutableNode["abatementDateTime"]?.GetValue<string>();
-        firstAbatementDateTime.Should().BeNullOrEmpty("first condition should not have abatement date");
+        firstAbatementDateTime.ShouldBeNullOrEmpty("first condition should not have abatement date");
 
         // Second condition should be resolved
         var secondCondition = scenario.Conditions[1];
         var secondClinicalStatus = secondCondition.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        secondClinicalStatus.Should().Be("resolved", "second (most recent) condition should be resolved");
+        secondClinicalStatus.ShouldBe("resolved", "second (most recent) condition should be resolved");
 
         var secondAbatementDateTime = secondCondition.MutableNode["abatementDateTime"]?.GetValue<string>();
-        secondAbatementDateTime.Should().NotBeNullOrEmpty("second condition should have abatement date");
+        secondAbatementDateTime.ShouldNotBeNullOrEmpty("second condition should have abatement date");
     }
 
     [Fact]
@@ -161,8 +160,7 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*No condition found*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("No condition found");
     }
 
     #endregion
@@ -189,7 +187,7 @@ public class ConditionEndStateTests
         var abatementDateTime = DateTime.Parse(condition.MutableNode["abatementDateTime"]!.GetValue<string>());
 
         // Abatement should be approximately 6 months after onset
-        (abatementDateTime - onsetDateTime).TotalDays.Should().BeApproximately(180, 5, "abatement should be ~6 months after onset");
+        (abatementDateTime - onsetDateTime).TotalDays.ShouldBe(180, 5);
     }
 
     #endregion
@@ -211,22 +209,22 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Conditions.Should().HaveCount(3);
+        scenario.Conditions.Count.ShouldBe(3);
 
         // Diabetes should be resolved
         var diabetes = scenario.Conditions[0];
         var diabetesStatus = diabetes.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        diabetesStatus.Should().Be("resolved");
+        diabetesStatus.ShouldBe("resolved");
 
         // Hypertension should still be active
         var hypertension = scenario.Conditions[1];
         var hypertensionAbatement = hypertension.MutableNode["abatementDateTime"]?.GetValue<string>();
-        hypertensionAbatement.Should().BeNullOrEmpty("hypertension should still be active");
+        hypertensionAbatement.ShouldBeNullOrEmpty("hypertension should still be active");
 
         // Asthma should be resolved
         var asthma = scenario.Conditions[2];
         var asthmaStatus = asthma.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        asthmaStatus.Should().Be("resolved");
+        asthmaStatus.ShouldBe("resolved");
     }
 
     [Fact]
@@ -241,10 +239,10 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Timeline.Should().HaveCountGreaterThanOrEqualTo(2, "should have onset and end events");
+        scenario.Timeline.Count.ShouldBeGreaterThanOrEqualTo(2, "should have onset and end events");
 
         var onsetEvents = scenario.Timeline.Where(e => e.EventType == "ConditionOnset").ToList();
-        onsetEvents.Should().HaveCount(1, "should have one condition onset event");
+        onsetEvents.Count.ShouldBe(1, "should have one condition onset event");
     }
 
     #endregion
@@ -265,14 +263,14 @@ public class ConditionEndStateTests
             .Build();
 
         // Assert
-        scenario.Conditions.Should().HaveCount(1);
+        scenario.Conditions.Count.ShouldBe(1);
         var appendicitis = scenario.Conditions[0];
 
         var clinicalStatus = appendicitis.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("resolved", "appendicitis should be resolved after surgery");
+        clinicalStatus.ShouldBe("resolved", "appendicitis should be resolved after surgery");
 
         var abatementDateTime = appendicitis.MutableNode["abatementDateTime"]?.GetValue<string>();
-        abatementDateTime.Should().NotBeNullOrEmpty("abatement date should be set");
+        abatementDateTime.ShouldNotBeNullOrEmpty("abatement date should be set");
     }
 
     #endregion

@@ -1,4 +1,4 @@
-﻿namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
+namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
 
 public class UnitTest1
 {

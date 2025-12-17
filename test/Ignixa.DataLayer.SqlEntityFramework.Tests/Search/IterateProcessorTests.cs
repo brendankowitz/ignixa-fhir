@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
@@ -113,9 +113,9 @@ public class IterateProcessorTests : TestBase
         var result = await _processor.ProcessIteratesAsync(mainResults, new[] { iterateExpression }, CancellationToken.None);
 
         // Assert: Should find both org-1 and parent-org-1
-        result.Should().HaveCount(2);
-        result.Should().Contain(r => r.ResourceId == "org-1");
-        result.Should().Contain(r => r.ResourceId == "parent-org-1");
+        result.Count.ShouldBe(2);
+        result.ShouldContain(r => r.ResourceId == "org-1");
+        result.ShouldContain(r => r.ResourceId == "parent-org-1");
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class IterateProcessorTests : TestBase
         var result = await _processor.ProcessIteratesAsync(mainResults, new[] { iterateExpression }, CancellationToken.None);
 
         // Assert: Should find Observation (direct) but not Encounter (revinclude doesn't chain the same way)
-        result.Should().Contain(r => r.ResourceId == "obs-1");
+        result.ShouldContain(r => r.ResourceId == "obs-1");
     }
 
     [Fact]
@@ -221,6 +221,6 @@ public class IterateProcessorTests : TestBase
         var result = await _processor.ProcessIteratesAsync(mainResults, new[] { iterateExpression }, CancellationToken.None);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 }

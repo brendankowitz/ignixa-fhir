@@ -4,7 +4,7 @@
  * Unit tests for log and check statement execution in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
@@ -90,7 +90,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should succeed
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -121,8 +121,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Check condition failed*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Check condition failed");
     }
 
     [Fact]
@@ -153,7 +152,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -184,8 +183,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*FhirPathEvaluator not configured*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("FhirPathEvaluator not configured");
     }
 
     #endregion
@@ -223,8 +221,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("Processing patient");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("Processing patient");
     }
 
     [Fact]
@@ -258,8 +256,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("patient-123");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("patient-123");
     }
 
     [Fact]
@@ -291,7 +289,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should not throw, just silently skip logging
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -326,8 +324,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should log once for each element
-        logMessages.Should().HaveCount(2);
-        logMessages.Should().AllBe("Processing name");
+        logMessages.Count.ShouldBe(2);
+        logMessages.ShouldAllBe(x => x == "Processing name");
     }
 
     [Fact]
@@ -361,8 +359,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("(empty)");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("(empty)");
     }
 
     [Fact]
@@ -393,8 +391,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*FhirPathEvaluator not configured*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("FhirPathEvaluator not configured");
     }
 
     #endregion
@@ -432,8 +429,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("Processing names");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("Processing names");
     }
 
     [Fact]
@@ -467,7 +464,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Where filters everything out, so check and log should not execute
-        logMessages.Should().BeEmpty();
+        logMessages.ShouldBeEmpty();
     }
 
     #endregion
@@ -491,10 +488,10 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
-        map.Groups[0].Rules.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources[0].Check.Should().NotBeNull();
+        map.Groups.Count.ShouldBe(1);
+        map.Groups[0].Rules.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources[0].Check.ShouldNotBeNull();
     }
 
     [Fact]
@@ -514,10 +511,10 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
-        map.Groups[0].Rules.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources[0].Log.Should().NotBeNull();
+        map.Groups.Count.ShouldBe(1);
+        map.Groups[0].Rules.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources[0].Log.ShouldNotBeNull();
     }
 
     #endregion

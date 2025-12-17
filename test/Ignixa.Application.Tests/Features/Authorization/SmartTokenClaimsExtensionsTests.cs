@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Smart;
 
 namespace Ignixa.Application.Tests.Features.Authorization;
@@ -22,10 +22,10 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.HasOpenIdScope.Should().BeTrue();
-        claims.SpecialScopes.Should().HaveCount(2);
-        claims.SpecialScopes.Should().Contain(s => s.Name == "openid");
-        claims.SpecialScopes.Should().Contain(s => s.Name == "profile");
+        claims.HasOpenIdScope.ShouldBeTrue();
+        claims.SpecialScopes.Count.ShouldBe(2);
+        claims.SpecialScopes.ShouldContain(s => s.Name == "openid");
+        claims.SpecialScopes.ShouldContain(s => s.Name == "profile");
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.HasOpenIdScope.Should().BeFalse();
+        claims.HasOpenIdScope.ShouldBeFalse();
     }
 
     [Fact]
@@ -51,8 +51,8 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.HasOfflineAccess.Should().BeTrue();
-        claims.SpecialScopes.Should().Contain(s => s.Name == "offline_access");
+        claims.HasOfflineAccess.ShouldBeTrue();
+        claims.SpecialScopes.ShouldContain(s => s.Name == "offline_access");
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.HasOfflineAccess.Should().BeFalse();
+        claims.HasOfflineAccess.ShouldBeFalse();
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.LaunchContext.Should().Be("patient");
-        claims.SpecialScopes.Should().Contain(s => s.Name == "launch/patient");
+        claims.LaunchContext.ShouldBe("patient");
+        claims.SpecialScopes.ShouldContain(s => s.Name == "launch/patient");
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.LaunchContext.Should().Be("encounter");
-        claims.SpecialScopes.Should().Contain(s => s.Name == "launch/encounter");
+        claims.LaunchContext.ShouldBe("encounter");
+        claims.SpecialScopes.ShouldContain(s => s.Name == "launch/encounter");
     }
 
     [Fact]
@@ -106,8 +106,8 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.LaunchContext.Should().BeNull();
-        claims.SpecialScopes.Should().Contain(s => s.Name == "launch");
+        claims.LaunchContext.ShouldBeNull();
+        claims.SpecialScopes.ShouldContain(s => s.Name == "launch");
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.LaunchContext.Should().BeNull();
+        claims.LaunchContext.ShouldBeNull();
     }
 
     [Fact]
@@ -133,12 +133,12 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Assert
-        claims.ScopeString.Should().Be(scopeString);
-        claims.Scopes.Should().HaveCount(2); // FHIR resource scopes
-        claims.SpecialScopes.Should().HaveCount(6); // Special scopes
-        claims.HasOpenIdScope.Should().BeTrue();
-        claims.HasOfflineAccess.Should().BeTrue();
-        claims.LaunchContext.Should().Be("patient");
+        claims.ScopeString.ShouldBe(scopeString);
+        claims.Scopes.Count.ShouldBe(2); // FHIR resource scopes
+        claims.SpecialScopes.Count.ShouldBe(6); // Special scopes
+        claims.HasOpenIdScope.ShouldBeTrue();
+        claims.HasOfflineAccess.ShouldBeTrue();
+        claims.LaunchContext.ShouldBe("patient");
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class SmartTokenClaimsExtensionsTests
     {
         // Act & Assert
         var act = () => SmartTokenClaimsExtensions.FromScopeString(null!);
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(act);
     }
 
     #endregion
@@ -164,12 +164,12 @@ public class SmartTokenClaimsExtensionsTests
         var oidcScopes = claims.GetOpenIdConnectScopes().ToList();
 
         // Assert
-        oidcScopes.Should().HaveCount(3);
-        oidcScopes.Should().Contain("openid");
-        oidcScopes.Should().Contain("profile");
-        oidcScopes.Should().Contain("email");
-        oidcScopes.Should().NotContain("offline_access");
-        oidcScopes.Should().NotContain("launch/patient");
+        oidcScopes.Count.ShouldBe(3);
+        oidcScopes.ShouldContain("openid");
+        oidcScopes.ShouldContain("profile");
+        oidcScopes.ShouldContain("email");
+        oidcScopes.ShouldNotContain("offline_access");
+        oidcScopes.ShouldNotContain("launch/patient");
     }
 
     [Fact]
@@ -183,12 +183,12 @@ public class SmartTokenClaimsExtensionsTests
         var launchScopes = claims.GetLaunchScopes().ToList();
 
         // Assert
-        launchScopes.Should().HaveCount(3);
-        launchScopes.Should().Contain("launch");
-        launchScopes.Should().Contain("launch/patient");
-        launchScopes.Should().Contain("launch/encounter");
-        launchScopes.Should().NotContain("openid");
-        launchScopes.Should().NotContain("offline_access");
+        launchScopes.Count.ShouldBe(3);
+        launchScopes.ShouldContain("launch");
+        launchScopes.ShouldContain("launch/patient");
+        launchScopes.ShouldContain("launch/encounter");
+        launchScopes.ShouldNotContain("openid");
+        launchScopes.ShouldNotContain("offline_access");
     }
 
     [Fact]
@@ -199,9 +199,9 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        claims.HasSpecialScope("openid").Should().BeTrue();
-        claims.HasSpecialScope("profile").Should().BeTrue();
-        claims.HasSpecialScope("OPENID").Should().BeTrue(); // Case insensitive
+        claims.HasSpecialScope("openid").ShouldBeTrue();
+        claims.HasSpecialScope("profile").ShouldBeTrue();
+        claims.HasSpecialScope("OPENID").ShouldBeTrue(); // Case insensitive
     }
 
     [Fact]
@@ -212,8 +212,8 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        claims.HasSpecialScope("profile").Should().BeFalse();
-        claims.HasSpecialScope("offline_access").Should().BeFalse();
+        claims.HasSpecialScope("profile").ShouldBeFalse();
+        claims.HasSpecialScope("offline_access").ShouldBeFalse();
     }
 
     [Fact]
@@ -224,7 +224,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        claims.IsEhrLaunch().Should().BeTrue();
+        claims.IsEhrLaunch().ShouldBeTrue();
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        claims.IsEhrLaunch().Should().BeFalse();
+        claims.IsEhrLaunch().ShouldBeFalse();
     }
 
     [Fact]
@@ -246,7 +246,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        claims.IsStandaloneLaunch().Should().BeTrue();
+        claims.IsStandaloneLaunch().ShouldBeTrue();
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        claims.IsStandaloneLaunch().Should().BeFalse();
+        claims.IsStandaloneLaunch().ShouldBeFalse();
     }
 
     #endregion
@@ -269,7 +269,7 @@ public class SmartTokenClaimsExtensionsTests
     {
         // Act & Assert
         var act = () => ((SmartTokenClaims)null!).GetOpenIdConnectScopes();
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(act);
     }
 
     [Fact]
@@ -277,15 +277,14 @@ public class SmartTokenClaimsExtensionsTests
     {
         // Act & Assert
         var act = () => ((SmartTokenClaims)null!).GetLaunchScopes();
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(act);
     }
 
     [Fact]
     public void HasSpecialScope_WithNullClaims_ThrowsArgumentNullException()
     {
         // Act & Assert
-        var act = () => ((SmartTokenClaims)null!).HasSpecialScope("openid");
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => { _ = ((SmartTokenClaims)null!).HasSpecialScope("openid"); });
     }
 
     [Fact]
@@ -296,24 +295,21 @@ public class SmartTokenClaimsExtensionsTests
         var claims = SmartTokenClaimsExtensions.FromScopeString(scopeString);
 
         // Act & Assert
-        var act = () => claims.HasSpecialScope(null!);
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => { _ = claims.HasSpecialScope(null!); });
     }
 
     [Fact]
     public void IsEhrLaunch_WithNullClaims_ThrowsArgumentNullException()
     {
         // Act & Assert
-        var act = () => ((SmartTokenClaims)null!).IsEhrLaunch();
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => { _ = ((SmartTokenClaims)null!).IsEhrLaunch(); });
     }
 
     [Fact]
     public void IsStandaloneLaunch_WithNullClaims_ThrowsArgumentNullException()
     {
         // Act & Assert
-        var act = () => ((SmartTokenClaims)null!).IsStandaloneLaunch();
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => { _ = ((SmartTokenClaims)null!).IsStandaloneLaunch(); });
     }
 
     #endregion

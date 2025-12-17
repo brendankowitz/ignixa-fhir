@@ -5,7 +5,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Serialization;
@@ -44,17 +44,17 @@ public class CapabilityStatementSerializationTests
         var parsed = JsonNode.Parse(json);
 
         // Assert
-        parsed.Should().NotBeNull();
-        parsed!["resourceType"]!.GetValue<string>().Should().Be("CapabilityStatement");
-        parsed["url"]!.GetValue<string>().Should().Be("http://example.com/fhir/CapabilityStatement/test");
-        parsed["version"]!.GetValue<string>().Should().Be("1.0.0");
-        parsed["name"]!.GetValue<string>().Should().Be("TestCapabilityStatement");
-        parsed["status"]!.GetValue<string>().Should().Be("active");
-        parsed["experimental"]!.GetValue<bool>().Should().BeTrue();
-        parsed["date"]!.GetValue<string>().Should().Be("2025-01-15T10:30:00Z");
-        parsed["publisher"]!.GetValue<string>().Should().Be("Test Publisher");
-        parsed["kind"]!.GetValue<string>().Should().Be("instance");
-        parsed["fhirVersion"]!.GetValue<string>().Should().Be("4.0.1");
+        parsed.ShouldNotBeNull();
+        parsed!["resourceType"]!.GetValue<string>().ShouldBe("CapabilityStatement");
+        parsed["url"]!.GetValue<string>().ShouldBe("http://example.com/fhir/CapabilityStatement/test");
+        parsed["version"]!.GetValue<string>().ShouldBe("1.0.0");
+        parsed["name"]!.GetValue<string>().ShouldBe("TestCapabilityStatement");
+        parsed["status"]!.GetValue<string>().ShouldBe("active");
+        parsed["experimental"]!.GetValue<bool>().ShouldBeTrue();
+        parsed["date"]!.GetValue<string>().ShouldBe("2025-01-15T10:30:00Z");
+        parsed["publisher"]!.GetValue<string>().ShouldBe("Test Publisher");
+        parsed["kind"]!.GetValue<string>().ShouldBe("instance");
+        parsed["fhirVersion"]!.GetValue<string>().ShouldBe("4.0.1");
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public class CapabilityStatementSerializationTests
         var parsed = JsonNode.Parse(json);
 
         // Assert
-        parsed.Should().NotBeNull();
-        parsed!.AsObject().ContainsKey("experimental").Should().BeFalse("null properties should be omitted");
+        parsed.ShouldNotBeNull();
+        parsed!.AsObject().ContainsKey("experimental").ShouldBeFalse("null properties should be omitted");
     }
 
     #endregion
@@ -104,10 +104,10 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var software = parsed!["software"];
-        software.Should().NotBeNull();
-        software!["name"]!.GetValue<string>().Should().Be("Ignixa FHIR Server");
-        software["version"]!.GetValue<string>().Should().Be("2.0.0");
-        software["releaseDate"]!.GetValue<string>().Should().Be("2025-10-19");
+        software.ShouldNotBeNull();
+        software!["name"]!.GetValue<string>().ShouldBe("Ignixa FHIR Server");
+        software["version"]!.GetValue<string>().ShouldBe("2.0.0");
+        software["releaseDate"]!.GetValue<string>().ShouldBe("2025-10-19");
     }
 
     #endregion
@@ -133,13 +133,13 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var format = parsed!["format"]!.AsArray();
-        format.Should().HaveCount(2);
-        format[0]!.GetValue<string>().Should().Be("application/fhir+json");
-        format[1]!.GetValue<string>().Should().Be("application/fhir+xml");
+        format.Count.ShouldBe(2);
+        format[0]!.GetValue<string>().ShouldBe("application/fhir+json");
+        format[1]!.GetValue<string>().ShouldBe("application/fhir+xml");
 
         var patchFormat = parsed["patchFormat"]!.AsArray();
-        patchFormat.Should().HaveCount(1);
-        patchFormat[0]!.GetValue<string>().Should().Be("application/json-patch+json");
+        patchFormat.Count.ShouldBe(1);
+        patchFormat[0]!.GetValue<string>().ShouldBe("application/json-patch+json");
     }
 
     #endregion
@@ -167,9 +167,9 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var rest = parsed!["rest"]!.AsArray();
-        rest.Should().HaveCount(1);
-        rest[0]!["mode"]!.GetValue<string>().Should().Be("server");
-        rest[0]!["documentation"]!.GetValue<string>().Should().Be("Test REST API");
+        rest.Count.ShouldBe(1);
+        rest[0]!["mode"]!.GetValue<string>().ShouldBe("server");
+        rest[0]!["documentation"]!.GetValue<string>().ShouldBe("Test REST API");
     }
 
     #endregion
@@ -209,14 +209,14 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var resource = parsed!["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!;
-        resource["type"]!.GetValue<string>().Should().Be("Patient");
-        resource["documentation"]!.GetValue<string>().Should().Be("Patient resource operations");
-        resource["versioning"]!.GetValue<string>().Should().Be("versioned");
-        resource["readHistory"]!.GetValue<bool>().Should().BeTrue();
-        resource["updateCreate"]!.GetValue<bool>().Should().BeTrue();
-        resource["conditionalCreate"]!.GetValue<bool>().Should().BeFalse();
-        resource["conditionalUpdate"]!.GetValue<bool>().Should().BeTrue();
-        resource["conditionalDelete"]!.GetValue<string>().Should().Be("single");
+        resource["type"]!.GetValue<string>().ShouldBe("Patient");
+        resource["documentation"]!.GetValue<string>().ShouldBe("Patient resource operations");
+        resource["versioning"]!.GetValue<string>().ShouldBe("versioned");
+        resource["readHistory"]!.GetValue<bool>().ShouldBeTrue();
+        resource["updateCreate"]!.GetValue<bool>().ShouldBeTrue();
+        resource["conditionalCreate"]!.GetValue<bool>().ShouldBeFalse();
+        resource["conditionalUpdate"]!.GetValue<bool>().ShouldBeTrue();
+        resource["conditionalDelete"]!.GetValue<string>().ShouldBe("single");
     }
 
     #endregion
@@ -256,13 +256,13 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var interactions = parsed!["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!["interaction"]!.AsArray();
-        interactions.Should().HaveCount(5);
-        interactions[0]!["code"]!.GetValue<string>().Should().Be("read");
-        interactions[0]!["documentation"]!.GetValue<string>().Should().Be("Read patient");
-        interactions[1]!["code"]!.GetValue<string>().Should().Be("create");
-        interactions[2]!["code"]!.GetValue<string>().Should().Be("update");
-        interactions[3]!["code"]!.GetValue<string>().Should().Be("delete");
-        interactions[4]!["code"]!.GetValue<string>().Should().Be("search-type");
+        interactions.Count.ShouldBe(5);
+        interactions[0]!["code"]!.GetValue<string>().ShouldBe("read");
+        interactions[0]!["documentation"]!.GetValue<string>().ShouldBe("Read patient");
+        interactions[1]!["code"]!.GetValue<string>().ShouldBe("create");
+        interactions[2]!["code"]!.GetValue<string>().ShouldBe("update");
+        interactions[3]!["code"]!.GetValue<string>().ShouldBe("delete");
+        interactions[4]!["code"]!.GetValue<string>().ShouldBe("search-type");
     }
 
     [Fact]
@@ -291,11 +291,11 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var interactions = parsed!["rest"]!.AsArray()[0]!["interaction"]!.AsArray();
-        interactions.Should().HaveCount(4);
-        interactions[0]!["code"]!.GetValue<string>().Should().Be("transaction");
-        interactions[1]!["code"]!.GetValue<string>().Should().Be("batch");
-        interactions[2]!["code"]!.GetValue<string>().Should().Be("search-system");
-        interactions[3]!["code"]!.GetValue<string>().Should().Be("history-system");
+        interactions.Count.ShouldBe(4);
+        interactions[0]!["code"]!.GetValue<string>().ShouldBe("transaction");
+        interactions[1]!["code"]!.GetValue<string>().ShouldBe("batch");
+        interactions[2]!["code"]!.GetValue<string>().ShouldBe("search-system");
+        interactions[3]!["code"]!.GetValue<string>().ShouldBe("history-system");
     }
 
     #endregion
@@ -343,16 +343,16 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var searchParams = parsed!["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!["searchParam"]!.AsArray();
-        searchParams.Should().HaveCount(2);
+        searchParams.Count.ShouldBe(2);
 
-        searchParams[0]!["name"]!.GetValue<string>().Should().Be("family");
-        searchParams[0]!["definition"]!.GetValue<string>().Should().Be("http://hl7.org/fhir/SearchParameter/Patient-family");
-        searchParams[0]!["type"]!.GetValue<string>().Should().Be("string");
-        searchParams[0]!["documentation"]!.GetValue<string>().Should().Be("A portion of the family name");
+        searchParams[0]!["name"]!.GetValue<string>().ShouldBe("family");
+        searchParams[0]!["definition"]!.GetValue<string>().ShouldBe("http://hl7.org/fhir/SearchParameter/Patient-family");
+        searchParams[0]!["type"]!.GetValue<string>().ShouldBe("string");
+        searchParams[0]!["documentation"]!.GetValue<string>().ShouldBe("A portion of the family name");
 
-        searchParams[1]!["name"]!.GetValue<string>().Should().Be("birthdate");
-        searchParams[1]!["definition"]!.GetValue<string>().Should().Be("http://hl7.org/fhir/SearchParameter/Patient-birthdate");
-        searchParams[1]!["type"]!.GetValue<string>().Should().Be("date");
+        searchParams[1]!["name"]!.GetValue<string>().ShouldBe("birthdate");
+        searchParams[1]!["definition"]!.GetValue<string>().ShouldBe("http://hl7.org/fhir/SearchParameter/Patient-birthdate");
+        searchParams[1]!["type"]!.GetValue<string>().ShouldBe("date");
     }
 
     #endregion
@@ -402,16 +402,16 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var security = parsed!["rest"]!.AsArray()[0]!["security"]!;
-        security["cors"]!.GetValue<bool>().Should().BeTrue();
-        security["description"]!.GetValue<string>().Should().Be("SMART-on-FHIR compliant");
+        security["cors"]!.GetValue<bool>().ShouldBeTrue();
+        security["description"]!.GetValue<string>().ShouldBe("SMART-on-FHIR compliant");
 
         var service = security["service"]!.AsArray()[0]!;
-        service["text"]!.GetValue<string>().Should().Be("OAuth2");
+        service["text"]!.GetValue<string>().ShouldBe("OAuth2");
 
         var codingNode = service["coding"]!.AsArray()[0]!;
-        codingNode["system"]!.GetValue<string>().Should().Be("http://terminology.hl7.org/CodeSystem/restful-security-service");
-        codingNode["code"]!.GetValue<string>().Should().Be("SMART-on-FHIR");
-        codingNode["display"]!.GetValue<string>().Should().Be("SMART-on-FHIR");
+        codingNode["system"]!.GetValue<string>().ShouldBe("http://terminology.hl7.org/CodeSystem/restful-security-service");
+        codingNode["code"]!.GetValue<string>().ShouldBe("SMART-on-FHIR");
+        codingNode["display"]!.GetValue<string>().ShouldBe("SMART-on-FHIR");
     }
 
     #endregion
@@ -446,10 +446,10 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var operations = parsed!["rest"]!.AsArray()[0]!["operation"]!.AsArray();
-        operations.Should().HaveCount(1);
-        operations[0]!["name"]!.GetValue<string>().Should().Be("validate");
-        operations[0]!["definition"]!.GetValue<string>().Should().Be("http://hl7.org/fhir/OperationDefinition/Resource-validate");
-        operations[0]!["documentation"]!.GetValue<string>().Should().Be("Validate a resource");
+        operations.Count.ShouldBe(1);
+        operations[0]!["name"]!.GetValue<string>().ShouldBe("validate");
+        operations[0]!["definition"]!.GetValue<string>().ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-validate");
+        operations[0]!["documentation"]!.GetValue<string>().ShouldBe("Validate a resource");
     }
 
     #endregion
@@ -483,11 +483,11 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var profile = parsed!["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!["profile"];
-        profile.Should().NotBeNull();
+        profile.ShouldNotBeNull();
 
         // In R4, this should serialize as a simple canonical string (not an object)
         // When only Reference is set (no Display), Profile setter uses JsonValue.Create(string)
-        profile!.GetValue<string>().Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
+        profile!.GetValue<string>().ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
     }
 
     [Fact]
@@ -525,9 +525,9 @@ public class CapabilityStatementSerializationTests
 
         // Assert
         var profile = parsed!["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!["profile"];
-        profile.Should().NotBeNull();
-        profile!["reference"]!.GetValue<string>().Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
-        profile["display"]!.GetValue<string>().Should().Be("Patient Profile");
+        profile.ShouldNotBeNull();
+        profile!["reference"]!.GetValue<string>().ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
+        profile["display"]!.GetValue<string>().ShouldBe("Patient Profile");
     }
 
     #endregion
@@ -570,21 +570,21 @@ public class CapabilityStatementSerializationTests
         var deserializedResource = JsonSourceNodeFactory.Parse(json);
 
         // Assert - Deserialize as ResourceJsonNode, then access as CapabilityStatement
-        deserializedResource.Should().NotBeNull();
-        deserializedResource!.ResourceType.Should().Be("CapabilityStatement");
+        deserializedResource.ShouldNotBeNull();
+        deserializedResource!.ResourceType.ShouldBe("CapabilityStatement");
 
         // Access properties through MutableNode since we don't have strong typing
         var deserialized = deserializedResource.MutableNode;
-        deserialized["url"]!.GetValue<string>().Should().Be(original.Url);
-        deserialized["version"]!.GetValue<string>().Should().Be(original.Version);
-        deserialized["name"]!.GetValue<string>().Should().Be(original.Name);
-        deserialized["status"]!.GetValue<string>().Should().Be("active"); // Enum literal
-        deserialized["kind"]!.GetValue<string>().Should().Be("instance"); // Enum literal
-        deserialized["fhirVersion"]!.GetValue<string>().Should().Be(original.FhirVersionString);
-        deserialized["format"]!.AsArray().Select(n => n!.GetValue<string>()).Should().BeEquivalentTo(original.Format);
-        deserialized["software"]!["name"]!.GetValue<string>().Should().Be(original.Software!.Name);
-        deserialized["rest"]!.AsArray()[0]!["mode"]!.GetValue<string>().Should().Be("server");
-        deserialized["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!["type"]!.GetValue<string>().Should().Be("Patient");
+        deserialized["url"]!.GetValue<string>().ShouldBe(original.Url);
+        deserialized["version"]!.GetValue<string>().ShouldBe(original.Version);
+        deserialized["name"]!.GetValue<string>().ShouldBe(original.Name);
+        deserialized["status"]!.GetValue<string>().ShouldBe("active"); // Enum literal
+        deserialized["kind"]!.GetValue<string>().ShouldBe("instance"); // Enum literal
+        deserialized["fhirVersion"]!.GetValue<string>().ShouldBe(original.FhirVersionString);
+        deserialized["format"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(original.Format);
+        deserialized["software"]!["name"]!.GetValue<string>().ShouldBe(original.Software!.Name);
+        deserialized["rest"]!.AsArray()[0]!["mode"]!.GetValue<string>().ShouldBe("server");
+        deserialized["rest"]!.AsArray()[0]!["resource"]!.AsArray()[0]!["type"]!.GetValue<string>().ShouldBe("Patient");
     }
 
     #endregion

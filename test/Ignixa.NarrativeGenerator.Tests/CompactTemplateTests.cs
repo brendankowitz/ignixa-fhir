@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.NarrativeGenerator.Engine;
 using Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
@@ -92,15 +92,15 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Glucose");
-        narrative.Should().Contain("95 mg/dL");
-        narrative.Should().Contain("(High)");
-        narrative.Should().Contain("[Laboratory]");
-        narrative.Should().Contain("@ 2025-01-15");
-        narrative.Should().Contain("Subject: John Doe");
-        narrative.Trim().Should().NotContain("\n\n"); // Single line
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Glucose");
+        narrative.ShouldContain("95 mg/dL");
+        narrative.ShouldContain("(High)");
+        narrative.ShouldContain("[Laboratory]");
+        narrative.ShouldContain("@ 2025-01-15");
+        narrative.ShouldContain("Subject: John Doe");
+        narrative.Trim().ShouldNotContain("\n\n"); // Single line
     }
 
     [Fact]
@@ -170,12 +170,12 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Blood Pressure");
-        narrative.Should().Contain("Systolic 120 mmHg");
-        narrative.Should().Contain("Diastolic 80 mmHg");
-        narrative.Should().Contain("Jane Smith");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Blood Pressure");
+        narrative.ShouldContain("Systolic 120 mmHg");
+        narrative.ShouldContain("Diastolic 80 mmHg");
+        narrative.ShouldContain("Jane Smith");
     }
 
     [Fact]
@@ -214,10 +214,10 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Heart Rate");
-        narrative.Should().Contain("[Not Performed]");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Heart Rate");
+        narrative.ShouldContain("[Not Performed]");
     }
 
     #endregion
@@ -276,13 +276,13 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Type 2 Diabetes Mellitus");
-        narrative.Should().Contain("(Active, Confirmed, Moderate)");
-        narrative.Should().Contain("Onset: 2020-01-15");
-        narrative.Should().MatchRegex(@"\d+y ago\)"); // Should show years ago
-        narrative.Should().Contain("Subject: John Doe");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Type 2 Diabetes Mellitus");
+        narrative.ShouldContain("(Active, Confirmed, Moderate)");
+        narrative.ShouldContain("Onset: 2020-01-15");
+        narrative.ShouldMatch(@"\d+y ago\)"); // Should show years ago
+        narrative.ShouldContain("Subject: John Doe");
     }
 
     [Fact]
@@ -332,11 +332,11 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Hypertension");
-        narrative.Should().Contain("Body Site: Systemic");
-        narrative.Should().Contain("Onset: 2018");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Hypertension");
+        narrative.ShouldContain("Body Site: Systemic");
+        narrative.ShouldContain("Onset: 2018");
     }
 
     [Fact]
@@ -374,11 +374,11 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
         // Note: code.text extraction may vary based on parser implementation
-        narrative.Should().Contain("(Resolved)");
-        narrative.Should().Contain("Abated: 2025-01-10");
+        narrative.ShouldContain("(Resolved)");
+        narrative.ShouldContain("Abated: 2025-01-10");
     }
 
     #endregion
@@ -431,15 +431,15 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Complete Blood Count");
-        narrative.Should().Contain("(final)");
-        narrative.Should().Contain("Conclusion: Normal findings");
-        narrative.Should().Contain("Results: 4 findings");
-        narrative.Should().Contain("[Laboratory]");
-        narrative.Should().Contain("Issued: 2025-01-15");
-        narrative.Should().Contain("Subject: John Doe");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Complete Blood Count");
+        narrative.ShouldContain("(final)");
+        narrative.ShouldContain("Conclusion: Normal findings");
+        narrative.ShouldContain("Results: 4 findings");
+        narrative.ShouldContain("[Laboratory]");
+        narrative.ShouldContain("Issued: 2025-01-15");
+        narrative.ShouldContain("Subject: John Doe");
     }
 
     [Fact]
@@ -478,11 +478,11 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
         // Note: code.text extraction may vary based on parser implementation
-        narrative.Should().Contain("Conclusion: No acute findings");
-        narrative.Should().Contain("[Radiology]");
+        narrative.ShouldContain("Conclusion: No acute findings");
+        narrative.ShouldContain("[Radiology]");
     }
 
     [Fact]
@@ -515,14 +515,14 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // No resource type prefix
-        narrative.Should().Contain("Conclusion:");
-        narrative.Should().Contain("..."); // Truncated
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // No resource type prefix
+        narrative.ShouldContain("Conclusion:");
+        narrative.ShouldContain("..."); // Truncated
         var conclusionMatch = System.Text.RegularExpressions.Regex.Match(narrative, @"Conclusion: ([^.]+)\.");
         if (conclusionMatch.Success)
         {
-            conclusionMatch.Groups[1].Value.Length.Should().BeLessThanOrEqualTo(103); // 100 + "..."
+            conclusionMatch.Groups[1].Value.Length.ShouldBeLessThanOrEqualTo(103); // 100 + "..."
         }
     }
 
@@ -564,10 +564,10 @@ public class CompactTemplateTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Results: 1 finding");
-        narrative.Should().Contain("Media: 2 items");
-        narrative.Should().Contain("Attachments: 1");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Results: 1 finding");
+        narrative.ShouldContain("Media: 2 items");
+        narrative.ShouldContain("Attachments: 1");
     }
 
     #endregion
@@ -606,11 +606,11 @@ public class CompactTemplateTests
         var vectorNarrative = await _generator.GenerateNarrativeAsync(element, observation.ResourceType, format: TemplateFormat.Compact);
 
         // Assert - Both formats should contain key data
-        htmlNarrative.Should().Contain("Heart Rate");
-        htmlNarrative.Should().Contain("72");
-        vectorNarrative.Should().Contain("Heart Rate");
-        vectorNarrative.Should().Contain("72");
-        vectorNarrative.Should().NotStartWith("["); // Compact has no resource type prefix
+        htmlNarrative.ShouldContain("Heart Rate");
+        htmlNarrative.ShouldContain("72");
+        vectorNarrative.ShouldContain("Heart Rate");
+        vectorNarrative.ShouldContain("72");
+        vectorNarrative.ShouldNotStartWith("["); // Compact has no resource type prefix
     }
 
     #endregion

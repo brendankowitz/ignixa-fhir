@@ -1,6 +1,6 @@
 /* Copyright (c) 2025, Ignixa Contributors */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
@@ -74,26 +74,26 @@ public class EnhancedErrorMessageTests
         evaluator.ExecuteGroup(map, "TestGroup", context);
 
         // Assert
-        context.Errors.Should().HaveCount(1);
+        context.Errors.Count.ShouldBe(1);
 
         var error = context.Errors[0];
-        error.RuleName.Should().Be("copyNonExistent");
-        error.GroupName.Should().Be("TestGroup");
-        error.RuleIndex.Should().Be(0);
-        error.ElementPath.Should().Be("src.nonExistentField");
-        error.AvailableElements.Should().NotBeNull();
-        error.AvailableElements.Should().Contain("id");
-        error.AvailableElements.Should().Contain("name");
-        error.AvailableElements.Should().Contain("gender");
+        error.RuleName.ShouldBe("copyNonExistent");
+        error.GroupName.ShouldBe("TestGroup");
+        error.RuleIndex.ShouldBe(0);
+        error.ElementPath.ShouldBe("src.nonExistentField");
+        error.AvailableElements.ShouldNotBeNull();
+        error.AvailableElements.ShouldContain("id");
+        error.AvailableElements.ShouldContain("name");
+        error.AvailableElements.ShouldContain("gender");
 
         // Verify toString shows helpful message
         var errorMessage = error.ToString();
-        errorMessage.Should().Contain("Rule 'copyNonExistent'");
-        errorMessage.Should().Contain("Available elements:");
-        errorMessage.Should().Contain("id");
-        errorMessage.Should().Contain("name");
-        errorMessage.Should().Contain("gender");
-        errorMessage.Should().Contain("Location: StructureMap.group[TestGroup].rule[0]");
+        errorMessage.ShouldContain("Rule 'copyNonExistent'");
+        errorMessage.ShouldContain("Available elements:");
+        errorMessage.ShouldContain("id");
+        errorMessage.ShouldContain("name");
+        errorMessage.ShouldContain("gender");
+        errorMessage.ShouldContain("Location: StructureMap.group[TestGroup].rule[0]");
     }
 
     [Fact]
@@ -190,19 +190,19 @@ public class EnhancedErrorMessageTests
         evaluator.ExecuteGroup(map, "TestGroup", context);
 
         // Assert
-        context.Errors.Should().HaveCount(3);
+        context.Errors.Count.ShouldBe(3);
 
-        context.Errors[0].RuleName.Should().Be("rule0");
-        context.Errors[0].RuleIndex.Should().Be(0);
-        context.Errors[0].ElementPath.Should().Be("src.field0");
+        context.Errors[0].RuleName.ShouldBe("rule0");
+        context.Errors[0].RuleIndex.ShouldBe(0);
+        context.Errors[0].ElementPath.ShouldBe("src.field0");
 
-        context.Errors[1].RuleName.Should().Be("rule1");
-        context.Errors[1].RuleIndex.Should().Be(1);
-        context.Errors[1].ElementPath.Should().Be("src.field1");
+        context.Errors[1].RuleName.ShouldBe("rule1");
+        context.Errors[1].RuleIndex.ShouldBe(1);
+        context.Errors[1].ElementPath.ShouldBe("src.field1");
 
-        context.Errors[2].RuleName.Should().Be("rule2");
-        context.Errors[2].RuleIndex.Should().Be(2);
-        context.Errors[2].ElementPath.Should().Be("src.field2");
+        context.Errors[2].RuleName.ShouldBe("rule2");
+        context.Errors[2].RuleIndex.ShouldBe(2);
+        context.Errors[2].ElementPath.ShouldBe("src.field2");
     }
 
     [Fact]
@@ -263,12 +263,12 @@ public class EnhancedErrorMessageTests
         evaluator.ExecuteGroup(map, "TestGroup", context);
 
         // Assert
-        context.Errors.Should().HaveCount(1);
+        context.Errors.Count.ShouldBe(1);
         var error = context.Errors[0];
 
         // When rule name is null, evaluator uses "anonymous"
         var errorMessage = error.ToString();
-        errorMessage.Should().Contain("anonymous");
+        errorMessage.ShouldContain("anonymous");
     }
 
     [Fact]
@@ -336,12 +336,12 @@ public class EnhancedErrorMessageTests
         evaluator.ExecuteGroup(map, "TestGroup", context);
 
         // Assert
-        context.Errors.Should().HaveCount(1);
+        context.Errors.Count.ShouldBe(1);
         var error = context.Errors[0];
 
-        error.ElementPath.Should().Be("src.name.nonExistent");
-        error.AvailableElements.Should().Contain("family");
-        error.AvailableElements.Should().Contain("given");
+        error.ElementPath.ShouldBe("src.name.nonExistent");
+        error.AvailableElements!.ShouldContain("family");
+        error.AvailableElements!.ShouldContain("given");
     }
 
     #endregion

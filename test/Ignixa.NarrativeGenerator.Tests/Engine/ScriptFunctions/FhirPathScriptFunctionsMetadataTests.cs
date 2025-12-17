@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 using Ignixa.Specification.Generated;
@@ -36,33 +36,33 @@ public class FhirPathScriptFunctionsMetadataTests
         var elements = _functions.GetStructureElements(resourceType, FhirVersion.R4).ToList();
 
         // Assert
-        elements.Should().NotBeEmpty();
+        elements.ShouldNotBeEmpty();
 
         // Should contain name element
         var nameElement = elements.FirstOrDefault(e => e.Name == "name");
-        nameElement.Should().NotBeNull();
-        nameElement!.Path.Should().Be("Patient.name");
-        nameElement.Type.Should().Be("HumanName");
-        nameElement.IsPrimitive.Should().BeFalse();
-        nameElement.IsArray.Should().BeTrue();
+        nameElement.ShouldNotBeNull();
+        nameElement!.Path.ShouldBe("Patient.name");
+        nameElement.Type.ShouldBe("HumanName");
+        nameElement.IsPrimitive.ShouldBeFalse();
+        nameElement.IsArray.ShouldBeTrue();
 
         // Should contain birthDate element
         var birthDateElement = elements.FirstOrDefault(e => e.Name == "birthDate");
-        birthDateElement.Should().NotBeNull();
-        birthDateElement!.Path.Should().Be("Patient.birthDate");
-        birthDateElement.Type.Should().Be("date");
-        birthDateElement.IsPrimitive.Should().BeTrue();
-        birthDateElement.IsArray.Should().BeFalse();
+        birthDateElement.ShouldNotBeNull();
+        birthDateElement!.Path.ShouldBe("Patient.birthDate");
+        birthDateElement.Type.ShouldBe("date");
+        birthDateElement.IsPrimitive.ShouldBeTrue();
+        birthDateElement.IsArray.ShouldBeFalse();
 
         // Should NOT contain excluded elements
-        elements.Should().NotContain(e => e.Name == "id");
-        elements.Should().NotContain(e => e.Name == "meta");
-        elements.Should().NotContain(e => e.Name == "text");
-        elements.Should().NotContain(e => e.Name == "contained");
-        elements.Should().NotContain(e => e.Name == "extension");
-        elements.Should().NotContain(e => e.Name == "modifierExtension");
-        elements.Should().NotContain(e => e.Name == "implicitRules");
-        elements.Should().NotContain(e => e.Name == "language");
+        elements.ShouldNotContain(e => e.Name == "id");
+        elements.ShouldNotContain(e => e.Name == "meta");
+        elements.ShouldNotContain(e => e.Name == "text");
+        elements.ShouldNotContain(e => e.Name == "contained");
+        elements.ShouldNotContain(e => e.Name == "extension");
+        elements.ShouldNotContain(e => e.Name == "modifierExtension");
+        elements.ShouldNotContain(e => e.Name == "implicitRules");
+        elements.ShouldNotContain(e => e.Name == "language");
     }
 
     [Fact]
@@ -75,12 +75,12 @@ public class FhirPathScriptFunctionsMetadataTests
         var elements = _functions.GetStructureElements(resourceType, FhirVersion.R4).ToList();
 
         // Assert
-        elements.Should().NotBeEmpty();
+        elements.ShouldNotBeEmpty();
 
         // Should contain code element (CodeableConcept)
         var codeElement = elements.FirstOrDefault(e => e.Name == "code");
-        codeElement.Should().NotBeNull();
-        codeElement!.IsCodeableConcept.Should().BeTrue();
+        codeElement.ShouldNotBeNull();
+        codeElement!.IsCodeableConcept.ShouldBeTrue();
     }
 
     [Fact]
@@ -93,12 +93,12 @@ public class FhirPathScriptFunctionsMetadataTests
         var elements = _functions.GetStructureElements(resourceType, FhirVersion.R4).ToList();
 
         // Assert
-        elements.Should().NotBeEmpty();
+        elements.ShouldNotBeEmpty();
 
         // Should contain subject element (Reference)
         var subjectElement = elements.FirstOrDefault(e => e.Name == "subject");
-        subjectElement.Should().NotBeNull();
-        subjectElement!.IsReference.Should().BeTrue();
+        subjectElement.ShouldNotBeNull();
+        subjectElement!.IsReference.ShouldBeTrue();
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var elements = _functions.GetStructureElements(resourceType, FhirVersion.R4).ToList();
 
         // Assert
-        elements.Should().BeEmpty();
+        elements.ShouldBeEmpty();
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var elements = _functions.GetStructureElements(resourceType!, FhirVersion.R4).ToList();
 
         // Assert
-        elements.Should().BeEmpty();
+        elements.ShouldBeEmpty();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var elements = _functions.GetStructureElements(resourceType, FhirVersion.R4).ToList();
 
         // Assert
-        elements.Should().BeEmpty();
+        elements.ShouldBeEmpty();
     }
 
     #endregion
@@ -156,7 +156,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type, culture);
 
         // Assert
-        result.Should().Be("January 15, 1980");
+        result.ShouldBe("January 15, 1980");
     }
 
     [Fact]
@@ -171,8 +171,8 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type, culture);
 
         // Assert
-        result.Should().Contain("December 25, 2023");
-        result.Should().Contain("at");
+        result.ShouldContain("December 25, 2023");
+        result.ShouldContain("at");
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type, culture);
 
         // Assert
-        result.Should().Contain("December 25, 2023");
+        result.ShouldContain("December 25, 2023");
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type);
 
         // Assert
-        result.Should().Be("Yes");
+        result.ShouldBe("Yes");
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type);
 
         // Assert
-        result.Should().Be("No");
+        result.ShouldBe("No");
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type);
 
         // Assert
-        result.Should().Be("Test String");
+        result.ShouldBe("Test String");
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -271,7 +271,7 @@ public class FhirPathScriptFunctionsMetadataTests
         var result = _functions.FormatByType(value, type);
 
         // Assert
-        result.Should().Be("invalid-date");
+        result.ShouldBe("invalid-date");
     }
 
     #endregion

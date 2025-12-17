@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -68,12 +68,12 @@ public class StringSearchTests : CapabilityDrivenTestBase, IClassFixture<StringS
 
         if (shouldMatch)
         {
-            results.Should().ContainSingle(r => r.Id == expectedPatient.Id,
+            results.ShouldContain(r => r.Id == expectedPatient.Id,
                 $"Patient 0 (Seattle) should match query 'address-city{modifier}={valueToSearch}'");
         }
         else
         {
-            results.Should().NotContain(r => r.Id == expectedPatient.Id,
+            results.ShouldNotContain(r => r.Id == expectedPatient.Id,
                 $"Patient 0 (Seattle) should NOT match query 'address-city{modifier}={valueToSearch}'");
         }
     }
@@ -111,12 +111,12 @@ public class StringSearchTests : CapabilityDrivenTestBase, IClassFixture<StringS
 
         if (shouldMatch)
         {
-            results.Should().ContainSingle(r => r.Id == expectedPatient.Id,
+            results.ShouldContain(r => r.Id == expectedPatient.Id,
                 $"Patient 3 (long city) should match query 'address-city{modifier}={valueToSearch.Substring(0, Math.Min(20, valueToSearch.Length))}...'");
         }
         else
         {
-            results.Should().NotContain(r => r.Id == expectedPatient.Id,
+            results.ShouldNotContain(r => r.Id == expectedPatient.Id,
                 $"Patient 3 (long city) should NOT match query 'address-city{modifier}={valueToSearch.Substring(0, Math.Min(20, valueToSearch.Length))}...'");
         }
     }
@@ -137,10 +137,10 @@ public class StringSearchTests : CapabilityDrivenTestBase, IClassFixture<StringS
             $"_tag={_fixture.Tag}&family=Smith,Ander");
 
         // Assert: Should return Patients[0] (Smith) and Patients[2] (Anderson)
-        results.Should().HaveCount(2);
-        results.Should().Contain(r => r.Id == _fixture.Patients[0].Id,
+        results.Length.ShouldBe(2);
+        results.ShouldContain(r => r.Id == _fixture.Patients[0].Id,
             "Patient 0 (Smith) should match");
-        results.Should().Contain(r => r.Id == _fixture.Patients[2].Id,
+        results.ShouldContain(r => r.Id == _fixture.Patients[2].Id,
             "Patient 2 (Anderson) should match starts-with 'Ander'");
     }
 
@@ -161,7 +161,7 @@ public class StringSearchTests : CapabilityDrivenTestBase, IClassFixture<StringS
 
         // Assert: Should return only Patient[0] (has both "Bea" given name and "Smith" family)
         // Patient[4] has "Bea" but family is "Richard", so it should NOT match
-        results.Should().ContainSingle(r => r.Id == _fixture.Patients[0].Id,
+        results.ShouldContain(r => r.Id == _fixture.Patients[0].Id,
             "Only Patient 0 has both 'Bea' and 'Smith' in name fields");
     }
 
@@ -190,11 +190,11 @@ public class StringSearchTests : CapabilityDrivenTestBase, IClassFixture<StringS
             $"_tag={_fixture.Tag}&name={searchText}");
 
         // Assert: Both Patients[5] (Muller) and Patients[6] (Müller) should match
-        results.Should().HaveCount(2,
+        results.Length.ShouldBe(2,
             "Both 'Muller' and 'Müller' patients should match accent-insensitive search");
-        results.Should().Contain(r => r.Id == _fixture.Patients[5].Id,
+        results.ShouldContain(r => r.Id == _fixture.Patients[5].Id,
             "Patient 5 (Muller) should match");
-        results.Should().Contain(r => r.Id == _fixture.Patients[6].Id,
+        results.ShouldContain(r => r.Id == _fixture.Patients[6].Id,
             "Patient 6 (Müller) should match");
     }
 
@@ -214,7 +214,7 @@ public class StringSearchTests : CapabilityDrivenTestBase, IClassFixture<StringS
             $"_tag={_fixture.Tag}&name=Richard\\,Muller");
 
         // Assert: Should return only Patient[7] with family "Richard,Muller"
-        results.Should().ContainSingle(r => r.Id == _fixture.Patients[7].Id,
+        results.ShouldContain(r => r.Id == _fixture.Patients[7].Id,
             "Patient 7 has family name 'Richard,Muller' (literal comma)");
     }
 }

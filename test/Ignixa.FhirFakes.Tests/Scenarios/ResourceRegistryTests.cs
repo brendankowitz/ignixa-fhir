@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
@@ -27,7 +27,7 @@ public class ResourceRegistryTests
         registry.Register(identity);
 
         // Assert
-        registry.Count.Should().Be(1);
+        registry.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public class ResourceRegistryTests
         registry.Register(identity);
 
         // Assert
-        registry.GetById("patient-123").Should().Be(identity);
-        registry.GetByLogicalName("current-patient").Should().Be(identity);
+        registry.GetById("patient-123").ShouldBe(identity);
+        registry.GetByLogicalName("current-patient").ShouldBe(identity);
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class ResourceRegistryTests
         var act = () => registry.Register(null!);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("identity");
+        var ex = Should.Throw<ArgumentNullException>(act);
+        ex.ParamName.ShouldBe("identity");
     }
 
     [Fact]
@@ -74,10 +74,10 @@ public class ResourceRegistryTests
         registry.Register(observation);
 
         // Assert
-        registry.Count.Should().Be(3);
-        registry.GetById("patient-1").Should().Be(patient);
-        registry.GetById("encounter-1").Should().Be(encounter);
-        registry.GetById("obs-1").Should().Be(observation);
+        registry.Count.ShouldBe(3);
+        registry.GetById("patient-1").ShouldBe(patient);
+        registry.GetById("encounter-1").ShouldBe(encounter);
+        registry.GetById("obs-1").ShouldBe(observation);
     }
 
     [Fact]
@@ -93,9 +93,9 @@ public class ResourceRegistryTests
         registry.Register(updated);
 
         // Assert
-        registry.Count.Should().Be(1);
-        registry.GetById("patient-123").Should().Be(updated);
-        registry.GetByLogicalName("updated").Should().Be(updated);
+        registry.Count.ShouldBe(1);
+        registry.GetById("patient-123").ShouldBe(updated);
+        registry.GetByLogicalName("updated").ShouldBe(updated);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class ResourceRegistryTests
         registry.Register(identity);
 
         // Assert
-        registry.GetById("obs-123").Should().Be(identity);
+        registry.GetById("obs-123").ShouldBe(identity);
         // No logical name was provided, so no name-based lookup
     }
 
@@ -129,7 +129,7 @@ public class ResourceRegistryTests
         var result = registry.GetById("patient-456");
 
         // Assert
-        result.Should().Be(identity);
+        result.ShouldBe(identity);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class ResourceRegistryTests
         var result = registry.GetById("unknown-id");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public class ResourceRegistryTests
         var result = registry.GetById("any-id");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -173,9 +173,9 @@ public class ResourceRegistryTests
         registry.Register(observation);
 
         // Act & Assert
-        registry.GetById("patient-1").Should().Be(patient);
-        registry.GetById("encounter-1").Should().Be(encounter);
-        registry.GetById("obs-1").Should().Be(observation);
+        registry.GetById("patient-1").ShouldBe(patient);
+        registry.GetById("encounter-1").ShouldBe(encounter);
+        registry.GetById("obs-1").ShouldBe(observation);
     }
 
     #endregion
@@ -194,7 +194,7 @@ public class ResourceRegistryTests
         var result = registry.GetByLogicalName("current-patient");
 
         // Assert
-        result.Should().Be(identity);
+        result.ShouldBe(identity);
     }
 
     [Fact]
@@ -209,7 +209,7 @@ public class ResourceRegistryTests
         var result = registry.GetByLogicalName("unknown-name");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -222,7 +222,7 @@ public class ResourceRegistryTests
         var result = registry.GetByLogicalName("any-name");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -238,9 +238,9 @@ public class ResourceRegistryTests
         registry.Register(practitioner);
 
         // Act & Assert
-        registry.GetByLogicalName("patient").Should().Be(patient);
-        registry.GetByLogicalName("current-encounter").Should().Be(encounter);
-        registry.GetByLogicalName("current-practitioner").Should().Be(practitioner);
+        registry.GetByLogicalName("patient").ShouldBe(patient);
+        registry.GetByLogicalName("current-encounter").ShouldBe(encounter);
+        registry.GetByLogicalName("current-practitioner").ShouldBe(practitioner);
     }
 
     #endregion
@@ -257,7 +257,7 @@ public class ResourceRegistryTests
         var all = registry.All;
 
         // Assert
-        all.Should().BeEmpty();
+        all.ShouldBeEmpty();
     }
 
     [Fact]
@@ -274,11 +274,11 @@ public class ResourceRegistryTests
         var all = registry.All;
 
         // Assert
-        all.Should().HaveCount(2);
-        all.Should().ContainKey("patient-1");
-        all.Should().ContainKey("encounter-1");
-        all["patient-1"].Should().Be(patient);
-        all["encounter-1"].Should().Be(encounter);
+        all.Count.ShouldBe(2);
+        all.ShouldContainKey("patient-1");
+        all.ShouldContainKey("encounter-1");
+        all["patient-1"].ShouldBe(patient);
+        all["encounter-1"].ShouldBe(encounter);
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public class ResourceRegistryTests
         var all = registry.All;
 
         // Assert
-        all.Should().BeAssignableTo<IReadOnlyDictionary<string, ResourceIdentity>>();
+        all.ShouldBeAssignableTo<IReadOnlyDictionary<string, ResourceIdentity>>();
     }
 
     #endregion
@@ -309,7 +309,7 @@ public class ResourceRegistryTests
         var count = registry.Count;
 
         // Assert
-        count.Should().Be(0);
+        count.ShouldBe(0);
     }
 
     [Fact]
@@ -325,7 +325,7 @@ public class ResourceRegistryTests
         var count = registry.Count;
 
         // Assert
-        count.Should().Be(3);
+        count.ShouldBe(3);
     }
 
     [Fact]
@@ -340,7 +340,7 @@ public class ResourceRegistryTests
         var count = registry.Count;
 
         // Assert
-        count.Should().Be(1);
+        count.ShouldBe(1);
     }
 
     #endregion
@@ -360,8 +360,8 @@ public class ResourceRegistryTests
         registry.Clear();
 
         // Assert
-        registry.Count.Should().Be(0);
-        registry.All.Should().BeEmpty();
+        registry.Count.ShouldBe(0);
+        registry.All.ShouldBeEmpty();
     }
 
     [Fact]
@@ -376,8 +376,8 @@ public class ResourceRegistryTests
         registry.Clear();
 
         // Assert
-        registry.GetById("p-1").Should().BeNull();
-        registry.GetById("e-1").Should().BeNull();
+        registry.GetById("p-1").ShouldBeNull();
+        registry.GetById("e-1").ShouldBeNull();
     }
 
     [Fact]
@@ -392,8 +392,8 @@ public class ResourceRegistryTests
         registry.Clear();
 
         // Assert
-        registry.GetByLogicalName("patient").Should().BeNull();
-        registry.GetByLogicalName("current-encounter").Should().BeNull();
+        registry.GetByLogicalName("patient").ShouldBeNull();
+        registry.GetByLogicalName("current-encounter").ShouldBeNull();
     }
 
     [Fact]
@@ -406,8 +406,8 @@ public class ResourceRegistryTests
         var act = () => registry.Clear();
 
         // Assert
-        act.Should().NotThrow();
-        registry.Count.Should().Be(0);
+        Should.NotThrow(act);
+        registry.Count.ShouldBe(0);
     }
 
     [Fact]
@@ -424,9 +424,9 @@ public class ResourceRegistryTests
         registry.Register(newIdentity);
 
         // Assert
-        registry.Count.Should().Be(1);
-        registry.GetById("new-1").Should().Be(newIdentity);
-        registry.GetByLogicalName("patient").Should().Be(newIdentity);
+        registry.Count.ShouldBe(1);
+        registry.GetById("new-1").ShouldBe(newIdentity);
+        registry.GetByLogicalName("patient").ShouldBe(newIdentity);
     }
 
     #endregion
@@ -444,7 +444,7 @@ public class ResourceRegistryTests
         registry.Register(identity);
 
         // Assert
-        registry.GetById("p-1").Should().Be(identity);
+        registry.GetById("p-1").ShouldBe(identity);
         // Empty string should not be registered as a logical name
     }
 
@@ -463,10 +463,10 @@ public class ResourceRegistryTests
         registry.Register(encounter);
 
         // Assert
-        registry.GetById(guid1).Should().Be(patient);
-        registry.GetById(guid2).Should().Be(encounter);
-        registry.GetByLogicalName("patient").Should().Be(patient);
-        registry.GetByLogicalName("encounter").Should().Be(encounter);
+        registry.GetById(guid1).ShouldBe(patient);
+        registry.GetById(guid2).ShouldBe(encounter);
+        registry.GetByLogicalName("patient").ShouldBe(patient);
+        registry.GetByLogicalName("encounter").ShouldBe(encounter);
     }
 
     [Fact]
@@ -482,9 +482,9 @@ public class ResourceRegistryTests
         registry.Register(patient2);
 
         // Assert
-        registry.GetByLogicalName("current").Should().Be(patient2);
-        registry.GetById("p-1").Should().Be(patient1);
-        registry.GetById("p-2").Should().Be(patient2);
+        registry.GetByLogicalName("current").ShouldBe(patient2);
+        registry.GetById("p-1").ShouldBe(patient1);
+        registry.GetById("p-2").ShouldBe(patient2);
     }
 
     #endregion

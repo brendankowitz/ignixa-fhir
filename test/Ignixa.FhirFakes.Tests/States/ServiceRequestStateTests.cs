@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -31,10 +31,10 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.ServiceRequests.Should().HaveCount(1);
+        scenario.ServiceRequests.Count.ShouldBe(1);
         var serviceRequest = scenario.ServiceRequests[0];
-        serviceRequest.ResourceType.Should().Be("ServiceRequest");
-        serviceRequest.Id.Should().NotBeNullOrEmpty();
+        serviceRequest.ResourceType.ShouldBe("ServiceRequest");
+        serviceRequest.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var status = serviceRequest.MutableNode["status"]?.GetValue<string>();
-        status.Should().Be("active");
+        status.ShouldBe("active");
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var intent = serviceRequest.MutableNode["intent"]?.GetValue<string>();
-        intent.Should().Be("order");
+        intent.ShouldBe("order");
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var identifier = serviceRequest.MutableNode["identifier"]?[0]?["value"]?.GetValue<string>();
-        identifier.Should().NotBeNullOrEmpty();
-        identifier.Should().StartWith("SR-");
+        identifier.ShouldNotBeNullOrEmpty();
+        identifier.ShouldStartWith("SR-");
     }
 
     #endregion
@@ -99,7 +99,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var subjectRef = serviceRequest.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var encounterRef = serviceRequest.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
+        encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var requesterRef = serviceRequest.MutableNode["requester"]?["reference"]?.GetValue<string>();
-        requesterRef.Should().Be($"urn:uuid:{scenario.CurrentPractitioner!.Id}");
+        requesterRef.ShouldBe($"urn:uuid:{scenario.CurrentPractitioner!.Id}");
     }
 
     #endregion
@@ -150,7 +150,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("58410-2");
+        code.ShouldBe("58410-2");
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var categoryCode = serviceRequest.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("108252007"); // Laboratory procedure
+        categoryCode.ShouldBe("108252007"); // Laboratory procedure
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("57698-3");
+        code.ShouldBe("57698-3");
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var reasonCode = serviceRequest.MutableNode["reasonCode"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        reasonCode.Should().Be("44054006"); // Diabetes mellitus type 2
+        reasonCode.ShouldBe("44054006"); // Diabetes mellitus type 2
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var display = serviceRequest.MutableNode["code"]?["text"]?.GetValue<string>();
-        display.Should().Be("Comprehensive metabolic panel");
+        display.ShouldBe("Comprehensive metabolic panel");
     }
 
     #endregion
@@ -229,7 +229,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("399208008");
+        code.ShouldBe("399208008");
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var categoryCode = serviceRequest.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("363679005"); // Imaging
+        categoryCode.ShouldBe("363679005"); // Imaging
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("241540006");
+        code.ShouldBe("241540006");
     }
 
     [Fact]
@@ -274,7 +274,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var display = serviceRequest.MutableNode["code"]?["text"]?.GetValue<string>();
-        display.Should().Be("MRI of brain");
+        display.ShouldBe("MRI of brain");
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var categoryCode = serviceRequest.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("363679005");
+        categoryCode.ShouldBe("363679005");
     }
 
     #endregion
@@ -308,7 +308,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("183524002");
+        code.ShouldBe("183524002");
     }
 
     [Fact]
@@ -323,7 +323,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var categoryCode = serviceRequest.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("3457005"); // Referral
+        categoryCode.ShouldBe("3457005"); // Referral
     }
 
     [Fact]
@@ -338,7 +338,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("183516009");
+        code.ShouldBe("183516009");
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var display = serviceRequest.MutableNode["code"]?["text"]?.GetValue<string>();
-        display.Should().Be("Physical therapy referral");
+        display.ShouldBe("Physical therapy referral");
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var code = serviceRequest.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("183521005");
+        code.ShouldBe("183521005");
     }
 
     #endregion
@@ -387,7 +387,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var priority = serviceRequest.MutableNode["priority"]?.GetValue<string>();
-        priority.Should().Be("routine");
+        priority.ShouldBe("routine");
     }
 
     [Fact]
@@ -402,7 +402,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var priority = serviceRequest.MutableNode["priority"]?.GetValue<string>();
-        priority.Should().Be("urgent");
+        priority.ShouldBe("urgent");
     }
 
     [Fact]
@@ -417,7 +417,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var priority = serviceRequest.MutableNode["priority"]?.GetValue<string>();
-        priority.Should().Be("stat");
+        priority.ShouldBe("stat");
     }
 
     [Fact]
@@ -432,7 +432,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var priority = serviceRequest.MutableNode["priority"]?.GetValue<string>();
-        priority.Should().Be("asap");
+        priority.ShouldBe("asap");
     }
 
     #endregion
@@ -452,7 +452,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var performerRef = serviceRequest.MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
-        performerRef.Should().Be($"urn:uuid:{scenario.CurrentOrganization!.Id}");
+        performerRef.ShouldBe($"urn:uuid:{scenario.CurrentOrganization!.Id}");
     }
 
     [Fact]
@@ -467,7 +467,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var performerDisplay = serviceRequest.MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
-        performerDisplay.Should().Be("Clinical Laboratory");
+        performerDisplay.ShouldBe("Clinical Laboratory");
     }
 
     [Fact]
@@ -482,7 +482,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var performerDisplay = serviceRequest.MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
-        performerDisplay.Should().Be("Radiology Department");
+        performerDisplay.ShouldBe("Radiology Department");
     }
 
     [Fact]
@@ -497,7 +497,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var performerDisplay = serviceRequest.MutableNode["performer"]?[0]?["display"]?.GetValue<string>();
-        performerDisplay.Should().Be("Specialist Clinic");
+        performerDisplay.ShouldBe("Specialist Clinic");
     }
 
     #endregion
@@ -516,7 +516,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var authoredOn = serviceRequest.MutableNode["authoredOn"]?.GetValue<string>();
-        authoredOn.Should().NotBeNullOrEmpty();
+        authoredOn.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -538,7 +538,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var authoredOn = serviceRequest.MutableNode["authoredOn"]?.GetValue<string>();
-        authoredOn.Should().Contain("2024-06-15");
+        authoredOn!.ShouldContain("2024-06-15");
     }
 
     #endregion
@@ -558,7 +558,7 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.ServiceRequests.Should().HaveCount(3);
+        scenario.ServiceRequests.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -572,7 +572,7 @@ public class ServiceRequestStateTests
 
         // Assert
         var serviceRequestEvents = scenario.Timeline.Where(e => e.EventType == "ServiceRequest").ToList();
-        serviceRequestEvents.Should().HaveCount(1);
+        serviceRequestEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -585,7 +585,7 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.ServiceRequests[0]);
+        scenario.AllResources.ShouldContain(scenario.ServiceRequests[0]);
     }
 
     [Fact]
@@ -599,8 +599,8 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.CurrentServiceRequest.Should().NotBeNull();
-        scenario.CurrentServiceRequest.Should().Be(scenario.ServiceRequests[1]); // Most recent
+        scenario.CurrentServiceRequest.ShouldNotBeNull();
+        scenario.CurrentServiceRequest.ShouldBe(scenario.ServiceRequests[1]); // Most recent
     }
 
     #endregion
@@ -619,7 +619,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var system = serviceRequest.MutableNode["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
-        system.Should().Be("http://loinc.org");
+        system.ShouldBe("http://loinc.org");
     }
 
     [Fact]
@@ -634,7 +634,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var system = serviceRequest.MutableNode["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
-        system.Should().Be("http://snomed.info/sct");
+        system.ShouldBe("http://snomed.info/sct");
     }
 
     [Fact]
@@ -649,7 +649,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var system = serviceRequest.MutableNode["code"]?["coding"]?[0]?["system"]?.GetValue<string>();
-        system.Should().Be("http://snomed.info/sct");
+        system.ShouldBe("http://snomed.info/sct");
     }
 
     #endregion
@@ -668,7 +668,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var categoryCode = serviceRequest.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("108252007"); // Laboratory procedure
+        categoryCode.ShouldBe("108252007"); // Laboratory procedure
     }
 
     [Fact]
@@ -684,7 +684,7 @@ public class ServiceRequestStateTests
         var serviceRequest = scenario.ServiceRequests[0];
         var categoryCode = serviceRequest.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
         // Echocardiogram doesn't contain typical imaging keywords, so defaults to procedure
-        categoryCode.Should().NotBeNull();
+        categoryCode.ShouldNotBeNull();
     }
 
     #endregion
@@ -703,7 +703,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var encounterRef = serviceRequest.MutableNode["encounter"];
-        encounterRef.Should().BeNull();
+        encounterRef.ShouldBeNull();
     }
 
     [Fact]
@@ -722,7 +722,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var note = serviceRequest.MutableNode["note"]?[0]?["text"]?.GetValue<string>();
-        note.Should().Be("Fasting required for 12 hours");
+        note.ShouldBe("Fasting required for 12 hours");
     }
 
     [Fact]
@@ -741,7 +741,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var reason = serviceRequest.MutableNode["reasonCode"]?[0]?["text"]?.GetValue<string>();
-        reason.Should().Be("Screening for hyperlipidemia");
+        reason.ShouldBe("Screening for hyperlipidemia");
     }
 
     [Fact]
@@ -763,7 +763,7 @@ public class ServiceRequestStateTests
         // Assert
         var serviceRequest = scenario.ServiceRequests[0];
         var occurrenceDateTime = serviceRequest.MutableNode["occurrenceDateTime"]?.GetValue<string>();
-        occurrenceDateTime.Should().NotBeNullOrEmpty();
+        occurrenceDateTime.ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -784,14 +784,14 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.ServiceRequests.Should().HaveCount(3);
+        scenario.ServiceRequests.Count.ShouldBe(3);
         foreach (var sr in scenario.ServiceRequests)
         {
-            sr.MutableNode["status"]?.GetValue<string>().Should().Be("active");
-            sr.MutableNode["intent"]?.GetValue<string>().Should().Be("order");
-            sr.MutableNode["subject"]?["reference"]?.GetValue<string>().Should().NotBeNullOrEmpty();
-            sr.MutableNode["requester"]?["reference"]?.GetValue<string>().Should().NotBeNullOrEmpty();
-            sr.MutableNode["encounter"]?["reference"]?.GetValue<string>().Should().NotBeNullOrEmpty();
+            sr.MutableNode["status"]?.GetValue<string>().ShouldBe("active");
+            sr.MutableNode["intent"]?.GetValue<string>().ShouldBe("order");
+            sr.MutableNode["subject"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+            sr.MutableNode["requester"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+            sr.MutableNode["encounter"]?["reference"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
         }
     }
 
@@ -809,11 +809,11 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.ServiceRequests.Should().HaveCount(2);
+        scenario.ServiceRequests.Count.ShouldBe(2);
         foreach (var sr in scenario.ServiceRequests)
         {
             var categoryCode = sr.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-            categoryCode.Should().Be("363679005"); // Imaging
+            categoryCode.ShouldBe("363679005"); // Imaging
         }
     }
 
@@ -830,10 +830,10 @@ public class ServiceRequestStateTests
             .Build();
 
         // Assert
-        scenario.ServiceRequests.Should().HaveCount(1);
+        scenario.ServiceRequests.Count.ShouldBe(1);
         var referral = scenario.ServiceRequests[0];
         var categoryCode = referral.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("3457005"); // Referral
+        categoryCode.ShouldBe("3457005"); // Referral
     }
 
     #endregion

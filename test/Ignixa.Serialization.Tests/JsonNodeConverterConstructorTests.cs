@@ -6,7 +6,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -59,8 +59,7 @@ public class JsonNodeConverterConstructorTests
         }
 
         // Assert
-        missingConstructors.Should().BeEmpty(
-            $"The following types are missing the (JsonObject, FhirVersion?) constructor required by JsonNodeConverter/MutableJsonList: {string.Join(", ", missingConstructors)}. " +
+        missingConstructors.ShouldBeEmpty($"The following types are missing the (JsonObject, FhirVersion?) constructor required by JsonNodeConverter/MutableJsonList: {string.Join(", ", missingConstructors)}. " +
             "Add: public TypeName(JsonObject jsonObject, FhirVersion? fhirVersion = null) : base(jsonObject, fhirVersion) {{ }}");
     }
 
@@ -71,24 +70,24 @@ public class JsonNodeConverterConstructorTests
     public void BundleJsonNode_ShouldDeserializeDirectly()
     {
         var bundle = JsonSourceNodeFactory.Parse<BundleJsonNode>("""{"resourceType":"Bundle","type":"searchset"}""");
-        bundle.Should().NotBeNull();
-        bundle.Type.Should().Be(BundleJsonNode.BundleType.Searchset);
+        bundle.ShouldNotBeNull();
+        bundle.Type.ShouldBe(BundleJsonNode.BundleType.Searchset);
     }
 
     [Fact]
     public void OperationOutcomeJsonNode_ShouldDeserializeDirectly()
     {
         var outcome = JsonSourceNodeFactory.Parse<OperationOutcomeJsonNode>("""{"resourceType":"OperationOutcome"}""");
-        outcome.Should().NotBeNull();
-        outcome.ResourceType.Should().Be("OperationOutcome");
+        outcome.ShouldNotBeNull();
+        outcome.ResourceType.ShouldBe("OperationOutcome");
     }
 
     [Fact]
     public void ParametersJsonNode_ShouldDeserializeDirectly()
     {
         var parameters = JsonSourceNodeFactory.Parse<ParametersJsonNode>("""{"resourceType":"Parameters"}""");
-        parameters.Should().NotBeNull();
-        parameters.ResourceType.Should().Be("Parameters");
+        parameters.ShouldNotBeNull();
+        parameters.ResourceType.ShouldBe("Parameters");
     }
 
     private static bool CanCreateWithJsonNodeConverter(Type type)

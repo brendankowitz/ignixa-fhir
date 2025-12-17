@@ -4,7 +4,7 @@
  * Unit tests for mapping validation functionality.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.Registry;
@@ -36,8 +36,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Errors.Should().BeEmpty();
+        result.IsValid.ShouldBeTrue();
+        result.Errors.ShouldBeEmpty();
     }
 
     [Fact]
@@ -67,8 +67,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "MISSING_URL");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "MISSING_URL");
     }
 
     [Fact]
@@ -88,8 +88,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "NO_GROUPS");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "NO_GROUPS");
     }
 
     [Fact]
@@ -115,8 +115,8 @@ group Transform(source src : Observation, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "DUPLICATE_GROUP");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "DUPLICATE_GROUP");
     }
 
     #endregion
@@ -142,7 +142,7 @@ group Transform() {
         var result = validator.Validate(map);
 
         // Assert
-        result.Warnings.Should().Contain(w => w.Code == "NO_PARAMETERS");
+        result.Warnings.ShouldContain(w => w.Code == "NO_PARAMETERS");
     }
 
     [Fact]
@@ -164,7 +164,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.Warnings.Should().Contain(w => w.Code == "NO_RULES");
+        result.Warnings.ShouldContain(w => w.Code == "NO_RULES");
     }
 
     [Fact]
@@ -186,8 +186,8 @@ group Transform(source src : Patient, target tgt : Bundle) extends NonExistent {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "MISSING_BASE_GROUP");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "MISSING_BASE_GROUP");
     }
 
     [Fact]
@@ -213,8 +213,8 @@ group Group2(source src : Patient, target tgt : Bundle) extends Group1 {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "CIRCULAR_INHERITANCE");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "CIRCULAR_INHERITANCE");
     }
 
     #endregion
@@ -256,8 +256,8 @@ group Group2(source src : Patient, target tgt : Bundle) extends Group1 {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "NO_SOURCES");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "NO_SOURCES");
     }
 
     [Fact]
@@ -279,7 +279,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.Warnings.Should().Contain(w => w.Code == "NO_TARGETS");
+        result.Warnings.ShouldContain(w => w.Code == "NO_TARGETS");
     }
 
     #endregion
@@ -305,7 +305,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.Warnings.Should().Contain(w => w.Code == "UNKNOWN_TRANSFORM");
+        result.Warnings.ShouldContain(w => w.Code == "UNKNOWN_TRANSFORM");
     }
 
     [Fact]
@@ -327,8 +327,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "MISSING_ARGUMENT");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "MISSING_ARGUMENT");
     }
 
     [Fact]
@@ -350,8 +350,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "MISSING_ARGUMENT");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "MISSING_ARGUMENT");
     }
 
     #endregion
@@ -377,7 +377,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.Warnings.Should().Contain(w => w.Code == "WHERE_WITH_DEFAULT");
+        result.Warnings.ShouldContain(w => w.Code == "WHERE_WITH_DEFAULT");
     }
 
     #endregion
@@ -414,8 +414,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Code == "MISSING_IMPORT_URL");
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(e => e.Code == "MISSING_IMPORT_URL");
     }
 
     [Fact]
@@ -443,7 +443,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = validator.Validate(map);
 
         // Assert
-        result.Warnings.Should().Contain(w => w.Code == "UNRESOLVED_IMPORT");
+        result.Warnings.ShouldContain(w => w.Code == "UNRESOLVED_IMPORT");
     }
 
     #endregion
@@ -460,8 +460,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var summary = result.GetSummary();
 
         // Assert
-        summary.Should().Contain("passed");
-        summary.Should().Contain("no errors");
+        summary.ShouldContain("passed");
+        summary.ShouldContain("no errors");
     }
 
     [Fact]
@@ -475,7 +475,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var summary = result.GetSummary();
 
         // Assert
-        summary.Should().Contain("1 warning");
+        summary.ShouldContain("1 warning");
     }
 
     [Fact]
@@ -489,8 +489,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var summary = result.GetSummary();
 
         // Assert
-        summary.Should().Contain("failed");
-        summary.Should().Contain("1 error");
+        summary.ShouldContain("failed");
+        summary.ShouldContain("1 error");
     }
 
     [Fact]
@@ -503,9 +503,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = error.ToString();
 
         // Assert
-        result.Should().Contain("Group: Test");
-        result.Should().Contain("Test message");
-        result.Should().Contain("[TEST_CODE]");
+        result.ShouldContain("Group: Test");
+        result.ShouldContain("Test message");
+        result.ShouldContain("[TEST_CODE]");
     }
 
     [Fact]
@@ -524,8 +524,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         result1.Merge(result2);
 
         // Assert
-        result1.Errors.Should().HaveCount(2);
-        result1.Warnings.Should().HaveCount(2);
+        result1.Errors.Count.ShouldBe(2);
+        result1.Warnings.Count.ShouldBe(2);
     }
 
     #endregion
@@ -557,8 +557,8 @@ group Extended(source src : Patient, target tgt : Bundle) extends Base {
         var result = validator.Validate(map);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Errors.Should().BeEmpty();
+        result.IsValid.ShouldBeTrue();
+        result.Errors.ShouldBeEmpty();
     }
 
     #endregion

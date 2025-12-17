@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Xunit;
 
@@ -27,8 +27,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.SystemMappings.TryGetValue(systemUri, out var systemId);
 
         // Assert: Should lazy-load and return the ID
-        result.Should().BeTrue("lazy-loading should populate cache on miss");
-        systemId.Should().BeGreaterThan(0, "loaded ID should be valid");
+        result.ShouldBeTrue("lazy-loading should populate cache on miss");
+        systemId.ShouldBeGreaterThan(0, "loaded ID should be valid");
     }
 
     [Fact]
@@ -44,8 +44,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.QuantityCodeMappings.TryGetValue(code, out var codeId);
 
         // Assert: Should lazy-load and return the ID
-        result.Should().BeTrue("lazy-loading should populate cache on miss");
-        codeId.Should().BeGreaterThan(0, "loaded ID should be valid");
+        result.ShouldBeTrue("lazy-loading should populate cache on miss");
+        codeId.ShouldBeGreaterThan(0, "loaded ID should be valid");
     }
 
     [Fact]
@@ -58,9 +58,9 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.ResourceTypeMappings.TryGetValue("Patient", out var resourceTypeId);
 
         // Assert: Should lazy-load and return the ID
-        result.Should().BeTrue("lazy-loading should populate cache on miss");
-        resourceTypeId.Should().BeGreaterThan(0, "loaded ID should be valid");
-        resourceTypeId.Should().Be(1, "Patient should have ResourceTypeId 1");
+        result.ShouldBeTrue("lazy-loading should populate cache on miss");
+        resourceTypeId.ShouldBeGreaterThan(0, "loaded ID should be valid");
+        resourceTypeId.ShouldBe(1, "Patient should have ResourceTypeId 1");
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.SearchParameterMappings.TryGetValue(searchParamUri, out var searchParamId);
 
         // Assert: Should lazy-load and return the ID
-        result.Should().BeTrue("lazy-loading should populate cache on miss");
-        searchParamId.Should().BeGreaterThan(0, "loaded ID should be valid");
-        searchParamId.Should().Be(1, "Patient-name should have SearchParamId 1");
+        result.ShouldBeTrue("lazy-loading should populate cache on miss");
+        searchParamId.ShouldBeGreaterThan(0, "loaded ID should be valid");
+        searchParamId.ShouldBe(1, "Patient-name should have SearchParamId 1");
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.ResourceTypeMappings.TryGetValue("NonExistentType", out var resourceTypeId);
 
         // Assert: Should return false and default value
-        result.Should().BeFalse("non-existent entries should return false");
-        resourceTypeId.Should().Be(0, "default value should be returned");
+        result.ShouldBeFalse("non-existent entries should return false");
+        resourceTypeId.ShouldBe(0, "default value should be returned");
     }
 
     [Fact]
@@ -100,8 +100,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.SearchParameterMappings.TryGetValue("http://example.org/SearchParameter/NotFound", out var searchParamId);
 
         // Assert: Should return false and default value
-        result.Should().BeFalse("non-existent entries should return false");
-        searchParamId.Should().Be(0, "default value should be returned");
+        result.ShouldBeFalse("non-existent entries should return false");
+        searchParamId.ShouldBe(0, "default value should be returned");
     }
 
     [Fact]
@@ -114,13 +114,13 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.SystemMappings.TryGetValue(systemUri, out var systemId);
 
         // Assert: Should create entry and return valid ID
-        result.Should().BeTrue("GetOrCreate should always succeed for systems");
-        systemId.Should().BeGreaterThan(0, "created ID should be valid");
+        result.ShouldBeTrue("GetOrCreate should always succeed for systems");
+        systemId.ShouldBeGreaterThan(0, "created ID should be valid");
 
         // Verify entry was persisted to database
         var dbEntry = Context.Systems.FirstOrDefault(s => s.Value == systemUri);
-        dbEntry.Should().NotBeNull("entry should be persisted to database");
-        dbEntry!.SystemId.Should().Be(systemId, "database ID should match returned ID");
+        dbEntry.ShouldNotBeNull("entry should be persisted to database");
+        dbEntry!.SystemId.ShouldBe(systemId, "database ID should match returned ID");
     }
 
     [Fact]
@@ -133,13 +133,13 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.QuantityCodeMappings.TryGetValue(code, out var codeId);
 
         // Assert: Should create entry and return valid ID
-        result.Should().BeTrue("GetOrCreate should always succeed for quantity codes");
-        codeId.Should().BeGreaterThan(0, "created ID should be valid");
+        result.ShouldBeTrue("GetOrCreate should always succeed for quantity codes");
+        codeId.ShouldBeGreaterThan(0, "created ID should be valid");
 
         // Verify entry was persisted to database
         var dbEntry = Context.QuantityCodes.FirstOrDefault(qc => qc.Value == code);
-        dbEntry.Should().NotBeNull("entry should be persisted to database");
-        dbEntry!.QuantityCodeId.Should().Be(codeId, "database ID should match returned ID");
+        dbEntry.ShouldNotBeNull("entry should be persisted to database");
+        dbEntry!.QuantityCodeId.ShouldBe(codeId, "database ID should match returned ID");
     }
 
     [Fact]
@@ -156,9 +156,9 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var secondResult = Cache.SystemMappings.TryGetValue(systemUri, out var secondId);
 
         // Assert: Both should succeed and return same ID
-        firstResult.Should().BeTrue();
-        secondResult.Should().BeTrue();
-        secondId.Should().Be(firstId, "subsequent accesses should return cached value");
+        firstResult.ShouldBeTrue();
+        secondResult.ShouldBeTrue();
+        secondId.ShouldBe(firstId, "subsequent accesses should return cached value");
     }
 
     [Fact]
@@ -172,8 +172,8 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var result = Cache.ResourceTypeMappings.TryGetValue("NonExistent", out var id);
 
         // Assert: Should still return false (sentinel filtered)
-        result.Should().BeFalse("sentinel values should be filtered");
-        id.Should().Be(0, "default value returned for sentinel");
+        result.ShouldBeFalse("sentinel values should be filtered");
+        id.ShouldBe(0, "default value returned for sentinel");
     }
 
     [Fact]
@@ -192,11 +192,11 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var results = await Task.WhenAll(tasks);
 
         // Assert: All threads should get same ID (thread-safe)
-        results.Should().OnlyContain(id => id > 0, "all threads should get valid ID");
-        results.Distinct().Should().HaveCount(1, "all threads should get same ID");
+        results.ShouldAllBe(id => id > 0, "all threads should get valid ID");
+        results.Distinct().Count.ShouldBe(1, "all threads should get same ID");
 
         // Verify only one entry was created in database
         var dbEntries = Context.Systems.Where(s => s.Value == systemUri).ToList();
-        dbEntries.Should().HaveCount(1, "only one entry should be created despite concurrent access");
+        dbEntries.Count.ShouldBe(1, "only one entry should be created despite concurrent access");
     }
 }

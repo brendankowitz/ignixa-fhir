@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
@@ -51,8 +51,8 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.ResourceType.Should().Be("Provenance");
+        result.ShouldNotBeNull();
+        result!.ResourceType.ShouldBe("Provenance");
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -108,8 +108,8 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        await act.Should().ThrowAsync<BadRequestException>()
-            .WithMessage("*invalid JSON*");
+        var ex = await Should.ThrowAsync<BadRequestException>(act);
+        ex.Message.ShouldContain("invalid JSON");
     }
 
     #endregion
@@ -140,8 +140,8 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        await act.Should().ThrowAsync<BadRequestException>()
-            .WithMessage("*must contain a Provenance resource*");
+        var ex = await Should.ThrowAsync<BadRequestException>(act);
+        ex.Message.ShouldContain("must contain a Provenance resource");
     }
 
     #endregion
@@ -180,8 +180,8 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        await act.Should().ThrowAsync<BadRequestException>()
-            .WithMessage("*must not specify 'target' property*");
+        var ex = await Should.ThrowAsync<BadRequestException>(act);
+        ex.Message.ShouldContain("must not specify 'target' property");
     }
 
     #endregion
@@ -221,8 +221,8 @@ public class ProvenanceHeaderHelperTests
             CancellationToken.None);
 
         // Assert
-        await act.Should().ThrowAsync<BadRequestException>()
-            .WithMessage("*too long*");
+        var ex = await Should.ThrowAsync<BadRequestException>(act);
+        ex.Message.ShouldContain("too long");
     }
 
     #endregion

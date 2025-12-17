@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.FhirPath.Evaluation;
@@ -35,8 +35,8 @@ public class FhirPathEvaluatorWithTimeoutTests
         var result = await evaluatorWithTimeout.EvaluateAsync("Patient", element, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(1);
+        result.ShouldNotBeNull();
+        result.Count().ShouldBe(1);
     }
 
     [Fact]
@@ -58,8 +58,8 @@ public class FhirPathEvaluatorWithTimeoutTests
         var result = evaluatorWithTimeout.Evaluate("Patient", element);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(1);
+        result.ShouldNotBeNull();
+        result.Count().ShouldBe(1);
     }
 
     #endregion
@@ -84,13 +84,11 @@ public class FhirPathEvaluatorWithTimeoutTests
         var element = new TestElement("Patient", "Patient");
 
         // Act & Assert
-        // Note: This test might be flaky depending on system load
-        // If it fails, it means the expression evaluated too quickly
+        // With 1ms timeout, this should reliably timeout on most systems
         var act = async () => await evaluatorWithTimeout.EvaluateAsync("Patient", element, CancellationToken.None);
 
-        // We expect either success (if fast enough) or timeout
-        // For a more robust test, we'd need a deliberately slow expression
-        await act.Should().NotThrowAsync<ArgumentException>();
+        var exception = await Should.ThrowAsync<TimeoutException>(act);
+        exception.Message.ShouldContain("FHIRPath expression timed out");
     }
 
     #endregion
@@ -116,7 +114,7 @@ public class FhirPathEvaluatorWithTimeoutTests
 
         // Act & Assert
         var act = async () => await evaluatorWithTimeout.EvaluateAsync("Patient", element, cts.Token);
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        await Should.ThrowAsync<OperationCanceledException>(act);
     }
 
     #endregion
@@ -133,7 +131,7 @@ public class FhirPathEvaluatorWithTimeoutTests
             TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
-        act.Should().Throw<ArgumentNullException>().WithParameterName("expressionCache");
+        Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("expressionCache");
     }
 
     [Fact]
@@ -150,7 +148,7 @@ public class FhirPathEvaluatorWithTimeoutTests
             TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
-        act.Should().Throw<ArgumentNullException>().WithParameterName("evaluator");
+        Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("evaluator");
     }
 
     [Fact]
@@ -167,7 +165,7 @@ public class FhirPathEvaluatorWithTimeoutTests
             TimeSpan.Zero,
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
-        act.Should().Throw<ArgumentException>().WithParameterName("timeout");
+        Should.Throw<ArgumentException>(act).ParamName.ShouldBe("timeout");
     }
 
     [Fact]
@@ -184,7 +182,7 @@ public class FhirPathEvaluatorWithTimeoutTests
             TimeSpan.FromSeconds(-1),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
-        act.Should().Throw<ArgumentException>().WithParameterName("timeout");
+        Should.Throw<ArgumentException>(act).ParamName.ShouldBe("timeout");
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Infrastructure;
@@ -47,7 +47,7 @@ public class TenantIsolationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -75,8 +75,8 @@ public class TenantIsolationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Contain("Access denied to tenant");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldContain("Access denied to tenant");
     }
 
     [Fact]
@@ -105,13 +105,13 @@ public class TenantIsolationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
     public void Priority_Is20()
     {
         // Assert
-        _handler.Priority.Should().Be(20);
+        _handler.Priority.ShouldBe(20);
     }
 }

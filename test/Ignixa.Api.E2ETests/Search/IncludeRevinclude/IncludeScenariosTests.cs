@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 
@@ -94,8 +94,8 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("Observation");
-        resourceTypes.Should().Contain("DiagnosticReport");
+        resourceTypes.ShouldContain("Observation");
+        resourceTypes.ShouldContain("DiagnosticReport");
     }
 
     /// <summary>
@@ -120,9 +120,9 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("Observation");
-        resourceTypes.Should().Contain("Practitioner");
-        resourceTypes.Should().Contain("Organization");
+        resourceTypes.ShouldContain("Observation");
+        resourceTypes.ShouldContain("Practitioner");
+        resourceTypes.ShouldContain("Organization");
 
         // Verify correct resources are included
         ValidateBundleContains(bundle,
@@ -154,8 +154,8 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("Observation");
-        resourceTypes.Should().Contain("DiagnosticReport");
+        resourceTypes.ShouldContain("Observation");
+        resourceTypes.ShouldContain("DiagnosticReport");
 
         // Verify all resources are present
         ValidateBundleContains(bundle,
@@ -169,7 +169,7 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
         // Verify count excludes included resources
         var countBundle = await Harness.SearchBundleAsync("Observation",
             $"_tag={tag}&_revinclude=DiagnosticReport:result&_summary=count");
-        countBundle.Total.Should().Be(2, "only match resources (observations) should be counted");
+        countBundle.Total.ShouldBe(2, "only match resources (observations) should be counted");
     }
 
     /// <summary>
@@ -192,13 +192,13 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
         var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
 
         // Should have 1 match (the group) and 2 includes (both patients)
-        matchEntries.Should().HaveCount(1);
-        matchEntries[0].Resource!.Id.Should().Be(data.Group.Id);
+        matchEntries.Count.ShouldBe(1);
+        matchEntries[0].Resource!.Id.ShouldBe(data.Group.Id);
 
-        includeEntries.Should().HaveCount(2);
+        includeEntries.Count.ShouldBe(2);
         var includedPatientIds = includeEntries.Select(e => e.Resource!.Id).ToHashSet();
-        includedPatientIds.Should().Contain(data.Patient1.Id);
-        includedPatientIds.Should().Contain(data.Patient2.Id);
+        includedPatientIds.ShouldContain(data.Patient1.Id);
+        includedPatientIds.ShouldContain(data.Patient2.Id);
     }
 
     /// <summary>
@@ -223,10 +223,10 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("CareTeam");
-        resourceTypes.Should().Contain("Patient");
-        resourceTypes.Should().Contain("Organization");
-        resourceTypes.Should().Contain("Practitioner");
+        resourceTypes.ShouldContain("CareTeam");
+        resourceTypes.ShouldContain("Patient");
+        resourceTypes.ShouldContain("Organization");
+        resourceTypes.ShouldContain("Practitioner");
 
         // Verify correct participants are included
         ValidateBundleContains(bundle,
@@ -258,9 +258,11 @@ public class IncludeSearchTests_Scenarios : IncludeTestBase
         // The parent is both a match (has the tag) and an include (referenced by partOf)
         // but resources are deduplicated, and "match" takes precedence
         var matchCount = bundle.Entry.Count(e => e.Search?.Mode == "match");
-        matchCount.Should().Be(2, "both locations have the tag");
+        matchCount.ShouldBe(2, "both locations have the tag");
 
         // Verify both locations are present
-        bundle.Entry.Select(e => e.Resource?.Id).Should().Contain([data.Location.Id, data.ChildLocation.Id]);
+        var resourceIds = bundle.Entry.Select(e => e.Resource?.Id).ToList();
+        resourceIds.ShouldContain(data.Location.Id);
+        resourceIds.ShouldContain(data.ChildLocation.Id);
     }
 }

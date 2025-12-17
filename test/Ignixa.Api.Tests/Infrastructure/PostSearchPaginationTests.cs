@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Search.Parsing;
 using Xunit;
 
@@ -39,10 +39,10 @@ public class PostSearchPaginationTests
 
         // Assert
         // Should contain all parameters except continuation token
-        queryString.Should().Contain("name=John");
-        queryString.Should().Contain("birthdate=gt2000-01-01");
-        queryString.Should().Contain("_count=20");
-        queryString.Should().StartWith("?");
+        queryString.ShouldContain("name=John");
+        queryString.ShouldContain("birthdate=gt2000-01-01");
+        queryString.ShouldContain("_count=20");
+        queryString.ShouldStartWith("?");
     }
 
     [Fact]
@@ -60,9 +60,9 @@ public class PostSearchPaginationTests
         string queryString = BuildQueryStringFromParametersViaReflection(parameters);
 
         // Assert
-        queryString.Should().Contain("name=John");
-        queryString.Should().Contain("_count=20");
-        queryString.Should().NotContain("ct=");
+        queryString.ShouldContain("name=John");
+        queryString.ShouldContain("_count=20");
+        queryString.ShouldNotContain("ct=");
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public class PostSearchPaginationTests
         string queryString = BuildQueryStringFromParametersViaReflection(parameters);
 
         // Assert
-        queryString.Should().Contain("name=John");
-        queryString.Should().NotContain("after=");
+        queryString.ShouldContain("name=John");
+        queryString.ShouldNotContain("after=");
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class PostSearchPaginationTests
         string queryString = BuildQueryStringFromParametersViaReflection(parameters);
 
         // Assert
-        queryString.Should().Be(string.Empty);
+        queryString.ShouldBe(string.Empty);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class PostSearchPaginationTests
         string queryString = BuildQueryStringFromParametersViaReflection(parameters);
 
         // Assert
-        queryString.Should().Be(string.Empty);
+        queryString.ShouldBe(string.Empty);
     }
 
     [Fact]
@@ -124,9 +124,9 @@ public class PostSearchPaginationTests
 
         // Assert
         // Special characters should be URL-encoded
-        queryString.Should().Contain("John%20%26%20Jane");  // & → %26, space → %20
-        queryString.Should().Contain("123%20Main%20St%2C%20Suite%20%23100");  // comma → %2C, # → %23
-        queryString.Should().StartWith("?");
+        queryString.ShouldContain("John%20%26%20Jane");  // & → %26, space → %20
+        queryString.ShouldContain("123%20Main%20St%2C%20Suite%20%23100");  // comma → %2C, # → %23
+        queryString.ShouldStartWith("?");
     }
 
     [Fact]
@@ -144,10 +144,10 @@ public class PostSearchPaginationTests
         string queryString = BuildQueryStringFromParametersViaReflection(parameters);
 
         // Assert
-        queryString.Should().Contain("name=John");
+        queryString.ShouldContain("name=John");
         // Both include parameters should be present
         var parts = queryString.Split("_include=");
-        (parts.Length - 1).Should().Be(2);
+        (parts.Length - 1).ShouldBe(2);
     }
 
     // ========== Helper Methods ==========

@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -40,9 +40,9 @@ public class CachedValidationSchemaResolverTests
         var schema2 = cachedResolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema1.Should().NotBeNull();
-        schema2.Should().NotBeNull();
-        schema1.Should().BeSameAs(schema2); // Same instance from cache
+        schema1.ShouldNotBeNull();
+        schema2.ShouldNotBeNull();
+        schema1.ShouldBeSameAs(schema2); // Same instance from cache
     }
 
     [Fact]
@@ -56,10 +56,10 @@ public class CachedValidationSchemaResolverTests
         var schema = cachedResolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.ResourceType.Should().Be("Patient");
-        schema.CanonicalUrl.Should().Be(canonicalUrl);
-        schema.Checks.Should().NotBeEmpty();
+        schema.ShouldNotBeNull();
+        schema!.ResourceType.ShouldBe("Patient");
+        schema.CanonicalUrl.ShouldBe(canonicalUrl);
+        schema.Checks.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public class CachedValidationSchemaResolverTests
         var schema2 = cachedResolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema1.Should().BeSameAs(schema2);
-        cachedResolver.CacheCount.Should().Be(1);
+        schema1.ShouldBeSameAs(schema2);
+        cachedResolver.CacheCount.ShouldBe(1);
     }
 
     #endregion
@@ -89,7 +89,7 @@ public class CachedValidationSchemaResolverTests
         var cachedResolver = new CachedValidationSchemaResolver(_innerResolver);
 
         // Act & Assert
-        cachedResolver.CacheCount.Should().Be(0);
+        cachedResolver.CacheCount.ShouldBe(0);
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class CachedValidationSchemaResolverTests
         cachedResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
 
         // Assert
-        cachedResolver.CacheCount.Should().Be(1);
+        cachedResolver.CacheCount.ShouldBe(1);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class CachedValidationSchemaResolverTests
         cachedResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Condition");
 
         // Assert
-        cachedResolver.CacheCount.Should().Be(3);
+        cachedResolver.CacheCount.ShouldBe(3);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class CachedValidationSchemaResolverTests
         cachedResolver.GetSchema(canonicalUrl);
 
         // Assert
-        cachedResolver.CacheCount.Should().Be(1);
+        cachedResolver.CacheCount.ShouldBe(1);
     }
 
     #endregion
@@ -147,13 +147,13 @@ public class CachedValidationSchemaResolverTests
         var cachedResolver = new CachedValidationSchemaResolver(_innerResolver);
         cachedResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient");
         cachedResolver.GetSchema("http://hl7.org/fhir/StructureDefinition/Observation");
-        cachedResolver.CacheCount.Should().Be(2);
+        cachedResolver.CacheCount.ShouldBe(2);
 
         // Act
         cachedResolver.ClearCache();
 
         // Assert
-        cachedResolver.CacheCount.Should().Be(0);
+        cachedResolver.CacheCount.ShouldBe(0);
     }
 
     [Fact]
@@ -169,10 +169,10 @@ public class CachedValidationSchemaResolverTests
         var schema2 = cachedResolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema1.Should().NotBeNull();
-        schema2.Should().NotBeNull();
-        schema1.Should().NotBeSameAs(schema2); // Different instances after cache clear
-        schema1!.ResourceType.Should().Be(schema2!.ResourceType); // Same content
+        schema1.ShouldNotBeNull();
+        schema2.ShouldNotBeNull();
+        schema1.ShouldNotBeSameAs(schema2); // Different instances after cache clear
+        schema1!.ResourceType.ShouldBe(schema2!.ResourceType); // Same content
     }
 
     [Fact]
@@ -185,8 +185,8 @@ public class CachedValidationSchemaResolverTests
         var act = () => cachedResolver.ClearCache();
 
         // Assert
-        act.Should().NotThrow();
-        cachedResolver.CacheCount.Should().Be(0);
+        Should.NotThrow(act);
+        cachedResolver.CacheCount.ShouldBe(0);
     }
 
     #endregion
@@ -205,9 +205,9 @@ public class CachedValidationSchemaResolverTests
         var schema2 = cachedResolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema1.Should().BeNull();
-        schema2.Should().BeNull();
-        cachedResolver.CacheCount.Should().Be(1); // Null result is cached
+        schema1.ShouldBeNull();
+        schema2.ShouldBeNull();
+        cachedResolver.CacheCount.ShouldBe(1); // Null result is cached
     }
 
     [Fact]
@@ -220,8 +220,8 @@ public class CachedValidationSchemaResolverTests
         var schema = cachedResolver.GetSchema(string.Empty);
 
         // Assert
-        schema.Should().BeNull();
-        cachedResolver.CacheCount.Should().Be(0); // Empty string not cached
+        schema.ShouldBeNull();
+        cachedResolver.CacheCount.ShouldBe(0); // Empty string not cached
     }
 
     [Fact]
@@ -234,8 +234,8 @@ public class CachedValidationSchemaResolverTests
         var schema = cachedResolver.GetSchema(null!);
 
         // Assert
-        schema.Should().BeNull();
-        cachedResolver.CacheCount.Should().Be(0); // Null not cached
+        schema.ShouldBeNull();
+        cachedResolver.CacheCount.ShouldBe(0); // Null not cached
     }
 
     #endregion
@@ -255,8 +255,8 @@ public class CachedValidationSchemaResolverTests
         var schema2 = cachedResolver.GetSchema(url2);
 
         // Assert
-        schema1.Should().BeSameAs(schema2); // Case insensitive caching
-        cachedResolver.CacheCount.Should().Be(1);
+        schema1.ShouldBeSameAs(schema2); // Case insensitive caching
+        cachedResolver.CacheCount.ShouldBe(1);
     }
 
     #endregion
@@ -268,8 +268,8 @@ public class CachedValidationSchemaResolverTests
     {
         // Act & Assert
         var act = () => new CachedValidationSchemaResolver(null!);
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("inner");
+        Should.Throw<ArgumentNullException>(act)
+            .ParamName.ShouldBe("inner");
     }
 
     #endregion
@@ -298,7 +298,7 @@ public class CachedValidationSchemaResolverTests
         await Task.WhenAll(tasks);
 
         // Assert - Each URL should be cached exactly once
-        cachedResolver.CacheCount.Should().Be(5);
+        cachedResolver.CacheCount.ShouldBe(5);
     }
 
     [Fact]
@@ -324,9 +324,9 @@ public class CachedValidationSchemaResolverTests
         await Task.WhenAll(tasks);
 
         // Assert - All threads should get the same instance
-        schemas.Should().HaveCount(100);
-        schemas.Distinct().Should().HaveCount(1); // All are the same instance
-        cachedResolver.CacheCount.Should().Be(1);
+        schemas.Count.ShouldBe(100);
+        schemas.Distinct().ToList().Count.ShouldBe(1); // All are the same instance
+        cachedResolver.CacheCount.ShouldBe(1);
     }
 
     #endregion
@@ -346,9 +346,9 @@ public class CachedValidationSchemaResolverTests
             .ToList();
 
         // Assert
-        schemas.Should().AllSatisfy(s => s.Should().NotBeNull());
-        schemas.Select(s => s!.ResourceType).Should().OnlyHaveUniqueItems();
-        cachedResolver.CacheCount.Should().Be(4);
+        schemas.ShouldNotContain(x => x == null);
+        schemas.Select(s => s!.ResourceType).Distinct().ToList().Count.ShouldBe(resourceTypes.Length);
+        cachedResolver.CacheCount.ShouldBe(4);
     }
 
     #endregion
@@ -364,14 +364,14 @@ public class CachedValidationSchemaResolverTests
 
         // Warm up cache
         var warmup = cachedResolver.GetSchema(canonicalUrl);
-        warmup.Should().NotBeNull();
+        warmup.ShouldNotBeNull();
 
         // Act - Multiple cached accesses should be very fast
         var startCached = DateTime.UtcNow;
         for (int i = 0; i < 1000; i++)
         {
             var schema = cachedResolver.GetSchema(canonicalUrl);
-            schema.Should().NotBeNull();
+            schema.ShouldNotBeNull();
         }
         var cachedDuration = DateTime.UtcNow - startCached;
 
@@ -380,12 +380,12 @@ public class CachedValidationSchemaResolverTests
         for (int i = 0; i < 1000; i++)
         {
             var schema = _innerResolver.GetSchema(canonicalUrl);
-            schema.Should().NotBeNull();
+            schema.ShouldNotBeNull();
         }
         var uncachedDuration = DateTime.UtcNow - startUncached;
 
         // Assert - Cached should be significantly faster
-        cachedDuration.Should().BeLessThan(uncachedDuration / 10); // At least 10x faster
+        cachedDuration.ShouldBeLessThan(uncachedDuration / 10); // At least 10x faster
     }
 
     #endregion

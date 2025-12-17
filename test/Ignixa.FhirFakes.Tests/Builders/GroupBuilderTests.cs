@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -29,11 +29,11 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.Should().NotBeNull();
-        group.ResourceType.Should().Be("Group");
-        group.Id.Should().NotBeNullOrEmpty();
-        group.MutableNode["type"]?.GetValue<string>().Should().Be("person");
-        group.MutableNode["actual"]?.GetValue<bool>().Should().BeTrue();
+        group.ShouldNotBeNull();
+        group.ResourceType.ShouldBe("Group");
+        group.Id.ShouldNotBeNullOrEmpty();
+        group.MutableNode["type"]?.GetValue<string>().ShouldBe("person");
+        group.MutableNode["actual"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.Id.Should().Be(expectedId);
+        group.Id.ShouldBe(expectedId);
     }
 
     [Fact]
@@ -64,15 +64,15 @@ public class GroupBuilderTests
 
         // Assert
         var meta = group.MutableNode["meta"]?.AsObject();
-        meta.Should().NotBeNull();
+        meta.ShouldNotBeNull();
 
         var tags = meta?["tag"]?.AsArray();
-        tags.Should().NotBeNull();
-        tags.Should().HaveCount(1);
+        tags.ShouldNotBeNull();
+        tags!.Count.ShouldBe(1);
 
         var firstTag = tags?[0]?.AsObject();
-        firstTag?["system"]?.GetValue<string>().Should().Be("http://ignixa.dev/test-isolation");
-        firstTag?["code"]?.GetValue<string>().Should().Be(tag);
+        firstTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
+        firstTag?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     #endregion
@@ -88,7 +88,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["type"]?.GetValue<string>().Should().Be("person");
+        group.MutableNode["type"]?.GetValue<string>().ShouldBe("person");
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["type"]?.GetValue<string>().Should().Be("practitioner");
+        group.MutableNode["type"]?.GetValue<string>().ShouldBe("practitioner");
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["type"]?.GetValue<string>().Should().Be("device");
+        group.MutableNode["type"]?.GetValue<string>().ShouldBe("device");
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["actual"]?.GetValue<bool>().Should().BeTrue();
+        group.MutableNode["actual"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["actual"]?.GetValue<bool>().Should().BeFalse();
+        group.MutableNode["actual"]?.GetValue<bool>().ShouldBeFalse();
     }
 
     #endregion
@@ -155,7 +155,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["name"]?.GetValue<string>().Should().Be(name);
+        group.MutableNode["name"]?.GetValue<string>().ShouldBe(name);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode.AsObject()["name"].Should().BeNull();
+        group.MutableNode.AsObject()["name"].ShouldBeNull();
     }
 
     #endregion
@@ -187,13 +187,13 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().NotBeNull();
-        members.Should().HaveCount(1);
+        var members =group.MutableNode["member"]?.AsArray();
+        members.ShouldNotBeNull();
+        members!.Count.ShouldBe(1);
 
         var firstMember = members?[0]?.AsObject();
         var entity = firstMember?["entity"]?.AsObject();
-        entity?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        entity?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -210,13 +210,13 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().NotBeNull();
-        members.Should().HaveCount(1);
+        var members =group.MutableNode["member"]?.AsArray();
+        members.ShouldNotBeNull();
+        members!.Count.ShouldBe(1);
 
         var firstMember = members?[0]?.AsObject();
         var entity = firstMember?["entity"]?.AsObject();
-        entity?["reference"]?.GetValue<string>().Should().Be($"{resourceType}/{id}");
+        entity?["reference"]?.GetValue<string>().ShouldBe($"{resourceType}/{id}");
     }
 
     #endregion
@@ -241,17 +241,17 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().NotBeNull();
-        members.Should().HaveCount(3);
+        var members =group.MutableNode["member"]?.AsArray();
+        members.ShouldNotBeNull();
+        members!.Count.ShouldBe(3);
 
         var references = members?
             .Select(m => m?["entity"]?["reference"]?.GetValue<string>())
             .ToList();
 
-        references.Should().Contain($"Patient/{patientId1}");
-        references.Should().Contain($"Patient/{patientId2}");
-        references.Should().Contain($"Patient/{patientId3}");
+        references!.ShouldContain($"Patient/{patientId1}");
+        references!.ShouldContain($"Patient/{patientId2}");
+        references!.ShouldContain($"Patient/{patientId3}");
     }
 
     [Fact]
@@ -268,18 +268,18 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().NotBeNull();
-        members.Should().HaveCount(4);
+        var members =group.MutableNode["member"]?.AsArray();
+        members.ShouldNotBeNull();
+        members!.Count.ShouldBe(4);
 
         var references = members?
             .Select(m => m?["entity"]?["reference"]?.GetValue<string>())
             .ToList();
 
-        references.Should().Contain("Patient/patient-1");
-        references.Should().Contain("Patient/patient-2");
-        references.Should().Contain("Patient/patient-3");
-        references.Should().Contain("Patient/patient-4");
+        references!.ShouldContain("Patient/patient-1");
+        references!.ShouldContain("Patient/patient-2");
+        references!.ShouldContain("Patient/patient-3");
+        references!.ShouldContain("Patient/patient-4");
     }
 
     #endregion
@@ -304,17 +304,17 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().NotBeNull();
-        members.Should().HaveCount(3);
+        var members =group.MutableNode["member"]?.AsArray();
+        members.ShouldNotBeNull();
+        members!.Count.ShouldBe(3);
 
         var references = members?
             .Select(m => m?["entity"]?["reference"]?.GetValue<string>())
             .ToList();
 
-        references.Should().Contain($"Patient/{patientId}");
-        references.Should().Contain($"Practitioner/{practitionerId}");
-        references.Should().Contain($"Device/{deviceId}");
+        references!.ShouldContain($"Patient/{patientId}");
+        references!.ShouldContain($"Practitioner/{practitionerId}");
+        references!.ShouldContain($"Device/{deviceId}");
     }
 
     [Fact]
@@ -334,17 +334,17 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().NotBeNull();
-        members.Should().HaveCount(3);
+        var members =group.MutableNode["member"]?.AsArray();
+        members.ShouldNotBeNull();
+        members!.Count.ShouldBe(3);
 
         var references = members?
             .Select(m => m?["entity"]?["reference"]?.GetValue<string>())
             .ToList();
 
-        references.Should().Contain($"Patient/{patientId1}");
-        references.Should().Contain($"Patient/{patientId2}");
-        references.Should().Contain($"Practitioner/{practitionerId}");
+        references!.ShouldContain($"Patient/{patientId1}");
+        references!.ShouldContain($"Patient/{patientId2}");
+        references!.ShouldContain($"Practitioner/{practitionerId}");
     }
 
     #endregion
@@ -361,7 +361,7 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode.AsObject()["member"].Should().BeNull();
+        group.MutableNode.AsObject()["member"].ShouldBeNull();
     }
 
     #endregion
@@ -388,19 +388,19 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.Should().NotBeNull();
-        group.ResourceType.Should().Be("Group");
-        group.Id.Should().Be(groupId);
-        group.MutableNode["type"]?.GetValue<string>().Should().Be("person");
-        group.MutableNode["actual"]?.GetValue<bool>().Should().BeTrue();
-        group.MutableNode["name"]?.GetValue<string>().Should().Be(groupName);
+        group.ShouldNotBeNull();
+        group.ResourceType.ShouldBe("Group");
+        group.Id.ShouldBe(groupId);
+        group.MutableNode["type"]?.GetValue<string>().ShouldBe("person");
+        group.MutableNode["actual"]?.GetValue<bool>().ShouldBeTrue();
+        group.MutableNode["name"]?.GetValue<string>().ShouldBe(groupName);
 
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().HaveCount(3);
+        var members =group.MutableNode["member"]?.AsArray();
+        members!.Count.ShouldBe(3);
 
         var meta = group.MutableNode["meta"]?.AsObject();
         var tags = meta?["tag"]?.AsArray();
-        tags?[0]?["code"]?.GetValue<string>().Should().Be(tag);
+        tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     [Fact]
@@ -414,9 +414,9 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["actual"]?.GetValue<bool>().Should().BeFalse();
-        group.MutableNode["name"]?.GetValue<string>().Should().Be("All diabetic patients over 65");
-        group.MutableNode.AsObject()["member"].Should().BeNull();
+        group.MutableNode["actual"]?.GetValue<bool>().ShouldBeFalse();
+        group.MutableNode["name"]?.GetValue<string>().ShouldBe("All diabetic patients over 65");
+        group.MutableNode.AsObject()["member"].ShouldBeNull();
     }
 
     [Fact]
@@ -435,11 +435,11 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.MutableNode["type"]?.GetValue<string>().Should().Be("practitioner");
-        group.MutableNode["name"]?.GetValue<string>().Should().Be("Cardiology Team");
+        group.MutableNode["type"]?.GetValue<string>().ShouldBe("practitioner");
+        group.MutableNode["name"]?.GetValue<string>().ShouldBe("Cardiology Team");
 
-        var members = group.MutableNode["member"]?.AsArray();
-        members.Should().HaveCount(2);
+        var members =group.MutableNode["member"]?.AsArray();
+        members!.Count.ShouldBe(2);
     }
 
     #endregion
@@ -460,8 +460,8 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.Should().NotBeNull();
-        group.ResourceType.Should().Be("Group");
+        group.ShouldNotBeNull();
+        group.ResourceType.ShouldBe("Group");
     }
 
     [Fact]
@@ -478,8 +478,8 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.Should().NotBeNull();
-        group.ResourceType.Should().Be("Group");
+        group.ShouldNotBeNull();
+        group.ResourceType.ShouldBe("Group");
     }
 
     [Fact]
@@ -496,8 +496,8 @@ public class GroupBuilderTests
             .Build();
 
         // Assert
-        group.Should().NotBeNull();
-        group.ResourceType.Should().Be("Group");
+        group.ShouldNotBeNull();
+        group.ResourceType.ShouldBe("Group");
     }
 
     #endregion

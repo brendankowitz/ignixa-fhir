@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -30,18 +30,18 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.Should().NotBeNull();
-        practitioner.ResourceType.Should().Be("Practitioner");
-        practitioner.MutableNode["active"]?.GetValue<bool>().Should().BeTrue();
+        practitioner.ShouldNotBeNull();
+        practitioner.ResourceType.ShouldBe("Practitioner");
+        practitioner.MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
 
         var nameArray = practitioner.MutableNode["name"]?.AsArray();
-        nameArray.Should().NotBeNull();
-        nameArray.Should().HaveCount(1);
+        nameArray.ShouldNotBeNull();
+        nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
-        name?["use"]?.GetValue<string>().Should().Be("official");
-        name?["given"]?.AsArray()?[0]?.GetValue<string>().Should().Be("Alice");
-        name?["family"]?.GetValue<string>().Should().Be("Anderson");
+        name?["use"]?.GetValue<string>().ShouldBe("official");
+        name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("Alice");
+        name?["family"]?.GetValue<string>().ShouldBe("Anderson");
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.Id.Should().Be(expectedId);
+        practitioner.Id.ShouldBe(expectedId);
     }
 
     [Fact]
@@ -73,13 +73,13 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.MutableNode["meta"]?["tag"].Should().NotBeNull();
+        practitioner.MutableNode["meta"]?["tag"].ShouldNotBeNull();
         var tags = practitioner.MutableNode["meta"]?["tag"]?.AsArray();
-        tags.Should().HaveCount(1);
+        tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
-        metaTag?["code"]?.GetValue<string>().Should().Be(tag);
-        metaTag?["system"]?.GetValue<string>().Should().Be("http://ignixa.dev/test-isolation");
+        metaTag?["code"]?.GetValue<string>().ShouldBe(tag);
+        metaTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
     }
 
     [Fact]
@@ -90,10 +90,10 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.Should().NotBeNull();
-        practitioner.ResourceType.Should().Be("Practitioner");
-        practitioner.Id.Should().NotBeNullOrEmpty();
-        practitioner.MutableNode["active"]?.GetValue<bool>().Should().BeTrue();
+        practitioner.ShouldNotBeNull();
+        practitioner.ResourceType.ShouldBe("Practitioner");
+        practitioner.Id.ShouldNotBeNullOrEmpty();
+        practitioner.MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     #endregion
@@ -110,11 +110,11 @@ public class PractitionerBuilderTests
 
         // Assert
         var nameArray = practitioner.MutableNode["name"]?.AsArray();
-        nameArray.Should().HaveCount(1);
+        nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
-        name?["family"]?.GetValue<string>().Should().Be("Johnson");
-        name?.TryGetPropertyValue("given", out _).Should().BeFalse();
+        name?["family"]?.GetValue<string>().ShouldBe("Johnson");
+        name?.TryGetPropertyValue("given", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -127,11 +127,11 @@ public class PractitionerBuilderTests
 
         // Assert
         var nameArray = practitioner.MutableNode["name"]?.AsArray();
-        nameArray.Should().HaveCount(1);
+        nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
-        name?["given"]?.AsArray()?[0]?.GetValue<string>().Should().Be("Michael");
-        name?.TryGetPropertyValue("family", out _).Should().BeFalse();
+        name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("Michael");
+        name?.TryGetPropertyValue("family", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -145,11 +145,11 @@ public class PractitionerBuilderTests
 
         // Assert
         var nameArray = practitioner.MutableNode["name"]?.AsArray();
-        nameArray.Should().HaveCount(1);
+        nameArray!.Count.ShouldBe(1);
 
         var name = nameArray?[0]?.AsObject();
-        name?["given"]?.AsArray()?[0]?.GetValue<string>().Should().Be("Robert");
-        name?["family"]?.GetValue<string>().Should().Be("Williams");
+        name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("Robert");
+        name?["family"]?.GetValue<string>().ShouldBe("Williams");
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.MutableNode.TryGetPropertyValue("name", out _).Should().BeFalse();
+        practitioner.MutableNode.TryGetPropertyValue("name", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -181,12 +181,12 @@ public class PractitionerBuilderTests
 
         // Assert
         var identifiers = practitioner.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().NotBeNull();
-        identifiers.Should().HaveCount(1);
+        identifiers.ShouldNotBeNull();
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["system"]?.GetValue<string>().Should().Be("http://hl7.org/fhir/sid/us-npi");
-        identifier?["value"]?.GetValue<string>().Should().Be(npi);
+        identifier?["system"]?.GetValue<string>().ShouldBe("http://hl7.org/fhir/sid/us-npi");
+        identifier?["value"]?.GetValue<string>().ShouldBe(npi);
     }
 
     [Fact]
@@ -204,11 +204,11 @@ public class PractitionerBuilderTests
 
         // Assert
         var identifiers = practitioner.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(1);
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["system"]?.GetValue<string>().Should().Be(identifierSystem);
-        identifier?["value"]?.GetValue<string>().Should().Be(identifierValue);
+        identifier?["system"]?.GetValue<string>().ShouldBe(identifierSystem);
+        identifier?["value"]?.GetValue<string>().ShouldBe(identifierValue);
     }
 
     [Fact]
@@ -224,11 +224,11 @@ public class PractitionerBuilderTests
 
         // Assert
         var identifiers = practitioner.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(1);
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["value"]?.GetValue<string>().Should().Be(identifierValue);
-        identifier?.TryGetPropertyValue("system", out _).Should().BeFalse();
+        identifier?["value"]?.GetValue<string>().ShouldBe(identifierValue);
+        identifier?.TryGetPropertyValue("system", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -243,22 +243,22 @@ public class PractitionerBuilderTests
 
         // Assert
         var identifiers = practitioner.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(3);
+        identifiers!.Count.ShouldBe(3);
 
         // Check NPI
         var npiIdentifier = identifiers?[0]?.AsObject();
-        npiIdentifier?["system"]?.GetValue<string>().Should().Be("http://hl7.org/fhir/sid/us-npi");
-        npiIdentifier?["value"]?.GetValue<string>().Should().Be("1234567890");
+        npiIdentifier?["system"]?.GetValue<string>().ShouldBe("http://hl7.org/fhir/sid/us-npi");
+        npiIdentifier?["value"]?.GetValue<string>().ShouldBe("1234567890");
 
         // Check staff ID
         var staffIdentifier = identifiers?[1]?.AsObject();
-        staffIdentifier?["system"]?.GetValue<string>().Should().Be("http://hospital.example.org/staff-id");
-        staffIdentifier?["value"]?.GetValue<string>().Should().Be("EMP-999");
+        staffIdentifier?["system"]?.GetValue<string>().ShouldBe("http://hospital.example.org/staff-id");
+        staffIdentifier?["value"]?.GetValue<string>().ShouldBe("EMP-999");
 
         // Check license
         var licenseIdentifier = identifiers?[2]?.AsObject();
-        licenseIdentifier?["system"]?.GetValue<string>().Should().Be("http://state.example.org/medical-license");
-        licenseIdentifier?["value"]?.GetValue<string>().Should().Be("LIC-ABC123");
+        licenseIdentifier?["system"]?.GetValue<string>().ShouldBe("http://state.example.org/medical-license");
+        licenseIdentifier?["value"]?.GetValue<string>().ShouldBe("LIC-ABC123");
     }
 
     #endregion
@@ -280,18 +280,18 @@ public class PractitionerBuilderTests
 
         // Assert
         var qualifications = practitioner.MutableNode["qualification"]?.AsArray();
-        qualifications.Should().NotBeNull();
-        qualifications.Should().HaveCount(1);
+        qualifications.ShouldNotBeNull();
+        qualifications!.Count.ShouldBe(1);
 
         var qualification = qualifications?[0]?.AsObject();
         var code = qualification?["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray();
 
-        coding.Should().HaveCount(1);
+        coding!.Count.ShouldBe(1);
         var codingObj = coding?[0]?.AsObject();
-        codingObj?["system"]?.GetValue<string>().Should().Be("http://snomed.info/sct");
-        codingObj?["code"]?.GetValue<string>().Should().Be(specialtyCode);
-        codingObj?["display"]?.GetValue<string>().Should().Be(specialtyDisplay);
+        codingObj?["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        codingObj?["code"]?.GetValue<string>().ShouldBe(specialtyCode);
+        codingObj?["display"]?.GetValue<string>().ShouldBe(specialtyDisplay);
     }
 
     [Fact]
@@ -313,7 +313,7 @@ public class PractitionerBuilderTests
         var coding = code?["coding"]?.AsArray();
         var codingObj = coding?[0]?.AsObject();
 
-        codingObj?["system"]?.GetValue<string>().Should().Be(customSystem);
+        codingObj?["system"]?.GetValue<string>().ShouldBe(customSystem);
     }
 
     [Fact]
@@ -328,17 +328,17 @@ public class PractitionerBuilderTests
 
         // Assert
         var qualifications = practitioner.MutableNode["qualification"]?.AsArray();
-        qualifications.Should().HaveCount(2);
+        qualifications!.Count.ShouldBe(2);
 
         var firstQual = qualifications?[0]?.AsObject();
         var firstCoding = firstQual?["code"]?.AsObject()?["coding"]?.AsArray()?[0]?.AsObject();
-        firstCoding?["code"]?.GetValue<string>().Should().Be("207Q00000X");
-        firstCoding?["display"]?.GetValue<string>().Should().Be("Family Medicine");
+        firstCoding?["code"]?.GetValue<string>().ShouldBe("207Q00000X");
+        firstCoding?["display"]?.GetValue<string>().ShouldBe("Family Medicine");
 
         var secondQual = qualifications?[1]?.AsObject();
         var secondCoding = secondQual?["code"]?.AsObject()?["coding"]?.AsArray()?[0]?.AsObject();
-        secondCoding?["code"]?.GetValue<string>().Should().Be("419192003");
-        secondCoding?["display"]?.GetValue<string>().Should().Be("Internal Medicine");
+        secondCoding?["code"]?.GetValue<string>().ShouldBe("419192003");
+        secondCoding?["display"]?.GetValue<string>().ShouldBe("Internal Medicine");
     }
 
     [Fact]
@@ -354,8 +354,8 @@ public class PractitionerBuilderTests
         var qualification = qualifications?[0]?.AsObject();
         var coding = qualification?["code"]?.AsObject()?["coding"]?.AsArray()?[0]?.AsObject();
 
-        coding?["code"]?.GetValue<string>().Should().Be("207Q00000X");
-        coding?.TryGetPropertyValue("display", out _).Should().BeFalse();
+        coding?["code"]?.GetValue<string>().ShouldBe("207Q00000X");
+        coding?.TryGetPropertyValue("display", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -381,21 +381,21 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.Id.Should().Be("pract-complete");
+        practitioner.Id.ShouldBe("pract-complete");
 
         var nameArray = practitioner.MutableNode["name"]?.AsArray();
         var name = nameArray?[0]?.AsObject();
-        name?["given"]?.AsArray()?[0]?.GetValue<string>().Should().Be("Jennifer");
-        name?["family"]?.GetValue<string>().Should().Be("Garcia");
+        name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("Jennifer");
+        name?["family"]?.GetValue<string>().ShouldBe("Garcia");
 
         var identifiers = practitioner.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(2);
+        identifiers!.Count.ShouldBe(2);
 
         var qualifications = practitioner.MutableNode["qualification"]?.AsArray();
-        qualifications.Should().HaveCount(1);
+        qualifications!.Count.ShouldBe(1);
 
         var tags = practitioner.MutableNode["meta"]?["tag"]?.AsArray();
-        tags?[0]?["code"]?.GetValue<string>().Should().Be(tag);
+        tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     [Fact]
@@ -411,7 +411,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner1.Id.Should().NotBe(practitioner2.Id);
+        practitioner1.Id.ShouldNotBe(practitioner2.Id);
     }
 
     #endregion
@@ -427,10 +427,10 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.MutableNode["meta"].Should().NotBeNull();
+        practitioner.MutableNode["meta"].ShouldNotBeNull();
         var meta = practitioner.MutableNode["meta"]?.AsObject();
-        meta?["versionId"]?.GetValue<string>().Should().Be("1");
-        meta?["lastUpdated"]?.GetValue<string>().Should().NotBeNullOrEmpty();
+        meta?["versionId"]?.GetValue<string>().ShouldBe("1");
+        meta?["lastUpdated"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -445,10 +445,10 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.Should().NotBeNull();
-        practitioner.ResourceType.Should().Be("Practitioner");
-        practitioner.Id.Should().NotBeNullOrEmpty();
-        practitioner.MutableNode["active"]?.GetValue<bool>().Should().BeTrue();
+        practitioner.ShouldNotBeNull();
+        practitioner.ResourceType.ShouldBe("Practitioner");
+        practitioner.Id.ShouldNotBeNullOrEmpty();
+        practitioner.MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -460,7 +460,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.MutableNode.TryGetPropertyValue("identifier", out _).Should().BeFalse();
+        practitioner.MutableNode.TryGetPropertyValue("identifier", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public class PractitionerBuilderTests
             .Build();
 
         // Assert
-        practitioner.MutableNode.TryGetPropertyValue("qualification", out _).Should().BeFalse();
+        practitioner.MutableNode.TryGetPropertyValue("qualification", out _).ShouldBeFalse();
     }
 
     #endregion

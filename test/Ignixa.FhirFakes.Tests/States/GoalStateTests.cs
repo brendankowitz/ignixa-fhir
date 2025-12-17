@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
@@ -30,10 +30,10 @@ public class GoalStateTests
             .Build();
 
         // Assert
-        scenario.Goals.Should().HaveCount(1);
+        scenario.Goals.Count.ShouldBe(1);
         var goal = scenario.Goals[0];
-        goal.ResourceType.Should().Be("Goal");
-        goal.Id.Should().NotBeNullOrEmpty();
+        goal.ResourceType.ShouldBe("Goal");
+        goal.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var status = goal.MutableNode["lifecycleStatus"]?.GetValue<string>();
-        status.Should().Be("active");
+        status.ShouldBe("active");
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var descriptionCode = goal.MutableNode["description"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        descriptionCode.Should().Be("698360004"); // Glucose level control
+        descriptionCode.ShouldBe("698360004"); // Glucose level control
     }
 
     #endregion
@@ -82,7 +82,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var subjectRef = goal.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -95,8 +95,7 @@ public class GoalStateTests
 
         // Act & Assert
         var act = () => state.Execute(context, faker);
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Patient*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("Patient");
     }
 
     #endregion
@@ -115,7 +114,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var priorityCode = goal.MutableNode["priority"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        priorityCode.Should().Be("high-priority");
+        priorityCode.ShouldBe("high-priority");
     }
 
     [Fact]
@@ -130,7 +129,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var priorityCode = goal.MutableNode["priority"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        priorityCode.Should().Be("medium-priority");
+        priorityCode.ShouldBe("medium-priority");
     }
 
     #endregion
@@ -149,7 +148,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var achievementCode = goal.MutableNode["achievementStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        achievementCode.Should().Be("in-progress");
+        achievementCode.ShouldBe("in-progress");
     }
 
     [Fact]
@@ -164,10 +163,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var lifecycleStatus = goal.MutableNode["lifecycleStatus"]?.GetValue<string>();
-        lifecycleStatus.Should().Be("completed");
+        lifecycleStatus.ShouldBe("completed");
 
         var achievementCode = goal.MutableNode["achievementStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        achievementCode.Should().Be("achieved");
+        achievementCode.ShouldBe("achieved");
     }
 
     #endregion
@@ -186,10 +185,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var targetArray = goal.MutableNode["target"];
-        targetArray.Should().NotBeNull();
+        targetArray.ShouldNotBeNull();
 
         var measureCode = targetArray?[0]?["measure"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        measureCode.Should().Be("4548-4"); // HbA1c LOINC code
+        measureCode.ShouldBe("4548-4"); // HbA1c LOINC code
     }
 
     [Fact]
@@ -204,10 +203,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var targetValue = goal.MutableNode["target"]?[0]?["detailQuantity"]?["value"]?.GetValue<decimal>();
-        targetValue.Should().Be(6.5m);
+        targetValue.ShouldBe(6.5m);
 
         var unit = goal.MutableNode["target"]?[0]?["detailQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("%");
+        unit.ShouldBe("%");
     }
 
     [Fact]
@@ -222,7 +221,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var dueDate = goal.MutableNode["target"]?[0]?["dueDate"]?.GetValue<string>();
-        dueDate.Should().NotBeNullOrEmpty();
+        dueDate.ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -241,7 +240,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var startDate = goal.MutableNode["startDate"]?.GetValue<string>();
-        startDate.Should().NotBeNullOrEmpty();
+        startDate.ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -260,10 +259,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var targetValue = goal.MutableNode["target"]?[0]?["detailQuantity"]?["value"]?.GetValue<decimal>();
-        targetValue.Should().Be(20m);
+        targetValue.ShouldBe(20m);
 
         var descriptionCode = goal.MutableNode["description"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        descriptionCode.Should().Be("289169006"); // Weight loss SNOMED code
+        descriptionCode.ShouldBe("289169006"); // Weight loss SNOMED code
     }
 
     [Fact]
@@ -278,10 +277,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var targetValue = goal.MutableNode["target"]?[0]?["detailQuantity"]?["value"]?.GetValue<decimal>();
-        targetValue.Should().Be(120m);
+        targetValue.ShouldBe(120m);
 
         var unit = goal.MutableNode["target"]?[0]?["detailQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("mm[Hg]");
+        unit.ShouldBe("mm[Hg]");
     }
 
     [Fact]
@@ -296,7 +295,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var descriptionCode = goal.MutableNode["description"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        descriptionCode.Should().Be("160617001"); // Stopped smoking SNOMED code
+        descriptionCode.ShouldBe("160617001"); // Stopped smoking SNOMED code
     }
 
     [Fact]
@@ -311,10 +310,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var descriptionCode = goal.MutableNode["description"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        descriptionCode.Should().Be("226029004"); // Physical activity SNOMED code
+        descriptionCode.ShouldBe("226029004"); // Physical activity SNOMED code
 
         var note = goal.MutableNode["note"]?[0]?["text"]?.GetValue<string>();
-        note.Should().Contain("200 minutes");
+        note!.ShouldContain("200 minutes");
     }
 
     [Fact]
@@ -329,10 +328,10 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var targetValue = goal.MutableNode["target"]?[0]?["detailQuantity"]?["value"]?.GetValue<decimal>();
-        targetValue.Should().Be(2m);
+        targetValue.ShouldBe(2m);
 
         var comparator = goal.MutableNode["target"]?[0]?["detailQuantity"]?["comparator"]?.GetValue<string>();
-        comparator.Should().Be("<=");
+        comparator.ShouldBe("<=");
     }
 
     [Fact]
@@ -347,7 +346,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var descriptionCode = goal.MutableNode["description"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        descriptionCode.Should().Be("249868004"); // Mobility SNOMED code
+        descriptionCode.ShouldBe("249868004"); // Mobility SNOMED code
     }
 
     [Fact]
@@ -362,7 +361,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var descriptionCode = goal.MutableNode["description"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        descriptionCode.Should().Be("418284009"); // Medication compliance SNOMED code
+        descriptionCode.ShouldBe("418284009"); // Medication compliance SNOMED code
     }
 
     #endregion
@@ -381,7 +380,7 @@ public class GoalStateTests
             .Build();
 
         // Assert
-        scenario.Goals.Should().HaveCount(3);
+        scenario.Goals.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -395,7 +394,7 @@ public class GoalStateTests
 
         // Assert
         var goalEvents = scenario.Timeline.Where(e => e.EventType == "Goal").ToList();
-        goalEvents.Should().HaveCount(1);
+        goalEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -408,7 +407,7 @@ public class GoalStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.Goals[0]);
+        scenario.AllResources.ShouldContain(scenario.Goals[0]);
     }
 
     [Fact]
@@ -421,8 +420,8 @@ public class GoalStateTests
             .Build();
 
         // Assert
-        scenario.CurrentGoal.Should().NotBeNull();
-        scenario.CurrentGoal.Should().Be(scenario.Goals[0]);
+        scenario.CurrentGoal.ShouldNotBeNull();
+        scenario.CurrentGoal.ShouldBe(scenario.Goals[0]);
     }
 
     [Fact]
@@ -436,7 +435,7 @@ public class GoalStateTests
             .Build();
 
         // Assert
-        scenario.CurrentGoal.Should().Be(scenario.Goals[1]);
+        scenario.CurrentGoal.ShouldBe(scenario.Goals[1]);
     }
 
     #endregion
@@ -455,7 +454,7 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var categoryArray = goal.MutableNode["category"];
-        categoryArray.Should().NotBeNull();
+        categoryArray.ShouldNotBeNull();
     }
 
     #endregion
@@ -474,8 +473,8 @@ public class GoalStateTests
         // Assert
         var goal = scenario.Goals[0];
         var noteText = goal.MutableNode["note"]?[0]?["text"]?.GetValue<string>();
-        noteText.Should().NotBeNullOrEmpty();
-        noteText.Should().Contain("HbA1c");
+        noteText.ShouldNotBeNullOrEmpty();
+        noteText.ShouldContain("HbA1c");
     }
 
     #endregion
@@ -496,9 +495,9 @@ public class GoalStateTests
             .Build();
 
         // Assert
-        scenario.HasAttribute("diabetes_goal").Should().BeTrue();
+        scenario.HasAttribute("diabetes_goal").ShouldBeTrue();
         var goalId = scenario.GetAttribute<string>("diabetes_goal");
-        goalId.Should().Be(scenario.Goals[0].Id);
+        goalId.ShouldBe(scenario.Goals[0].Id);
     }
 
     #endregion

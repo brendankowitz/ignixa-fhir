@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.ObjectModel;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
@@ -27,10 +27,10 @@ public class InMemoryRolePermissionStoreTests
         var store = new InMemoryRolePermissionStore(options);
 
         // Assert
-        store.RoleNames.Should().Contain("Admin");
-        store.RoleNames.Should().Contain("SystemAdmin");
-        store.RoleNames.Should().Contain("Clinician");
-        store.RoleNames.Should().Contain("ReadOnly");
+        store.RoleNames.ShouldContain("Admin");
+        store.RoleNames.ShouldContain("SystemAdmin");
+        store.RoleNames.ShouldContain("Clinician");
+        store.RoleNames.ShouldContain("ReadOnly");
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class InMemoryRolePermissionStoreTests
         var store = new InMemoryRolePermissionStore(options);
 
         // Assert
-        store.RoleNames.Should().Contain("CustomRole");
+        store.RoleNames.ShouldContain("CustomRole");
     }
 
     [Fact]
@@ -67,9 +67,9 @@ public class InMemoryRolePermissionStoreTests
 
         // Assert - should have limited permissions, not default wildcard
         var permissions = await store.GetPermissionsAsync("tenant1", ["Admin"], CancellationToken.None);
-        permissions.Should().HaveCount(1);
-        permissions[0].ResourceType.Should().Be("Patient");
-        permissions[0].Interaction.Should().Be("read");
+        permissions.Count.ShouldBe(1);
+        permissions[0].ResourceType.ShouldBe("Patient");
+        permissions[0].Interaction.ShouldBe("read");
     }
 
     #endregion
@@ -86,8 +86,8 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["Admin"], CancellationToken.None);
 
         // Assert
-        permissions.Should().NotBeEmpty();
-        permissions.Should().Contain(p => p.ResourceType == "*" && p.Interaction == "*");
+        permissions.ShouldNotBeEmpty();
+        permissions.ShouldContain(p => p.ResourceType == "*" && p.Interaction == "*");
     }
 
     [Fact]
@@ -109,9 +109,9 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["RoleA", "RoleB"], CancellationToken.None);
 
         // Assert
-        permissions.Should().HaveCount(2);
-        permissions.Should().Contain(p => p.ResourceType == "Patient");
-        permissions.Should().Contain(p => p.ResourceType == "Observation");
+        permissions.Count.ShouldBe(2);
+        permissions.ShouldContain(p => p.ResourceType == "Patient");
+        permissions.ShouldContain(p => p.ResourceType == "Observation");
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["UnknownRole"], CancellationToken.None);
 
         // Assert
-        permissions.Should().BeEmpty();
+        permissions.ShouldBeEmpty();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", [], CancellationToken.None);
 
         // Assert
-        permissions.Should().BeEmpty();
+        permissions.ShouldBeEmpty();
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class InMemoryRolePermissionStoreTests
         var permissions2 = await store.GetPermissionsAsync("tenant2", ["Admin"], CancellationToken.None);
 
         // Assert - should be the same
-        permissions1.Should().BeEquivalentTo(permissions2);
+        permissions1.ShouldBe(permissions2);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["RoleA", "RoleB"], CancellationToken.None);
 
         // Assert - should be deduplicated
-        permissions.Should().HaveCount(1);
+        permissions.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["ADMIN"], CancellationToken.None);
 
         // Assert
-        permissions.Should().NotBeEmpty();
+        permissions.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -205,8 +205,8 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["Admin"], CancellationToken.None);
 
         // Assert
-        permissions.Should().HaveCount(1);
-        permissions[0].ResourceType.Should().Be("Patient");
+        permissions.Count.ShouldBe(1);
+        permissions[0].ResourceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -221,8 +221,8 @@ public class InMemoryRolePermissionStoreTests
         var permissions = await store.GetPermissionsAsync("tenant1", ["NewRole"], CancellationToken.None);
 
         // Assert
-        permissions.Should().NotBeEmpty();
-        store.RoleNames.Should().Contain("NewRole");
+        permissions.ShouldNotBeEmpty();
+        store.RoleNames.ShouldContain("NewRole");
     }
 
     #endregion
@@ -242,10 +242,10 @@ public class InMemoryRolePermissionStoreTests
         var roleNames = store.RoleNames.ToList();
 
         // Assert
-        roleNames.Should().Contain("CustomRole1");
-        roleNames.Should().Contain("CustomRole2");
-        roleNames.Should().Contain("Admin"); // Default
-        roleNames.Should().Contain("SystemAdmin"); // Default
+        roleNames.ShouldContain("CustomRole1");
+        roleNames.ShouldContain("CustomRole2");
+        roleNames.ShouldContain("Admin"); // Default
+        roleNames.ShouldContain("SystemAdmin"); // Default
     }
 
     #endregion

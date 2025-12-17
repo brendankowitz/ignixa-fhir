@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification;
@@ -36,11 +36,11 @@ public class ScenarioBuilderReferenceTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(1);
+        scenario.Observations.Count.ShouldBe(1);
         var observation = scenario.Observations[0];
         var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
         // Default is UrnUuid (no rewriting), so original format (Patient/id) is preserved
-        subjectRef.Should().Contain(scenario.Patient!.Id);
+        subjectRef!.ShouldContain(scenario.Patient!.Id);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class ScenarioBuilderReferenceTests
         var observation = scenario.Observations[0];
         var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
         // UrnUuid mode means no rewriting - references stay as created (Patient/id format)
-        subjectRef.Should().Contain(scenario.Patient!.Id);
+        subjectRef!.ShouldContain(scenario.Patient!.Id);
     }
 
     #endregion
@@ -83,8 +83,8 @@ public class ScenarioBuilderReferenceTests
         // Assert
         var observation = scenario.Observations[0];
         var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().StartWith("Patient/");
-        subjectRef.Should().Contain(scenario.Patient!.Id);
+        subjectRef.ShouldStartWith("Patient/");
+        subjectRef.ShouldContain(scenario.Patient!.Id);
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class ScenarioBuilderReferenceTests
         // Assert
         var observation = scenario.Observations[0];
         var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().StartWith("Encounter/");
+        encounterRef.ShouldStartWith("Encounter/");
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class ScenarioBuilderReferenceTests
         // Assert
         var observation = scenario.Observations[0];
         var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().StartWith("Patient/");
+        subjectRef.ShouldStartWith("Patient/");
     }
 
     #endregion
@@ -141,7 +141,7 @@ public class ScenarioBuilderReferenceTests
         var patientId = scenario.Patient!.Id;
         var observation = scenario.Observations[0];
         var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{patientId}");
+        subjectRef.ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class ScenarioBuilderReferenceTests
         var patientId = scenario.Patient!.Id;
         var condition = scenario.Conditions[0];
         var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{patientId}");
+        subjectRef.ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class ScenarioBuilderReferenceTests
         var patientId = scenario.Patient!.Id;
         var medication = scenario.Medications[0];
         var subjectRef = medication.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{patientId}");
+        subjectRef.ShouldBe($"Patient/{patientId}");
     }
 
     #endregion
@@ -197,7 +197,7 @@ public class ScenarioBuilderReferenceTests
         var encounterId = scenario.Encounters[0].Id;
         var observation = scenario.Observations[0];
         var encounterRef = observation.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"Encounter/{encounterId}");
+        encounterRef.ShouldBe($"Encounter/{encounterId}");
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class ScenarioBuilderReferenceTests
         var patientId = scenario.Patient!.Id;
         var encounter = scenario.Encounters[0];
         var subjectRef = encounter.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"Patient/{patientId}");
+        subjectRef.ShouldBe($"Patient/{patientId}");
     }
 
     #endregion
@@ -233,7 +233,7 @@ public class ScenarioBuilderReferenceTests
             .Build();
 
         // Assert
-        scenario.Practitioners.Should().HaveCount(1);
+        scenario.Practitioners.Count.ShouldBe(1);
         var practitionerId = scenario.Practitioners[0].Id;
 
         var encounter = scenario.Encounters[0];
@@ -243,7 +243,7 @@ public class ScenarioBuilderReferenceTests
         // The encounter should reference the practitioner
         if (practitionerRef is not null)
         {
-            practitionerRef.Should().Be($"Practitioner/{practitionerId}");
+            practitionerRef.ShouldBe($"Practitioner/{practitionerId}");
         }
     }
 
@@ -262,14 +262,14 @@ public class ScenarioBuilderReferenceTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
         var organizationId = scenario.Organizations[0].Id;
 
         // The patient's managingOrganization should reference the organization if set
         var managingOrg = scenario.Patient!.MutableNode["managingOrganization"]?["reference"]?.GetValue<string>();
         if (managingOrg is not null)
         {
-            managingOrg.Should().Be($"Organization/{organizationId}");
+            managingOrg.ShouldBe($"Organization/{organizationId}");
         }
     }
 
@@ -298,16 +298,16 @@ public class ScenarioBuilderReferenceTests
 
         // All resources should reference the patient with resolved format
         scenario.Encounters[0].MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
 
         scenario.Conditions[0].MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
 
         scenario.Observations[0].MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
 
         scenario.Medications[0].MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -331,10 +331,10 @@ public class ScenarioBuilderReferenceTests
         foreach (var observation in scenario.Observations)
         {
             observation.MutableNode["subject"]?["reference"]?.GetValue<string>()
-                .Should().Be($"Patient/{patientId}");
+                .ShouldBe($"Patient/{patientId}");
 
             observation.MutableNode["encounter"]?["reference"]?.GetValue<string>()
-                .Should().Be($"Encounter/{encounterId}");
+                .ShouldBe($"Encounter/{encounterId}");
         }
     }
 
@@ -356,7 +356,7 @@ public class ScenarioBuilderReferenceTests
         var bundle = scenario.ToBundle();
 
         // Assert
-        bundle.MutableNode["type"]?.GetValue<string>().Should().Be("transaction");
+        bundle.MutableNode["type"]?.GetValue<string>().ShouldBe("transaction");
     }
 
     [Fact]
@@ -374,11 +374,11 @@ public class ScenarioBuilderReferenceTests
 
         // Assert
         var entries = bundle.MutableNode["entry"]?.AsArray();
-        entries.Should().NotBeNull();
+        entries.ShouldNotBeNull();
         foreach (var entry in entries!)
         {
             var fullUrl = entry?["fullUrl"]?.GetValue<string>();
-            fullUrl.Should().StartWith("urn:uuid:");
+            fullUrl.ShouldStartWith("urn:uuid:");
         }
     }
 
@@ -396,7 +396,7 @@ public class ScenarioBuilderReferenceTests
         var bundle = scenario.ToBatchBundle();
 
         // Assert
-        bundle.MutableNode["type"]?.GetValue<string>().Should().Be("batch");
+        bundle.MutableNode["type"]?.GetValue<string>().ShouldBe("batch");
     }
 
     [Fact]
@@ -414,11 +414,11 @@ public class ScenarioBuilderReferenceTests
 
         // Assert
         var entries = bundle.MutableNode["entry"]?.AsArray();
-        entries.Should().NotBeNull();
+        entries.ShouldNotBeNull();
 
         var firstEntry = entries![0];
         var fullUrl = firstEntry?["fullUrl"]?.GetValue<string>();
-        fullUrl.Should().StartWith("Patient/");
+        fullUrl.ShouldStartWith("Patient/");
     }
 
     [Fact]
@@ -434,7 +434,7 @@ public class ScenarioBuilderReferenceTests
         var transactionBundle = scenario.ToTransactionBundle();
 
         // Assert
-        transactionBundle.MutableNode["type"]?.GetValue<string>().Should().Be("transaction");
+        transactionBundle.MutableNode["type"]?.GetValue<string>().ShouldBe("transaction");
     }
 
     #endregion
@@ -452,8 +452,8 @@ public class ScenarioBuilderReferenceTests
 
         // Assert
         // The patient should be in AllResources with the correct ID
-        scenario.Patient.Should().NotBeNull();
-        scenario.AllResources.Should().Contain(scenario.Patient!);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.AllResources.ShouldContain(scenario.Patient!);
     }
 
     [Fact]
@@ -468,8 +468,8 @@ public class ScenarioBuilderReferenceTests
             .Build();
 
         // Assert
-        scenario.CurrentEncounter.Should().NotBeNull();
-        scenario.CurrentEncounter!.Id.Should().Be(scenario.Encounters[1].Id);
+        scenario.CurrentEncounter.ShouldNotBeNull();
+        scenario.CurrentEncounter!.Id.ShouldBe(scenario.Encounters[1].Id);
     }
 
     #endregion
@@ -490,16 +490,16 @@ public class ScenarioBuilderReferenceTests
         // Assert
         var patientId = scenario.Patient!.Id;
 
-        scenario.Conditions.Should().HaveCount(1);
-        scenario.Procedures.Should().HaveCount(1);
+        scenario.Conditions.Count.ShouldBe(1);
+        scenario.Procedures.Count.ShouldBe(1);
 
         var condition = scenario.Conditions[0];
         condition.MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
 
         var procedure = scenario.Procedures[0];
         procedure.MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -517,11 +517,11 @@ public class ScenarioBuilderReferenceTests
         var patientId = scenario.Patient!.Id;
         var encounterId = scenario.Encounters[0].Id;
 
-        scenario.DiagnosticReports.Should().HaveCount(1);
+        scenario.DiagnosticReports.Count.ShouldBe(1);
         var report = scenario.DiagnosticReports[0];
 
         report.MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
     }
 
     #endregion
@@ -539,8 +539,8 @@ public class ScenarioBuilderReferenceTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().BeNull();
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Patient.ShouldBeNull();
+        scenario.Organizations.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -553,8 +553,8 @@ public class ScenarioBuilderReferenceTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.AllResources.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.AllResources.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -577,11 +577,11 @@ public class ScenarioBuilderReferenceTests
 
         // Verify tag is applied
         scenario.Patient.MutableNode["meta"]?["tag"]?.AsArray()?[0]?["code"]?.GetValue<string>()
-            .Should().Be(tag);
+            .ShouldBe(tag);
 
         // Verify references are resolved
         scenario.Observations[0].MutableNode["subject"]?["reference"]?.GetValue<string>()
-            .Should().Be($"Patient/{patientId}");
+            .ShouldBe($"Patient/{patientId}");
     }
 
     #endregion

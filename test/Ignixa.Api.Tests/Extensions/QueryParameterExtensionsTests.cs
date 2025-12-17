@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.Extensions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
@@ -30,7 +30,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeTrue("FHIR spec says presence implies true");
+        result.ShouldBeTrue("FHIR spec says presence implies true");
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -190,6 +190,6 @@ public class QueryParameterExtensionsTests
         var result = query.GetPrettyParameter();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 }

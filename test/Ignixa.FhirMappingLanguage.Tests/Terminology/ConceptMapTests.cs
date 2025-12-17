@@ -4,7 +4,7 @@
  * Unit tests for ConceptMap integration in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Terminology;
@@ -86,7 +86,7 @@ public class ConceptMapTests
         var result = await loader.LoadAsync(url);
 
         // Assert
-        result.Should().Be(content);
+        result.ShouldBe(content);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public class ConceptMapTests
         var result = await loader.LoadAsync("http://example.org/nonexistent");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class ConceptMapTests
         var result = loader.CanLoad(url);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     #endregion
@@ -141,8 +141,8 @@ public class ConceptMapTests
         var result2 = await composite.LoadAsync("http://example.org/map2");
 
         // Assert
-        result1.Should().Be("content1");
-        result2.Should().Be("content2");
+        result1.ShouldBe("content1");
+        result2.ShouldBe("content2");
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class ConceptMapTests
         var result = await composite.LoadAsync("http://example.org/nonexistent");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -210,7 +210,7 @@ public class ConceptMapTests
             "M");
 
         // Assert
-        result.Should().Be("male");
+        result.ShouldBe("male");
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class ConceptMapTests
             "B");
 
         // Assert
-        resultB.Should().Be("Y");
+        resultB.ShouldBe("Y");
     }
 
     [Fact]
@@ -315,7 +315,7 @@ public class ConceptMapTests
             "http://target2.org");
 
         // Assert
-        result.Should().Be("Z");
+        result.ShouldBe("Z");
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public class ConceptMapTests
             "NONEXISTENT");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -369,7 +369,7 @@ public class ConceptMapTests
             "A");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -418,8 +418,8 @@ public class ConceptMapTests
             "B");
 
         // Assert
-        result1.Should().Be("X");
-        result2.Should().Be("Y");
+        result1.ShouldBe("X");
+        result2.ShouldBe("Y");
     }
 
     [Fact]
@@ -463,8 +463,8 @@ public class ConceptMapTests
             "A");
 
         // Assert
-        result1.Should().Be("X");
-        result2.Should().Be("X");
+        result1.ShouldBe("X");
+        result2.ShouldBe("X");
     }
 
     #endregion
@@ -555,7 +555,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - translate should have been called
-        translateCalled.Should().BeTrue();
+        translateCalled.ShouldBeTrue();
     }
 
     #endregion
@@ -596,7 +596,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var result = func("http://example.org/fhir/ConceptMap/test", "A", "http://target.org");
 
         // Assert
-        result.Should().Be("X");
+        result.ShouldBe("X");
     }
 
     #endregion

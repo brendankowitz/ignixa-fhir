@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Smart;
 
 namespace Ignixa.Application.Tests.Features.Authorization;
@@ -24,8 +24,8 @@ public class SmartScopeTests
         };
 
         // Act & Assert
-        scope.MatchesResource("Observation").Should().BeTrue();
-        scope.MatchesResource("Patient").Should().BeTrue();
+        scope.MatchesResource("Observation").ShouldBeTrue();
+        scope.MatchesResource("Patient").ShouldBeTrue();
     }
 
     [Fact]
@@ -42,8 +42,8 @@ public class SmartScopeTests
         };
 
         // Act & Assert
-        scope.MatchesResource("Observation").Should().BeTrue();
-        scope.MatchesResource("Patient").Should().BeFalse();
+        scope.MatchesResource("Observation").ShouldBeTrue();
+        scope.MatchesResource("Patient").ShouldBeFalse();
     }
 
     [Fact]
@@ -54,8 +54,8 @@ public class SmartScopeTests
         var specificScope = new SmartScope { Type = SmartScopeType.System, ResourceType = "Patient", Permissions = SmartPermissions.Read, PermissionString = "R", OriginalScope = "system/Patient.r" };
 
         // Act & Assert
-        wildcardScope.MatchesResource(null).Should().BeTrue();
-        specificScope.MatchesResource(null).Should().BeFalse();
+        wildcardScope.MatchesResource(null).ShouldBeTrue();
+        specificScope.MatchesResource(null).ShouldBeFalse();
     }
 
     [Theory]
@@ -93,7 +93,7 @@ public class SmartScopeTests
         var result = scope.MatchesInteraction(requiredInteraction);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -110,10 +110,10 @@ public class SmartScopeTests
         };
 
         // Act & Assert
-        scope.Matches("Observation", "read").Should().BeTrue();
-        scope.Matches("Observation", "search-type").Should().BeTrue();
-        scope.Matches("Observation", "create").Should().BeFalse();
-        scope.Matches("Patient", "read").Should().BeFalse();
+        scope.Matches("Observation", "read").ShouldBeTrue();
+        scope.Matches("Observation", "search-type").ShouldBeTrue();
+        scope.Matches("Observation", "create").ShouldBeFalse();
+        scope.Matches("Patient", "read").ShouldBeFalse();
     }
 
     [Fact]
@@ -130,11 +130,11 @@ public class SmartScopeTests
         };
 
         // Act & Assert
-        scope.HasPermission(SmartPermissions.Create).Should().BeTrue();
-        scope.HasPermission(SmartPermissions.Read).Should().BeTrue();
-        scope.HasPermission(SmartPermissions.Update).Should().BeTrue();
-        scope.HasPermission(SmartPermissions.Delete).Should().BeFalse();
-        scope.HasPermission(SmartPermissions.Search).Should().BeFalse();
+        scope.HasPermission(SmartPermissions.Create).ShouldBeTrue();
+        scope.HasPermission(SmartPermissions.Read).ShouldBeTrue();
+        scope.HasPermission(SmartPermissions.Update).ShouldBeTrue();
+        scope.HasPermission(SmartPermissions.Delete).ShouldBeFalse();
+        scope.HasPermission(SmartPermissions.Search).ShouldBeFalse();
     }
 
     [Fact]
@@ -151,8 +151,8 @@ public class SmartScopeTests
         };
 
         // Act & Assert
-        scope.Type.Should().Be(SmartScopeType.Practitioner);
-        scope.MatchesResource("Schedule").Should().BeTrue();
-        scope.MatchesInteraction("read").Should().BeTrue();
+        scope.Type.ShouldBe(SmartScopeType.Practitioner);
+        scope.MatchesResource("Schedule").ShouldBeTrue();
+        scope.MatchesInteraction("read").ShouldBeTrue();
     }
 }

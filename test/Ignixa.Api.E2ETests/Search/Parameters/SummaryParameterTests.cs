@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -64,26 +64,26 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=false");
 
         // Assert
-        bundle.Should().NotBeNull();
+        bundle.ShouldNotBeNull();
         // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
         // We verify entry count instead of total which may be null
-        bundle.Entry.Should().HaveCount(3, "_summary=false should return all matching resources");
+        bundle.Entry.Count.ShouldBe(3, "_summary=false should return all matching resources");
 
         // Verify resources contain full data (name, address, gender, extensions, etc.)
-        bundle.Entry.Should().AllSatisfy(entry =>
+        foreach (var entry in bundle.Entry)
         {
-            entry.Resource.Should().NotBeNull();
+            entry.Resource.ShouldNotBeNull();
             var resource = entry.Resource!;
-            resource.MutableNode["name"].Should().NotBeNull("full representation includes name");
-            resource.MutableNode["address"].Should().NotBeNull("full representation includes address");
-            resource.MutableNode["gender"].Should().NotBeNull("full representation includes gender");
-            resource.MutableNode["extension"].Should().NotBeNull("full representation includes extensions");
-        });
+            resource.MutableNode["name"].ShouldNotBeNull("full representation includes name");
+            resource.MutableNode["address"].ShouldNotBeNull("full representation includes address");
+            resource.MutableNode["gender"].ShouldNotBeNull("full representation includes gender");
+            resource.MutableNode["extension"].ShouldNotBeNull("full representation includes extensions");
+        }
 
         // Verify self link includes _summary parameter
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Contain("_summary=false");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldContain("_summary=false");
     }
 
     /// <summary>
@@ -112,23 +112,23 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=true");
 
         // Assert
-        bundle.Should().NotBeNull();
+        bundle.ShouldNotBeNull();
         // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
-        bundle.Entry.Should().HaveCount(3, "_summary=true should return all matching resources");
+        bundle.Entry.Count.ShouldBe(3, "_summary=true should return all matching resources");
 
         // Verify resources are returned (summary still includes resources, just fewer elements)
-        bundle.Entry.Should().AllSatisfy(entry =>
+        foreach (var entry in bundle.Entry)
         {
-            entry.Resource.Should().NotBeNull();
+            entry.Resource.ShouldNotBeNull();
             var resource = entry.Resource!;
-            resource.ResourceType.Should().Be("Patient");
-            resource.Id.Should().NotBeNullOrEmpty();
-        });
+            resource.ResourceType.ShouldBe("Patient");
+            resource.Id.ShouldNotBeNullOrEmpty();
+        }
 
         // Verify self link includes _summary parameter
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Contain("_summary=true");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldContain("_summary=true");
     }
 
     /// <summary>
@@ -155,23 +155,23 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=text");
 
         // Assert
-        bundle.Should().NotBeNull();
+        bundle.ShouldNotBeNull();
         // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
-        bundle.Entry.Should().HaveCount(3, "_summary=text should return all matching resources");
+        bundle.Entry.Count.ShouldBe(3, "_summary=text should return all matching resources");
 
         // Verify resources are returned
-        bundle.Entry.Should().AllSatisfy(entry =>
+        foreach (var entry in bundle.Entry)
         {
-            entry.Resource.Should().NotBeNull();
+            entry.Resource.ShouldNotBeNull();
             var resource = entry.Resource!;
-            resource.ResourceType.Should().Be("Patient");
-            resource.Id.Should().NotBeNullOrEmpty();
-        });
+            resource.ResourceType.ShouldBe("Patient");
+            resource.Id.ShouldNotBeNullOrEmpty();
+        }
 
         // Verify self link includes _summary parameter
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Contain("_summary=text");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldContain("_summary=text");
     }
 
     /// <summary>
@@ -199,24 +199,24 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=data");
 
         // Assert
-        bundle.Should().NotBeNull();
+        bundle.ShouldNotBeNull();
         // Note: Bundle.total is OPTIONAL per FHIR spec (only required for _summary=count)
-        bundle.Entry.Should().HaveCount(3, "_summary=data should return all matching resources");
+        bundle.Entry.Count.ShouldBe(3, "_summary=data should return all matching resources");
 
         // Verify resources contain data elements but not text
-        bundle.Entry.Should().AllSatisfy(entry =>
+        foreach (var entry in bundle.Entry)
         {
-            entry.Resource.Should().NotBeNull();
+            entry.Resource.ShouldNotBeNull();
             var resource = entry.Resource!;
-            resource.ResourceType.Should().Be("Patient");
-            resource.Id.Should().NotBeNullOrEmpty();
-            resource.MutableNode["name"].Should().NotBeNull("data summary includes coded data like names");
-        });
+            resource.ResourceType.ShouldBe("Patient");
+            resource.Id.ShouldNotBeNullOrEmpty();
+            resource.MutableNode["name"].ShouldNotBeNull("data summary includes coded data like names");
+        }
 
         // Verify self link includes _summary parameter
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Contain("_summary=data");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldContain("_summary=data");
     }
 
     /// <summary>
@@ -243,14 +243,14 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=count");
 
         // Assert
-        bundle.Should().NotBeNull();
-        bundle.Total.Should().Be(3, "_summary=count should return accurate total");
-        bundle.Entry.Should().BeEmpty("_summary=count should not include any resource entries");
+        bundle.ShouldNotBeNull();
+        bundle.Total.ShouldBe(3, "_summary=count should return accurate total");
+        bundle.Entry.ShouldBeEmpty("_summary=count should not include any resource entries");
 
         // Verify self link includes _summary parameter
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Contain("_summary=count");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldContain("_summary=count");
     }
 
     #endregion
@@ -297,20 +297,20 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         if (summaryFlag == "count")
         {
             // _summary=count MUST return total (required by FHIR spec)
-            bundle.Total.Should().Be(3, "_summary=count should return accurate total");
-            bundle.Entry.Should().BeEmpty("_summary=count should have no entries");
+            bundle.Total.ShouldBe(3, "_summary=count should return accurate total");
+            bundle.Entry.ShouldBeEmpty("_summary=count should have no entries");
         }
         else
         {
             // For other summary modes, total is OPTIONAL per FHIR spec
             // We verify entry count instead
-            bundle.Entry.Should().HaveCount(3, $"_summary={summaryFlag} should return entry resources");
+            bundle.Entry.Count.ShouldBe(3, $"_summary={summaryFlag} should return entry resources");
         }
 
         // Verify self link includes _summary parameter
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Contain($"_summary={summaryFlag}");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldContain($"_summary={summaryFlag}");
     }
 
     /// <summary>
@@ -337,12 +337,12 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=count&_count=2");
 
         // Assert
-        bundle.Total.Should().Be(10);
-        bundle.Entry.Should().BeEmpty("_summary=count overrides pagination and returns no entries");
+        bundle.Total.ShouldBe(10);
+        bundle.Entry.ShouldBeEmpty("_summary=count overrides pagination and returns no entries");
 
         // Next link should not exist when using _summary=count
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next");
-        nextLink.Should().BeNull("_summary=count returns no entries, so no pagination needed");
+        nextLink.ShouldBeNull("_summary=count returns no entries, so no pagination needed");
     }
 
     /// <summary>
@@ -385,8 +385,8 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&family=Smith&_summary=count");
 
         // Assert - Should count only the filtered results
-        bundle.Total.Should().Be(2, "should count only patients matching family=Smith");
-        bundle.Entry.Should().BeEmpty("_summary=count should return no entries");
+        bundle.Total.ShouldBe(2, "should count only patients matching family=Smith");
+        bundle.Entry.ShouldBeEmpty("_summary=count should return no entries");
     }
 
     #endregion
@@ -437,13 +437,13 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var sizeCount = contentCount.Length;
 
         // Assert - false (full) should be largest
-        sizeFalse.Should().BeGreaterThan(sizeCount,
+        sizeFalse.ShouldBeGreaterThan(sizeCount,
             "_summary=false (full representation) should be larger than _summary=count");
 
         // Assert - count should be smallest (no entry resources)
-        sizeCount.Should().BeLessThan(sizeFalse,
+        sizeCount.ShouldBeLessThan(sizeFalse,
             "_summary=count should be smaller than _summary=false");
-        sizeCount.Should().BeLessThan(sizeTrue,
+        sizeCount.ShouldBeLessThan(sizeTrue,
             "_summary=count should be smaller than _summary=true");
     }
 
@@ -480,8 +480,8 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Observation", $"_tag={tag}&_summary=count");
 
         // Assert
-        bundle.Total.Should().Be(3, "should have 3 observations");
-        bundle.Entry.Should().BeEmpty("_summary=count should not return any entries");
+        bundle.Total.ShouldBe(3, "should have 3 observations");
+        bundle.Entry.ShouldBeEmpty("_summary=count should not return any entries");
     }
 
     /// <summary>
@@ -500,8 +500,8 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", $"_tag={tag}&_summary=count");
 
         // Assert
-        bundle.Total.Should().Be(0);
-        bundle.Entry.Should().BeEmpty();
+        bundle.Total.ShouldBe(0);
+        bundle.Entry.ShouldBeEmpty();
     }
 
     #endregion
@@ -536,11 +536,11 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
 
         // Assert
         var selfLink = bundle.Link.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull("bundle should include a self link");
-        selfLink!.Url.Should().Contain($"_summary={summaryFlag}",
-            "self link should preserve the _summary parameter");
-        selfLink.Url.Should().Contain($"_tag={tag}",
-            "self link should preserve all search parameters");
+        selfLink.ShouldNotBeNull("bundle should include a self link");
+        selfLink!.Url.ShouldContain($"_summary={summaryFlag}",
+            customMessage: "self link should preserve the _summary parameter");
+        selfLink.Url.ShouldContain($"_tag={tag}",
+            customMessage: "self link should preserve all search parameters");
     }
 
     #endregion

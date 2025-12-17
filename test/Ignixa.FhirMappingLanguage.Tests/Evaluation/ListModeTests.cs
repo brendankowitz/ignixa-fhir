@@ -4,7 +4,7 @@
  * Unit tests for list mode semantics in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
@@ -92,7 +92,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should process only the first element
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -129,7 +129,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should skip first and process remaining
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -166,7 +166,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should process only the last element
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -203,7 +203,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should skip last and process remaining
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -238,7 +238,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should succeed with exactly one element
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -270,8 +270,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should throw because there are multiple elements
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*only_one*exactly one element*");
+        var exception = Should.Throw<InvalidOperationException>(act);
+        exception.Message.ShouldContain("only_one");
+        exception.Message.ShouldContain("exactly one element");
     }
 
     [Fact]
@@ -302,7 +303,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should not throw, rule is skipped
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -339,7 +340,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should create only one target
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -374,7 +375,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Rule should be skipped
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -405,7 +406,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should skip all elements (no elements after first)
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -436,7 +437,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should skip all elements (no elements before last)
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -467,10 +468,10 @@ group Transform(source src : Patient, target tgt : Bundle) {{
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
-        map.Groups[0].Rules.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Targets.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Targets[0].ListMode.Should().NotBeNull();
+        map.Groups.Count.ShouldBe(1);
+        map.Groups[0].Rules.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Targets.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Targets[0].ListMode.ShouldNotBeNull();
     }
 
     #endregion

@@ -8,7 +8,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Specification;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -27,7 +27,7 @@ public class CompositeSchemaProviderRegistryTests
         using var registry = new CompositeSchemaProviderRegistry(NullLogger<CompositeSchemaProviderRegistry>.Instance);
 
         // Assert
-        registry.DebounceDelay.Should().Be(TimeSpan.FromSeconds(1));
+        registry.DebounceDelay.ShouldBe(TimeSpan.FromSeconds(1));
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class CompositeSchemaProviderRegistryTests
             customDelay);
 
         // Assert
-        registry.DebounceDelay.Should().Be(customDelay);
+        registry.DebounceDelay.ShouldBe(customDelay);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class CompositeSchemaProviderRegistryTests
         // The actual invalidation execution is internal, but we can verify:
         // 1. No exceptions thrown
         // 2. Registry is still functional
-        registry.DebounceDelay.Should().Be(shortDelay);
+        registry.DebounceDelay.ShouldBe(shortDelay);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class CompositeSchemaProviderRegistryTests
         await Task.Delay(shortDelay + TimeSpan.FromMilliseconds(50));
 
         // Assert - No exceptions, both tenants handled independently
-        registry.DebounceDelay.Should().Be(shortDelay);
+        registry.DebounceDelay.ShouldBe(shortDelay);
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class CompositeSchemaProviderRegistryTests
         await Task.Delay(shortDelay + TimeSpan.FromMilliseconds(50));
 
         // Assert - No exceptions thrown, graceful cancellation
-        registry.DebounceDelay.Should().Be(shortDelay);
+        registry.DebounceDelay.ShouldBe(shortDelay);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 /* Copyright (c) 2025, Ignixa Contributors */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Xunit;
 
@@ -17,16 +17,16 @@ public class MappingEvaluatorOptionsTests
         var options = MappingEvaluatorOptions.Default;
 
         // Assert
-        options.MaxRecursionDepth.Should().Be(50);
-        options.MaxElementsCreated.Should().Be(100_000);
-        options.MaxMapSizeBytes.Should().Be(50_000_000);
-        options.MaxInputResourceSizeBytes.Should().Be(10_000_000);
-        options.TransformTimeout.Should().Be(TimeSpan.FromSeconds(30));
-        options.FhirPathTimeout.Should().Be(TimeSpan.FromSeconds(5));
-        options.MaxCodeLength.Should().Be(100);
-        options.MaxErrorsCollected.Should().Be(100);
-        options.ErrorMode.Should().Be(ErrorMode.Strict);
-        options.AllowFileSystemImports.Should().BeFalse();
+        options.MaxRecursionDepth.ShouldBe(50);
+        options.MaxElementsCreated.ShouldBe(100_000);
+        options.MaxMapSizeBytes.ShouldBe(50_000_000);
+        options.MaxInputResourceSizeBytes.ShouldBe(10_000_000);
+        options.TransformTimeout.ShouldBe(TimeSpan.FromSeconds(30));
+        options.FhirPathTimeout.ShouldBe(TimeSpan.FromSeconds(5));
+        options.MaxCodeLength.ShouldBe(100);
+        options.MaxErrorsCollected.ShouldBe(100);
+        options.ErrorMode.ShouldBe(ErrorMode.Strict);
+        options.AllowFileSystemImports.ShouldBeFalse();
     }
 
     [Fact]
@@ -36,9 +36,9 @@ public class MappingEvaluatorOptionsTests
         var options = MappingEvaluatorOptions.Default;
 
         // Assert
-        options.AllowedImportDomains.Should().Contain("hl7.org");
-        options.AllowedImportDomains.Should().Contain("fhir.org");
-        options.AllowedImportDomains.Should().Contain("build.fhir.org");
+        options.AllowedImportDomains.ShouldContain("hl7.org");
+        options.AllowedImportDomains.ShouldContain("fhir.org");
+        options.AllowedImportDomains.ShouldContain("build.fhir.org");
     }
 
     [Fact]
@@ -48,12 +48,12 @@ public class MappingEvaluatorOptionsTests
         var options = MappingEvaluatorOptions.Default;
 
         // Assert
-        options.AllowedConceptMapTargetSystems.Should().Contain("http://snomed.info/sct");
-        options.AllowedConceptMapTargetSystems.Should().Contain("http://loinc.org");
-        options.AllowedConceptMapTargetSystems.Should().Contain("http://hl7.org/fhir/*");
-        options.AllowedConceptMapTargetSystems.Should().Contain("http://unitsofmeasure.org");
-        options.AllowedConceptMapTargetSystems.Should().Contain("http://terminology.hl7.org/*");
-        options.AllowedConceptMapTargetSystems.Should().Contain("urn:oid:*");
+        options.AllowedConceptMapTargetSystems.ShouldContain("http://snomed.info/sct");
+        options.AllowedConceptMapTargetSystems.ShouldContain("http://loinc.org");
+        options.AllowedConceptMapTargetSystems.ShouldContain("http://hl7.org/fhir/*");
+        options.AllowedConceptMapTargetSystems.ShouldContain("http://unitsofmeasure.org");
+        options.AllowedConceptMapTargetSystems.ShouldContain("http://terminology.hl7.org/*");
+        options.AllowedConceptMapTargetSystems.ShouldContain("urn:oid:*");
     }
 
     #endregion
@@ -73,8 +73,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*MaxRecursionDepth must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("MaxRecursionDepth must be positive");
     }
 
     [Fact]
@@ -90,8 +89,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*MaxElementsCreated must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("MaxElementsCreated must be positive");
     }
 
     [Fact]
@@ -107,8 +105,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*MaxMapSizeBytes must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("MaxMapSizeBytes must be positive");
     }
 
     [Fact]
@@ -124,8 +121,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*MaxInputResourceSizeBytes must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("MaxInputResourceSizeBytes must be positive");
     }
 
     [Fact]
@@ -141,8 +137,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*TransformTimeout must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("TransformTimeout must be positive");
     }
 
     [Fact]
@@ -158,8 +153,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*FhirPathTimeout must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("FhirPathTimeout must be positive");
     }
 
     [Fact]
@@ -175,8 +169,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*MaxCodeLength must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("MaxCodeLength must be positive");
     }
 
     [Fact]
@@ -192,8 +185,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*MaxErrorsCollected must be positive*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("MaxErrorsCollected must be positive");
     }
 
     [Fact]
@@ -210,8 +202,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*FileSystemImportSandbox must be specified*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("FileSystemImportSandbox must be specified");
     }
 
     [Fact]
@@ -228,8 +219,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*FileSystemImportSandbox must be specified*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("FileSystemImportSandbox must be specified");
     }
 
     [Fact]
@@ -242,7 +232,7 @@ public class MappingEvaluatorOptionsTests
         var act = () => options.Validate();
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -259,7 +249,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsDomainAllowed("hl7.org");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -272,7 +262,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsDomainAllowed("HL7.ORG");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -285,7 +275,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsDomainAllowed("evil.com");
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -295,10 +285,10 @@ public class MappingEvaluatorOptionsTests
         var options = MappingEvaluatorOptions.Default;
 
         // Act
-        var act = () => options.IsDomainAllowed(null!);
+        var act = () => { _ = options.IsDomainAllowed(null!); };
 
         // Assert
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(act);
     }
 
     #endregion
@@ -315,7 +305,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("http://snomed.info/sct");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -328,7 +318,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("HTTP://SNOMED.INFO/SCT");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -341,7 +331,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("http://hl7.org/fhir/ValueSet/example");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -354,7 +344,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("HTTP://HL7.ORG/FHIR/ValueSet/example");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -367,7 +357,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("urn:oid:2.16.840.1.113883.6.96");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -380,7 +370,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("http://evil.com/codesystem");
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -394,7 +384,7 @@ public class MappingEvaluatorOptionsTests
         var result = options.IsTargetSystemAllowed("http://any-system.com");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -404,10 +394,10 @@ public class MappingEvaluatorOptionsTests
         var options = MappingEvaluatorOptions.Default;
 
         // Act
-        var act = () => options.IsTargetSystemAllowed(null!);
+        var act = () => { _ = options.IsTargetSystemAllowed(null!); };
 
         // Assert
-        act.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(act);
     }
 
     #endregion
@@ -428,11 +418,11 @@ public class MappingEvaluatorOptionsTests
         };
 
         // Act & Assert
-        options.MaxRecursionDepth.Should().Be(10);
-        options.MaxElementsCreated.Should().Be(1000);
-        options.TransformTimeout.Should().Be(TimeSpan.FromSeconds(5));
-        options.ErrorMode.Should().Be(ErrorMode.Lenient);
-        options.MaxErrorsCollected.Should().Be(50);
+        options.MaxRecursionDepth.ShouldBe(10);
+        options.MaxElementsCreated.ShouldBe(1000);
+        options.TransformTimeout.ShouldBe(TimeSpan.FromSeconds(5));
+        options.ErrorMode.ShouldBe(ErrorMode.Lenient);
+        options.MaxErrorsCollected.ShouldBe(50);
     }
 
     [Fact]
@@ -447,10 +437,10 @@ public class MappingEvaluatorOptionsTests
         options.AllowedImportDomains.Add("test.org");
 
         // Assert
-        options.AllowedImportDomains.Should().HaveCount(2);
-        options.IsDomainAllowed("example.com").Should().BeTrue();
-        options.IsDomainAllowed("test.org").Should().BeTrue();
-        options.IsDomainAllowed("hl7.org").Should().BeFalse();
+        options.AllowedImportDomains.Count.ShouldBe(2);
+        options.IsDomainAllowed("example.com").ShouldBeTrue();
+        options.IsDomainAllowed("test.org").ShouldBeTrue();
+        options.IsDomainAllowed("hl7.org").ShouldBeFalse();
     }
 
     [Fact]
@@ -464,9 +454,9 @@ public class MappingEvaluatorOptionsTests
         options.AllowedConceptMapTargetSystems.Add("http://custom.com/*");
 
         // Assert
-        options.AllowedConceptMapTargetSystems.Should().HaveCount(1);
-        options.IsTargetSystemAllowed("http://custom.com/test").Should().BeTrue();
-        options.IsTargetSystemAllowed("http://snomed.info/sct").Should().BeFalse();
+        options.AllowedConceptMapTargetSystems.Count.ShouldBe(1);
+        options.IsTargetSystemAllowed("http://custom.com/test").ShouldBeTrue();
+        options.IsTargetSystemAllowed("http://snomed.info/sct").ShouldBeFalse();
     }
 
     #endregion

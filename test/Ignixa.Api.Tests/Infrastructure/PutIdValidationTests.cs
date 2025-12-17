@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Domain.Exceptions;
 using Xunit;
 
@@ -36,7 +36,7 @@ public class PutIdValidationTests
             }
         });
 
-        ex.Message.Should().Contain("Resource ID must be present");
+        ex.Message.ShouldContain("Resource ID must be present");
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class PutIdValidationTests
             }
         });
 
-        ex.Message.Should().Contain("Resource ID must be present");
+        ex.Message.ShouldContain("Resource ID must be present");
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class PutIdValidationTests
             }
         });
 
-        ex.Message.Should().Contain("Resource ID must be present");
+        ex.Message.ShouldContain("Resource ID must be present");
     }
 
     #endregion
@@ -95,9 +95,9 @@ public class PutIdValidationTests
             }
         });
 
-        ex.Message.Should().Contain("must match the ID in the URL");
-        ex.Message.Should().Contain("observation2");
-        ex.Message.Should().Contain("observation1");
+        ex.Message.ShouldContain("must match the ID in the URL");
+        ex.Message.ShouldContain("observation2");
+        ex.Message.ShouldContain("observation1");
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class PutIdValidationTests
             }
         });
 
-        ex.Message.Should().Contain("must match");
+        ex.Message.ShouldContain("must match");
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class PutIdValidationTests
             }
         });
 
-        ex.Message.Should().Contain("must match");
+        ex.Message.ShouldContain("must match");
     }
 
     #endregion
@@ -161,7 +161,7 @@ public class PutIdValidationTests
         }
 
         // Assert - if we get here, validation passed
-        bodyId.Should().Be(id);
+        bodyId.ShouldBe(id);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class PutIdValidationTests
         }
 
         // Assert
-        bodyId.Should().Be(id);
+        bodyId.ShouldBe(id);
     }
 
     [Fact]
@@ -205,7 +205,7 @@ public class PutIdValidationTests
         }
 
         // Assert
-        bodyId.Should().Be(id);
+        bodyId.ShouldBe(id);
     }
 
     #endregion

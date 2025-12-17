@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Lifecycle;
 
 namespace Ignixa.FhirFakes.Tests.Lifecycle;
@@ -24,7 +24,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateDiabetesRisk(age: 25, smoker: false, bmi: 22m, familyHistory: false);
 
         // Assert
-        risk.Should().Be(0.01, "young adults under 30 have 1% baseline risk");
+        risk.ShouldBe(0.01, "young adults under 30 have 1% baseline risk");
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateDiabetesRisk(age: 45, smoker: false, bmi: 22m, familyHistory: false);
 
         // Assert
-        risk.Should().Be(0.10, "adults 40-49 have 10% baseline risk");
+        risk.ShouldBe(0.10, "adults 40-49 have 10% baseline risk");
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class DiseaseRiskCalculatorTests
         var obesityRisk = _calculator.CalculateDiabetesRisk(age: 45, smoker: false, bmi: 32m, familyHistory: false);
 
         // Assert
-        obesityRisk.Should().Be(normalWeightRisk * 2, "BMI >= 30 doubles diabetes risk");
+        obesityRisk.ShouldBe(normalWeightRisk * 2, "BMI >= 30 doubles diabetes risk");
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class DiseaseRiskCalculatorTests
         var smokerRisk = _calculator.CalculateDiabetesRisk(age: 45, smoker: true, bmi: 25m, familyHistory: false);
 
         // Assert
-        smokerRisk.Should().Be(nonSmokerRisk * 1.5, "smoking increases risk by 50%");
+        smokerRisk.ShouldBe(nonSmokerRisk * 1.5, "smoking increases risk by 50%");
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class DiseaseRiskCalculatorTests
         var familyHistoryRisk = _calculator.CalculateDiabetesRisk(age: 45, smoker: false, bmi: 25m, familyHistory: true);
 
         // Assert
-        familyHistoryRisk.Should().Be(noFamilyHistoryRisk * 2, "family history doubles genetic risk");
+        familyHistoryRisk.ShouldBe(noFamilyHistoryRisk * 2, "family history doubles genetic risk");
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateDiabetesRisk(age: 70, smoker: true, bmi: 35m, familyHistory: true);
 
         // Assert
-        risk.Should().Be(1.0, "risk should be capped at 100% even when multipliers exceed 1.0");
+        risk.ShouldBe(1.0, "risk should be capped at 100% even when multipliers exceed 1.0");
         // Calculation: 0.25 * 2.0 (obesity) * 1.5 (smoking) * 2.0 (family) = 1.5 → capped at 1.0
     }
 
@@ -92,7 +92,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateHypertensionRisk(age: 35, bmi: 23m, hasDiabetes: false);
 
         // Assert
-        risk.Should().BeApproximately(0.296, 0.001, "NHANES baseline is 29.6% for U.S. adults");
+        risk.ShouldBe(0.296, 0.001);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class DiseaseRiskCalculatorTests
         var olderRisk = _calculator.CalculateHypertensionRisk(age: 65, bmi: 23m, hasDiabetes: false);
 
         // Assert
-        olderRisk.Should().Be(youngerRisk + 0.20, "age >= 60 adds 20% risk");
+        olderRisk.ShouldBe(youngerRisk + 0.20, "age >= 60 adds 20% risk");
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class DiseaseRiskCalculatorTests
         var obesityRisk = _calculator.CalculateHypertensionRisk(age: 45, bmi: 32m, hasDiabetes: false);
 
         // Assert
-        obesityRisk.Should().Be(normalWeightRisk + 0.15, "BMI >= 30 adds 15% risk");
+        obesityRisk.ShouldBe(normalWeightRisk + 0.15, "BMI >= 30 adds 15% risk");
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class DiseaseRiskCalculatorTests
         var diabetesRisk = _calculator.CalculateHypertensionRisk(age: 45, bmi: 25m, hasDiabetes: true);
 
         // Assert
-        diabetesRisk.Should().BeApproximately(noDiabetesRisk + 0.423, 0.001, "diabetes adds 42.3% risk");
+        diabetesRisk.ShouldBe(noDiabetesRisk + 0.423, 0.001);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateHypertensionRisk(age: 65, bmi: 35m, hasDiabetes: true);
 
         // Assert
-        risk.Should().Be(1.0, "risk should be capped at 100%");
+        risk.ShouldBe(1.0, "risk should be capped at 100%");
         // Calculation: 0.296 + 0.20 (age) + 0.15 (obesity) + 0.423 (diabetes) = 1.069 → capped at 1.0
     }
 
@@ -150,7 +150,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateAsthmaRisk(age: 10, hasAllergies: false);
 
         // Assert
-        risk.Should().BeApproximately(0.263, 0.001, "CDC pediatric asthma prevalence is 26.3%");
+        risk.ShouldBe(0.263, 0.001);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateAsthmaRisk(age: 25, hasAllergies: false);
 
         // Assert
-        risk.Should().BeApproximately(0.423, 0.001, "CDC shows peak prevalence 42.3% in ages 18-44");
+        risk.ShouldBe(0.423, 0.001);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateAsthmaRisk(age: 50, hasAllergies: false);
 
         // Assert
-        risk.Should().BeApproximately(0.351, 0.001, "CDC shows 35.1% prevalence in ages 45-64");
+        risk.ShouldBe(0.351, 0.001);
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public class DiseaseRiskCalculatorTests
         var allergiesRisk = _calculator.CalculateAsthmaRisk(age: 25, hasAllergies: true);
 
         // Assert
-        allergiesRisk.Should().Be(noAllergiesRisk * 1.8, "atopy increases risk by 80% (atopic march)");
+        allergiesRisk.ShouldBe(noAllergiesRisk * 1.8, "atopy increases risk by 80% (atopic march)");
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateAsthmaRisk(age: 25, hasAllergies: true);
 
         // Assert
-        risk.Should().Be(0.7614, "0.423 * 1.8 = 0.7614, under cap");
+        risk.ShouldBe(0.7614, "0.423 * 1.8 = 0.7614, under cap");
     }
 
     #endregion
@@ -205,7 +205,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateCancerRisk(age: 25, smoker: false, familyHistory: false);
 
         // Assert
-        risk.Should().Be(0.005, "SEER shows 0.5% risk under age 30");
+        risk.ShouldBe(0.005, "SEER shows 0.5% risk under age 30");
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public class DiseaseRiskCalculatorTests
         var age60Risk = _calculator.CalculateCancerRisk(age: 60, smoker: false, familyHistory: false);
 
         // Assert
-        age60Risk.Should().BeGreaterThan(age40Risk * 4, "risk accelerates exponentially after 50");
+        age60Risk.ShouldBeGreaterThan(age40Risk * 4, "risk accelerates exponentially after 50");
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public class DiseaseRiskCalculatorTests
         var smokerRisk = _calculator.CalculateCancerRisk(age: 60, smoker: true, familyHistory: false);
 
         // Assert
-        smokerRisk.Should().Be(nonSmokerRisk * 2.5, "tobacco increases cancer risk 2.5x");
+        smokerRisk.ShouldBe(nonSmokerRisk * 2.5, "tobacco increases cancer risk 2.5x");
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class DiseaseRiskCalculatorTests
         var familyHistoryRisk = _calculator.CalculateCancerRisk(age: 60, smoker: false, familyHistory: true);
 
         // Assert
-        familyHistoryRisk.Should().Be(noFamilyHistoryRisk * 1.8, "hereditary factors increase risk 80%");
+        familyHistoryRisk.ShouldBe(noFamilyHistoryRisk * 1.8, "hereditary factors increase risk 80%");
     }
 
     [Fact]
@@ -248,8 +248,8 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateCancerRisk(age: 70, smoker: true, familyHistory: true);
 
         // Assert
-        risk.Should().Be(1.0, "0.35 * 2.5 * 1.8 = 1.575, correctly capped at 1.0 (100%)");
-        risk.Should().BeLessThanOrEqualTo(1.0, "risk should never exceed 100%");
+        risk.ShouldBe(1.0, "0.35 * 2.5 * 1.8 = 1.575, correctly capped at 1.0 (100%)");
+        risk.ShouldBeLessThanOrEqualTo(1.0, "risk should never exceed 100%");
     }
 
     #endregion
@@ -263,7 +263,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateStrokeRisk(age: 40, hasHypertension: false, hasDiabetes: false, smoker: false);
 
         // Assert
-        risk.Should().Be(0.005, "stroke is rare under age 45 (0.5% baseline)");
+        risk.ShouldBe(0.005, "stroke is rare under age 45 (0.5% baseline)");
     }
 
     [Fact]
@@ -274,9 +274,9 @@ public class DiseaseRiskCalculatorTests
         var age70Risk = _calculator.CalculateStrokeRisk(age: 70, hasHypertension: false, hasDiabetes: false, smoker: false);
 
         // Assert
-        age70Risk.Should().Be(0.10, "age 70 baseline is 10%");
-        age50Risk.Should().Be(0.02, "age 50 baseline is 2%");
-        age70Risk.Should().BeGreaterThan(age50Risk * 4, "stroke risk increases dramatically with age (5x: 0.10 vs 0.02)");
+        age70Risk.ShouldBe(0.10, "age 70 baseline is 10%");
+        age50Risk.ShouldBe(0.02, "age 50 baseline is 2%");
+        age70Risk.ShouldBeGreaterThan(age50Risk * 4, "stroke risk increases dramatically with age (5x: 0.10 vs 0.02)");
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class DiseaseRiskCalculatorTests
         var hypertensionRisk = _calculator.CalculateStrokeRisk(age: 60, hasHypertension: true, hasDiabetes: false, smoker: false);
 
         // Assert
-        hypertensionRisk.Should().Be(noHypertensionRisk + 0.08, "hypertension adds 8% stroke risk");
+        hypertensionRisk.ShouldBe(noHypertensionRisk + 0.08, "hypertension adds 8% stroke risk");
     }
 
     [Fact]
@@ -298,7 +298,7 @@ public class DiseaseRiskCalculatorTests
         var diabetesRisk = _calculator.CalculateStrokeRisk(age: 60, hasHypertension: false, hasDiabetes: true, smoker: false);
 
         // Assert
-        diabetesRisk.Should().Be(noDiabetesRisk + 0.05, "diabetes adds 5% stroke risk");
+        diabetesRisk.ShouldBe(noDiabetesRisk + 0.05, "diabetes adds 5% stroke risk");
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public class DiseaseRiskCalculatorTests
         var smokerRisk = _calculator.CalculateStrokeRisk(age: 60, hasHypertension: false, hasDiabetes: false, smoker: true);
 
         // Assert
-        smokerRisk.Should().Be(nonSmokerRisk + 0.04, "smoking adds 4% stroke risk");
+        smokerRisk.ShouldBe(nonSmokerRisk + 0.04, "smoking adds 4% stroke risk");
     }
 
     [Fact]
@@ -319,7 +319,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateStrokeRisk(age: 70, hasHypertension: true, hasDiabetes: true, smoker: true);
 
         // Assert
-        risk.Should().Be(0.10 + 0.08 + 0.05 + 0.04, "Framingham uses additive model: 0.10 + 0.08 + 0.05 + 0.04 = 0.27");
+        risk.ShouldBe(0.10 + 0.08 + 0.05 + 0.04, "Framingham uses additive model: 0.10 + 0.08 + 0.05 + 0.04 = 0.27");
     }
 
     [Fact]
@@ -329,7 +329,7 @@ public class DiseaseRiskCalculatorTests
         var risk = _calculator.CalculateStrokeRisk(age: 80, hasHypertension: true, hasDiabetes: true, smoker: true);
 
         // Assert
-        risk.Should().BeLessThanOrEqualTo(1.0, "risk should never exceed 100%");
+        risk.ShouldBeLessThanOrEqualTo(1.0, "risk should never exceed 100%");
     }
 
     #endregion
@@ -344,8 +344,8 @@ public class DiseaseRiskCalculatorTests
         var strokeRisk = _calculator.CalculateStrokeRisk(age: 60, hasHypertension: false, hasDiabetes: true, smoker: false);
 
         // Assert
-        hypertensionRisk.Should().BeGreaterThan(0.296, "diabetes increases hypertension risk");
-        strokeRisk.Should().BeGreaterThan(0.05, "diabetes increases stroke risk");
+        hypertensionRisk.ShouldBeGreaterThan(0.296, "diabetes increases hypertension risk");
+        strokeRisk.ShouldBeGreaterThan(0.05, "diabetes increases stroke risk");
     }
 
     [Fact]
@@ -356,8 +356,8 @@ public class DiseaseRiskCalculatorTests
         var hypertensionRisk = _calculator.CalculateHypertensionRisk(age: 50, bmi: 35m, hasDiabetes: false);
 
         // Assert
-        diabetesRisk.Should().BeGreaterThan(0.10, "obesity doubles diabetes baseline");
-        hypertensionRisk.Should().BeGreaterThan(0.296, "obesity adds 15% to hypertension");
+        diabetesRisk.ShouldBeGreaterThan(0.10, "obesity doubles diabetes baseline");
+        hypertensionRisk.ShouldBeGreaterThan(0.296, "obesity adds 15% to hypertension");
     }
 
     #endregion

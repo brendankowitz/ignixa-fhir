@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -42,7 +42,7 @@ public class Stu3ConditionFieldTests
         var condition = scenario.AllResources.FirstOrDefault(r => r.ResourceType == "Condition");
 
         // Assert
-        condition.Should().NotBeNull("Condition resource should be generated");
+        condition.ShouldNotBeNull("Condition resource should be generated");
 
         var hasContext = condition!.MutableNode.TryGetPropertyValue("context", out _);
         var hasEncounter = condition.MutableNode.TryGetPropertyValue("encounter", out _);
@@ -50,8 +50,8 @@ public class Stu3ConditionFieldTests
         _output.WriteLine($"Has 'context' (STU3 field): {hasContext}");
         _output.WriteLine($"Has 'encounter' (R4+ field): {hasEncounter}");
 
-        hasContext.Should().BeTrue("STU3 Condition should use 'context' field");
-        hasEncounter.Should().BeFalse("STU3 Condition should NOT have 'encounter' field");
+        hasContext.ShouldBeTrue("STU3 Condition should use 'context' field");
+        hasEncounter.ShouldBeFalse("STU3 Condition should NOT have 'encounter' field");
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class Stu3ConditionFieldTests
         var condition = scenario.AllResources.FirstOrDefault(r => r.ResourceType == "Condition");
 
         // Assert
-        condition.Should().NotBeNull("Condition resource should be generated");
+        condition.ShouldNotBeNull("Condition resource should be generated");
 
         var hasAssertedDate = condition!.MutableNode.TryGetPropertyValue("assertedDate", out _);
         var hasRecordedDate = condition.MutableNode.TryGetPropertyValue("recordedDate", out _);
@@ -78,8 +78,8 @@ public class Stu3ConditionFieldTests
         _output.WriteLine($"Has 'assertedDate' (STU3 field): {hasAssertedDate}");
         _output.WriteLine($"Has 'recordedDate' (R4+ field): {hasRecordedDate}");
 
-        hasAssertedDate.Should().BeTrue("STU3 Condition should use 'assertedDate' field");
-        hasRecordedDate.Should().BeFalse("STU3 Condition should NOT have 'recordedDate' field");
+        hasAssertedDate.ShouldBeTrue("STU3 Condition should use 'assertedDate' field");
+        hasRecordedDate.ShouldBeFalse("STU3 Condition should NOT have 'recordedDate' field");
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class Stu3ConditionFieldTests
         var condition = scenario.AllResources.FirstOrDefault(r => r.ResourceType == "Condition");
 
         // Assert
-        condition.Should().NotBeNull("Condition resource should be generated");
+        condition.ShouldNotBeNull("Condition resource should be generated");
 
         var hasOnset = condition!.MutableNode.TryGetPropertyValue("onset", out _);
         var hasOnsetDateTime = condition.MutableNode.TryGetPropertyValue("onsetDateTime", out _);
@@ -106,8 +106,8 @@ public class Stu3ConditionFieldTests
         _output.WriteLine($"Has 'onset' (base field): {hasOnset}");
         _output.WriteLine($"Has 'onsetDateTime' (choice variant): {hasOnsetDateTime}");
 
-        hasOnset.Should().BeFalse("STU3 Condition should NOT have base 'onset' field");
-        hasOnsetDateTime.Should().BeTrue("STU3 Condition should have 'onsetDateTime' choice variant");
+        hasOnset.ShouldBeFalse("STU3 Condition should NOT have base 'onset' field");
+        hasOnsetDateTime.ShouldBeTrue("STU3 Condition should have 'onsetDateTime' choice variant");
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class Stu3ConditionFieldTests
         var condition = scenario.AllResources.FirstOrDefault(r => r.ResourceType == "Condition");
 
         // Assert
-        condition.Should().NotBeNull("Condition resource should be generated");
+        condition.ShouldNotBeNull("Condition resource should be generated");
 
         var hasContext = condition!.MutableNode.TryGetPropertyValue("context", out _);
         var hasEncounter = condition.MutableNode.TryGetPropertyValue("encounter", out _);
@@ -139,9 +139,9 @@ public class Stu3ConditionFieldTests
         _output.WriteLine($"Has 'assertedDate' (STU3 field): {hasAssertedDate}");
         _output.WriteLine($"Has 'recordedDate' (R4+ field): {hasRecordedDate}");
 
-        hasContext.Should().BeFalse("R4 Condition should NOT have 'context' field");
-        hasEncounter.Should().BeTrue("R4 Condition should use 'encounter' field");
-        hasAssertedDate.Should().BeFalse("R4 Condition should NOT have 'assertedDate' field");
-        hasRecordedDate.Should().BeTrue("R4 Condition should use 'recordedDate' field");
+        hasContext.ShouldBeFalse("R4 Condition should NOT have 'context' field");
+        hasEncounter.ShouldBeTrue("R4 Condition should use 'encounter' field");
+        hasAssertedDate.ShouldBeFalse("R4 Condition should NOT have 'assertedDate' field");
+        hasRecordedDate.ShouldBeTrue("R4 Condition should use 'recordedDate' field");
     }
 }

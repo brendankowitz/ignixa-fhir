@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Serialization.Models;
@@ -109,14 +109,14 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("MedicationDispense");
-        resourceTypes.Should().Contain("MedicationRequest");
-        resourceTypes.Should().Contain("Patient");
+        resourceTypes.ShouldContain("MedicationDispense");
+        resourceTypes.ShouldContain("MedicationRequest");
+        resourceTypes.ShouldContain("Patient");
 
         // Verify total count excludes included resources
         var countBundle = await Harness.SearchBundleAsync("MedicationDispense",
             $"_include=MedicationDispense:prescription&_include:iterate=MedicationRequest:patient&_tag={tag}&_summary=count");
-        countBundle.Total.Should().Be(1);
+        countBundle.Total.ShouldBe(1);
     }
 
     /// <summary>
@@ -219,16 +219,16 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("Patient");
-        resourceTypes.Should().Contain("MedicationRequest");
-        resourceTypes.Should().Contain("MedicationDispense");
+        resourceTypes.ShouldContain("Patient");
+        resourceTypes.ShouldContain("MedicationRequest");
+        resourceTypes.ShouldContain("MedicationDispense");
 
         // Verify total count excludes included resources
         var countBundle = await Harness.SearchBundleAsync("Patient",
             $"_revinclude=MedicationRequest:patient&_revinclude:iterate=MedicationDispense:prescription&_tag={tag}&_summary=count");
 
         // Should only count patients
-        countBundle.Total.Should().Be(1);
+        countBundle.Total.ShouldBe(1);
     }
 
     #endregion
@@ -284,10 +284,10 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("CareTeam");
-        resourceTypes.Should().Contain("Patient");
-        resourceTypes.Should().Contain("Practitioner");
-        resourceTypes.Should().Contain("Organization");
+        resourceTypes.ShouldContain("CareTeam");
+        resourceTypes.ShouldContain("Patient");
+        resourceTypes.ShouldContain("Practitioner");
+        resourceTypes.ShouldContain("Organization");
     }
 
     /// <summary>
@@ -333,11 +333,11 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("CareTeam");
-        resourceTypes.Should().Contain("Patient");
-        resourceTypes.Should().Contain("Practitioner");
+        resourceTypes.ShouldContain("CareTeam");
+        resourceTypes.ShouldContain("Patient");
+        resourceTypes.ShouldContain("Practitioner");
         // Organization should NOT be included since we specified :Patient
-        resourceTypes.Should().NotContain("Organization");
+        resourceTypes.ShouldNotContain("Organization");
     }
 
     /// <summary>

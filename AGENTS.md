@@ -20,7 +20,7 @@
 - One type per file; nullable enabled; StyleCop and EditorConfig rules apply during build.
 
 ## Testing Guidelines
-- Frameworks: xUnit + FluentAssertions + NSubstitute; follow AAA layout.
+- Frameworks: xUnit + Shouldly + NSubstitute; follow AAA layout.
 - Name tests `GivenContext_WhenAction_ThenResult`; place new cases in the matching `test/Ignixa.*.Tests` project.
 - Add coverage for new handlers/endpoints and edge cases; run `dotnet test All.sln` before raising a PR.
 

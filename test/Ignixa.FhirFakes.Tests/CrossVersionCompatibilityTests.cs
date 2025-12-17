@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -56,12 +56,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert basic structure
-                scenario.DiagnosticReports.Should().HaveCount(1);
-                scenario.DiagnosticReports[0].ResourceType.Should().Be("DiagnosticReport");
-                scenario.DiagnosticReports[0].Id.Should().NotBeNullOrEmpty();
+                scenario.DiagnosticReports.Count.ShouldBe(1);
+                scenario.DiagnosticReports[0].ResourceType.ShouldBe("DiagnosticReport");
+                scenario.DiagnosticReports[0].Id.ShouldNotBeNullOrEmpty();
             });
 
-            exception.Should().BeNull($"DiagnosticReport should work with {schema.Version}");
+            exception.ShouldBeNull($"DiagnosticReport should work with {schema.Version}");
         }
     }
 
@@ -82,13 +82,13 @@ public class CrossVersionCompatibilityTests
             var report = scenario.DiagnosticReports[0];
 
             // Assert - Common required fields across all versions
-            report.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
-            report.MutableNode["code"].Should().NotBeNull($"code is required in {schema.Version}");
+            report.MutableNode["status"].ShouldNotBeNull($"status is required in {schema.Version}");
+            report.MutableNode["code"].ShouldNotBeNull($"code is required in {schema.Version}");
 
             // subject is required in R4/R4B/R5, but not STU3 (STU3 uses Patient + Encounter)
             if (schema.Version != FhirVersion.Stu3)
             {
-                report.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
+                report.MutableNode["subject"].ShouldNotBeNull($"subject is required in {schema.Version}");
             }
         }
     }
@@ -108,11 +108,11 @@ public class CrossVersionCompatibilityTests
                 .Build();
 
             // Assert
-            scenario.Observations.Should().HaveCount(14, $"CMP should have 14 observations in {schema.Version}");
+            scenario.Observations.Count.ShouldBe(14, $"CMP should have 14 observations in {schema.Version}");
             var report = scenario.DiagnosticReports[0];
             var results = report.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
-            results.Should().NotBeNull($"result field should exist in {schema.Version}");
-            results!.Count.Should().Be(14, $"should link to all 14 observations in {schema.Version}");
+            results.ShouldNotBeNull($"result field should exist in {schema.Version}");
+            results!.Count.ShouldBe(14, $"should link to all 14 observations in {schema.Version}");
         }
     }
 
@@ -131,13 +131,13 @@ public class CrossVersionCompatibilityTests
                 .Build();
 
             // Assert
-            scenario.DiagnosticReports.Should().HaveCount(1);
+            scenario.DiagnosticReports.Count.ShouldBe(1);
             var report = scenario.DiagnosticReports[0];
             var categoryCode = report.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-            categoryCode.Should().Be("RAD", $"should have radiology category in {schema.Version}");
+            categoryCode.ShouldBe("RAD", $"should have radiology category in {schema.Version}");
 
             var conclusion = report.MutableNode["conclusion"]?.GetValue<string>();
-            conclusion.Should().Be("Clear lungs, no abnormalities.", $"should have conclusion in {schema.Version}");
+            conclusion.ShouldBe("Clear lungs, no abnormalities.", $"should have conclusion in {schema.Version}");
         }
     }
 
@@ -162,12 +162,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert basic structure
-                scenario.Immunizations.Should().HaveCount(1);
-                scenario.Immunizations[0].ResourceType.Should().Be("Immunization");
-                scenario.Immunizations[0].Id.Should().NotBeNullOrEmpty();
+                scenario.Immunizations.Count.ShouldBe(1);
+                scenario.Immunizations[0].ResourceType.ShouldBe("Immunization");
+                scenario.Immunizations[0].Id.ShouldNotBeNullOrEmpty();
             });
 
-            exception.Should().BeNull($"Immunization should work with {schema.Version}");
+            exception.ShouldBeNull($"Immunization should work with {schema.Version}");
         }
     }
 
@@ -188,14 +188,14 @@ public class CrossVersionCompatibilityTests
             var immunization = scenario.Immunizations[0];
 
             // Assert - Common required fields across all versions
-            immunization.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
-            immunization.MutableNode["vaccineCode"].Should().NotBeNull($"vaccineCode is required in {schema.Version}");
-            immunization.MutableNode["patient"].Should().NotBeNull($"patient is required in {schema.Version}");
+            immunization.MutableNode["status"].ShouldNotBeNull($"status is required in {schema.Version}");
+            immunization.MutableNode["vaccineCode"].ShouldNotBeNull($"vaccineCode is required in {schema.Version}");
+            immunization.MutableNode["patient"].ShouldNotBeNull($"patient is required in {schema.Version}");
 
             // occurrenceDateTime is required in R4/R4B/R5
             if (schema.Version != FhirVersion.Stu3)
             {
-                immunization.MutableNode["occurrenceDateTime"].Should().NotBeNull($"occurrenceDateTime is required in {schema.Version}");
+                immunization.MutableNode["occurrenceDateTime"].ShouldNotBeNull($"occurrenceDateTime is required in {schema.Version}");
             }
         }
     }
@@ -220,15 +220,15 @@ public class CrossVersionCompatibilityTests
             if (schema.Version == FhirVersion.Stu3)
             {
                 // STU3 uses vaccinationProtocol instead of protocolApplied
-                immunization.MutableNode["vaccinationProtocol"].Should().NotBeNull($"vaccinationProtocol should exist in {schema.Version}");
+                immunization.MutableNode["vaccinationProtocol"].ShouldNotBeNull($"vaccinationProtocol should exist in {schema.Version}");
                 var doseNumber = immunization.MutableNode["vaccinationProtocol"]?[0]?["doseSequence"]?.GetValue<int>();
-                doseNumber.Should().Be(1, $"dose number should be 1 in {schema.Version}");
+                doseNumber.ShouldBe(1, $"dose number should be 1 in {schema.Version}");
             }
             else
             {
-                immunization.MutableNode["protocolApplied"].Should().NotBeNull($"protocolApplied should exist in {schema.Version}");
+                immunization.MutableNode["protocolApplied"].ShouldNotBeNull($"protocolApplied should exist in {schema.Version}");
                 var doseNumber = immunization.MutableNode["protocolApplied"]?[0]?["doseNumberPositiveInt"]?.GetValue<int>();
-                doseNumber.Should().Be(1, $"dose number should be 1 in {schema.Version}");
+                doseNumber.ShouldBe(1, $"dose number should be 1 in {schema.Version}");
             }
         }
     }
@@ -250,17 +250,17 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - STU3 uses vaccinationProtocol instead of protocolApplied
-        immunization.MutableNode["vaccinationProtocol"].Should().NotBeNull("STU3 should use 'vaccinationProtocol'");
-        immunization.MutableNode["protocolApplied"].Should().BeNull("STU3 should NOT use 'protocolApplied' (R4+ field)");
+        immunization.MutableNode["vaccinationProtocol"].ShouldNotBeNull("STU3 should use 'vaccinationProtocol'");
+        immunization.MutableNode["protocolApplied"].ShouldBeNull("STU3 should NOT use 'protocolApplied' (R4+ field)");
 
         // Assert - STU3 uses doseSequence instead of doseNumberPositiveInt
         var protocol = immunization.MutableNode["vaccinationProtocol"]?[0];
-        protocol.Should().NotBeNull("vaccinationProtocol should have at least one entry");
-        protocol!["doseSequence"].Should().NotBeNull("STU3 should use 'doseSequence'");
-        protocol["doseNumberPositiveInt"].Should().BeNull("STU3 should NOT use 'doseNumberPositiveInt' (R4+ field)");
+        protocol.ShouldNotBeNull("vaccinationProtocol should have at least one entry");
+        protocol!["doseSequence"].ShouldNotBeNull("STU3 should use 'doseSequence'");
+        protocol["doseNumberPositiveInt"].ShouldBeNull("STU3 should NOT use 'doseNumberPositiveInt' (R4+ field)");
 
         // Assert - STU3 should NOT have seriesDosesPositiveInt
-        protocol["seriesDosesPositiveInt"].Should().BeNull("STU3 doesn't have 'seriesDosesPositiveInt' field");
+        protocol["seriesDosesPositiveInt"].ShouldBeNull("STU3 doesn't have 'seriesDosesPositiveInt' field");
     }
 
     [Fact]
@@ -280,17 +280,17 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - R4 uses protocolApplied instead of vaccinationProtocol
-        immunization.MutableNode["protocolApplied"].Should().NotBeNull("R4 should use 'protocolApplied'");
-        immunization.MutableNode["vaccinationProtocol"].Should().BeNull("R4 should NOT use 'vaccinationProtocol' (STU3 field)");
+        immunization.MutableNode["protocolApplied"].ShouldNotBeNull("R4 should use 'protocolApplied'");
+        immunization.MutableNode["vaccinationProtocol"].ShouldBeNull("R4 should NOT use 'vaccinationProtocol' (STU3 field)");
 
         // Assert - R4 uses doseNumberPositiveInt instead of doseSequence
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
-        protocol.Should().NotBeNull("protocolApplied should have at least one entry");
-        protocol!["doseNumberPositiveInt"].Should().NotBeNull("R4 should use 'doseNumberPositiveInt'");
-        protocol["doseSequence"].Should().BeNull("R4 should NOT use 'doseSequence' (STU3 field)");
+        protocol.ShouldNotBeNull("protocolApplied should have at least one entry");
+        protocol!["doseNumberPositiveInt"].ShouldNotBeNull("R4 should use 'doseNumberPositiveInt'");
+        protocol["doseSequence"].ShouldBeNull("R4 should NOT use 'doseSequence' (STU3 field)");
 
         // Assert - R4 should have seriesDosesPositiveInt when SeriesDosesRecommended is set
-        protocol["seriesDosesPositiveInt"].Should().NotBeNull("R4 should have 'seriesDosesPositiveInt'");
+        protocol["seriesDosesPositiveInt"].ShouldNotBeNull("R4 should have 'seriesDosesPositiveInt'");
     }
 
     [Fact]
@@ -310,10 +310,10 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - R4B uses same field names as R4
-        immunization.MutableNode["protocolApplied"].Should().NotBeNull("R4B should use 'protocolApplied'");
+        immunization.MutableNode["protocolApplied"].ShouldNotBeNull("R4B should use 'protocolApplied'");
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
-        protocol.Should().NotBeNull();
-        protocol!["doseNumberPositiveInt"].Should().NotBeNull("R4B should use 'doseNumberPositiveInt'");
+        protocol.ShouldNotBeNull();
+        protocol!["doseNumberPositiveInt"].ShouldNotBeNull("R4B should use 'doseNumberPositiveInt'");
     }
 
     [Fact]
@@ -333,10 +333,10 @@ public class CrossVersionCompatibilityTests
         var immunization = scenario.Immunizations[0];
 
         // Assert - R5 uses same field names as R4
-        immunization.MutableNode["protocolApplied"].Should().NotBeNull("R5 should use 'protocolApplied'");
+        immunization.MutableNode["protocolApplied"].ShouldNotBeNull("R5 should use 'protocolApplied'");
         var protocol = immunization.MutableNode["protocolApplied"]?[0];
-        protocol.Should().NotBeNull();
-        protocol!["doseNumberPositiveInt"].Should().NotBeNull("R5 should use 'doseNumberPositiveInt'");
+        protocol.ShouldNotBeNull();
+        protocol!["doseNumberPositiveInt"].ShouldNotBeNull("R5 should use 'doseNumberPositiveInt'");
     }
 
     #endregion
@@ -359,12 +359,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert basic structure
-                scenario.Allergies.Should().HaveCount(1);
-                scenario.Allergies[0].ResourceType.Should().Be("AllergyIntolerance");
-                scenario.Allergies[0].Id.Should().NotBeNullOrEmpty();
+                scenario.Allergies.Count.ShouldBe(1);
+                scenario.Allergies[0].ResourceType.ShouldBe("AllergyIntolerance");
+                scenario.Allergies[0].Id.ShouldNotBeNullOrEmpty();
             });
 
-            exception.Should().BeNull($"AllergyIntolerance should work with {schema.Version}");
+            exception.ShouldBeNull($"AllergyIntolerance should work with {schema.Version}");
         }
     }
 
@@ -387,13 +387,13 @@ public class CrossVersionCompatibilityTests
             // R4+: clinicalStatus, verificationStatus, code, patient
             // STU3: patient only (other fields optional)
 
-            allergy.MutableNode["patient"].Should().NotBeNull($"patient is required in {schema.Version}");
+            allergy.MutableNode["patient"].ShouldNotBeNull($"patient is required in {schema.Version}");
 
             if (schema.Version != FhirVersion.Stu3)
             {
-                allergy.MutableNode["clinicalStatus"].Should().NotBeNull($"clinicalStatus is required in {schema.Version}");
-                allergy.MutableNode["verificationStatus"].Should().NotBeNull($"verificationStatus is required in {schema.Version}");
-                allergy.MutableNode["code"].Should().NotBeNull($"code is required in {schema.Version}");
+                allergy.MutableNode["clinicalStatus"].ShouldNotBeNull($"clinicalStatus is required in {schema.Version}");
+                allergy.MutableNode["verificationStatus"].ShouldNotBeNull($"verificationStatus is required in {schema.Version}");
+                allergy.MutableNode["code"].ShouldNotBeNull($"code is required in {schema.Version}");
             }
         }
     }
@@ -415,8 +415,8 @@ public class CrossVersionCompatibilityTests
 
             // Assert
             var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
-            reactions.Should().NotBeNull($"reaction should exist in {schema.Version}");
-            reactions!.Count.Should().BeGreaterThan(0, $"should have reactions in {schema.Version}");
+            reactions.ShouldNotBeNull($"reaction should exist in {schema.Version}");
+            reactions!.Count.ShouldBeGreaterThan(0, $"should have reactions in {schema.Version}");
         }
     }
 
@@ -441,12 +441,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert basic structure
-                scenario.Procedures.Should().HaveCount(1);
-                scenario.Procedures[0].ResourceType.Should().Be("Procedure");
-                scenario.Procedures[0].Id.Should().NotBeNullOrEmpty();
+                scenario.Procedures.Count.ShouldBe(1);
+                scenario.Procedures[0].ResourceType.ShouldBe("Procedure");
+                scenario.Procedures[0].Id.ShouldNotBeNullOrEmpty();
             });
 
-            exception.Should().BeNull($"Procedure should work with {schema.Version}");
+            exception.ShouldBeNull($"Procedure should work with {schema.Version}");
         }
     }
 
@@ -467,13 +467,13 @@ public class CrossVersionCompatibilityTests
             var procedure = scenario.Procedures[0];
 
             // Assert - Required fields
-            procedure.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
-            procedure.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
+            procedure.MutableNode["status"].ShouldNotBeNull($"status is required in {schema.Version}");
+            procedure.MutableNode["subject"].ShouldNotBeNull($"subject is required in {schema.Version}");
 
             // code is optional in STU3 but required in R4+
             if (schema.Version != FhirVersion.Stu3)
             {
-                procedure.MutableNode["code"].Should().NotBeNull($"code is required in {schema.Version}");
+                procedure.MutableNode["code"].ShouldNotBeNull($"code is required in {schema.Version}");
             }
         }
     }
@@ -498,9 +498,9 @@ public class CrossVersionCompatibilityTests
             // STU3/R4/R4B: performedPeriod (from performed[x])
             // R5: occurrencePeriod (renamed from performed[x] to occurrence[x])
             var periodFieldName = schema.Version == FhirVersion.R5 ? "occurrencePeriod" : "performedPeriod";
-            procedure.MutableNode[periodFieldName].Should().NotBeNull($"{periodFieldName} should exist in {schema.Version}");
+            procedure.MutableNode[periodFieldName].ShouldNotBeNull($"{periodFieldName} should exist in {schema.Version}");
             var start = procedure.MutableNode[periodFieldName]?["start"]?.GetValue<string>();
-            start.Should().NotBeNullOrEmpty($"{periodFieldName}.start should be set in {schema.Version}");
+            start.ShouldNotBeNullOrEmpty($"{periodFieldName}.start should be set in {schema.Version}");
         }
     }
 
@@ -531,12 +531,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert basic structure
-                scenario.ServiceRequests.Should().HaveCount(1);
-                scenario.ServiceRequests[0].ResourceType.Should().Be("ServiceRequest");
-                scenario.ServiceRequests[0].Id.Should().NotBeNullOrEmpty();
+                scenario.ServiceRequests.Count.ShouldBe(1);
+                scenario.ServiceRequests[0].ResourceType.ShouldBe("ServiceRequest");
+                scenario.ServiceRequests[0].Id.ShouldNotBeNullOrEmpty();
             });
 
-            exception.Should().BeNull($"ServiceRequest should work with {schema.Version}");
+            exception.ShouldBeNull($"ServiceRequest should work with {schema.Version}");
         }
     }
 
@@ -559,9 +559,9 @@ public class CrossVersionCompatibilityTests
             var serviceRequest = scenario.ServiceRequests[0];
 
             // Assert - Required fields across all versions
-            serviceRequest.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
-            serviceRequest.MutableNode["intent"].Should().NotBeNull($"intent is required in {schema.Version}");
-            serviceRequest.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
+            serviceRequest.MutableNode["status"].ShouldNotBeNull($"status is required in {schema.Version}");
+            serviceRequest.MutableNode["intent"].ShouldNotBeNull($"intent is required in {schema.Version}");
+            serviceRequest.MutableNode["subject"].ShouldNotBeNull($"subject is required in {schema.Version}");
         }
     }
 
@@ -584,7 +584,7 @@ public class CrossVersionCompatibilityTests
 
             // Assert - priority should exist across all versions
             var priority = serviceRequest.MutableNode["priority"]?.GetValue<string>();
-            priority.Should().Be("urgent", $"priority should be 'urgent' in {schema.Version}");
+            priority.ShouldBe("urgent", $"priority should be 'urgent' in {schema.Version}");
         }
     }
 
@@ -607,8 +607,8 @@ public class CrossVersionCompatibilityTests
 
             // Assert - category should exist across all versions
             var category = serviceRequest.MutableNode["category"] as JsonArray;
-            category.Should().NotBeNull($"category should exist in {schema.Version}");
-            category!.Count.Should().BeGreaterThan(0, $"should have category entries in {schema.Version}");
+            category.ShouldNotBeNull($"category should exist in {schema.Version}");
+            category!.Count.ShouldBeGreaterThan(0, $"should have category entries in {schema.Version}");
         }
     }
 
@@ -633,7 +633,7 @@ public class CrossVersionCompatibilityTests
             // R4/R4B: code is CodeableConcept -> code.coding
             // R5: code is CodeableReference -> code.concept.coding
             var code = serviceRequest.MutableNode["code"];
-            code.Should().NotBeNull($"code should exist in {schema.Version}");
+            code.ShouldNotBeNull($"code should exist in {schema.Version}");
 
             JsonNode? coding;
             if (schema.Version == FhirVersion.R5)
@@ -646,10 +646,10 @@ public class CrossVersionCompatibilityTests
                 // R4/R4B: CodeableConcept directly
                 coding = code?["coding"]?[0];
             }
-            coding.Should().NotBeNull($"code.coding should exist in {schema.Version}");
+            coding.ShouldNotBeNull($"code.coding should exist in {schema.Version}");
 
             var system = coding?["system"]?.GetValue<string>();
-            system.Should().Be("http://loinc.org", $"should use LOINC system in {schema.Version}");
+            system.ShouldBe("http://loinc.org", $"should use LOINC system in {schema.Version}");
         }
     }
 
@@ -672,12 +672,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert
-                scenario.ServiceRequests.Should().HaveCount(1);
+                scenario.ServiceRequests.Count.ShouldBe(1);
                 var categoryCode = scenario.ServiceRequests[0].MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-                categoryCode.Should().Be("363679005", $"should have imaging category in {schema.Version}"); // Imaging
+                categoryCode.ShouldBe("363679005", $"should have imaging category in {schema.Version}"); // Imaging
             });
 
-            exception.Should().BeNull($"Imaging ServiceRequest should work with {schema.Version}");
+            exception.ShouldBeNull($"Imaging ServiceRequest should work with {schema.Version}");
         }
     }
 
@@ -700,12 +700,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert
-                scenario.ServiceRequests.Should().HaveCount(1);
+                scenario.ServiceRequests.Count.ShouldBe(1);
                 var categoryCode = scenario.ServiceRequests[0].MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-                categoryCode.Should().Be("3457005", $"should have referral category in {schema.Version}"); // Referral
+                categoryCode.ShouldBe("3457005", $"should have referral category in {schema.Version}"); // Referral
             });
 
-            exception.Should().BeNull($"Referral ServiceRequest should work with {schema.Version}");
+            exception.ShouldBeNull($"Referral ServiceRequest should work with {schema.Version}");
         }
     }
 
@@ -726,8 +726,8 @@ public class CrossVersionCompatibilityTests
         });
 
         // Assert - Should throw because ServiceRequest doesn't exist in STU3
-        exception.Should().NotBeNull("ServiceRequest should not work with STU3");
-        exception.Should().BeOfType<ArgumentException>();
+        exception.ShouldNotBeNull("ServiceRequest should not work with STU3");
+        exception.ShouldBeOfType<ArgumentException>();
         _output.WriteLine($"Expected failure for STU3: {exception?.Message}");
     }
 
@@ -752,12 +752,12 @@ public class CrossVersionCompatibilityTests
                     .Build();
 
                 // Assert basic structure
-                scenario.Medications.Should().HaveCount(1);
-                scenario.Medications[0].ResourceType.Should().Be("MedicationRequest");
-                scenario.Medications[0].Id.Should().NotBeNullOrEmpty();
+                scenario.Medications.Count.ShouldBe(1);
+                scenario.Medications[0].ResourceType.ShouldBe("MedicationRequest");
+                scenario.Medications[0].Id.ShouldNotBeNullOrEmpty();
             });
 
-            exception.Should().BeNull($"MedicationRequest should work with {schema.Version}");
+            exception.ShouldBeNull($"MedicationRequest should work with {schema.Version}");
         }
     }
 
@@ -778,9 +778,9 @@ public class CrossVersionCompatibilityTests
             var medicationRequest = scenario.Medications[0];
 
             // Assert - Common required fields across all versions
-            medicationRequest.MutableNode["status"].Should().NotBeNull($"status is required in {schema.Version}");
-            medicationRequest.MutableNode["intent"].Should().NotBeNull($"intent is required in {schema.Version}");
-            medicationRequest.MutableNode["subject"].Should().NotBeNull($"subject is required in {schema.Version}");
+            medicationRequest.MutableNode["status"].ShouldNotBeNull($"status is required in {schema.Version}");
+            medicationRequest.MutableNode["intent"].ShouldNotBeNull($"intent is required in {schema.Version}");
+            medicationRequest.MutableNode["subject"].ShouldNotBeNull($"subject is required in {schema.Version}");
         }
     }
 
@@ -806,14 +806,14 @@ public class CrossVersionCompatibilityTests
             var hasMedicationReference = medicationRequest.MutableNode["medicationReference"] != null;
 
             (hasMedicationCodeableConcept || hasMedicationReference)
-                .Should().BeTrue($"{schema.Version} should have medicationCodeableConcept or medicationReference");
+                .ShouldBeTrue($"{schema.Version} should have medicationCodeableConcept or medicationReference");
 
             // If using CodeableConcept, verify structure
             if (hasMedicationCodeableConcept)
             {
                 var coding = medicationRequest.MutableNode["medicationCodeableConcept"]?["coding"]?[0];
-                coding.Should().NotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
-                coding?["code"]?.GetValue<string>().Should().NotBeNullOrEmpty($"should have medication code in {schema.Version}");
+                coding.ShouldNotBeNull($"medicationCodeableConcept should have coding in {schema.Version}");
+                coding?["code"]?.GetValue<string>().ShouldNotBeNullOrEmpty($"should have medication code in {schema.Version}");
             }
         }
     }
@@ -835,8 +835,8 @@ public class CrossVersionCompatibilityTests
 
             // Assert - dosageInstruction should exist across all versions
             var dosageInstruction = medicationRequest.MutableNode["dosageInstruction"] as JsonArray;
-            dosageInstruction.Should().NotBeNull($"dosageInstruction should exist in {schema.Version}");
-            dosageInstruction!.Count.Should().BeGreaterThan(0, $"should have dosage entries in {schema.Version}");
+            dosageInstruction.ShouldNotBeNull($"dosageInstruction should exist in {schema.Version}");
+            dosageInstruction!.Count.ShouldBeGreaterThan(0, $"should have dosage entries in {schema.Version}");
         }
     }
 

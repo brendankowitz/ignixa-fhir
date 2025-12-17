@@ -4,7 +4,7 @@
  * Unit tests for FHIR Mapping Language parser.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
@@ -29,12 +29,12 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Url.Should().Be("http://example.org/fhir/StructureMap/Example");
-        result.Identifier.Should().Be("ExampleMap");
-        result.Groups.Should().HaveCount(1);
-        result.Groups[0].Name.Should().Be("PatientToBundle");
-        result.Groups[0].Parameters.Should().HaveCount(2);
+        result.ShouldNotBeNull();
+        result.Url.ShouldBe("http://example.org/fhir/StructureMap/Example");
+        result.Identifier.ShouldBe("ExampleMap");
+        result.Groups.Count.ShouldBe(1);
+        result.Groups[0].Name.ShouldBe("PatientToBundle");
+        result.Groups[0].Parameters.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -56,13 +56,13 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Uses.Should().HaveCount(2);
-        result.Uses[0].Url.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
-        result.Uses[0].Alias.Should().Be("Patient");
-        result.Uses[0].Mode.Should().Be(ModelMode.Source);
-        result.Uses[1].Url.Should().Be("http://hl7.org/fhir/StructureDefinition/Bundle");
-        result.Uses[1].Alias.Should().Be("Bundle");
-        result.Uses[1].Mode.Should().Be(ModelMode.Target);
+        result.Uses.Count.ShouldBe(2);
+        result.Uses[0].Url.ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
+        result.Uses[0].Alias.ShouldBe("Patient");
+        result.Uses[0].Mode.ShouldBe(ModelMode.Source);
+        result.Uses[1].Url.ShouldBe("http://hl7.org/fhir/StructureDefinition/Bundle");
+        result.Uses[1].Alias.ShouldBe("Bundle");
+        result.Uses[1].Mode.ShouldBe(ModelMode.Target);
     }
 
     [Fact]
@@ -83,8 +83,8 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Imports.Should().HaveCount(1);
-        result.Imports[0].Url.Should().Be("http://example.org/fhir/StructureMap/Helpers");
+        result.Imports.Count.ShouldBe(1);
+        result.Imports[0].Url.ShouldBe("http://example.org/fhir/StructureMap/Helpers");
     }
 
     [Fact]
@@ -104,12 +104,12 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules.Should().HaveCount(1);
+        result.Groups[0].Rules.Count.ShouldBe(1);
         var rule = result.Groups[0].Rules[0];
-        rule.Sources.Should().HaveCount(1);
-        rule.Sources[0].Variable.Should().Be("vn");
-        rule.Targets.Should().HaveCount(1);
-        rule.Targets[0].Variable.Should().Be("entry");
+        rule.Sources.Count.ShouldBe(1);
+        rule.Sources[0].Variable.ShouldBe("vn");
+        rule.Targets.Count.ShouldBe(1);
+        rule.Targets[0].Variable.ShouldBe("entry");
     }
 
     [Fact]
@@ -121,6 +121,6 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);
-        act.Should().Throw<ParseException>();
+        Should.Throw<ParseException>(act);
     }
 }

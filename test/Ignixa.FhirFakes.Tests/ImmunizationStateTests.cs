@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -32,10 +32,10 @@ public class ImmunizationStateTests
             .Build();
 
         // Assert
-        scenario.Immunizations.Should().HaveCount(1);
+        scenario.Immunizations.Count.ShouldBe(1);
         var immunization = scenario.Immunizations[0];
-        immunization.ResourceType.Should().Be("Immunization");
-        immunization.Id.Should().NotBeNullOrEmpty();
+        immunization.ResourceType.ShouldBe("Immunization");
+        immunization.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var status = immunization.MutableNode["status"]?.GetValue<string>();
-        status.Should().Be("completed");
+        status.ShouldBe("completed");
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var code = immunization.MutableNode["vaccineCode"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("140"); // CVX code for Influenza
+        code.ShouldBe("140"); // CVX code for Influenza
     }
 
     #endregion
@@ -84,7 +84,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var patientRef = immunization.MutableNode["patient"]?["reference"]?.GetValue<string>();
-        patientRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        patientRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var encounterRef = immunization.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
+        encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion
@@ -119,7 +119,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var doseNumber = immunization.MutableNode["protocolApplied"]?[0]?["doseNumberPositiveInt"]?.GetValue<int>();
-        doseNumber.Should().Be(1);
+        doseNumber.ShouldBe(1);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var series = immunization.MutableNode["protocolApplied"]?[0]?["series"]?.GetValue<string>();
-        series.Should().Be("Childhood Immunization Series");
+        series.ShouldBe("Childhood Immunization Series");
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var dosesRecommended = immunization.MutableNode["protocolApplied"]?[0]?["seriesDosesPositiveInt"]?.GetValue<int>();
-        dosesRecommended.Should().Be(2);
+        dosesRecommended.ShouldBe(2);
     }
 
     [Fact]
@@ -166,13 +166,13 @@ public class ImmunizationStateTests
             .Build();
 
         // Assert
-        scenario.Immunizations.Should().HaveCount(3);
+        scenario.Immunizations.Count.ShouldBe(3);
 
         var doses = scenario.Immunizations
             .Select(i => i.MutableNode["protocolApplied"]?[0]?["doseNumberPositiveInt"]?.GetValue<int>())
             .ToList();
 
-        doses.Should().BeEquivalentTo([1, 2, 3]);
+        doses.ShouldBe([1, 2, 3]);
     }
 
     #endregion
@@ -191,7 +191,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var routeCode = immunization.MutableNode["route"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        routeCode.Should().Be("IM");
+        routeCode.ShouldBe("IM");
     }
 
     [Fact]
@@ -206,7 +206,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var routeCode = immunization.MutableNode["route"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        routeCode.Should().Be("SC");
+        routeCode.ShouldBe("SC");
     }
 
     #endregion
@@ -225,7 +225,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var quantity = immunization.MutableNode["doseQuantity"]?["value"]?.GetValue<decimal>();
-        quantity.Should().Be(0.3m); // Pfizer specific dose
+        quantity.ShouldBe(0.3m); // Pfizer specific dose
     }
 
     [Fact]
@@ -240,7 +240,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var manufacturer = immunization.MutableNode["manufacturer"]?["display"]?.GetValue<string>();
-        manufacturer.Should().Be("Pfizer Inc.");
+        manufacturer.ShouldBe("Pfizer Inc.");
     }
 
     [Fact]
@@ -255,7 +255,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var dosesRecommended = immunization.MutableNode["protocolApplied"]?[0]?["seriesDosesPositiveInt"]?.GetValue<int>();
-        dosesRecommended.Should().Be(5);
+        dosesRecommended.ShouldBe(5);
     }
 
     #endregion
@@ -274,8 +274,8 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var lotNumber = immunization.MutableNode["lotNumber"]?.GetValue<string>();
-        lotNumber.Should().NotBeNullOrEmpty();
-        lotNumber.Should().HaveLength(7); // Format: XX#####
+        lotNumber.ShouldNotBeNullOrEmpty();
+        lotNumber.Length.ShouldBe(7); // Format: XX#####
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var expirationDate = immunization.MutableNode["expirationDate"]?.GetValue<string>();
-        expirationDate.Should().NotBeNullOrEmpty();
+        expirationDate.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -305,7 +305,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var manufacturer = immunization.MutableNode["manufacturer"]?["display"]?.GetValue<string>();
-        manufacturer.Should().NotBeNullOrEmpty();
+        manufacturer.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -320,8 +320,8 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var performer = immunization.MutableNode["performer"]?[0]?["actor"]?["display"]?.GetValue<string>();
-        performer.Should().NotBeNullOrEmpty();
-        performer.Should().Contain("RN");
+        performer.ShouldNotBeNullOrEmpty();
+        performer.ShouldContain("RN");
     }
 
     [Fact]
@@ -336,7 +336,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var siteCode = immunization.MutableNode["site"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        siteCode.Should().BeOneOf("LA", "RA", "LT", "RT");
+        siteCode.ShouldBeOneOf("LA", "RA", "LT", "RT");
     }
 
     #endregion
@@ -355,7 +355,7 @@ public class ImmunizationStateTests
             .Build();
 
         // Assert
-        scenario.Immunizations.Should().HaveCount(3);
+        scenario.Immunizations.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -369,7 +369,7 @@ public class ImmunizationStateTests
 
         // Assert
         var immunizationEvents = scenario.Timeline.Where(e => e.EventType == "Immunization").ToList();
-        immunizationEvents.Should().HaveCount(1);
+        immunizationEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -382,7 +382,7 @@ public class ImmunizationStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.Immunizations[0]);
+        scenario.AllResources.ShouldContain(scenario.Immunizations[0]);
     }
 
     #endregion
@@ -401,7 +401,7 @@ public class ImmunizationStateTests
         // Assert
         var immunization = scenario.Immunizations[0];
         var encounterRef = immunization.MutableNode["encounter"];
-        encounterRef.Should().BeNull();
+        encounterRef.ShouldBeNull();
     }
 
     [Fact]
@@ -415,8 +415,8 @@ public class ImmunizationStateTests
 
         // Assert
         var immunization = scenario.Immunizations[0];
-        var primarySource = immunization.MutableNode["primarySource"]?.GetValue<bool>();
-        primarySource.Should().BeTrue();
+        var primarySource = immunization.MutableNode["primarySource"]?.GetValue<bool?>();
+        primarySource!.Value.ShouldBeTrue();
     }
 
     #endregion

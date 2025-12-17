@@ -823,8 +823,8 @@ public async Task SearchStream_WithInclude_ReturnsMatchThenInclude()
         .ToListAsync();  // Only for testing - production NEVER buffers
 
     // Assert
-    results.Take(10).Should().AllSatisfy(r => r.SearchMode == SearchEntryMode.Match);
-    results.Skip(10).Should().AllSatisfy(r => r.SearchMode == SearchEntryMode.Include);
+    results.Take(10).ShouldAllBe(r => r.SearchMode == SearchEntryMode.Match);
+    results.Skip(10).ShouldAllBe(r => r.SearchMode == SearchEntryMode.Include);
 }
 ```
 
@@ -848,7 +848,7 @@ public async Task SearchStream_With1MillionResults_UsesConstantMemory()
     var finalMemory = GC.GetTotalMemory(forceFullCollection: true);
 
     // Assert: Memory growth should be < 10MB
-    (finalMemory - initialMemory).Should().BeLessThan(10_000_000);
+    (finalMemory - initialMemory).ShouldBeLessThan(10_000_000);
 }
 ```
 

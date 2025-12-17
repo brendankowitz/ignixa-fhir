@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification.Generated;
 
@@ -26,16 +26,16 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetPediatricWellChildVisit(ageInMonths: 12, gender: "male");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.Patient!.ResourceType.Should().Be("Patient");
-        context.Encounters.Should().ContainSingle();
-        context.Encounters[0].ResourceType.Should().Be("Encounter");
-        context.Observations.Should().NotBeEmpty();
-        context.Immunizations.Should().HaveCountGreaterThanOrEqualTo(4);
-        context.Procedures.Should().NotBeEmpty();
-        context.Practitioners.Should().ContainSingle();
-        context.Organizations.Should().ContainSingle();
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.Patient!.ResourceType.ShouldBe("Patient");
+        context.Encounters.ShouldHaveSingleItem();
+        context.Encounters[0].ResourceType.ShouldBe("Encounter");
+        context.Observations.ShouldNotBeEmpty();
+        context.Immunizations.Count.ShouldBeGreaterThanOrEqualTo(4);
+        context.Procedures.ShouldNotBeEmpty();
+        context.Practitioners.ShouldHaveSingleItem();
+        context.Organizations.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetPediatricWellChildVisit(ageInMonths: 2, gender: "female");
 
         // Assert
-        context.Immunizations.Should().HaveCountGreaterThanOrEqualTo(5);
+        context.Immunizations.Count.ShouldBeGreaterThanOrEqualTo(5);
     }
 
     [Theory]
@@ -59,10 +59,10 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetPediatricWellChildVisit(ageInMonths, "male");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.Encounters.Should().ContainSingle();
-        context.Immunizations.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.Encounters.ShouldHaveSingleItem();
+        context.Immunizations.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -87,14 +87,14 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetAdultAnnualPhysical(age: 45, gender: "female");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.Patient!.ResourceType.Should().Be("Patient");
-        context.Encounters.Should().ContainSingle();
-        context.Observations.Should().NotBeEmpty();
-        context.DiagnosticReports.Should().HaveCountGreaterThanOrEqualTo(2);
-        context.Procedures.Should().NotBeEmpty();
-        context.Immunizations.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.Patient!.ResourceType.ShouldBe("Patient");
+        context.Encounters.ShouldHaveSingleItem();
+        context.Observations.ShouldNotBeEmpty();
+        context.DiagnosticReports.Count.ShouldBeGreaterThanOrEqualTo(2);
+        context.Procedures.ShouldNotBeEmpty();
+        context.Immunizations.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetAdultAnnualPhysical(age: 55, gender: "male");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Observations.Should().NotBeEmpty();
-        context.Procedures.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context.Observations.ShouldNotBeEmpty();
+        context.Procedures.ShouldNotBeEmpty();
     }
 
     [Theory]
@@ -120,10 +120,10 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetAdultAnnualPhysical(age, "female");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.Encounters.Should().ContainSingle();
-        context.DiagnosticReports.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.Encounters.ShouldHaveSingleItem();
+        context.DiagnosticReports.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -148,14 +148,14 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetSeniorMedicareWellnessVisit(age: 70, gender: "female");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.Patient!.ResourceType.Should().Be("Patient");
-        context.Encounters.Should().ContainSingle();
-        context.Observations.Should().NotBeEmpty();
-        context.DiagnosticReports.Should().HaveCountGreaterThanOrEqualTo(2);
-        context.Immunizations.Should().HaveCountGreaterThanOrEqualTo(3);
-        context.Procedures.Should().HaveCountGreaterThanOrEqualTo(3);
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.Patient!.ResourceType.ShouldBe("Patient");
+        context.Encounters.ShouldHaveSingleItem();
+        context.Observations.ShouldNotBeEmpty();
+        context.DiagnosticReports.Count.ShouldBeGreaterThanOrEqualTo(2);
+        context.Immunizations.Count.ShouldBeGreaterThanOrEqualTo(3);
+        context.Procedures.Count.ShouldBeGreaterThanOrEqualTo(3);
     }
 
     [Fact]
@@ -165,9 +165,9 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetSeniorMedicareWellnessVisit(age: 80, gender: "male");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Observations.Should().NotBeEmpty();
-        context.Immunizations.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context.Observations.ShouldNotBeEmpty();
+        context.Immunizations.ShouldNotBeEmpty();
     }
 
     [Theory]
@@ -180,12 +180,12 @@ public sealed class ComprehensivePreventiveCareScenarioTests
         var context = _schemaProvider.GetSeniorMedicareWellnessVisit(age, "female");
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.Encounters.Should().ContainSingle();
-        context.Observations.Should().NotBeEmpty();
-        context.Immunizations.Should().NotBeEmpty();
-        context.Procedures.Should().NotBeEmpty();
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.Encounters.ShouldHaveSingleItem();
+        context.Observations.ShouldNotBeEmpty();
+        context.Immunizations.ShouldNotBeEmpty();
+        context.Procedures.ShouldNotBeEmpty();
     }
 
     [Fact]

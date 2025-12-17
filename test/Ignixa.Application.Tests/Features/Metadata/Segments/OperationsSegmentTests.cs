@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
@@ -78,28 +78,28 @@ public class OperationsSegmentTests
 
         // Assert
         var rest = statement.Rest;
-        rest.Should().NotBeNull();
-        rest.Should().HaveCountGreaterThan(0);
+        rest.ShouldNotBeNull();
+        rest.Count.ShouldBeGreaterThan(0);
 
         var restComponent = rest![0];
         var resources = restComponent.Resource;
-        resources.Should().NotBeNull();
+        resources.ShouldNotBeNull();
 
         var structureMapResource = resources!.FirstOrDefault(r => r.Type == "StructureMap");
-        structureMapResource.Should().NotBeNull("StructureMap resource should be in CapabilityStatement");
+        structureMapResource.ShouldNotBeNull("StructureMap resource should be in CapabilityStatement");
 
         // Check for operations on the resource component
         var operationsArray = structureMapResource!.MutableNode["operation"];
-        operationsArray.Should().NotBeNull("operation array should exist");
+        operationsArray.ShouldNotBeNull("operation array should exist");
 
         var operations = operationsArray!.AsArray();
-        operations.Should().HaveCountGreaterThan(0);
+        operations.Count.ShouldBeGreaterThan(0);
 
         var transformOp = operations.FirstOrDefault(op =>
             op?["name"]?.GetValue<string>() == "transform");
-        transformOp.Should().NotBeNull("transform operation should be listed");
+        transformOp.ShouldNotBeNull("transform operation should be listed");
         transformOp!["definition"]?.GetValue<string>()
-            .Should().Be("http://hl7.org/fhir/OperationDefinition/StructureMap-transform");
+            .ShouldBe("http://hl7.org/fhir/OperationDefinition/StructureMap-transform");
     }
 
     [Fact]
@@ -112,8 +112,8 @@ public class OperationsSegmentTests
         var resourceOps = feature.ResourceOperations;
 
         // Assert
-        resourceOps.Should().ContainKey("StructureMap");
-        resourceOps["StructureMap"].Should().Contain("transform");
+        resourceOps.ShouldContainKey("StructureMap");
+        resourceOps["StructureMap"].ShouldContain("transform");
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class OperationsSegmentTests
         var packageId = feature.PackageId;
 
         // Assert
-        packageId.Should().Be("hl7.fhir.core");
+        packageId.ShouldBe("hl7.fhir.core");
     }
 
     [Fact]
@@ -139,6 +139,6 @@ public class OperationsSegmentTests
         var versions = feature.SupportedFhirVersions;
 
         // Assert
-        versions.Should().BeNull("null means supports all FHIR versions");
+        versions.ShouldBeNull("null means supports all FHIR versions");
     }
 }

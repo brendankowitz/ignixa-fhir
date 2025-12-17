@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -102,7 +102,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=le0.375");
 
         // Assert
-        results.Should().HaveCount(3, "le0.375 should match values 0.125, 0.25, and 0.375");
+        results.Length.ShouldBe(3, "le0.375 should match values 0.125, 0.25, and 0.375");
 
         var expectedIds = new[]
         {
@@ -111,7 +111,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             _fixture.RiskAssessments[2].Id  // 0.375
         };
 
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match RiskAssessments with probability 0.125, 0.25, and 0.375");
     }
 
@@ -144,7 +144,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
 #pragma warning restore CA1303 // Do not pass literals as localized parameters
 
         // Assert
-        results.Should().HaveCount(2, "lt0.3 should match values 0.125 and 0.25");
+        results.Length.ShouldBe(2, "lt0.3 should match values 0.125 and 0.25");
 
         var expectedIds = new[]
         {
@@ -152,7 +152,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             _fixture.RiskAssessments[1].Id  // 0.25
         };
 
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match RiskAssessments with probability 0.125 and 0.25");
     }
 
@@ -174,7 +174,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=ge0.5");
 
         // Assert
-        results.Should().HaveCount(3, "ge0.5 should match values 0.5, 0.625, and 0.75");
+        results.Length.ShouldBe(3, "ge0.5 should match values 0.5, 0.625, and 0.75");
 
         var expectedIds = new[]
         {
@@ -183,7 +183,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             _fixture.RiskAssessments[5].Id  // 0.75
         };
 
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match RiskAssessments with probability 0.5, 0.625, and 0.75");
     }
 
@@ -216,7 +216,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
 #pragma warning restore CA1303 // Do not pass literals as localized parameters
 
         // Assert
-        results.Should().HaveCount(4, "gt0.3 should match values 0.375, 0.5, 0.625, and 0.75");
+        results.Length.ShouldBe(4, "gt0.3 should match values 0.375, 0.5, 0.625, and 0.75");
 
         var expectedIds = new[]
         {
@@ -226,7 +226,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             _fixture.RiskAssessments[5].Id  // 0.75
         };
 
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match RiskAssessments with probability 0.375, 0.5, 0.625, and 0.75");
     }
 
@@ -250,7 +250,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             $"_tag={_fixture.Tag}&probability=gt0.2&probability=lt0.6");
 
         // Assert
-        results.Should().HaveCount(3, "range query (0.2 < x < 0.6) should match 0.25, 0.375, and 0.5");
+        results.Length.ShouldBe(3, "range query (0.2 < x < 0.6) should match 0.25, 0.375, and 0.5");
 
         var expectedIds = new[]
         {
@@ -259,7 +259,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             _fixture.RiskAssessments[3].Id  // 0.5
         };
 
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match RiskAssessments with probability 0.25, 0.375, and 0.5");
     }
 
@@ -277,7 +277,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=le0.15");
 
         // Assert
-        results.Should().ContainSingle(r => r.Id == _fixture.RiskAssessments[0].Id,
+        results.ShouldContain(r => r.Id == _fixture.RiskAssessments[0].Id,
             "le0.15 should match only the RiskAssessment with value 0.125");
     }
 
@@ -295,7 +295,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=ge0.7");
 
         // Assert
-        results.Should().ContainSingle(r => r.Id == _fixture.RiskAssessments[5].Id,
+        results.ShouldContain(r => r.Id == _fixture.RiskAssessments[5].Id,
             "ge0.7 should match only the RiskAssessment with value 0.75");
     }
 
@@ -313,7 +313,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=gt0.9");
 
         // Assert
-        results.Should().BeEmpty("gt0.9 should return no results when 0.75 is the maximum value");
+        results.ShouldBeEmpty("gt0.9 should return no results when 0.75 is the maximum value");
     }
 
     /// <summary>
@@ -330,7 +330,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=gt0.8");
 
         // Assert
-        results.Should().BeEmpty("gt0.8 should return no results when 0.75 is the maximum value");
+        results.ShouldBeEmpty("gt0.8 should return no results when 0.75 is the maximum value");
     }
 
     /// <summary>
@@ -347,7 +347,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
         var results = await Harness.SearchAsync("RiskAssessment", $"_tag={_fixture.Tag}&probability=lt0.1");
 
         // Assert
-        results.Should().BeEmpty("lt0.1 should return no results when 0.125 is the minimum value");
+        results.ShouldBeEmpty("lt0.1 should return no results when 0.125 is the minimum value");
     }
 
     /// <summary>
@@ -365,7 +365,7 @@ public class NumberSearchTests : CapabilityDrivenTestBase, IClassFixture<NumberS
             $"_tag={_fixture.Tag}&probability=ge0.45&probability=le0.55");
 
         // Assert
-        results.Should().ContainSingle(r => r.Id == _fixture.RiskAssessments[3].Id,
+        results.ShouldContain(r => r.Id == _fixture.RiskAssessments[3].Id,
             "range [0.45, 0.55] should match only the RiskAssessment with value 0.5");
     }
 }

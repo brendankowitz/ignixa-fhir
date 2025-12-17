@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -80,24 +80,24 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|12345&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with MR type AND value 12345 should be returned");
-        results[0].Id.Should().Be(patientWithMR.Id);
+        results.Length.ShouldBe(1, "only the patient with MR type AND value 12345 should be returned");
+        results[0].Id.ShouldBe(patientWithMR.Id);
 
         // Verify the identifier structure
         var identifiers = results[0].MutableNode["identifier"]?.AsArray();
-        identifiers.Should().NotBeNull();
+        identifiers.ShouldNotBeNull();
         var mrIdentifier = identifiers!.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == "12345");
-        mrIdentifier.Should().NotBeNull();
+        mrIdentifier.ShouldNotBeNull();
 
         var typeCodings = mrIdentifier?["type"]?["coding"]?.AsArray();
-        typeCodings.Should().NotBeNull();
+        typeCodings.ShouldNotBeNull();
 
         var matchingCoding = typeCodings!.FirstOrDefault(c =>
             c != null &&
             c["system"]?.GetValue<string>() == IdentifierTypeSystem &&
             c["code"]?.GetValue<string>() == "MR");
-        matchingCoding.Should().NotBeNull("should have a coding with system and code MR");
+        matchingCoding.ShouldNotBeNull("should have a coding with system and code MR");
     }
 
     /// <summary>
@@ -140,10 +140,10 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|SS|12345&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with SSN type should be returned");
-        results[0].Id.Should().Be(patientWithSSN.Id);
-        results.Should().NotContain(r => r.Id == patientWithMR.Id, "MR type should not match SSN search");
-        results.Should().NotContain(r => r.Id == patientWithDL.Id, "DL type should not match SSN search");
+        results.Length.ShouldBe(1, "only the patient with SSN type should be returned");
+        results[0].Id.ShouldBe(patientWithSSN.Id);
+        results.ShouldNotContain(r => r.Id == patientWithMR.Id, "MR type should not match SSN search");
+        results.ShouldNotContain(r => r.Id == patientWithDL.Id, "DL type should not match SSN search");
     }
 
     /// <summary>
@@ -186,10 +186,10 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|67890&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with MR value 67890 should be returned");
-        results[0].Id.Should().Be(patientWithMR67890.Id);
-        results.Should().NotContain(r => r.Id == patientWithMR12345.Id, "different value should not match");
-        results.Should().NotContain(r => r.Id == patientWithMRABCDE.Id, "different value should not match");
+        results.Length.ShouldBe(1, "only the patient with MR value 67890 should be returned");
+        results[0].Id.ShouldBe(patientWithMR67890.Id);
+        results.ShouldNotContain(r => r.Id == patientWithMR12345.Id, "different value should not match");
+        results.ShouldNotContain(r => r.Id == patientWithMRABCDE.Id, "different value should not match");
     }
 
     #endregion
@@ -232,31 +232,31 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|MR-12345&_tag={tag}");
 
         // Assert 1
-        mrResults.Should().HaveCount(1, "patient with MR-12345 should be found");
-        mrResults[0].Id.Should().Be(patientMultiple.Id);
+        mrResults.Length.ShouldBe(1, "patient with MR-12345 should be found");
+        mrResults[0].Id.ShouldBe(patientMultiple.Id);
 
         // Act 2 - Search for SSN
         var ssnResults = await Harness.SearchAsync("Patient",
             $"identifier:of-type={IdentifierTypeSystem}|SS|123-45-6789&_tag={tag}");
 
         // Assert 2
-        ssnResults.Should().HaveCount(1, "patient with SSN 123-45-6789 should be found");
-        ssnResults[0].Id.Should().Be(patientMultiple.Id);
+        ssnResults.Length.ShouldBe(1, "patient with SSN 123-45-6789 should be found");
+        ssnResults[0].Id.ShouldBe(patientMultiple.Id);
 
         // Act 3 - Search for DL
         var dlResults = await Harness.SearchAsync("Patient",
             $"identifier:of-type={IdentifierTypeSystem}|DL|DL-ABC123&_tag={tag}");
 
         // Assert 3
-        dlResults.Should().HaveCount(1, "patient with DL DL-ABC123 should be found");
-        dlResults[0].Id.Should().Be(patientMultiple.Id);
+        dlResults.Length.ShouldBe(1, "patient with DL DL-ABC123 should be found");
+        dlResults[0].Id.ShouldBe(patientMultiple.Id);
 
         // Act 4 - Search for wrong value with correct type
         var wrongValueResults = await Harness.SearchAsync("Patient",
             $"identifier:of-type={IdentifierTypeSystem}|MR|WRONG-VALUE&_tag={tag}");
 
         // Assert 4
-        wrongValueResults.Should().BeEmpty("wrong value should not match");
+        wrongValueResults.ShouldBeEmpty("wrong value should not match");
     }
 
     #endregion
@@ -311,11 +311,11 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|12345,{IdentifierTypeSystem}|MR|67890&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2, "both patients with MR 12345 and 67890 should be returned");
-        results.Should().Contain(r => r.Id == patient1.Id, "patient with MR 12345 should be included");
-        results.Should().Contain(r => r.Id == patient2.Id, "patient with MR 67890 should be included");
-        results.Should().NotContain(r => r.Id == patient3.Id, "patient with MR ABCDE should not be included");
-        results.Should().NotContain(r => r.Id == patient4.Id, "patient with SSN 12345 should not be included");
+        results.Length.ShouldBe(2, "both patients with MR 12345 and 67890 should be returned");
+        results.ShouldContain(r => r.Id == patient1.Id, "patient with MR 12345 should be included");
+        results.ShouldContain(r => r.Id == patient2.Id, "patient with MR 67890 should be included");
+        results.ShouldNotContain(r => r.Id == patient3.Id, "patient with MR ABCDE should not be included");
+        results.ShouldNotContain(r => r.Id == patient4.Id, "patient with SSN 12345 should not be included");
     }
 
     /// <summary>
@@ -359,10 +359,10 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|12345,{IdentifierTypeSystem}|SS|67890&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2, "both MR and SSN patients should be returned");
-        results.Should().Contain(r => r.Id == patientMR.Id, "patient with MR 12345 should be included");
-        results.Should().Contain(r => r.Id == patientSSN.Id, "patient with SSN 67890 should be included");
-        results.Should().NotContain(r => r.Id == patientDL.Id, "patient with DL should not be included");
+        results.Length.ShouldBe(2, "both MR and SSN patients should be returned");
+        results.ShouldContain(r => r.Id == patientMR.Id, "patient with MR 12345 should be included");
+        results.ShouldContain(r => r.Id == patientSSN.Id, "patient with SSN 67890 should be included");
+        results.ShouldNotContain(r => r.Id == patientDL.Id, "patient with DL should not be included");
     }
 
     #endregion
@@ -410,10 +410,10 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type=|MR|12345&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2, "both MR identifiers should match regardless of system");
-        results.Should().Contain(r => r.Id == patientStandardSystem.Id);
-        results.Should().Contain(r => r.Id == patientCustomSystem.Id);
-        results.Should().NotContain(r => r.Id == patientDifferentCode.Id, "different type code should not match");
+        results.Length.ShouldBe(2, "both MR identifiers should match regardless of system");
+        results.ShouldContain(r => r.Id == patientStandardSystem.Id);
+        results.ShouldContain(r => r.Id == patientCustomSystem.Id);
+        results.ShouldNotContain(r => r.Id == patientDifferentCode.Id, "different type code should not match");
     }
 
     #endregion
@@ -462,22 +462,22 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|{typeCode}|{identifierValue}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, $"only patient with {typeCode} type should be returned");
-        results[0].Id.Should().Be(patient.Id);
+        results.Length.ShouldBe(1, $"only patient with {typeCode} type should be returned");
+        results[0].Id.ShouldBe(patient.Id);
 
         // Verify identifier structure
         var identifiers = results[0].MutableNode["identifier"]?.AsArray();
-        identifiers.Should().NotBeNull();
+        identifiers.ShouldNotBeNull();
         var matchedIdentifier = identifiers!.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == identifierValue);
-        matchedIdentifier.Should().NotBeNull();
+        matchedIdentifier.ShouldNotBeNull();
 
         var typeCodings = matchedIdentifier?["type"]?["coding"]?.AsArray();
-        typeCodings.Should().NotBeNull();
+        typeCodings.ShouldNotBeNull();
 
         var matchingCoding = typeCodings!.FirstOrDefault(c =>
             c != null && c["code"]?.GetValue<string>() == typeCode);
-        matchingCoding.Should().NotBeNull($"should have a coding with code {typeCode}");
+        matchingCoding.ShouldNotBeNull($"should have a coding with code {typeCode}");
     }
 
     #endregion
@@ -526,9 +526,9 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|12345&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only patient with typed identifier should be returned");
-        results[0].Id.Should().Be(patientWithType.Id);
-        results.Should().NotContain(r => r.Id == patientWithoutType.Id,
+        results.Length.ShouldBe(1, "only patient with typed identifier should be returned");
+        results[0].Id.ShouldBe(patientWithType.Id);
+        results.ShouldNotContain(r => r.Id == patientWithoutType.Id,
             "patient with plain identifier (no type) should not match");
     }
 
@@ -566,16 +566,16 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
             $"identifier:of-type={IdentifierTypeSystem}|MR|abc123&_tag={tag}");
 
         // Assert - Only lowercase should match
-        lowerResults.Should().HaveCount(1, "search should be case-sensitive");
-        lowerResults[0].Id.Should().Be(patientLower.Id);
+        lowerResults.Length.ShouldBe(1, "search should be case-sensitive");
+        lowerResults[0].Id.ShouldBe(patientLower.Id);
 
         // Act - Search for uppercase
         var upperResults = await Harness.SearchAsync("Patient",
             $"identifier:of-type={IdentifierTypeSystem}|MR|ABC123&_tag={tag}");
 
         // Assert - Only uppercase should match
-        upperResults.Should().HaveCount(1, "search should be case-sensitive");
-        upperResults[0].Id.Should().Be(patientUpper.Id);
+        upperResults.Length.ShouldBe(1, "search should be case-sensitive");
+        upperResults[0].Id.ShouldBe(patientUpper.Id);
     }
 
     #endregion

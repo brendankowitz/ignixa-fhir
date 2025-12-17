@@ -6,7 +6,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
@@ -46,8 +46,8 @@ public class StreamingBundleSerializerPaginationTests
 
         // Assert
         var result = ParseBundleResponse(outputStream);
-        result.EntryCount.Should().Be(PageSize);
-        result.HasNextLink.Should().BeFalse();
+        result.EntryCount.ShouldBe(PageSize);
+        result.HasNextLink.ShouldBeFalse();
     }
 
     [Fact]
@@ -74,13 +74,13 @@ public class StreamingBundleSerializerPaginationTests
         var result = ParseBundleResponse(outputStream);
 
         // Should render exactly pageSize entries (not the +1)
-        result.EntryCount.Should().Be(PageSize, because: "the +1 indicator should not be rendered");
+        result.EntryCount.ShouldBe(PageSize);
 
         // Should have a next link since there are more results
-        result.HasNextLink.Should().BeTrue(because: "the +1 indicator should trigger hasMore flag");
+        result.HasNextLink.ShouldBeTrue();
 
         // The +1 entry (Patient-11) should not be in the response
-        result.ResourceIds.Should().NotContain("patient-11");
+        result.ResourceIds.ShouldNotContain("patient-11");
     }
 
     [Fact]
@@ -116,22 +116,22 @@ public class StreamingBundleSerializerPaginationTests
 
         // Should render pageSize Match entries (not the +1 indicator)
         var matchCount = result.Entries.Count(e => e.SearchMode == "match");
-        matchCount.Should().Be(PageSize);
+        matchCount.ShouldBe(PageSize);
 
         // Should render ALL Include entries (5 organizations)
         var includeCount = result.Entries.Count(e => e.SearchMode == "include");
-        includeCount.Should().Be(5, because: "all Include entries should be rendered regardless of pageSize");
+        includeCount.ShouldBe(5);
 
         // Total entries: pageSize Match + 5 Includes
-        result.EntryCount.Should().Be(PageSize + 5);
+        result.EntryCount.ShouldBe(PageSize + 5);
 
         // Should have next link (hasMore)
-        result.HasNextLink.Should().BeTrue();
+        result.HasNextLink.ShouldBeTrue();
 
         // All 5 organizations should be present
         for (int i = 0; i < 5; i++)
         {
-            result.ResourceIds.Should().Contain($"organization-{100 + i}");
+            result.ResourceIds.ShouldContain($"organization-{100 + i}");
         }
     }
 
@@ -172,17 +172,20 @@ public class StreamingBundleSerializerPaginationTests
         var includeCount = result.Entries.Count(e => e.SearchMode == "include");
 
         // pageSize Match entries
-        matchCount.Should().Be(PageSize);
+        matchCount.ShouldBe(PageSize);
 
         // 3 Include + 2 RevInclude = 5 total include entries
-        includeCount.Should().Be(5);
+        includeCount.ShouldBe(5);
 
         // Total: 10 Match + 5 Include
-        result.EntryCount.Should().Be(PageSize + 5);
+        result.EntryCount.ShouldBe(PageSize + 5);
 
         // Verify both Organizations and Observations are present
         var expectedIds = OrganizationIds.Concat(ObservationIds).ToArray();
-        result.ResourceIds.Should().Contain(expectedIds);
+        foreach (var id in expectedIds)
+        {
+            result.ResourceIds.ShouldContain(id);
+        }
     }
 
     [Fact]
@@ -207,14 +210,14 @@ public class StreamingBundleSerializerPaginationTests
         // Assert
         var result = ParseBundleResponse(outputStream);
 
-        result.EntryCount.Should().Be(PageSize);
+        result.EntryCount.ShouldBe(PageSize);
 
         // All entries should be matches
         var allMatches = result.Entries.All(e => e.SearchMode == "match");
-        allMatches.Should().BeTrue();
+        allMatches.ShouldBeTrue();
 
         // Should have next link
-        result.HasNextLink.Should().BeTrue();
+        result.HasNextLink.ShouldBeTrue();
     }
 
     [Fact]
@@ -245,9 +248,9 @@ public class StreamingBundleSerializerPaginationTests
         var matchCount = result.Entries.Count(e => e.SearchMode == "match");
         var includeCount = result.Entries.Count(e => e.SearchMode == "include");
 
-        matchCount.Should().Be(PageSize);
-        includeCount.Should().Be(50, because: "all 50 Include entries should be rendered");
-        result.EntryCount.Should().Be(PageSize + 50);
+        matchCount.ShouldBe(PageSize);
+        includeCount.ShouldBe(50);
+        result.EntryCount.ShouldBe(PageSize + 50);
     }
 
     [Fact]
@@ -279,9 +282,9 @@ public class StreamingBundleSerializerPaginationTests
         var matchCount = result.Entries.Count(e => e.SearchMode == "match");
         var includeCount = result.Entries.Count(e => e.SearchMode == "include");
 
-        matchCount.Should().Be(smallPageSize);
-        includeCount.Should().Be(10);
-        result.EntryCount.Should().Be(smallPageSize + 10);
+        matchCount.ShouldBe(smallPageSize);
+        includeCount.ShouldBe(10);
+        result.EntryCount.ShouldBe(smallPageSize + 10);
     }
 
     // Helper methods

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
@@ -87,9 +87,9 @@ public class IncludeProcessorTests : TestBase
         var result = await _processor.ProcessIncludesAsync(mainResults, new[] { includeExpression }, CancellationToken.None);
 
         // Assert
-        result.Should().ContainSingle();
-        result.First().ResourceType.Should().Be("Organization");
-        result.First().ResourceId.Should().Be("org-1");
+        result.ShouldHaveSingleItem();
+        result.First().ResourceType.ShouldBe("Organization");
+        result.First().ResourceId.ShouldBe("org-1");
     }
 
     [Fact]
@@ -153,9 +153,9 @@ public class IncludeProcessorTests : TestBase
         var result = await _processor.ProcessIncludesAsync(mainResults, new[] { includeExpression }, CancellationToken.None);
 
         // Assert
-        result.Should().HaveCount(2);
-        result.Should().Contain(r => r.ResourceType == "Organization" && r.ResourceId == "org-1");
-        result.Should().Contain(r => r.ResourceType == "Practitioner" && r.ResourceId == "pract-1");
+        result.Count.ShouldBe(2);
+        result.ShouldContain(r => r.ResourceType == "Organization" && r.ResourceId == "org-1");
+        result.ShouldContain(r => r.ResourceType == "Practitioner" && r.ResourceId == "pract-1");
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class IncludeProcessorTests : TestBase
         var result = await _processor.ProcessIncludesAsync(mainResults, new[] { includeExpression }, CancellationToken.None);
 
         // Assert: Should only return Organization once (deduplication)
-        result.Should().ContainSingle();
-        result.First().ResourceId.Should().Be("org-1");
+        result.ShouldHaveSingleItem();
+        result.First().ResourceId.ShouldBe("org-1");
     }
 }

@@ -591,10 +591,10 @@ var examplePatient = CreatePatient()
    var results = await Harness.SearchAsync("Patient", $"_tag={tag}&name=Smith");
    ```
 
-5. **Use FluentAssertions**
+5. **Use Shouldly**
    ```csharp
-   results.Should().HaveCount(2);
-   results.Should().AllSatisfy(r => r.ResourceType.Should().Be("Patient"));
+   results.Count.ShouldBe(2);
+   results.ShouldAllBe(r => r.ResourceType == "Patient");
    ```
 
 ### ❌ DON'T: Anti-patterns

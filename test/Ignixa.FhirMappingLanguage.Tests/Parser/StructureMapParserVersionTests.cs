@@ -5,7 +5,7 @@
  * Verifies parser can handle both FHIR R4 and R5 StructureMap formats.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
@@ -77,21 +77,21 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert
-        ast.Should().NotBeNull();
-        ast.Groups.Should().HaveCount(1);
-        ast.Groups[0].Rules.Should().HaveCount(1);
+        ast.ShouldNotBeNull();
+        ast.Groups.Count.ShouldBe(1);
+        ast.Groups[0].Rules.Count.ShouldBe(1);
 
         var dependent = ast.Groups[0].Rules[0].Dependent;
-        dependent.Should().NotBeNull();
-        dependent.Should().BeOfType<GroupInvocationExpression>();
+        dependent.ShouldNotBeNull();
+        dependent.ShouldBeOfType<GroupInvocationExpression>();
 
         var invocation = (GroupInvocationExpression)dependent!;
-        invocation.GroupName.Should().Be("HelperGroup");
-        invocation.Arguments.Should().HaveCount(2);
-        invocation.Arguments[0].Should().BeOfType<IdentifierExpression>();
-        ((IdentifierExpression)invocation.Arguments[0]).Name.Should().Be("var1");
-        invocation.Arguments[1].Should().BeOfType<IdentifierExpression>();
-        ((IdentifierExpression)invocation.Arguments[1]).Name.Should().Be("var2");
+        invocation.GroupName.ShouldBe("HelperGroup");
+        invocation.Arguments.Count.ShouldBe(2);
+        invocation.Arguments[0].ShouldBeOfType<IdentifierExpression>();
+        ((IdentifierExpression)invocation.Arguments[0]).Name.ShouldBe("var1");
+        invocation.Arguments[1].ShouldBeOfType<IdentifierExpression>();
+        ((IdentifierExpression)invocation.Arguments[1]).Name.ShouldBe("var2");
     }
 
     [Fact]
@@ -144,13 +144,13 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert
-        ast.Should().NotBeNull();
-        ast.Groups[0].Rules[0].Sources.Should().HaveCount(1);
+        ast.ShouldNotBeNull();
+        ast.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
 
         var source = ast.Groups[0].Rules[0].Sources[0];
-        source.Default.Should().NotBeNull();
-        source.Default.Should().BeOfType<LiteralExpression>();
-        ((LiteralExpression)source.Default!).Value.Should().Be("DefaultName");
+        source.Default.ShouldNotBeNull();
+        source.Default.ShouldBeOfType<LiteralExpression>();
+        ((LiteralExpression)source.Default!).Value.ShouldBe("DefaultName");
     }
 
     [Fact]
@@ -202,9 +202,9 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert
-        ast.Groups[0].Rules[0].Sources[0].Default.Should().NotBeNull();
-        ast.Groups[0].Rules[0].Sources[0].Default.Should().BeOfType<LiteralExpression>();
-        ((LiteralExpression)ast.Groups[0].Rules[0].Sources[0].Default!).Value.Should().Be(42);
+        ast.Groups[0].Rules[0].Sources[0].Default.ShouldNotBeNull();
+        ast.Groups[0].Rules[0].Sources[0].Default.ShouldBeOfType<LiteralExpression>();
+        ((LiteralExpression)ast.Groups[0].Rules[0].Sources[0].Default!).Value.ShouldBe(42);
     }
 
     #endregion
@@ -267,21 +267,21 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert
-        ast.Should().NotBeNull();
-        ast.Groups.Should().HaveCount(1);
-        ast.Groups[0].Rules.Should().HaveCount(1);
+        ast.ShouldNotBeNull();
+        ast.Groups.Count.ShouldBe(1);
+        ast.Groups[0].Rules.Count.ShouldBe(1);
 
         var dependent = ast.Groups[0].Rules[0].Dependent;
-        dependent.Should().NotBeNull();
-        dependent.Should().BeOfType<GroupInvocationExpression>();
+        dependent.ShouldNotBeNull();
+        dependent.ShouldBeOfType<GroupInvocationExpression>();
 
         var invocation = (GroupInvocationExpression)dependent!;
-        invocation.GroupName.Should().Be("HelperGroup");
-        invocation.Arguments.Should().HaveCount(2);
-        invocation.Arguments[0].Should().BeOfType<IdentifierExpression>();
-        ((IdentifierExpression)invocation.Arguments[0]).Name.Should().Be("var1");
-        invocation.Arguments[1].Should().BeOfType<IdentifierExpression>();
-        ((IdentifierExpression)invocation.Arguments[1]).Name.Should().Be("var2");
+        invocation.GroupName.ShouldBe("HelperGroup");
+        invocation.Arguments.Count.ShouldBe(2);
+        invocation.Arguments[0].ShouldBeOfType<IdentifierExpression>();
+        ((IdentifierExpression)invocation.Arguments[0]).Name.ShouldBe("var1");
+        invocation.Arguments[1].ShouldBeOfType<IdentifierExpression>();
+        ((IdentifierExpression)invocation.Arguments[1]).Name.ShouldBe("var2");
     }
 
     [Fact]
@@ -334,13 +334,13 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert
-        ast.Should().NotBeNull();
-        ast.Groups[0].Rules[0].Sources.Should().HaveCount(1);
+        ast.ShouldNotBeNull();
+        ast.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
 
         var source = ast.Groups[0].Rules[0].Sources[0];
-        source.Default.Should().NotBeNull();
-        source.Default.Should().BeOfType<LiteralExpression>();
-        ((LiteralExpression)source.Default!).Value.Should().Be("'DefaultName'");
+        source.Default.ShouldNotBeNull();
+        source.Default.ShouldBeOfType<LiteralExpression>();
+        ((LiteralExpression)source.Default!).Value.ShouldBe("'DefaultName'");
     }
 
     #endregion
@@ -397,11 +397,11 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert - Should parse successfully by detecting R4 format
-        ast.Should().NotBeNull();
+        ast.ShouldNotBeNull();
         var dependent = ast.Groups[0].Rules[0].Dependent;
-        dependent.Should().NotBeNull();
-        dependent.Should().BeOfType<GroupInvocationExpression>();
-        ((GroupInvocationExpression)dependent!).Arguments.Should().HaveCount(1);
+        dependent.ShouldNotBeNull();
+        dependent.ShouldBeOfType<GroupInvocationExpression>();
+        ((GroupInvocationExpression)dependent!).Arguments.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -457,11 +457,11 @@ public class StructureMapParserVersionTests
         var ast = _parser.Parse(structureMap);
 
         // Assert - Should parse successfully by detecting R5 format
-        ast.Should().NotBeNull();
+        ast.ShouldNotBeNull();
         var dependent = ast.Groups[0].Rules[0].Dependent;
-        dependent.Should().NotBeNull();
-        dependent.Should().BeOfType<GroupInvocationExpression>();
-        ((GroupInvocationExpression)dependent!).Arguments.Should().HaveCount(1);
+        dependent.ShouldNotBeNull();
+        dependent.ShouldBeOfType<GroupInvocationExpression>();
+        ((GroupInvocationExpression)dependent!).Arguments.Count.ShouldBe(1);
     }
 
     #endregion
@@ -498,8 +498,8 @@ public class StructureMapParserVersionTests
         var ast = parser.Parse(structureMap);
 
         // Assert
-        ast.Url.Should().Be("http://example.org/test");
-        structureMap.FhirVersion.Should().Be(FhirVersion.R4); // Version was applied
+        ast.Url.ShouldBe("http://example.org/test");
+        structureMap.FhirVersion.ShouldBe(FhirVersion.R4); // Version was applied
     }
 
     [Fact]
@@ -532,7 +532,7 @@ public class StructureMapParserVersionTests
         var ast = parser.Parse(structureMap);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirVersion.R5); // Original version preserved
+        structureMap.FhirVersion.ShouldBe(FhirVersion.R5); // Original version preserved
     }
 
     [Fact]
@@ -565,8 +565,8 @@ public class StructureMapParserVersionTests
         var ast = parser.Parse(structureMap);
 
         // Assert
-        ast.Url.Should().Be("http://example.org/test");
-        structureMap.FhirVersion.Should().BeNull(); // Version remains unset
+        ast.Url.ShouldBe("http://example.org/test");
+        structureMap.FhirVersion.ShouldBeNull(); // Version remains unset
     }
 
     #endregion
@@ -626,8 +626,8 @@ public class StructureMapParserVersionTests
 
         // Assert
         var dependent = ast.Groups[0].Rules[0].Dependent;
-        dependent.Should().NotBeNull();
-        ((GroupInvocationExpression)dependent!).Arguments.Should().BeEmpty();
+        dependent.ShouldNotBeNull();
+        ((GroupInvocationExpression)dependent!).Arguments.ShouldBeEmpty();
     }
 
     [Fact]
@@ -686,12 +686,12 @@ public class StructureMapParserVersionTests
 
         // Assert
         var dependent = ast.Groups[0].Rules[0].Dependent;
-        dependent.Should().NotBeNull();
-        dependent.Should().BeOfType<RuleSetExpression>();
+        dependent.ShouldNotBeNull();
+        dependent.ShouldBeOfType<RuleSetExpression>();
 
         var ruleSet = (RuleSetExpression)dependent!;
-        ruleSet.Rules.Should().HaveCount(1);
-        ruleSet.Rules[0].Name.Should().Be("nestedRule1");
+        ruleSet.Rules.Count.ShouldBe(1);
+        ruleSet.Rules[0].Name.ShouldBe("nestedRule1");
     }
 
     #endregion

@@ -5,7 +5,7 @@
 
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Ignixa.Application.Features.Bundle;
@@ -64,18 +64,18 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        context.BundleType.Should().Be("transaction");
-        entries.Should().HaveCount(1);
+        context.BundleType.ShouldBe("transaction");
+        entries.Count.ShouldBe(1);
 
         var entry0 = entries[0];
-        entry0.Index.Should().Be(0);
-        entry0.ResourceType.Should().Be("Patient");
-        entry0.ResourceId.Should().Be("example-123");
-        entry0.HttpVerb.Should().Be("PUT");
-        entry0.RequestUrl.Should().Be("Patient/example-123");
-        entry0.Resource.Should().NotBeNull();
-        entry0.Resource!.Name.Should().Be("Patient");
-        entry0.RawJson.Should().NotBeNullOrEmpty();
+        entry0.Index.ShouldBe(0);
+        entry0.ResourceType.ShouldBe("Patient");
+        entry0.ResourceId.ShouldBe("example-123");
+        entry0.HttpVerb.ShouldBe("PUT");
+        entry0.RequestUrl.ShouldBe("Patient/example-123");
+        entry0.Resource.ShouldNotBeNull();
+        entry0.Resource!.Name.ShouldBe("Patient");
+        entry0.RawJson.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -133,28 +133,28 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(3);
+        entries.Count.ShouldBe(3);
 
         // Entry 0
-        entries[0].Index.Should().Be(0);
-        entries[0].ResourceType.Should().Be("Patient");
-        entries[0].ResourceId.Should().Be("patient-1");
-        entries[0].HttpVerb.Should().Be("PUT");
-        entries[0].RequestUrl.Should().Be("Patient/patient-1");
+        entries[0].Index.ShouldBe(0);
+        entries[0].ResourceType.ShouldBe("Patient");
+        entries[0].ResourceId.ShouldBe("patient-1");
+        entries[0].HttpVerb.ShouldBe("PUT");
+        entries[0].RequestUrl.ShouldBe("Patient/patient-1");
 
         // Entry 1
-        entries[1].Index.Should().Be(1);
-        entries[1].ResourceType.Should().Be("Observation");
-        entries[1].ResourceId.Should().BeNull(); // POST to collection
-        entries[1].HttpVerb.Should().Be("POST");
-        entries[1].RequestUrl.Should().Be("Observation");
+        entries[1].Index.ShouldBe(1);
+        entries[1].ResourceType.ShouldBe("Observation");
+        entries[1].ResourceId.ShouldBeNull(); // POST to collection
+        entries[1].HttpVerb.ShouldBe("POST");
+        entries[1].RequestUrl.ShouldBe("Observation");
 
         // Entry 2
-        entries[2].Index.Should().Be(2);
-        entries[2].ResourceType.Should().Be("Condition");
-        entries[2].ResourceId.Should().Be("condition-1");
-        entries[2].HttpVerb.Should().Be("PUT");
-        entries[2].RequestUrl.Should().Be("Condition/condition-1");
+        entries[2].Index.ShouldBe(2);
+        entries[2].ResourceType.ShouldBe("Condition");
+        entries[2].ResourceId.ShouldBe("condition-1");
+        entries[2].HttpVerb.ShouldBe("PUT");
+        entries[2].RequestUrl.ShouldBe("Condition/condition-1");
     }
 
     [Fact]
@@ -193,16 +193,16 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
+        entries.Count.ShouldBe(1);
         var rawJson = entries[0].RawJson;
 
-        rawJson.Should().NotBeNullOrEmpty();
+        rawJson.ShouldNotBeNullOrEmpty();
 
         // Verify RawJson is valid JSON
         var parsedJson = JsonDocument.Parse(rawJson!);
-        parsedJson.RootElement.GetProperty("resourceType").GetString().Should().Be("Patient");
-        parsedJson.RootElement.GetProperty("id").GetString().Should().Be("patient-1");
-        parsedJson.RootElement.GetProperty("active").GetBoolean().Should().BeTrue();
+        parsedJson.RootElement.GetProperty("resourceType").GetString().ShouldBe("Patient");
+        parsedJson.RootElement.GetProperty("id").GetString().ShouldBe("patient-1");
+        parsedJson.RootElement.GetProperty("active").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -240,8 +240,8 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
-        entries[0].FullUrl.Should().Be("urn:uuid:05efabf0-4be2-4561-91ce-51548425acb9");
+        entries.Count.ShouldBe(1);
+        entries[0].FullUrl.ShouldBe("urn:uuid:05efabf0-4be2-4561-91ce-51548425acb9");
     }
 
     [Fact]
@@ -267,7 +267,7 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().BeEmpty();
+        entries.ShouldBeEmpty();
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().BeEmpty();
+        entries.ShouldBeEmpty();
     }
 
     [Fact]
@@ -344,13 +344,13 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(100);
+        entries.Count.ShouldBe(100);
 
         // Verify indices are sequential
         for (int i = 0; i < 100; i++)
         {
-            entries[i].Index.Should().Be(i);
-            entries[i].ResourceId.Should().Be($"patient-{i}");
+            entries[i].Index.ShouldBe(i);
+            entries[i].ResourceId.ShouldBe($"patient-{i}");
         }
     }
 
@@ -410,21 +410,21 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
+        entries.Count.ShouldBe(1);
         var rawJson = entries[0].RawJson;
 
-        rawJson.Should().NotBeNullOrEmpty();
+        rawJson.ShouldNotBeNullOrEmpty();
 
         // Verify nested structures are preserved
         var parsedJson = JsonDocument.Parse(rawJson!);
         var nameArray = parsedJson.RootElement.GetProperty("name");
-        nameArray.GetArrayLength().Should().Be(1);
-        nameArray[0].GetProperty("family").GetString().Should().Be("Smith");
+        nameArray.GetArrayLength().ShouldBe(1);
+        nameArray[0].GetProperty("family").GetString().ShouldBe("Smith");
 
         var givenArray = nameArray[0].GetProperty("given");
-        givenArray.GetArrayLength().Should().Be(2);
-        givenArray[0].GetString().Should().Be("John");
-        givenArray[1].GetString().Should().Be("Jacob");
+        givenArray.GetArrayLength().ShouldBe(2);
+        givenArray[0].GetString().ShouldBe("John");
+        givenArray[1].GetString().ShouldBe("Jacob");
     }
 
     [Fact]
@@ -492,14 +492,14 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(3);
-        entries[0].ResourceType.Should().Be("Patient");
-        entries[1].ResourceType.Should().Be("Observation");
-        entries[2].ResourceType.Should().Be("Condition");
+        entries.Count.ShouldBe(3);
+        entries[0].ResourceType.ShouldBe("Patient");
+        entries[1].ResourceType.ShouldBe("Observation");
+        entries[2].ResourceType.ShouldBe("Condition");
 
         // Verify RawJson for Observation includes nested structures
         var obsJson = JsonDocument.Parse(entries[1].RawJson!);
-        obsJson.RootElement.GetProperty("valueQuantity").GetProperty("value").GetDouble().Should().Be(120);
+        obsJson.RootElement.GetProperty("valueQuantity").GetProperty("value").GetDouble().ShouldBe(120);
     }
 
     [Fact]
@@ -540,14 +540,14 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
+        entries.Count.ShouldBe(1);
         var rawJson = entries[0].RawJson;
 
-        rawJson.Should().NotBeNullOrEmpty();
+        rawJson.ShouldNotBeNullOrEmpty();
 
         // Verify special characters are preserved
         var parsedJson = JsonDocument.Parse(rawJson!);
-        parsedJson.RootElement.GetProperty("name")[0].GetProperty("family").GetString().Should().Be("O'Brien");
+        parsedJson.RootElement.GetProperty("name")[0].GetProperty("family").GetString().ShouldBe("O'Brien");
     }
 
     [Fact]
@@ -593,12 +593,12 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
+        entries.Count.ShouldBe(1);
         var rawJson = entries[0].RawJson;
 
         var parsedJson = JsonDocument.Parse(rawJson!);
-        parsedJson.RootElement.GetProperty("valueQuantity").GetProperty("value").GetDouble().Should().Be(98.6);
-        parsedJson.RootElement.GetProperty("component")[0].GetProperty("valueInteger").GetInt32().Should().Be(42);
+        parsedJson.RootElement.GetProperty("valueQuantity").GetProperty("value").GetDouble().ShouldBe(98.6);
+        parsedJson.RootElement.GetProperty("component")[0].GetProperty("valueInteger").GetInt32().ShouldBe(42);
     }
 
     [Fact]
@@ -638,13 +638,13 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
+        entries.Count.ShouldBe(1);
         var rawJson = entries[0].RawJson;
 
         var parsedJson = JsonDocument.Parse(rawJson!);
-        parsedJson.RootElement.GetProperty("active").GetBoolean().Should().BeTrue();
-        parsedJson.RootElement.GetProperty("deceased").GetBoolean().Should().BeFalse();
-        parsedJson.RootElement.GetProperty("maritalStatus").ValueKind.Should().Be(JsonValueKind.Null);
+        parsedJson.RootElement.GetProperty("active").GetBoolean().ShouldBeTrue();
+        parsedJson.RootElement.GetProperty("deceased").GetBoolean().ShouldBeFalse();
+        parsedJson.RootElement.GetProperty("maritalStatus").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
     [Fact]
@@ -726,7 +726,7 @@ public class StreamingBundleParserTests
             await _parser.ParseStreamAsync(null!, CancellationToken.None);
         });
 
-        exception.Should().NotBeNull();
+        exception.ShouldNotBeNull();
     }
 
     [Fact]
@@ -745,7 +745,7 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().BeEmpty();
+        entries.ShouldBeEmpty();
     }
 
     [Fact]
@@ -778,12 +778,12 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
-        entries[0].HttpVerb.Should().Be("DELETE");
-        entries[0].RequestUrl.Should().Be("Patient/patient-1");
-        entries[0].ResourceId.Should().Be("patient-1");
-        entries[0].Resource.Should().BeNull();
-        entries[0].RawJson.Should().BeNullOrEmpty();
+        entries.Count.ShouldBe(1);
+        entries[0].HttpVerb.ShouldBe("DELETE");
+        entries[0].RequestUrl.ShouldBe("Patient/patient-1");
+        entries[0].ResourceId.ShouldBe("patient-1");
+        entries[0].Resource.ShouldBeNull();
+        entries[0].RawJson.ShouldBeNullOrEmpty();
     }
 
     [Fact]
@@ -816,10 +816,10 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(1);
-        entries[0].HttpVerb.Should().Be("GET");
-        entries[0].RequestUrl.Should().Be("Patient/patient-1");
-        entries[0].Resource.Should().BeNull();
+        entries.Count.ShouldBe(1);
+        entries[0].HttpVerb.ShouldBe("GET");
+        entries[0].RequestUrl.ShouldBe("Patient/patient-1");
+        entries[0].Resource.ShouldBeNull();
     }
 
     [Fact]
@@ -878,26 +878,26 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(4);
+        entries.Count.ShouldBe(4);
 
         // PUT with resource
-        entries[0].HttpVerb.Should().Be("PUT");
-        entries[0].Resource.Should().NotBeNull();
-        entries[0].RawJson.Should().NotBeNullOrEmpty();
+        entries[0].HttpVerb.ShouldBe("PUT");
+        entries[0].Resource.ShouldNotBeNull();
+        entries[0].RawJson.ShouldNotBeNullOrEmpty();
 
         // DELETE without resource
-        entries[1].HttpVerb.Should().Be("DELETE");
-        entries[1].Resource.Should().BeNull();
-        entries[1].RawJson.Should().BeNullOrEmpty();
+        entries[1].HttpVerb.ShouldBe("DELETE");
+        entries[1].Resource.ShouldBeNull();
+        entries[1].RawJson.ShouldBeNullOrEmpty();
 
         // GET without resource
-        entries[2].HttpVerb.Should().Be("GET");
-        entries[2].Resource.Should().BeNull();
+        entries[2].HttpVerb.ShouldBe("GET");
+        entries[2].Resource.ShouldBeNull();
 
         // POST with resource
-        entries[3].HttpVerb.Should().Be("POST");
-        entries[3].Resource.Should().NotBeNull();
-        entries[3].RawJson.Should().NotBeNullOrEmpty();
+        entries[3].HttpVerb.ShouldBe("POST");
+        entries[3].Resource.ShouldNotBeNull();
+        entries[3].RawJson.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -936,15 +936,15 @@ public class StreamingBundleParserTests
         }
 
         // Assert
-        entries.Should().HaveCount(2);
+        entries.Count.ShouldBe(2);
 
         // Query without ID
-        entries[0].RequestUrl.Should().Be("Patient?name=Smith&_count=10");
-        entries[0].ResourceId.Should().BeNull();
+        entries[0].RequestUrl.ShouldBe("Patient?name=Smith&_count=10");
+        entries[0].ResourceId.ShouldBeNull();
 
         // ID with query string
-        entries[1].RequestUrl.Should().Be("Patient/patient-1?_format=json");
-        entries[1].ResourceId.Should().Be("patient-1");
+        entries[1].RequestUrl.ShouldBe("Patient/patient-1?_format=json");
+        entries[1].ResourceId.ShouldBe("patient-1");
     }
 
     [Fact]
@@ -965,8 +965,8 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.ResourceType.Should().Be("Bundle");
-        context.ParsingIssues.Should().BeEmpty();
+        context.ResourceType.ShouldBe("Bundle");
+        context.ParsingIssues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -987,7 +987,7 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.BundleType.Should().Be("transaction");
+        context.BundleType.ShouldBe("transaction");
     }
 
     [Fact]
@@ -1019,7 +1019,7 @@ public class StreamingBundleParserTests
             var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
             // Assert
-            context.BundleType.Should().Be(expectedType, $"for input type '{inputType}'");
+            context.BundleType.ShouldBe(expectedType, $"for input type '{inputType}'");
         }
     }
 
@@ -1041,8 +1041,8 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.ResourceType.Should().Be("Patient");
-        context.ParsingIssues.Should().Contain(issue => issue.Contains("Expected resourceType 'Bundle'"));
+        context.ResourceType.ShouldBe("Patient");
+        context.ParsingIssues.ShouldContain(issue => issue.Contains("Expected resourceType 'Bundle'"));
     }
 
     [Fact]
@@ -1063,8 +1063,8 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.BundleType.Should().Be("invalid-type");
-        context.ParsingIssues.Should().Contain(issue => issue.Contains("Unknown bundle type"));
+        context.BundleType.ShouldBe("invalid-type");
+        context.ParsingIssues.ShouldContain(issue => issue.Contains("Unknown bundle type"));
     }
 
     [Fact]
@@ -1095,15 +1095,15 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.Links.Should().HaveCount(2);
+        context.Links.Count.ShouldBe(2);
 
         var selfLink = context.Links.FirstOrDefault(l => l.Relation == "self");
-        selfLink.Should().NotBeNull();
-        selfLink!.Url.Should().Be("https://example.com/Patient?_count=10");
+        selfLink.ShouldNotBeNull();
+        selfLink!.Url.ShouldBe("https://example.com/Patient?_count=10");
 
         var nextLink = context.Links.FirstOrDefault(l => l.Relation == "next");
-        nextLink.Should().NotBeNull();
-        nextLink!.Url.Should().Be("https://example.com/Patient?_count=10&_page=2");
+        nextLink.ShouldNotBeNull();
+        nextLink!.Url.ShouldBe("https://example.com/Patient?_count=10&_page=2");
     }
 
     [Fact]
@@ -1146,9 +1146,13 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.Links.Should().HaveCount(5);
+        context.Links.Count.ShouldBe(5);
         var expectedRelations = new[] { "self", "first", "prev", "next", "last" };
-        context.Links.Select(l => l.Relation).Should().Contain(expectedRelations);
+        var actualRelations = context.Links.Select(l => l.Relation).ToList();
+        foreach (var expected in expectedRelations)
+        {
+            actualRelations.ShouldContain(expected);
+        }
     }
 
     [Fact]
@@ -1169,7 +1173,7 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.Links.Should().BeEmpty();
+        context.Links.ShouldBeEmpty();
     }
 
     [Fact]
@@ -1189,8 +1193,8 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert
-        context.BundleType.Should().BeNull();
-        context.ResourceType.Should().Be("Bundle");
+        context.BundleType.ShouldBeNull();
+        context.ResourceType.ShouldBe("Bundle");
     }
 
     [Fact]
@@ -1239,11 +1243,11 @@ public class StreamingBundleParserTests
         var context = await _parser.ParseStreamAsync(stream, CancellationToken.None);
 
         // Assert - Metadata
-        context.ResourceType.Should().Be("Bundle");
-        context.BundleType.Should().Be("searchset");
-        context.Links.Should().HaveCount(1);
-        context.Links[0].Relation.Should().Be("self");
-        context.ParsingIssues.Should().BeEmpty();
+        context.ResourceType.ShouldBe("Bundle");
+        context.BundleType.ShouldBe("searchset");
+        context.Links.Count.ShouldBe(1);
+        context.Links[0].Relation.ShouldBe("self");
+        context.ParsingIssues.ShouldBeEmpty();
 
         // Assert - Entries
         var entries = new List<BundleEntryContext>();
@@ -1252,9 +1256,9 @@ public class StreamingBundleParserTests
             entries.Add(entry);
         }
 
-        entries.Should().HaveCount(2);
-        entries[0].ResourceId.Should().Be("patient-1");
-        entries[1].ResourceId.Should().Be("patient-2");
+        entries.Count.ShouldBe(2);
+        entries[0].ResourceId.ShouldBe("patient-1");
+        entries[1].ResourceId.ShouldBe("patient-2");
     }
 
     [Fact]

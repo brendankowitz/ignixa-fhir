@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Harness;
@@ -69,12 +69,12 @@ public class PatientBuilderE2EExamples : CapabilityDrivenTestBase
             $"code={VitalSigns.BloodPressureSystolic.Code}&_tag={tag}");
 
         // Assert
-        results.Should().ContainSingle();
-        results[0].ResourceType.Should().Be("Observation");
+        results.ShouldHaveSingleItem();
+        results[0].ResourceType.ShouldBe("Observation");
 
         // Verify observation references the patient
         var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Contain(scenario.Patient!.Id);
+        subjectRef!.ShouldContain(scenario.Patient!.Id);
     }
 
 }

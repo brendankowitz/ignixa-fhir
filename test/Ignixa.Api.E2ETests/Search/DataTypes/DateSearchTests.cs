@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -202,13 +202,13 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length,
+        results.Length.ShouldBe(expectedObservations.Length,
             $"Query 'date={queryValue}' should return {expectedObservations.Length} results");
 
         // Verify each expected observation is in results (order may vary)
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results for date={queryValue}");
         }
     }
@@ -234,12 +234,12 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length,
+        results.Length.ShouldBe(expectedObservations.Length,
             $"Query 'date={queryValue1}&date={queryValue2}' should return {expectedObservations.Length} results");
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results for date range query");
         }
     }
@@ -259,7 +259,7 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await Harness.SearchAsync("Patient", $"birthdate={queryValue}"));
 
-        exception.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest,
+        exception.StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest,
             $"Invalid date format '{queryValue}' should return 400 Bad Request");
     }
 
@@ -279,7 +279,7 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await Harness.SearchAsync("Patient", $"birthdate={queryValue}"));
 
-        exception.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest,
+        exception.StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest,
             $"Out-of-range date '{queryValue}' should return 400 Bad Request");
     }
 
@@ -302,12 +302,12 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length,
+        results.Length.ShouldBe(expectedObservations.Length,
             $"Query 'date={queryValue}' should match Period observation");
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} (including Period) should be in results");
         }
     }

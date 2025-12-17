@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Xunit;
@@ -39,9 +39,9 @@ public class JsonSourceNodeFactoryPrettyTests
         var result = patient.SerializeToString(pretty: false);
 
         // Assert
-        result.Should().NotContain("\n");
-        result.Should().NotContain("  ");
-        result.Should().Contain("\"resourceType\":\"Patient\"");
+        result.ShouldNotContain("\n");
+        result.ShouldNotContain("  ");
+        result.ShouldContain("\"resourceType\":\"Patient\"");
     }
 
     [Fact]
@@ -55,9 +55,9 @@ public class JsonSourceNodeFactoryPrettyTests
         var result = patient.SerializeToString(pretty: true);
 
         // Assert
-        result.Should().Contain("\n");
-        result.Should().Contain("  ");
-        result.Should().MatchRegex("\"resourceType\"\\s*:\\s*\"Patient\"");
+        result.ShouldContain("\n");
+        result.ShouldContain("  ");
+        result.ShouldMatch("\"resourceType\"\\s*:\\s*\"Patient\"");
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public class JsonSourceNodeFactoryPrettyTests
         var result = patient.SerializeToString();
 
         // Assert
-        result.Should().NotContain("\n");
-        result.Should().NotContain("  ");
+        result.ShouldNotContain("\n");
+        result.ShouldNotContain("  ");
     }
 
     [Fact]
@@ -104,8 +104,8 @@ public class JsonSourceNodeFactoryPrettyTests
         // Assert
         stream.Position = 0;
         var result = Encoding.UTF8.GetString(stream.ToArray());
-        result.Should().NotContain("\n");
-        result.Should().NotContain("  ");
+        result.ShouldNotContain("\n");
+        result.ShouldNotContain("  ");
     }
 
     [Fact]
@@ -122,8 +122,8 @@ public class JsonSourceNodeFactoryPrettyTests
         // Assert
         stream.Position = 0;
         var result = Encoding.UTF8.GetString(stream.ToArray());
-        result.Should().Contain("\n");
-        result.Should().Contain("  ");
+        result.ShouldContain("\n");
+        result.ShouldContain("  ");
     }
 
     [Fact]
@@ -143,8 +143,8 @@ public class JsonSourceNodeFactoryPrettyTests
 
         // Assert
         var result = Encoding.UTF8.GetString(bytes.ToArray());
-        result.Should().NotContain("\n");
-        result.Should().NotContain("  ");
+        result.ShouldNotContain("\n");
+        result.ShouldNotContain("  ");
     }
 
     [Fact]
@@ -159,8 +159,8 @@ public class JsonSourceNodeFactoryPrettyTests
 
         // Assert
         var result = Encoding.UTF8.GetString(bytes.ToArray());
-        result.Should().Contain("\n");
-        result.Should().Contain("  ");
+        result.ShouldContain("\n");
+        result.ShouldContain("  ");
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public class JsonSourceNodeFactoryPrettyTests
         var reparsedMinified = JsonSourceNodeFactory.Parse<ResourceJsonNode>(minifiedResult);
 
         // Assert - both should have the same data
-        reparsedPretty.ResourceType.Should().Be(reparsedMinified.ResourceType);
-        reparsedPretty.Id.Should().Be(reparsedMinified.Id);
+        reparsedPretty.ResourceType.ShouldBe(reparsedMinified.ResourceType);
+        reparsedPretty.Id.ShouldBe(reparsedMinified.Id);
     }
 }

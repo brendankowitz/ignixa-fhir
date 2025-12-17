@@ -5,7 +5,7 @@
  * Verifies lossless conversion between FML text, AST, and StructureMap resources.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Serialization;
@@ -49,10 +49,10 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
-        roundTrippedAst.Url.Should().Be("http://example.org/test");
-        roundTrippedAst.Identifier.Should().Be("TestMap");
-        roundTrippedAst.Groups.Should().HaveCount(1);
-        roundTrippedAst.Groups[0].Name.Should().Be("Main");
+        roundTrippedAst.Url.ShouldBe("http://example.org/test");
+        roundTrippedAst.Identifier.ShouldBe("TestMap");
+        roundTrippedAst.Groups.Count.ShouldBe(1);
+        roundTrippedAst.Groups[0].Name.ShouldBe("Main");
     }
 
     [Fact]
@@ -75,13 +75,13 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
-        roundTrippedAst.Uses.Should().HaveCount(2);
-        roundTrippedAst.Uses[0].Url.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
-        roundTrippedAst.Uses[0].Alias.Should().Be("Patient");
-        roundTrippedAst.Uses[0].Mode.Should().Be(ModelMode.Source);
-        roundTrippedAst.Uses[1].Url.Should().Be("http://hl7.org/fhir/StructureDefinition/Bundle");
-        roundTrippedAst.Uses[1].Alias.Should().Be("Bundle");
-        roundTrippedAst.Uses[1].Mode.Should().Be(ModelMode.Target);
+        roundTrippedAst.Uses.Count.ShouldBe(2);
+        roundTrippedAst.Uses[0].Url.ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
+        roundTrippedAst.Uses[0].Alias.ShouldBe("Patient");
+        roundTrippedAst.Uses[0].Mode.ShouldBe(ModelMode.Source);
+        roundTrippedAst.Uses[1].Url.ShouldBe("http://hl7.org/fhir/StructureDefinition/Bundle");
+        roundTrippedAst.Uses[1].Alias.ShouldBe("Bundle");
+        roundTrippedAst.Uses[1].Mode.ShouldBe(ModelMode.Target);
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
-        roundTrippedAst.Imports.Should().HaveCount(2);
-        roundTrippedAst.Imports[0].Url.Should().Be("http://example.org/helper");
-        roundTrippedAst.Imports[1].Url.Should().Be("http://example.org/common");
+        roundTrippedAst.Imports.Count.ShouldBe(2);
+        roundTrippedAst.Imports[0].Url.ShouldBe("http://example.org/helper");
+        roundTrippedAst.Imports[1].Url.ShouldBe("http://example.org/common");
     }
 
     [Fact]
@@ -128,16 +128,16 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var group = roundTrippedAst.Groups[0];
-        group.Parameters.Should().HaveCount(3);
-        group.Parameters[0].Mode.Should().Be(ParameterMode.Source);
-        group.Parameters[0].Name.Should().Be("src");
-        group.Parameters[0].Type.Should().Be("Patient");
-        group.Parameters[1].Mode.Should().Be(ParameterMode.Target);
-        group.Parameters[1].Name.Should().Be("tgt");
-        group.Parameters[1].Type.Should().Be("Bundle");
-        group.Parameters[2].Mode.Should().Be(ParameterMode.Source);
-        group.Parameters[2].Name.Should().Be("context");
-        group.Parameters[2].Type.Should().BeNull();
+        group.Parameters.Count.ShouldBe(3);
+        group.Parameters[0].Mode.ShouldBe(ParameterMode.Source);
+        group.Parameters[0].Name.ShouldBe("src");
+        group.Parameters[0].Type.ShouldBe("Patient");
+        group.Parameters[1].Mode.ShouldBe(ParameterMode.Target);
+        group.Parameters[1].Name.ShouldBe("tgt");
+        group.Parameters[1].Type.ShouldBe("Bundle");
+        group.Parameters[2].Mode.ShouldBe(ParameterMode.Source);
+        group.Parameters[2].Name.ShouldBe("context");
+        group.Parameters[2].Type.ShouldBeNull();
     }
 
     [Fact]
@@ -161,11 +161,11 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
-        roundTrippedAst.Groups.Should().HaveCount(2);
-        roundTrippedAst.Groups[0].Name.Should().Be("Base");
-        roundTrippedAst.Groups[0].Extends.Should().BeNull();
-        roundTrippedAst.Groups[1].Name.Should().Be("Main");
-        roundTrippedAst.Groups[1].Extends.Should().Be("Base");
+        roundTrippedAst.Groups.Count.ShouldBe(2);
+        roundTrippedAst.Groups[0].Name.ShouldBe("Base");
+        roundTrippedAst.Groups[0].Extends.ShouldBeNull();
+        roundTrippedAst.Groups[1].Name.ShouldBe("Main");
+        roundTrippedAst.Groups[1].Extends.ShouldBe("Base");
     }
 
     [Fact]
@@ -189,20 +189,20 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var rules = roundTrippedAst.Groups[0].Rules;
-        rules.Should().HaveCount(2);
+        rules.Count.ShouldBe(2);
 
         // First rule: create transform
-        rules[0].Sources.Should().HaveCount(1);
-        rules[0].Targets.Should().HaveCount(1);
-        rules[0].Targets[0].Transform.Should().BeOfType<TransformExpression>();
+        rules[0].Sources.Count.ShouldBe(1);
+        rules[0].Targets.Count.ShouldBe(1);
+        rules[0].Targets[0].Transform.ShouldBeOfType<TransformExpression>();
         var createTransform = rules[0].Targets[0].Transform as TransformExpression;
-        createTransform!.FunctionName.Should().Be("create");
-        createTransform.Arguments.Should().HaveCount(1);
+        createTransform!.FunctionName.ShouldBe("create");
+        createTransform.Arguments.Count.ShouldBe(1);
 
         // Second rule: copy transform
-        rules[1].Targets[0].Transform.Should().BeOfType<TransformExpression>();
+        rules[1].Targets[0].Transform.ShouldBeOfType<TransformExpression>();
         var copyTransform = rules[1].Targets[0].Transform as TransformExpression;
-        copyTransform!.FunctionName.Should().Be("copy");
+        copyTransform!.FunctionName.ShouldBe("copy");
     }
 
     [Fact]
@@ -225,9 +225,9 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var rule = roundTrippedAst.Groups[0].Rules[0];
-        rule.Sources.Should().HaveCount(1);
-        rule.Sources[0].Condition.Should().NotBeNull();
-        rule.Sources[0].Condition.Should().BeOfType<FhirPathExpression>();
+        rule.Sources.Count.ShouldBe(1);
+        rule.Sources[0].Condition.ShouldNotBeNull();
+        rule.Sources[0].Condition.ShouldBeOfType<FhirPathExpression>();
     }
 
     [Fact]
@@ -252,19 +252,19 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var rules = roundTrippedAst.Groups[0].Rules;
-        rules.Should().HaveCount(3);
+        rules.Count.ShouldBe(3);
 
-        rules[0].Sources[0].Cardinality.Should().NotBeNull();
-        rules[0].Sources[0].Cardinality!.Min.Should().Be(0);
-        rules[0].Sources[0].Cardinality.Max.Should().Be(1);
+        rules[0].Sources[0].Cardinality.ShouldNotBeNull();
+        rules[0].Sources[0].Cardinality!.Min.ShouldBe(0);
+        rules[0].Sources[0].Cardinality.Max.ShouldBe(1);
 
-        rules[1].Sources[0].Cardinality.Should().NotBeNull();
-        rules[1].Sources[0].Cardinality!.Min.Should().Be(1);
-        rules[1].Sources[0].Cardinality.Max.Should().BeNull(); // * means unbounded
+        rules[1].Sources[0].Cardinality.ShouldNotBeNull();
+        rules[1].Sources[0].Cardinality!.Min.ShouldBe(1);
+        rules[1].Sources[0].Cardinality.Max.ShouldBeNull(); // * means unbounded
 
-        rules[2].Sources[0].Cardinality.Should().NotBeNull();
-        rules[2].Sources[0].Cardinality!.Min.Should().Be(0);
-        rules[2].Sources[0].Cardinality.Max.Should().BeNull();
+        rules[2].Sources[0].Cardinality.ShouldNotBeNull();
+        rules[2].Sources[0].Cardinality!.Min.ShouldBe(0);
+        rules[2].Sources[0].Cardinality.Max.ShouldBeNull();
     }
 
     [Fact]
@@ -288,10 +288,10 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var rules = roundTrippedAst.Groups[0].Rules;
-        rules.Should().HaveCount(2);
+        rules.Count.ShouldBe(2);
 
-        rules[0].Targets[0].ListMode.Should().Be(ListMode.First);
-        rules[1].Targets[0].ListMode.Should().Be(ListMode.Share);
+        rules[0].Targets[0].ListMode.ShouldBe(ListMode.First);
+        rules[1].Targets[0].ListMode.ShouldBe(ListMode.Share);
     }
 
     [Fact]
@@ -317,9 +317,9 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var rule = roundTrippedAst.Groups[0].Rules[0];
-        rule.Dependent.Should().BeOfType<RuleSetExpression>();
+        rule.Dependent.ShouldBeOfType<RuleSetExpression>();
         var ruleSet = rule.Dependent as RuleSetExpression;
-        ruleSet!.Rules.Should().HaveCount(2);
+        ruleSet!.Rules.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -346,10 +346,10 @@ public class RoundTripTests
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
         var rule = roundTrippedAst.Groups[1].Rules[0];
-        rule.Dependent.Should().BeOfType<GroupInvocationExpression>();
+        rule.Dependent.ShouldBeOfType<GroupInvocationExpression>();
         var invocation = rule.Dependent as GroupInvocationExpression;
-        invocation!.GroupName.Should().Be("ProcessName");
-        invocation.Arguments.Should().HaveCount(2);
+        invocation!.GroupName.ShouldBe("ProcessName");
+        invocation.Arguments.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -388,17 +388,17 @@ public class RoundTripTests
         AssertAstEquivalent(ast, roundTrippedAst);
 
         // Verify top-level structure
-        roundTrippedAst.Url.Should().Be("http://example.org/test");
-        roundTrippedAst.Identifier.Should().Be("TestMap");
-        roundTrippedAst.Uses.Should().HaveCount(2);
-        roundTrippedAst.Imports.Should().HaveCount(1);
-        roundTrippedAst.Groups.Should().HaveCount(3);
+        roundTrippedAst.Url.ShouldBe("http://example.org/test");
+        roundTrippedAst.Identifier.ShouldBe("TestMap");
+        roundTrippedAst.Uses.Count.ShouldBe(2);
+        roundTrippedAst.Imports.Count.ShouldBe(1);
+        roundTrippedAst.Groups.Count.ShouldBe(3);
 
         // Verify groups
-        roundTrippedAst.Groups[0].Name.Should().Be("ProcessName");
-        roundTrippedAst.Groups[1].Name.Should().Be("Base");
-        roundTrippedAst.Groups[2].Name.Should().Be("Main");
-        roundTrippedAst.Groups[2].Extends.Should().Be("Base");
+        roundTrippedAst.Groups[0].Name.ShouldBe("ProcessName");
+        roundTrippedAst.Groups[1].Name.ShouldBe("Base");
+        roundTrippedAst.Groups[2].Name.ShouldBe("Main");
+        roundTrippedAst.Groups[2].Extends.ShouldBe("Base");
     }
 
     #endregion
@@ -448,8 +448,8 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast, roundTrippedAst);
-        rebuiltStructureMap.Url.Should().Be("http://example.org/test");
-        rebuiltStructureMap.Name.Should().Be("TestMap");
+        rebuiltStructureMap.Url.ShouldBe("http://example.org/test");
+        rebuiltStructureMap.Name.ShouldBe("TestMap");
     }
 
     [Fact]
@@ -494,8 +494,8 @@ public class RoundTripTests
         var rebuiltStructureMap = _builder.Build(ast);
 
         // Assert
-        ast.Uses.Should().HaveCount(2);
-        rebuiltStructureMap.Structure.Should().HaveCount(2);
+        ast.Uses.Count.ShouldBe(2);
+        rebuiltStructureMap.Structure.Count.ShouldBe(2);
     }
 
     #endregion
@@ -526,11 +526,11 @@ public class RoundTripTests
         AssertAstEquivalent(ast1, ast2);
 
         var finalAst = _parser.Parse(finalFml);
-        finalAst.Url.Should().Be("http://example.org/test");
-        finalAst.Identifier.Should().Be("TestMap");
-        finalAst.Uses.Should().HaveCount(2);
-        finalAst.Groups.Should().HaveCount(1);
-        finalAst.Groups[0].Rules.Should().HaveCount(1);
+        finalAst.Url.ShouldBe("http://example.org/test");
+        finalAst.Identifier.ShouldBe("TestMap");
+        finalAst.Uses.Count.ShouldBe(2);
+        finalAst.Groups.Count.ShouldBe(1);
+        finalAst.Groups[0].Rules.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -554,19 +554,19 @@ public class RoundTripTests
 
         // Assert
         AssertAstEquivalent(ast1, ast2);
-        ast2.Groups[0].Rules.Should().HaveCount(3);
+        ast2.Groups[0].Rules.Count.ShouldBe(3);
 
         // Verify cardinality preserved
-        ast2.Groups[0].Rules[0].Sources[0].Cardinality.Should().NotBeNull();
-        ast2.Groups[0].Rules[0].Sources[0].Cardinality!.Min.Should().Be(0);
-        ast2.Groups[0].Rules[0].Sources[0].Cardinality.Max.Should().Be(1);
+        ast2.Groups[0].Rules[0].Sources[0].Cardinality.ShouldNotBeNull();
+        ast2.Groups[0].Rules[0].Sources[0].Cardinality!.Min.ShouldBe(0);
+        ast2.Groups[0].Rules[0].Sources[0].Cardinality.Max.ShouldBe(1);
 
         // Verify condition preserved
-        ast2.Groups[0].Rules[1].Sources[0].Condition.Should().NotBeNull();
+        ast2.Groups[0].Rules[1].Sources[0].Condition.ShouldNotBeNull();
 
         // Verify transform and list mode preserved
-        ast2.Groups[0].Rules[2].Targets[0].Transform.Should().NotBeNull();
-        ast2.Groups[0].Rules[2].Targets[0].ListMode.Should().Be(ListMode.First);
+        ast2.Groups[0].Rules[2].Targets[0].Transform.ShouldNotBeNull();
+        ast2.Groups[0].Rules[2].Targets[0].ListMode.ShouldBe(ListMode.First);
     }
 
     #endregion
@@ -579,27 +579,27 @@ public class RoundTripTests
     private static void AssertAstEquivalent(MapExpression expected, MapExpression actual)
     {
         // Compare top-level properties
-        actual.Url.Should().Be(expected.Url);
-        actual.Identifier.Should().Be(expected.Identifier);
+        actual.Url.ShouldBe(expected.Url);
+        actual.Identifier.ShouldBe(expected.Identifier);
 
         // Compare uses
-        actual.Uses.Should().HaveCount(expected.Uses.Count);
+        actual.Uses.Count.ShouldBe(expected.Uses.Count);
         for (int i = 0; i < expected.Uses.Count; i++)
         {
-            actual.Uses[i].Url.Should().Be(expected.Uses[i].Url);
-            actual.Uses[i].Alias.Should().Be(expected.Uses[i].Alias);
-            actual.Uses[i].Mode.Should().Be(expected.Uses[i].Mode);
+            actual.Uses[i].Url.ShouldBe(expected.Uses[i].Url);
+            actual.Uses[i].Alias.ShouldBe(expected.Uses[i].Alias);
+            actual.Uses[i].Mode.ShouldBe(expected.Uses[i].Mode);
         }
 
         // Compare imports
-        actual.Imports.Should().HaveCount(expected.Imports.Count);
+        actual.Imports.Count.ShouldBe(expected.Imports.Count);
         for (int i = 0; i < expected.Imports.Count; i++)
         {
-            actual.Imports[i].Url.Should().Be(expected.Imports[i].Url);
+            actual.Imports[i].Url.ShouldBe(expected.Imports[i].Url);
         }
 
         // Compare groups
-        actual.Groups.Should().HaveCount(expected.Groups.Count);
+        actual.Groups.Count.ShouldBe(expected.Groups.Count);
         for (int i = 0; i < expected.Groups.Count; i++)
         {
             AssertGroupEquivalent(expected.Groups[i], actual.Groups[i]);
@@ -608,20 +608,20 @@ public class RoundTripTests
 
     private static void AssertGroupEquivalent(GroupExpression expected, GroupExpression actual)
     {
-        actual.Name.Should().Be(expected.Name);
-        actual.Extends.Should().Be(expected.Extends);
+        actual.Name.ShouldBe(expected.Name);
+        actual.Extends.ShouldBe(expected.Extends);
 
         // Compare parameters
-        actual.Parameters.Should().HaveCount(expected.Parameters.Count);
+        actual.Parameters.Count.ShouldBe(expected.Parameters.Count);
         for (int i = 0; i < expected.Parameters.Count; i++)
         {
-            actual.Parameters[i].Mode.Should().Be(expected.Parameters[i].Mode);
-            actual.Parameters[i].Name.Should().Be(expected.Parameters[i].Name);
-            actual.Parameters[i].Type.Should().Be(expected.Parameters[i].Type);
+            actual.Parameters[i].Mode.ShouldBe(expected.Parameters[i].Mode);
+            actual.Parameters[i].Name.ShouldBe(expected.Parameters[i].Name);
+            actual.Parameters[i].Type.ShouldBe(expected.Parameters[i].Type);
         }
 
         // Compare rules
-        actual.Rules.Should().HaveCount(expected.Rules.Count);
+        actual.Rules.Count.ShouldBe(expected.Rules.Count);
         for (int i = 0; i < expected.Rules.Count; i++)
         {
             AssertRuleEquivalent(expected.Rules[i], actual.Rules[i]);
@@ -630,17 +630,17 @@ public class RoundTripTests
 
     private static void AssertRuleEquivalent(RuleExpression expected, RuleExpression actual)
     {
-        actual.Name.Should().Be(expected.Name);
+        actual.Name.ShouldBe(expected.Name);
 
         // Compare sources
-        actual.Sources.Should().HaveCount(expected.Sources.Count);
+        actual.Sources.Count.ShouldBe(expected.Sources.Count);
         for (int i = 0; i < expected.Sources.Count; i++)
         {
             AssertSourceEquivalent(expected.Sources[i], actual.Sources[i]);
         }
 
         // Compare targets
-        actual.Targets.Should().HaveCount(expected.Targets.Count);
+        actual.Targets.Count.ShouldBe(expected.Targets.Count);
         for (int i = 0; i < expected.Targets.Count; i++)
         {
             AssertTargetEquivalent(expected.Targets[i], actual.Targets[i]);
@@ -649,64 +649,64 @@ public class RoundTripTests
         // Compare dependent (simplified - could be more thorough)
         if (expected.Dependent == null)
         {
-            actual.Dependent.Should().BeNull();
+            actual.Dependent.ShouldBeNull();
         }
         else
         {
-            actual.Dependent.Should().NotBeNull();
-            actual.Dependent!.GetType().Should().Be(expected.Dependent.GetType());
+            actual.Dependent.ShouldNotBeNull();
+            actual.Dependent!.GetType().ShouldBe(expected.Dependent.GetType());
         }
     }
 
     private static void AssertSourceEquivalent(SourceExpression expected, SourceExpression actual)
     {
-        actual.Variable.Should().Be(expected.Variable);
-        actual.Type.Should().Be(expected.Type);
+        actual.Variable.ShouldBe(expected.Variable);
+        actual.Type.ShouldBe(expected.Type);
 
         // Compare cardinality
         if (expected.Cardinality == null)
         {
-            actual.Cardinality.Should().BeNull();
+            actual.Cardinality.ShouldBeNull();
         }
         else
         {
-            actual.Cardinality.Should().NotBeNull();
-            actual.Cardinality!.Min.Should().Be(expected.Cardinality.Min);
-            actual.Cardinality.Max.Should().Be(expected.Cardinality.Max);
+            actual.Cardinality.ShouldNotBeNull();
+            actual.Cardinality!.Min.ShouldBe(expected.Cardinality.Min);
+            actual.Cardinality.Max.ShouldBe(expected.Cardinality.Max);
         }
 
         // Compare condition (simplified)
         if (expected.Condition == null)
         {
-            actual.Condition.Should().BeNull();
+            actual.Condition.ShouldBeNull();
         }
         else
         {
-            actual.Condition.Should().NotBeNull();
-            actual.Condition!.GetType().Should().Be(expected.Condition.GetType());
+            actual.Condition.ShouldNotBeNull();
+            actual.Condition!.GetType().ShouldBe(expected.Condition.GetType());
         }
     }
 
     private static void AssertTargetEquivalent(TargetExpression expected, TargetExpression actual)
     {
-        actual.Variable.Should().Be(expected.Variable);
-        actual.ListMode.Should().Be(expected.ListMode);
+        actual.Variable.ShouldBe(expected.Variable);
+        actual.ListMode.ShouldBe(expected.ListMode);
 
         // Compare transform (simplified)
         if (expected.Transform == null)
         {
-            actual.Transform.Should().BeNull();
+            actual.Transform.ShouldBeNull();
         }
         else
         {
-            actual.Transform.Should().NotBeNull();
-            actual.Transform!.GetType().Should().Be(expected.Transform.GetType());
+            actual.Transform.ShouldNotBeNull();
+            actual.Transform!.GetType().ShouldBe(expected.Transform.GetType());
 
             if (expected.Transform is TransformExpression expectedTransform &&
                 actual.Transform is TransformExpression actualTransform)
             {
-                actualTransform.FunctionName.Should().Be(expectedTransform.FunctionName);
-                actualTransform.Arguments.Should().HaveCount(expectedTransform.Arguments.Count);
+                actualTransform.FunctionName.ShouldBe(expectedTransform.FunctionName);
+                actualTransform.Arguments.Count.ShouldBe(expectedTransform.Arguments.Count);
             }
         }
     }

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -30,17 +30,17 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.Should().NotBeNull();
-        report.ResourceType.Should().Be("DiagnosticReport");
-        report.Id.Should().NotBeNullOrEmpty();
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("final");
+        report.ShouldNotBeNull();
+        report.ResourceType.ShouldBe("DiagnosticReport");
+        report.Id.ShouldNotBeNullOrEmpty();
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("final");
 
         var code = report.MutableNode["code"]?.AsObject();
-        code.Should().NotBeNull();
+        code.ShouldNotBeNull();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["system"]?.GetValue<string>().Should().Be("http://loinc.org");
-        coding?["code"]?.GetValue<string>().Should().Be("58410-2");
-        coding?["display"]?.GetValue<string>().Should().Be("Complete blood count");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://loinc.org");
+        coding?["code"]?.GetValue<string>().ShouldBe("58410-2");
+        coding?["display"]?.GetValue<string>().ShouldBe("Complete blood count");
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.Id.Should().Be(expectedId);
+        report.Id.ShouldBe(expectedId);
     }
 
     [Fact]
@@ -72,13 +72,13 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["meta"]?["tag"].Should().NotBeNull();
+        report.MutableNode["meta"]?["tag"].ShouldNotBeNull();
         var tags = report.MutableNode["meta"]?["tag"]?.AsArray();
-        tags.Should().HaveCount(1);
+        tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
-        metaTag?["code"]?.GetValue<string>().Should().Be(tag);
-        metaTag?["system"]?.GetValue<string>().Should().Be("http://ignixa.dev/test-isolation");
+        metaTag?["code"]?.GetValue<string>().ShouldBe(tag);
+        metaTag?["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
     }
 
     [Fact]
@@ -90,8 +90,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*code is required*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("code is required");
     }
 
     #endregion
@@ -107,7 +106,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("final");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("final");
     }
 
     [Fact]
@@ -120,7 +119,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("preliminary");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("preliminary");
     }
 
     [Fact]
@@ -133,7 +132,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("amended");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("amended");
     }
 
     [Fact]
@@ -146,7 +145,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("corrected");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("corrected");
     }
 
     [Fact]
@@ -159,7 +158,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("cancelled");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("cancelled");
     }
 
     #endregion
@@ -178,9 +177,9 @@ public class DiagnosticReportBuilderTests
         var code = report.MutableNode["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
 
-        coding?["system"]?.GetValue<string>().Should().Be("http://loinc.org");
-        coding?["code"]?.GetValue<string>().Should().Be("58410-2");
-        coding?.TryGetPropertyValue("display", out _).Should().BeFalse();
+        coding?["system"]?.GetValue<string>().ShouldBe("http://loinc.org");
+        coding?["code"]?.GetValue<string>().ShouldBe("58410-2");
+        coding?.TryGetPropertyValue("display", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -195,9 +194,9 @@ public class DiagnosticReportBuilderTests
         var code = report.MutableNode["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
 
-        coding?["system"]?.GetValue<string>().Should().Be("http://snomed.info/sct");
-        coding?["code"]?.GetValue<string>().Should().Be("168537006");
-        coding?["display"]?.GetValue<string>().Should().Be("Microscopy");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        coding?["code"]?.GetValue<string>().ShouldBe("168537006");
+        coding?["display"]?.GetValue<string>().ShouldBe("Microscopy");
     }
 
     [Fact]
@@ -212,9 +211,9 @@ public class DiagnosticReportBuilderTests
         var code = report.MutableNode["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
 
-        coding?["system"]?.GetValue<string>().Should().Be("http://loinc.org");
-        coding?["code"]?.GetValue<string>().Should().Be("24331-1");
-        coding?["display"]?.GetValue<string>().Should().Be("Lipid panel with direct LDL");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://loinc.org");
+        coding?["code"]?.GetValue<string>().ShouldBe("24331-1");
+        coding?["display"]?.GetValue<string>().ShouldBe("Lipid panel with direct LDL");
     }
 
     #endregion
@@ -235,8 +234,8 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         var subject = report.MutableNode["subject"]?.AsObject();
-        subject.Should().NotBeNull();
-        subject?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        subject.ShouldNotBeNull();
+        subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -248,7 +247,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode.TryGetPropertyValue("subject", out _).Should().BeFalse();
+        report.MutableNode.TryGetPropertyValue("subject", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -269,11 +268,11 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().NotBeNull();
-        results.Should().HaveCount(1);
+        results.ShouldNotBeNull();
+        results!.Count.ShouldBe(1);
 
         var result = results?[0]?.AsObject();
-        result?["reference"]?.GetValue<string>().Should().Be($"Observation/{observationId}");
+        result?["reference"]?.GetValue<string>().ShouldBe($"Observation/{observationId}");
     }
 
     [Fact]
@@ -294,11 +293,11 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(3);
+        results!.Count.ShouldBe(3);
 
-        results?[0]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs1}");
-        results?[1]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs2}");
-        results?[2]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs3}");
+        results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs1}");
+        results?[1]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs2}");
+        results?[2]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs3}");
     }
 
     [Fact]
@@ -318,12 +317,12 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(4);
+        results!.Count.ShouldBe(4);
 
-        results?[0]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs1}");
-        results?[1]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs2}");
-        results?[2]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs3}");
-        results?[3]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs4}");
+        results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs1}");
+        results?[1]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs2}");
+        results?[2]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs3}");
+        results?[3]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs4}");
     }
 
     [Fact]
@@ -345,12 +344,12 @@ public class DiagnosticReportBuilderTests
 
         // Assert
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(4);
+        results!.Count.ShouldBe(4);
 
-        results?[0]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs1}");
-        results?[1]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs2}");
-        results?[2]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs3}");
-        results?[3]?["reference"]?.GetValue<string>().Should().Be($"Observation/{obs4}");
+        results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs1}");
+        results?[1]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs2}");
+        results?[2]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs3}");
+        results?[3]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{obs4}");
     }
 
     [Fact]
@@ -362,7 +361,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode.TryGetPropertyValue("result", out _).Should().BeFalse();
+        report.MutableNode.TryGetPropertyValue("result", out _).ShouldBeFalse();
     }
 
     #endregion
@@ -390,22 +389,22 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.Id.Should().Be("report-complete");
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("final");
+        report.Id.ShouldBe("report-complete");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("final");
 
         var code = report.MutableNode["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("24323-8");
-        coding?["display"]?.GetValue<string>().Should().Be("Comprehensive metabolic panel");
+        coding?["code"]?.GetValue<string>().ShouldBe("24323-8");
+        coding?["display"]?.GetValue<string>().ShouldBe("Comprehensive metabolic panel");
 
         var subject = report.MutableNode["subject"]?.AsObject();
-        subject?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(3);
+        results!.Count.ShouldBe(3);
 
         var tags = report.MutableNode["meta"]?["tag"]?.AsArray();
-        tags?[0]?["code"]?.GetValue<string>().Should().Be(tag);
+        tags?[0]?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     [Fact]
@@ -427,14 +426,14 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.ResourceType.Should().Be("DiagnosticReport");
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("final");
+        report.ResourceType.ShouldBe("DiagnosticReport");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("final");
 
         var subject = report.MutableNode["subject"]?.AsObject();
-        subject?["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        subject?["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(4);
+        results!.Count.ShouldBe(4);
     }
 
     [Fact]
@@ -453,16 +452,16 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.ResourceType.Should().Be("DiagnosticReport");
+        report.ResourceType.ShouldBe("DiagnosticReport");
 
         var code = report.MutableNode["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("36554-4");
-        coding?["display"]?.GetValue<string>().Should().Be("Chest X-ray");
+        coding?["code"]?.GetValue<string>().ShouldBe("36554-4");
+        coding?["display"]?.GetValue<string>().ShouldBe("Chest X-ray");
 
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(1);
-        results?[0]?["reference"]?.GetValue<string>().Should().Be($"Observation/{imagingObs}");
+        results!.Count.ShouldBe(1);
+        results?[0]?["reference"]?.GetValue<string>().ShouldBe($"Observation/{imagingObs}");
     }
 
     [Fact]
@@ -481,10 +480,10 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("preliminary");
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("preliminary");
 
         var results = report.MutableNode["result"]?.AsArray();
-        results.Should().HaveCount(1);
+        results!.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -500,7 +499,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report1.Id.Should().NotBe(report2.Id);
+        report1.Id.ShouldNotBe(report2.Id);
     }
 
     #endregion
@@ -516,10 +515,10 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode["meta"].Should().NotBeNull();
+        report.MutableNode["meta"].ShouldNotBeNull();
         var meta = report.MutableNode["meta"]?.AsObject();
-        meta?["versionId"]?.GetValue<string>().Should().Be("1");
-        meta?["lastUpdated"]?.GetValue<string>().Should().NotBeNullOrEmpty();
+        meta?["versionId"]?.GetValue<string>().ShouldBe("1");
+        meta?["lastUpdated"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -535,13 +534,13 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.Should().NotBeNull();
-        report.ResourceType.Should().Be("DiagnosticReport");
-        report.Id.Should().NotBeNullOrEmpty();
-        report.MutableNode["status"]?.GetValue<string>().Should().Be("final");
+        report.ShouldNotBeNull();
+        report.ResourceType.ShouldBe("DiagnosticReport");
+        report.Id.ShouldNotBeNullOrEmpty();
+        report.MutableNode["status"]?.GetValue<string>().ShouldBe("final");
 
         var code = report.MutableNode["code"]?.AsObject();
-        code.Should().NotBeNull();
+        code.ShouldNotBeNull();
     }
 
     [Fact]
@@ -553,7 +552,7 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.MutableNode.TryGetPropertyValue("result", out _).Should().BeFalse();
+        report.MutableNode.TryGetPropertyValue("result", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -572,12 +571,12 @@ public class DiagnosticReportBuilderTests
             .Build();
 
         // Assert
-        report.ResourceType.Should().Be("DiagnosticReport");
+        report.ResourceType.ShouldBe("DiagnosticReport");
 
         var code = report.MutableNode["code"]?.AsObject();
         var coding = code?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("60568-3");
-        coding?["display"]?.GetValue<string>().Should().Be("Pathology Synoptic report");
+        coding?["code"]?.GetValue<string>().ShouldBe("60568-3");
+        coding?["display"]?.GetValue<string>().ShouldBe("Pathology Synoptic report");
     }
 
     #endregion

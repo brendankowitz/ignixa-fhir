@@ -7,7 +7,7 @@
 
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using NSubstitute;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Abstractions;
@@ -52,21 +52,21 @@ public class ResourceElementsSerializerTests
 
         // Assert
         var result = ParseOutput(output);
-        result.Should().ContainKey("resource");
+        result.ShouldContainKey("resource");
 
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // Mandatory elements should be present
-        resourceElement.TryGetProperty("resourceType", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("id", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("resourceType", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("id", out _).ShouldBeTrue();
 
         // Requested elements should be present
-        resourceElement.TryGetProperty("active", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("name", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("active", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("name", out _).ShouldBeTrue();
 
         // Non-requested elements should be absent
-        resourceElement.TryGetProperty("telecom", out _).Should().BeFalse();
-        resourceElement.TryGetProperty("birthDate", out _).Should().BeFalse();
+        resourceElement.TryGetProperty("telecom", out _).ShouldBeFalse();
+        resourceElement.TryGetProperty("birthDate", out _).ShouldBeFalse();
     }
 
     /// <summary>
@@ -108,17 +108,17 @@ public class ResourceElementsSerializerTests
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // name array should be present with all nested content
-        resourceElement.TryGetProperty("name", out var nameArray).Should().BeTrue();
+        resourceElement.TryGetProperty("name", out var nameArray).ShouldBeTrue();
         var nameElement = nameArray.EnumerateArray().First();
 
         // All properties in nested object should be present
-        nameElement.TryGetProperty("use", out _).Should().BeTrue();
-        nameElement.TryGetProperty("family", out _).Should().BeTrue();
-        nameElement.TryGetProperty("given", out _).Should().BeTrue();
-        nameElement.TryGetProperty("_family", out _).Should().BeTrue();
+        nameElement.TryGetProperty("use", out _).ShouldBeTrue();
+        nameElement.TryGetProperty("family", out _).ShouldBeTrue();
+        nameElement.TryGetProperty("given", out _).ShouldBeTrue();
+        nameElement.TryGetProperty("_family", out _).ShouldBeTrue();
 
         // active should not be present (not requested)
-        resourceElement.TryGetProperty("active", out _).Should().BeFalse();
+        resourceElement.TryGetProperty("active", out _).ShouldBeFalse();
     }
 
     /// <summary>
@@ -154,17 +154,17 @@ public class ResourceElementsSerializerTests
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // Mandatory elements should always be present
-        resourceElement.TryGetProperty("resourceType", out var resourceTypeValue).Should().BeTrue();
-        resourceTypeValue.GetString().Should().Be("Patient");
+        resourceElement.TryGetProperty("resourceType", out var resourceTypeValue).ShouldBeTrue();
+        resourceTypeValue.GetString().ShouldBe("Patient");
 
-        resourceElement.TryGetProperty("id", out var idValue).Should().BeTrue();
-        idValue.GetString().Should().Be("456");
+        resourceElement.TryGetProperty("id", out var idValue).ShouldBeTrue();
+        idValue.GetString().ShouldBe("456");
 
-        resourceElement.TryGetProperty("meta", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("meta", out _).ShouldBeTrue();
 
         // Non-mandatory elements should not be present
-        resourceElement.TryGetProperty("name", out _).Should().BeFalse();
-        resourceElement.TryGetProperty("active", out _).Should().BeFalse();
+        resourceElement.TryGetProperty("name", out _).ShouldBeFalse();
+        resourceElement.TryGetProperty("active", out _).ShouldBeFalse();
     }
 
     /// <summary>
@@ -198,11 +198,11 @@ public class ResourceElementsSerializerTests
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // _id should be normalized to id
-        resourceElement.TryGetProperty("id", out var idValue).Should().BeTrue();
-        idValue.GetString().Should().Be("789");
+        resourceElement.TryGetProperty("id", out var idValue).ShouldBeTrue();
+        idValue.GetString().ShouldBe("789");
 
         // active should not be present
-        resourceElement.TryGetProperty("active", out _).Should().BeFalse();
+        resourceElement.TryGetProperty("active", out _).ShouldBeFalse();
     }
 
     /// <summary>
@@ -243,19 +243,19 @@ public class ResourceElementsSerializerTests
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // Mandatory elements
-        resourceElement.TryGetProperty("resourceType", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("id", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("resourceType", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("id", out _).ShouldBeTrue();
 
         // Requested element
-        resourceElement.TryGetProperty("subject", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("subject", out _).ShouldBeTrue();
 
         // Schema-required elements should be included
-        resourceElement.TryGetProperty("status", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("code", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("status", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("code", out _).ShouldBeTrue();
 
         // Other elements should not be present
-        resourceElement.TryGetProperty("effectiveDateTime", out _).Should().BeFalse();
-        resourceElement.TryGetProperty("value", out _).Should().BeFalse();
+        resourceElement.TryGetProperty("effectiveDateTime", out _).ShouldBeFalse();
+        resourceElement.TryGetProperty("value", out _).ShouldBeFalse();
     }
 
     /// <summary>
@@ -291,21 +291,21 @@ public class ResourceElementsSerializerTests
         var result = ParseOutput(output);
         var resourceElement = ((JsonElement)result["resource"]!);
 
-        resourceElement.TryGetProperty("telecom", out var telecomArray).Should().BeTrue();
+        resourceElement.TryGetProperty("telecom", out var telecomArray).ShouldBeTrue();
         var telecomElements = telecomArray.EnumerateArray().ToList();
-        telecomElements.Should().HaveCount(2);
+        telecomElements.Count.ShouldBe(2);
 
         // First element
-        telecomElements[0].TryGetProperty("system", out var system1).Should().BeTrue();
-        system1.GetString().Should().Be("phone");
-        telecomElements[0].TryGetProperty("value", out var value1).Should().BeTrue();
-        value1.GetString().Should().Be("555-1234");
-        telecomElements[0].TryGetProperty("use", out var use1).Should().BeTrue();
-        use1.GetString().Should().Be("home");
+        telecomElements[0].TryGetProperty("system", out var system1).ShouldBeTrue();
+        system1.GetString().ShouldBe("phone");
+        telecomElements[0].TryGetProperty("value", out var value1).ShouldBeTrue();
+        value1.GetString().ShouldBe("555-1234");
+        telecomElements[0].TryGetProperty("use", out var use1).ShouldBeTrue();
+        use1.GetString().ShouldBe("home");
 
         // Second element
-        telecomElements[1].TryGetProperty("system", out var system2).Should().BeTrue();
-        system2.GetString().Should().Be("email");
+        telecomElements[1].TryGetProperty("system", out var system2).ShouldBeTrue();
+        system2.GetString().ShouldBe("email");
     }
 
     /// <summary>
@@ -338,12 +338,12 @@ public class ResourceElementsSerializerTests
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // Mandatory elements should always be present
-        resourceElement.TryGetProperty("resourceType", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("id", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("resourceType", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("id", out _).ShouldBeTrue();
 
         // Requested elements should be present
-        resourceElement.TryGetProperty("active", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("name", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("active", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("name", out _).ShouldBeTrue();
     }
 
     /// <summary>
@@ -377,13 +377,13 @@ public class ResourceElementsSerializerTests
         var resourceElement = ((JsonElement)result["resource"]!);
 
         // Only mandatory elements
-        resourceElement.TryGetProperty("resourceType", out _).Should().BeTrue();
-        resourceElement.TryGetProperty("id", out _).Should().BeTrue();
+        resourceElement.TryGetProperty("resourceType", out _).ShouldBeTrue();
+        resourceElement.TryGetProperty("id", out _).ShouldBeTrue();
 
         // All others should be absent
-        resourceElement.TryGetProperty("active", out _).Should().BeFalse();
-        resourceElement.TryGetProperty("gender", out _).Should().BeFalse();
-        resourceElement.TryGetProperty("birthDate", out _).Should().BeFalse();
+        resourceElement.TryGetProperty("active", out _).ShouldBeFalse();
+        resourceElement.TryGetProperty("gender", out _).ShouldBeFalse();
+        resourceElement.TryGetProperty("birthDate", out _).ShouldBeFalse();
     }
 
     /// <summary>
@@ -423,22 +423,22 @@ public class ResourceElementsSerializerTests
         var result = ParseOutput(output);
         var resourceElement = ((JsonElement)result["resource"]!);
 
-        resourceElement.TryGetProperty("contact", out var contactArray).Should().BeTrue();
+        resourceElement.TryGetProperty("contact", out var contactArray).ShouldBeTrue();
         var contact = contactArray.EnumerateArray().First();
 
         // All nested properties should be present
-        contact.TryGetProperty("relationship", out _).Should().BeTrue();
-        contact.TryGetProperty("name", out _).Should().BeTrue();
-        contact.TryGetProperty("telecom", out _).Should().BeTrue();
-        contact.TryGetProperty("address", out _).Should().BeTrue();
+        contact.TryGetProperty("relationship", out _).ShouldBeTrue();
+        contact.TryGetProperty("name", out _).ShouldBeTrue();
+        contact.TryGetProperty("telecom", out _).ShouldBeTrue();
+        contact.TryGetProperty("address", out _).ShouldBeTrue();
 
         // Verify nested coding structure is preserved
-        contact.TryGetProperty("relationship", out var relationship).Should().BeTrue();
+        contact.TryGetProperty("relationship", out var relationship).ShouldBeTrue();
         var relationshipElement = relationship.EnumerateArray().First();
-        relationshipElement.TryGetProperty("coding", out var coding).Should().BeTrue();
+        relationshipElement.TryGetProperty("coding", out var coding).ShouldBeTrue();
         var codingElement = coding.EnumerateArray().First();
-        codingElement.TryGetProperty("system", out var system).Should().BeTrue();
-        codingElement.TryGetProperty("code", out var code).Should().BeTrue();
+        codingElement.TryGetProperty("system", out var system).ShouldBeTrue();
+        codingElement.TryGetProperty("code", out var code).ShouldBeTrue();
     }
 
     /// <summary>
@@ -475,16 +475,16 @@ public class ResourceElementsSerializerTests
         var result = ParseOutput(output);
         var resourceElement = ((JsonElement)result["resource"]!);
 
-        resourceElement.TryGetProperty("value", out var valueObj).Should().BeTrue();
-        valueObj.TryGetProperty("Quantity", out var quantity).Should().BeTrue();
+        resourceElement.TryGetProperty("value", out var valueObj).ShouldBeTrue();
+        valueObj.TryGetProperty("Quantity", out var quantity).ShouldBeTrue();
 
         // Numeric value should be preserved
-        quantity.TryGetProperty("value", out var numValue).Should().BeTrue();
-        numValue.GetDouble().Should().Be(98.6);
+        quantity.TryGetProperty("value", out var numValue).ShouldBeTrue();
+        numValue.GetDouble().ShouldBe(98.6);
 
         // String values should be preserved
-        quantity.TryGetProperty("unit", out var unit).Should().BeTrue();
-        unit.GetString().Should().Be("F");
+        quantity.TryGetProperty("unit", out var unit).ShouldBeTrue();
+        unit.GetString().ShouldBe("F");
     }
 
     // Helper Methods

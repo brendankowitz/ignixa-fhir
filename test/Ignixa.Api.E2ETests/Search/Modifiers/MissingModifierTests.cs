@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -69,9 +69,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"gender:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient without gender should be returned");
-        results[0].Id.Should().Be(patientWithoutGender.Id);
-        results[0].MutableNode.ContainsKey("gender").Should().BeFalse("returned patient should not have gender field");
+        results.Length.ShouldBe(1, "only the patient without gender should be returned");
+        results[0].Id.ShouldBe(patientWithoutGender.Id);
+        results[0].MutableNode.ContainsKey("gender").ShouldBeFalse("returned patient should not have gender field");
     }
 
     /// <summary>
@@ -106,10 +106,10 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"gender:missing=false&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with gender should be returned");
-        results[0].Id.Should().Be(patientWithGender.Id);
-        results[0].MutableNode.ContainsKey("gender").Should().BeTrue("returned patient should have gender field");
-        results[0].MutableNode["gender"]?.GetValue<string>().Should().Be("male");
+        results.Length.ShouldBe(1, "only the patient with gender should be returned");
+        results[0].Id.ShouldBe(patientWithGender.Id);
+        results[0].MutableNode.ContainsKey("gender").ShouldBeTrue("returned patient should have gender field");
+        results[0].MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
     }
 
     /// <summary>
@@ -144,9 +144,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"active:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient without active field should be returned");
-        results[0].Id.Should().Be(patientWithoutActive.Id);
-        results[0].MutableNode.ContainsKey("active").Should().BeFalse("returned patient should not have active field");
+        results.Length.ShouldBe(1, "only the patient without active field should be returned");
+        results[0].Id.ShouldBe(patientWithoutActive.Id);
+        results[0].MutableNode.ContainsKey("active").ShouldBeFalse("returned patient should not have active field");
     }
 
     /// <summary>
@@ -188,13 +188,13 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"active:missing=false&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2, "both patients with active field should be returned, regardless of value");
-        results.Should().AllSatisfy(r =>
+        results.Length.ShouldBe(2, "both patients with active field should be returned, regardless of value");
+        foreach (var r in results)
         {
-            r.MutableNode.ContainsKey("active").Should().BeTrue("returned patients should have active field");
-        });
-        results.Should().Contain(r => r.Id == patientWithActiveFalse.Id);
-        results.Should().Contain(r => r.Id == patientWithActiveTrue.Id);
+            r.MutableNode.ContainsKey("active").ShouldBeTrue("returned patients should have active field");
+        }
+        results.ShouldContain(r => r.Id == patientWithActiveFalse.Id);
+        results.ShouldContain(r => r.Id == patientWithActiveTrue.Id);
     }
 
     #endregion
@@ -232,9 +232,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"telecom:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient without telecom should be returned");
-        results[0].Id.Should().Be(patientWithoutTelecom.Id);
-        results[0].MutableNode.ContainsKey("telecom").Should().BeFalse("returned patient should not have telecom field");
+        results.Length.ShouldBe(1, "only the patient without telecom should be returned");
+        results[0].Id.ShouldBe(patientWithoutTelecom.Id);
+        results[0].MutableNode.ContainsKey("telecom").ShouldBeFalse("returned patient should not have telecom field");
     }
 
     /// <summary>
@@ -268,9 +268,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"telecom:missing=false&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with telecom should be returned");
-        results[0].Id.Should().Be(patientWithTelecom.Id);
-        results[0].MutableNode.ContainsKey("telecom").Should().BeTrue("returned patient should have telecom field");
+        results.Length.ShouldBe(1, "only the patient with telecom should be returned");
+        results[0].Id.ShouldBe(patientWithTelecom.Id);
+        results[0].MutableNode.ContainsKey("telecom").ShouldBeTrue("returned patient should have telecom field");
     }
 
     #endregion
@@ -308,9 +308,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient without address should be returned");
-        results[0].Id.Should().Be(patientWithoutAddress.Id);
-        results[0].MutableNode.ContainsKey("address").Should().BeFalse("returned patient should not have address field");
+        results.Length.ShouldBe(1, "only the patient without address should be returned");
+        results[0].Id.ShouldBe(patientWithoutAddress.Id);
+        results[0].MutableNode.ContainsKey("address").ShouldBeFalse("returned patient should not have address field");
     }
 
     /// <summary>
@@ -344,9 +344,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"address:missing=false&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with address should be returned");
-        results[0].Id.Should().Be(patientWithAddress.Id);
-        results[0].MutableNode.ContainsKey("address").Should().BeTrue("returned patient should have address field");
+        results.Length.ShouldBe(1, "only the patient with address should be returned");
+        results[0].Id.ShouldBe(patientWithAddress.Id);
+        results[0].MutableNode.ContainsKey("address").ShouldBeTrue("returned patient should have address field");
     }
 
     #endregion
@@ -392,9 +392,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"organization:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient without organization should be returned");
-        results[0].Id.Should().Be(patientWithoutOrg.Id);
-        results[0].MutableNode.ContainsKey("managingOrganization").Should().BeFalse("returned patient should not have managingOrganization field");
+        results.Length.ShouldBe(1, "only the patient without organization should be returned");
+        results[0].Id.ShouldBe(patientWithoutOrg.Id);
+        results[0].MutableNode.ContainsKey("managingOrganization").ShouldBeFalse("returned patient should not have managingOrganization field");
     }
 
     /// <summary>
@@ -435,9 +435,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"organization:missing=false&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient with organization should be returned");
-        results[0].Id.Should().Be(patientWithOrg.Id);
-        results[0].MutableNode.ContainsKey("managingOrganization").Should().BeTrue("returned patient should have managingOrganization field");
+        results.Length.ShouldBe(1, "only the patient with organization should be returned");
+        results[0].Id.ShouldBe(patientWithOrg.Id);
+        results[0].MutableNode.ContainsKey("managingOrganization").ShouldBeTrue("returned patient should have managingOrganization field");
     }
 
     #endregion
@@ -495,10 +495,10 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"gender=female&active:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the female patient without active field should be returned");
-        results[0].Id.Should().Be(femaleWithoutActive.Id);
-        results[0].MutableNode["gender"]?.GetValue<string>().Should().Be("female");
-        results[0].MutableNode.ContainsKey("active").Should().BeFalse();
+        results.Length.ShouldBe(1, "only the female patient without active field should be returned");
+        results[0].Id.ShouldBe(femaleWithoutActive.Id);
+        results[0].MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
+        results[0].MutableNode.ContainsKey("active").ShouldBeFalse();
     }
 
     /// <summary>
@@ -550,10 +550,10 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"gender:missing=true&address:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the patient without both gender and address should be returned");
-        results[0].Id.Should().Be(patientWithoutBoth.Id);
-        results[0].MutableNode.ContainsKey("gender").Should().BeFalse();
-        results[0].MutableNode.ContainsKey("address").Should().BeFalse();
+        results.Length.ShouldBe(1, "only the patient without both gender and address should be returned");
+        results[0].Id.ShouldBe(patientWithoutBoth.Id);
+        results[0].MutableNode.ContainsKey("gender").ShouldBeFalse();
+        results[0].MutableNode.ContainsKey("address").ShouldBeFalse();
     }
 
     #endregion
@@ -632,9 +632,9 @@ public class MissingModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"value-quantity:missing=true&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the observation without valueQuantity should be returned");
-        results[0].Id.Should().Be(obsWithoutValue.Id);
-        results[0].MutableNode.ContainsKey("valueQuantity").Should().BeFalse("returned observation should not have valueQuantity field");
+        results.Length.ShouldBe(1, "only the observation without valueQuantity should be returned");
+        results[0].Id.ShouldBe(obsWithoutValue.Id);
+        results[0].MutableNode.ContainsKey("valueQuantity").ShouldBeFalse("returned observation should not have valueQuantity field");
     }
 
     #endregion

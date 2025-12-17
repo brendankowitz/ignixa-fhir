@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Validation;
 
 namespace Ignixa.Validation.Tests;
@@ -23,9 +23,9 @@ public class ValidationIssueTests
             "Name is required");
 
         // Assert
-        issue.Severity.Should().Be(IssueSeverity.Error);
-        issue.Path.Should().Be("Patient.name");
-        issue.Message.Should().Be("Name is required");
+        issue.Severity.ShouldBe(IssueSeverity.Error);
+        issue.Path.ShouldBe("Patient.name");
+        issue.Message.ShouldBe("Name is required");
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class ValidationIssueTests
         var act = () => new ValidationIssue(IssueSeverity.Error, null!, "message");
 
         // Assert
-        act.Should().Throw<ArgumentNullException>().WithParameterName("path");
+        Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("path");
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class ValidationIssueTests
         var act = () => new ValidationIssue(IssueSeverity.Error, "path", null!);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>().WithParameterName("message");
+        Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("message");
     }
 
     [Theory]
@@ -59,6 +59,6 @@ public class ValidationIssueTests
         var issue = new ValidationIssue(severity, "path", "message");
 
         // Assert
-        issue.Severity.Should().Be(severity);
+        issue.Severity.ShouldBe(severity);
     }
 }

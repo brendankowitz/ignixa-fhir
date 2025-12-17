@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.Specification.Generated;
 
@@ -36,12 +36,12 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().HaveCount(4);
-        codes.Should().Contain(c => c.Code == "male");
-        codes.Should().Contain(c => c.Code == "female");
-        codes.Should().Contain(c => c.Code == "other");
-        codes.Should().Contain(c => c.Code == "unknown");
+        result.ShouldBeTrue();
+        codes.Length.ShouldBe(4);
+        codes.ShouldContain(c => c.Code == "male");
+        codes.ShouldContain(c => c.Code == "female");
+        codes.ShouldContain(c => c.Code == "other");
+        codes.ShouldContain(c => c.Code == "unknown");
     }
 
     [Fact]
@@ -54,9 +54,9 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(c => c.System == FhirCode.Systems.Loinc);
+        result.ShouldBeTrue();
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(c => c.System == FhirCode.Systems.Loinc);
     }
 
     [Fact]
@@ -69,11 +69,11 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(c => c.System == FhirCode.Systems.SnomedCt);
-        codes.Should().Contain(Procedures.Appendectomy);
-        codes.Should().Contain(Procedures.Colonoscopy);
+        result.ShouldBeTrue();
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(c => c.System == FhirCode.Systems.SnomedCt);
+        codes.ShouldContain(Procedures.Appendectomy);
+        codes.ShouldContain(Procedures.Colonoscopy);
     }
 
     [Fact]
@@ -86,11 +86,11 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(Allergens.Peanuts);
-        codes.Should().Contain(Allergens.Penicillin);
-        codes.Should().Contain(Allergens.Shellfish);
+        result.ShouldBeTrue();
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(Allergens.Peanuts);
+        codes.ShouldContain(Allergens.Penicillin);
+        codes.ShouldContain(Allergens.Shellfish);
     }
 
     [Fact]
@@ -103,12 +103,12 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(c => c.System == FhirCode.Systems.Cvx);
-        codes.Should().Contain(Immunizations.MMR);
-        codes.Should().Contain(Immunizations.DTaP);
-        codes.Should().Contain(Immunizations.Influenza);
+        result.ShouldBeTrue();
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(c => c.System == FhirCode.Systems.Cvx);
+        codes.ShouldContain(Immunizations.MMR);
+        codes.ShouldContain(Immunizations.DTaP);
+        codes.ShouldContain(Immunizations.Influenza);
     }
 
     [Fact]
@@ -121,9 +121,9 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(c => c.System == FhirCode.Systems.RxNorm);
+        result.ShouldBeTrue();
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(c => c.System == FhirCode.Systems.RxNorm);
     }
 
     [Fact]
@@ -136,10 +136,10 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().Contain(c => c.Code == "final");
-        codes.Should().Contain(c => c.Code == "preliminary");
-        codes.Should().Contain(c => c.Code == "registered");
+        result.ShouldBeTrue();
+        codes.ShouldContain(c => c.Code == "final");
+        codes.ShouldContain(c => c.Code == "preliminary");
+        codes.ShouldContain(c => c.Code == "registered");
     }
 
     [Fact]
@@ -153,8 +153,8 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeTrue();
-        codes.Should().HaveCount(4);
+        result.ShouldBeTrue();
+        codes.Length.ShouldBe(4);
     }
 
     [Fact]
@@ -167,8 +167,8 @@ public class BindingAwareGenerationTests
             out var codes);
 
         // Assert
-        result.Should().BeFalse();
-        codes.Should().BeEmpty();
+        result.ShouldBeFalse();
+        codes.ShouldBeEmpty();
     }
 
     [Fact]
@@ -178,8 +178,8 @@ public class BindingAwareGenerationTests
         var result = BindingCodeMapper.TryGetCodesForValueSet(null, _schemaProvider.ValueSetProvider, out var codes);
 
         // Assert
-        result.Should().BeFalse();
-        codes.Should().BeEmpty();
+        result.ShouldBeFalse();
+        codes.ShouldBeEmpty();
     }
 
     [Fact]
@@ -189,8 +189,8 @@ public class BindingAwareGenerationTests
         var result = BindingCodeMapper.TryGetCodesForValueSet(string.Empty, _schemaProvider.ValueSetProvider, out var codes);
 
         // Assert
-        result.Should().BeFalse();
-        codes.Should().BeEmpty();
+        result.ShouldBeFalse();
+        codes.ShouldBeEmpty();
     }
 
     #endregion
@@ -204,11 +204,11 @@ public class BindingAwareGenerationTests
         var codes = BindingCodeMapper.GetAllAllergenCodes();
 
         // Assert
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(Allergens.Peanuts);
-        codes.Should().Contain(Allergens.Penicillin);
-        codes.Should().Contain(Allergens.Latex);
-        codes.Should().AllSatisfy(c => c.System.Should().NotBeNullOrEmpty());
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(Allergens.Peanuts);
+        codes.ShouldContain(Allergens.Penicillin);
+        codes.ShouldContain(Allergens.Latex);
+        codes.ShouldAllBe(c => !string.IsNullOrEmpty(c.System));
     }
 
     [Fact]
@@ -218,10 +218,10 @@ public class BindingAwareGenerationTests
         var codes = BindingCodeMapper.GetAllImmunizationCodes();
 
         // Assert
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(Immunizations.MMR);
-        codes.Should().Contain(Immunizations.Covid19Pfizer);
-        codes.Should().AllSatisfy(c => c.System.Should().Be(FhirCode.Systems.Cvx));
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(Immunizations.MMR);
+        codes.ShouldContain(Immunizations.Covid19Pfizer);
+        codes.ShouldAllBe(c => c.System == FhirCode.Systems.Cvx);
     }
 
     [Fact]
@@ -231,11 +231,11 @@ public class BindingAwareGenerationTests
         var codes = BindingCodeMapper.GetAllLabObservationCodes();
 
         // Assert
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(LabObservations.Glucose);
-        codes.Should().Contain(LabObservations.Hemoglobin);
-        codes.Should().Contain(LabObservations.HemoglobinA1c);
-        codes.Should().AllSatisfy(c => c.System.Should().Be(FhirCode.Systems.Loinc));
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(LabObservations.Glucose);
+        codes.ShouldContain(LabObservations.Hemoglobin);
+        codes.ShouldContain(LabObservations.HemoglobinA1c);
+        codes.ShouldAllBe(c => c.System == FhirCode.Systems.Loinc);
     }
 
     [Fact]
@@ -245,11 +245,11 @@ public class BindingAwareGenerationTests
         var codes = BindingCodeMapper.GetAllProcedureCodes();
 
         // Assert
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(Procedures.Appendectomy);
-        codes.Should().Contain(Procedures.TotalKneeReplacement);
-        codes.Should().Contain(Procedures.CABG);
-        codes.Should().AllSatisfy(c => c.System.Should().Be(FhirCode.Systems.SnomedCt));
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(Procedures.Appendectomy);
+        codes.ShouldContain(Procedures.TotalKneeReplacement);
+        codes.ShouldContain(Procedures.CABG);
+        codes.ShouldAllBe(c => c.System == FhirCode.Systems.SnomedCt);
     }
 
     [Fact]
@@ -259,11 +259,11 @@ public class BindingAwareGenerationTests
         var codes = BindingCodeMapper.GetAllVitalSignCodes();
 
         // Assert
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(VitalSigns.BodyTemperature);
-        codes.Should().Contain(VitalSigns.HeartRate);
-        codes.Should().Contain(VitalSigns.BloodPressurePanel);
-        codes.Should().AllSatisfy(c => c.System.Should().Be(FhirCode.Systems.Loinc));
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(VitalSigns.BodyTemperature);
+        codes.ShouldContain(VitalSigns.HeartRate);
+        codes.ShouldContain(VitalSigns.BloodPressurePanel);
+        codes.ShouldAllBe(c => c.System == FhirCode.Systems.Loinc);
     }
 
     [Fact]
@@ -273,10 +273,10 @@ public class BindingAwareGenerationTests
         var codes = BindingCodeMapper.GetAllDiagnosticReportCodes();
 
         // Assert
-        codes.Should().NotBeEmpty();
-        codes.Should().Contain(DiagnosticReports.ComprehensiveMetabolicPanel);
-        codes.Should().Contain(DiagnosticReports.CompleteBloodCount);
-        codes.Should().AllSatisfy(c => c.System.Should().Be(FhirCode.Systems.Loinc));
+        codes.ShouldNotBeEmpty();
+        codes.ShouldContain(DiagnosticReports.ComprehensiveMetabolicPanel);
+        codes.ShouldContain(DiagnosticReports.CompleteBloodCount);
+        codes.ShouldAllBe(c => c.System == FhirCode.Systems.Loinc);
     }
 
     #endregion
@@ -294,7 +294,7 @@ public class BindingAwareGenerationTests
         var result = BindingCodeMapper.IsStrictBinding(strength);
 
         // Assert
-        result.Should().Be(expectedStrict);
+        result.ShouldBe(expectedStrict);
     }
 
     [Theory]
@@ -308,7 +308,7 @@ public class BindingAwareGenerationTests
         var result = BindingCodeMapper.IsRequiredBinding(strength);
 
         // Assert
-        result.Should().Be(expectedRequired);
+        result.ShouldBe(expectedRequired);
     }
 
     #endregion
@@ -325,7 +325,7 @@ public class BindingAwareGenerationTests
         var gender = patient.MutableNode["gender"]?.GetValue<string>();
         if (gender is not null)
         {
-            gender.Should().BeOneOf("male", "female", "other", "unknown",
+            gender.ShouldBeOneOf("male", "female", "other", "unknown",
                 "Patient.gender should use administrative-gender value set");
         }
     }
@@ -341,7 +341,7 @@ public class BindingAwareGenerationTests
         var use = name?["use"]?.GetValue<string>();
         if (use is not null)
         {
-            use.Should().BeOneOf("usual", "official", "temp", "nickname", "anonymous", "old", "maiden",
+            use.ShouldBeOneOf("usual", "official", "temp", "nickname", "anonymous", "old", "maiden",
                 "HumanName.use should use name-use value set");
         }
     }
@@ -357,7 +357,7 @@ public class BindingAwareGenerationTests
         var use = address?["use"]?.GetValue<string>();
         if (use is not null)
         {
-            use.Should().BeOneOf("home", "work", "temp", "old", "billing",
+            use.ShouldBeOneOf("home", "work", "temp", "old", "billing",
                 "Address.use should use address-use value set");
         }
     }
@@ -373,7 +373,7 @@ public class BindingAwareGenerationTests
         var system = telecom?["system"]?.GetValue<string>();
         if (system is not null)
         {
-            system.Should().BeOneOf("phone", "fax", "email", "pager", "url", "sms", "other",
+            system.ShouldBeOneOf("phone", "fax", "email", "pager", "url", "sms", "other",
                 "ContactPoint.system should use contact-point-system value set");
         }
     }
@@ -393,7 +393,7 @@ public class BindingAwareGenerationTests
             if (code is not null)
             {
                 // Valid marital status codes from v3-MaritalStatus
-                code.Should().BeOneOf("A", "D", "I", "L", "M", "P", "S", "T", "U", "W", "UNK",
+                code.ShouldBeOneOf("A", "D", "I", "L", "M", "P", "S", "T", "U", "W", "UNK",
                     "MaritalStatus should use marital-status value set");
             }
         }
@@ -409,7 +409,7 @@ public class BindingAwareGenerationTests
         var status = observation.MutableNode["status"]?.GetValue<string>();
         if (status is not null)
         {
-            status.Should().BeOneOf(
+            status.ShouldBeOneOf(
                 "registered", "preliminary", "final", "amended", "corrected",
                 "cancelled", "entered-in-error", "unknown",
                 "Observation.status should use observation-status value set");
@@ -430,7 +430,7 @@ public class BindingAwareGenerationTests
             var code = coding?["code"]?.GetValue<string>();
             if (code is not null)
             {
-                code.Should().BeOneOf("active", "recurrence", "relapse", "inactive", "remission", "resolved",
+                code.ShouldBeOneOf("active", "recurrence", "relapse", "inactive", "remission", "resolved",
                     "Condition.clinicalStatus should use condition-clinical value set");
             }
         }
@@ -446,7 +446,7 @@ public class BindingAwareGenerationTests
         var status = encounter.MutableNode["status"]?.GetValue<string>();
         if (status is not null)
         {
-            status.Should().BeOneOf(
+            status.ShouldBeOneOf(
                 "planned", "arrived", "triaged", "in-progress", "onleave",
                 "finished", "cancelled", "entered-in-error", "unknown",
                 "Encounter.status should use encounter-status value set");
@@ -467,7 +467,7 @@ public class BindingAwareGenerationTests
             var code = coding?["code"]?.GetValue<string>();
             if (code is not null)
             {
-                code.Should().BeOneOf("active", "inactive", "resolved",
+                code.ShouldBeOneOf("active", "inactive", "resolved",
                     "AllergyIntolerance.clinicalStatus should use allergyintolerance-clinical value set");
             }
         }
@@ -483,7 +483,7 @@ public class BindingAwareGenerationTests
         var type = allergy.MutableNode["type"]?.GetValue<string>();
         if (type is not null)
         {
-            type.Should().BeOneOf("allergy", "intolerance",
+            type.ShouldBeOneOf("allergy", "intolerance",
                 "AllergyIntolerance.type should use allergy-intolerance-type value set");
         }
     }
@@ -498,7 +498,7 @@ public class BindingAwareGenerationTests
         var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
         if (category is not null)
         {
-            category.Should().BeOneOf("food", "medication", "environment", "biologic",
+            category.ShouldBeOneOf("food", "medication", "environment", "biologic",
                 "AllergyIntolerance.category should use allergy-intolerance-category value set");
         }
     }
@@ -513,7 +513,7 @@ public class BindingAwareGenerationTests
         var status = procedure.MutableNode["status"]?.GetValue<string>();
         if (status is not null)
         {
-            status.Should().BeOneOf(
+            status.ShouldBeOneOf(
                 "preparation", "in-progress", "not-done", "on-hold",
                 "stopped", "completed", "entered-in-error", "unknown",
                 "Procedure.status should use event-status value set");
@@ -530,7 +530,7 @@ public class BindingAwareGenerationTests
         var status = medRequest.MutableNode["status"]?.GetValue<string>();
         if (status is not null)
         {
-            status.Should().BeOneOf(
+            status.ShouldBeOneOf(
                 "active", "on-hold", "cancelled", "completed",
                 "entered-in-error", "stopped", "draft", "unknown",
                 "MedicationRequest.status should use medicationrequest-status value set");
@@ -547,7 +547,7 @@ public class BindingAwareGenerationTests
         var intent = medRequest.MutableNode["intent"]?.GetValue<string>();
         if (intent is not null)
         {
-            intent.Should().BeOneOf(
+            intent.ShouldBeOneOf(
                 "proposal", "plan", "order", "original-order",
                 "reflex-order", "filler-order", "instance-order", "option",
                 "MedicationRequest.intent should use medicationrequest-intent value set");
@@ -564,7 +564,7 @@ public class BindingAwareGenerationTests
         var status = report.MutableNode["status"]?.GetValue<string>();
         if (status is not null)
         {
-            status.Should().BeOneOf(
+            status.ShouldBeOneOf(
                 "registered", "partial", "preliminary", "final", "amended",
                 "corrected", "appended", "cancelled", "entered-in-error", "unknown",
                 "DiagnosticReport.status should use diagnostic-report-status value set");
@@ -581,7 +581,7 @@ public class BindingAwareGenerationTests
         var status = immunization.MutableNode["status"]?.GetValue<string>();
         if (status is not null)
         {
-            status.Should().BeOneOf("completed", "entered-in-error", "not-done",
+            status.ShouldBeOneOf("completed", "entered-in-error", "not-done",
                 "Immunization.status should use immunization-status value set");
         }
     }
@@ -594,11 +594,9 @@ public class BindingAwareGenerationTests
 
         // Assert
         var intent = carePlan.MutableNode["intent"]?.GetValue<string>();
-        intent.Should().NotBeNullOrEmpty("CarePlan.intent is required");
-        intent.Should().BeOneOf("proposal", "plan", "order", "option",
+        intent.ShouldNotBeNullOrEmpty("CarePlan.intent is required");
+        intent.ShouldBeOneOf("proposal", "plan", "order", "option",
             "CarePlan.intent should use care-plan-intent value set (required binding)");
-        intent.Should().NotMatch(@"^[0-9a-z]+$",
-            "CarePlan.intent should not be a random alphanumeric code like '0xucbq'");
     }
 
     #endregion
@@ -615,7 +613,7 @@ public class BindingAwareGenerationTests
         var gender = patient.MutableNode["gender"]?.GetValue<string>();
 
         // Assert - gender is optional and should not be populated by default
-        gender.Should().BeNull(
+        gender.ShouldBeNull(
             "Patient.gender is optional (0..1) and optional fields are not populated by default for deterministic test behavior");
     }
 
@@ -627,8 +625,8 @@ public class BindingAwareGenerationTests
         var gender = patient.MutableNode["gender"]?.GetValue<string>();
 
         // Assert - when gender IS set via builder, it should be a valid code
-        gender.Should().NotBeNullOrEmpty();
-        gender.Should().BeOneOf("male", "female", "other", "unknown",
+        gender.ShouldNotBeNullOrEmpty();
+        gender.ShouldBeOneOf("male", "female", "other", "unknown",
             "Patient.gender should use administrative-gender value set when set via builder");
     }
 
@@ -650,10 +648,9 @@ public class BindingAwareGenerationTests
         }
 
         // Assert
-        generatedStatuses.Should().NotBeEmpty();
-        generatedStatuses.Should().AllSatisfy(s =>
-            s.Should().BeOneOf("registered", "preliminary", "final", "amended",
-                "corrected", "cancelled", "entered-in-error", "unknown"));
+        generatedStatuses.ShouldNotBeEmpty();
+        var validStatuses = new[] { "registered", "preliminary", "final", "amended", "corrected", "cancelled", "entered-in-error", "unknown" };
+        generatedStatuses.ShouldAllBe(s => validStatuses.Contains(s));
     }
 
     [Fact]
@@ -674,11 +671,10 @@ public class BindingAwareGenerationTests
         }
 
         // Assert
-        generatedIntents.Should().NotBeEmpty("CarePlan.intent is required");
-        generatedIntents.Should().HaveCount(50, "CarePlan.intent is required and should be generated every time");
-        generatedIntents.Should().AllSatisfy(i =>
-            i.Should().BeOneOf("proposal", "plan", "order", "option", "directive",
-                "All generated CarePlan.intent codes should be valid from the care-plan-intent value set"));
+        generatedIntents.ShouldNotBeEmpty("CarePlan.intent is required");
+        generatedIntents.Count.ShouldBe(50, "CarePlan.intent is required and should be generated every time");
+        var validIntents = new[] { "proposal", "plan", "order", "option", "directive" };
+        generatedIntents.ShouldAllBe(i => validIntents.Contains(i), "All generated CarePlan.intent codes should be valid from the care-plan-intent value set");
     }
 
     #endregion

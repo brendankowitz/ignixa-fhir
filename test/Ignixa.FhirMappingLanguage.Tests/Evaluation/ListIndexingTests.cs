@@ -4,7 +4,7 @@
  * Unit tests for list indexing functionality in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
@@ -79,13 +79,13 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
-        map.Groups[0].Rules.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources.Should().HaveCount(1);
+        map.Groups.Count.ShouldBe(1);
+        map.Groups[0].Rules.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
 
         // Source should have IndexExpression
         var source = map.Groups[0].Rules[0].Sources[0];
-        source.Context.Should().BeOfType<Expressions.IndexExpression>();
+        source.Context.ShouldBeOfType<Expressions.IndexExpression>();
     }
 
     [Fact]
@@ -105,11 +105,11 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
+        map.Groups.Count.ShouldBe(1);
         var source = map.Groups[0].Rules[0].Sources[0];
 
         // Should be: Index(Qualified(Index(Qualified(Identifier("src"), "name"), 0), "given"), 1)
-        source.Context.Should().BeOfType<Expressions.IndexExpression>();
+        source.Context.ShouldBeOfType<Expressions.IndexExpression>();
     }
 
     [Fact]
@@ -131,10 +131,10 @@ group Transform(source src : Patient, target tgt : Bundle) {
         // Assert
         var source = map.Groups[0].Rules[0].Sources[0];
         // Should be: Qualified(Index(Qualified(Identifier("src"), "identifier"), 0), "system")
-        source.Context.Should().BeOfType<Expressions.QualifiedIdentifierExpression>();
+        source.Context.ShouldBeOfType<Expressions.QualifiedIdentifierExpression>();
 
         var qualified = source.Context as Expressions.QualifiedIdentifierExpression;
-        qualified!.Context.Should().BeOfType<Expressions.IndexExpression>();
+        qualified!.Context.ShouldBeOfType<Expressions.IndexExpression>();
     }
 
     #endregion
@@ -174,8 +174,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("John");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("John");
     }
 
     [Fact]
@@ -211,8 +211,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("Jon");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("Jon");
     }
 
     [Fact]
@@ -246,8 +246,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("John");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("John");
     }
 
     [Fact]
@@ -281,7 +281,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should not log anything (no elements)
-        logMessages.Should().BeEmpty();
+        logMessages.ShouldBeEmpty();
     }
 
     [Fact]
@@ -315,7 +315,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Index out of bounds returns empty
-        logMessages.Should().BeEmpty();
+        logMessages.ShouldBeEmpty();
     }
 
     [Fact]
@@ -358,8 +358,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should get second name's first given
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("Jane");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("Jane");
     }
 
     [Fact]
@@ -402,8 +402,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("http://hospital.org");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("http://hospital.org");
     }
 
     #endregion
@@ -441,8 +441,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("Unknown");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("Unknown");
     }
 
     [Fact]
@@ -476,8 +476,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        logMessages.Should().ContainSingle();
-        logMessages[0].Should().Be("John");
+        logMessages.ShouldHaveSingleItem();
+        logMessages[0].ShouldBe("John");
     }
 
     [Fact]
@@ -515,7 +515,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Should not throw
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -554,8 +554,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert - Out-of-bounds index returns empty (no error)
-        act.Should().NotThrow();
-        logMessages.Should().BeEmpty();
+        Should.NotThrow(act);
+        logMessages.ShouldBeEmpty();
     }
 
     #endregion

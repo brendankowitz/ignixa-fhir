@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Smart;
 
 namespace Ignixa.Application.Tests.Features.Authorization;
@@ -28,12 +28,12 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scopeString);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(expectedType);
-        result.ResourceType.Should().Be(expectedResource);
-        result.PermissionString.Should().Be(expectedPermissionString);
-        result.Permissions.Should().Be(expectedPermissions);
-        result.OriginalScope.Should().Be(scopeString);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(expectedType);
+        result.ResourceType.ShouldBe(expectedResource);
+        result.PermissionString.ShouldBe(expectedPermissionString);
+        result.Permissions.ShouldBe(expectedPermissions);
+        result.OriginalScope.ShouldBe(scopeString);
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scopeString);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -64,10 +64,10 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScopes(scopeString);
 
         // Assert
-        result.Should().HaveCount(3);
-        result[0].Type.Should().Be(SmartScopeType.Patient);
-        result[1].Type.Should().Be(SmartScopeType.User);
-        result[2].Type.Should().Be(SmartScopeType.System);
+        result.Count.ShouldBe(3);
+        result[0].Type.ShouldBe(SmartScopeType.Patient);
+        result[1].Type.ShouldBe(SmartScopeType.User);
+        result[2].Type.ShouldBe(SmartScopeType.System);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScopes(string.Empty);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScopes((string)null!);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Theory]
@@ -101,7 +101,7 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.IsValidSmartScope(scope);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -114,12 +114,12 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scopeString);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(SmartScopeType.Patient);
-        result.ResourceType.Should().Be("Observation");
-        result.Permissions.Should().Be(SmartPermissions.Read | SmartPermissions.Search);
-        result.SearchConstraints.Should().NotBeNull();
-        result.SearchConstraints!["category"].Should().Be("http://terminology.hl7.org/CodeSystem/observation-category|laboratory");
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(SmartScopeType.Patient);
+        result.ResourceType.ShouldBe("Observation");
+        result.Permissions.ShouldBe(SmartPermissions.Read | SmartPermissions.Search);
+        result.SearchConstraints.ShouldNotBeNull();
+        result.SearchConstraints!["category"].ShouldBe("http://terminology.hl7.org/CodeSystem/observation-category|laboratory");
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class SmartScopeParserTests
             SmartPermissions.Read | SmartPermissions.Search);
 
         // Assert
-        scope.Should().Be("patient/Observation.rs");
+        scope.ShouldBe("patient/Observation.rs");
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class SmartScopeParserTests
             constraints);
 
         // Assert
-        scope.Should().Be("patient/Observation.rs?category=laboratory");
+        scope.ShouldBe("patient/Observation.rs?category=laboratory");
     }
 
     #region SMART v1 Backward Compatibility Tests
@@ -175,13 +175,13 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scopeString);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(expectedType);
-        result.ResourceType.Should().Be(expectedResource);
-        result.PermissionString.Should().Be(expectedPermissionString);
-        result.Permissions.Should().Be(expectedPermissions);
-        result.OriginalScope.Should().Be(scopeString);
-        result.SearchConstraints.Should().BeNull(); // v1 doesn't support search constraints
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(expectedType);
+        result.ResourceType.ShouldBe(expectedResource);
+        result.PermissionString.ShouldBe(expectedPermissionString);
+        result.Permissions.ShouldBe(expectedPermissions);
+        result.OriginalScope.ShouldBe(scopeString);
+        result.SearchConstraints.ShouldBeNull(); // v1 doesn't support search constraints
     }
 
     [Theory]
@@ -195,7 +195,7 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.IsValidSmartScope(scope);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -208,12 +208,12 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scope);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.HasPermission(SmartPermissions.Read).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Search).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Create).Should().BeFalse();
-        result.HasPermission(SmartPermissions.Update).Should().BeFalse();
-        result.HasPermission(SmartPermissions.Delete).Should().BeFalse();
+        result.ShouldNotBeNull();
+        result!.HasPermission(SmartPermissions.Read).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Search).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Create).ShouldBeFalse();
+        result.HasPermission(SmartPermissions.Update).ShouldBeFalse();
+        result.HasPermission(SmartPermissions.Delete).ShouldBeFalse();
     }
 
     [Fact]
@@ -226,12 +226,12 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scope);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.HasPermission(SmartPermissions.Create).Should().BeTrue();
-        result!.HasPermission(SmartPermissions.Update).Should().BeTrue();
-        result!.HasPermission(SmartPermissions.Delete).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Read).Should().BeFalse();
-        result.HasPermission(SmartPermissions.Search).Should().BeFalse();
+        result.ShouldNotBeNull();
+        result!.HasPermission(SmartPermissions.Create).ShouldBeTrue();
+        result!.HasPermission(SmartPermissions.Update).ShouldBeTrue();
+        result!.HasPermission(SmartPermissions.Delete).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Read).ShouldBeFalse();
+        result.HasPermission(SmartPermissions.Search).ShouldBeFalse();
     }
 
     [Fact]
@@ -244,13 +244,13 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scope);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Permissions.Should().Be(SmartPermissions.All);
-        result.HasPermission(SmartPermissions.Create).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Read).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Update).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Delete).Should().BeTrue();
-        result.HasPermission(SmartPermissions.Search).Should().BeTrue();
+        result.ShouldNotBeNull();
+        result!.Permissions.ShouldBe(SmartPermissions.All);
+        result.HasPermission(SmartPermissions.Create).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Read).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Update).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Delete).ShouldBeTrue();
+        result.HasPermission(SmartPermissions.Search).ShouldBeTrue();
     }
 
     [Fact]
@@ -263,27 +263,27 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScopes(scopeString);
 
         // Assert
-        result.Should().HaveCount(4);
+        result.Count.ShouldBe(4);
 
         // v1: patient/Observation.read → patient/Observation.rs
-        result[0].Type.Should().Be(SmartScopeType.Patient);
-        result[0].ResourceType.Should().Be("Observation");
-        result[0].PermissionString.Should().Be("RS");
+        result[0].Type.ShouldBe(SmartScopeType.Patient);
+        result[0].ResourceType.ShouldBe("Observation");
+        result[0].PermissionString.ShouldBe("RS");
 
         // v2: user/Patient.cruds
-        result[1].Type.Should().Be(SmartScopeType.User);
-        result[1].ResourceType.Should().Be("Patient");
-        result[1].PermissionString.Should().Be("CRUDS");
+        result[1].Type.ShouldBe(SmartScopeType.User);
+        result[1].ResourceType.ShouldBe("Patient");
+        result[1].PermissionString.ShouldBe("CRUDS");
 
         // v1: system/*.* → system/*.cruds
-        result[2].Type.Should().Be(SmartScopeType.System);
-        result[2].ResourceType.Should().Be("*");
-        result[2].PermissionString.Should().Be("CRUDS");
+        result[2].Type.ShouldBe(SmartScopeType.System);
+        result[2].ResourceType.ShouldBe("*");
+        result[2].PermissionString.ShouldBe("CRUDS");
 
         // v2: patient/Medication.rs
-        result[3].Type.Should().Be(SmartScopeType.Patient);
-        result[3].ResourceType.Should().Be("Medication");
-        result[3].PermissionString.Should().Be("RS");
+        result[3].Type.ShouldBe(SmartScopeType.Patient);
+        result[3].ResourceType.ShouldBe("Medication");
+        result[3].PermissionString.ShouldBe("RS");
     }
 
     [Theory]
@@ -296,7 +296,7 @@ public class SmartScopeParserTests
         var result = SmartScopeParser.ParseScope(scope);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion

@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -39,10 +39,10 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.ResourceType.Should().Be("Patient");
-        schema.CanonicalUrl.Should().Be(canonicalUrl);
-        schema.Checks.Should().NotBeEmpty();
+        schema.ShouldNotBeNull();
+        schema!.ResourceType.ShouldBe("Patient");
+        schema.CanonicalUrl.ShouldBe(canonicalUrl);
+        schema.Checks.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -55,10 +55,10 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.ResourceType.Should().Be("Observation");
-        schema.CanonicalUrl.Should().Be(canonicalUrl);
-        schema.Checks.Should().NotBeEmpty();
+        schema.ShouldNotBeNull();
+        schema!.ResourceType.ShouldBe("Observation");
+        schema.CanonicalUrl.ShouldBe(canonicalUrl);
+        schema.Checks.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -71,9 +71,9 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.ResourceType.Should().Be("Condition");
-        schema.CanonicalUrl.Should().Be(canonicalUrl);
+        schema.ShouldNotBeNull();
+        schema!.ResourceType.ShouldBe("Condition");
+        schema.CanonicalUrl.ShouldBe(canonicalUrl);
     }
 
     #endregion
@@ -90,10 +90,10 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.Checks.OfType<CardinalityCheck>().Should().NotBeEmpty();
-        schema.Checks.OfType<TypeCheck>().Should().NotBeEmpty();
-        schema.Checks.OfType<ReferenceFormatCheck>().Should().NotBeEmpty();
+        schema.ShouldNotBeNull();
+        schema!.Checks.OfType<CardinalityCheck>().ShouldNotBeEmpty();
+        schema.Checks.OfType<TypeCheck>().ShouldNotBeEmpty();
+        schema.Checks.OfType<ReferenceFormatCheck>().ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -106,8 +106,8 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.Checks.OfType<CardinalityCheck>().Should().NotBeEmpty();
+        schema.ShouldNotBeNull();
+        schema!.Checks.OfType<CardinalityCheck>().ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -120,8 +120,8 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.Checks.OfType<CodingStructureCheck>().Should().NotBeEmpty();
+        schema.ShouldNotBeNull();
+        schema!.Checks.OfType<CodingStructureCheck>().ShouldNotBeEmpty();
     }
 
     #endregion
@@ -138,7 +138,7 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().BeNull();
+        schema.ShouldBeNull();
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().BeNull();
+        schema.ShouldBeNull();
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().BeNull();
+        schema.ShouldBeNull();
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl!);
 
         // Assert
-        schema.Should().BeNull();
+        schema.ShouldBeNull();
     }
 
     #endregion
@@ -194,7 +194,7 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().BeNull();
+        schema.ShouldBeNull();
     }
 
     #endregion
@@ -206,8 +206,8 @@ public class StructureDefinitionSchemaResolverTests
     {
         // Act & Assert
         var act = () => new StructureDefinitionSchemaResolver(null!);
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("schema"); // Parameter was renamed from "provider" to "schema"
+        Should.Throw<ArgumentNullException>(act)
+            .ParamName.ShouldBe("schema"); // Parameter was renamed from "provider" to "schema"
     }
 
     #endregion
@@ -233,9 +233,9 @@ public class StructureDefinitionSchemaResolverTests
             .ToList();
 
         // Assert
-        schemas.Should().AllSatisfy(schema => schema.Should().NotBeNull());
-        schemas.Select(s => s!.ResourceType).Should().OnlyHaveUniqueItems();
-        schemas.Select(s => s!.CanonicalUrl).Should().OnlyHaveUniqueItems();
+        schemas.ShouldNotContain(x => x == null);
+        schemas.Select(s => s!.ResourceType).Distinct().ToList().Count.ShouldBe(resourceTypes.Length);
+        schemas.Select(s => s!.CanonicalUrl).Distinct().ToList().Count.ShouldBe(resourceTypes.Length);
     }
 
     [Fact]
@@ -250,10 +250,10 @@ public class StructureDefinitionSchemaResolverTests
 
         // Assert - Note: StructureDefinitionSchemaResolver does NOT cache
         // It builds a new schema each time
-        schema1.Should().NotBeNull();
-        schema2.Should().NotBeNull();
-        schema1.Should().NotBeSameAs(schema2); // Different instances (no caching)
-        schema1!.ResourceType.Should().Be(schema2!.ResourceType); // Same content
+        schema1.ShouldNotBeNull();
+        schema2.ShouldNotBeNull();
+        schema1.ShouldNotBeSameAs(schema2); // Different instances (no caching)
+        schema1!.ResourceType.ShouldBe(schema2!.ResourceType); // Same content
     }
 
     #endregion
@@ -271,8 +271,8 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema!.ResourceType.Should().Be("Patient");
+        schema.ShouldNotBeNull();
+        schema!.ResourceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -285,7 +285,7 @@ public class StructureDefinitionSchemaResolverTests
         var schema = _resolver.GetSchema(canonicalUrl);
 
         // Assert - Trailing slash means empty resource type
-        schema.Should().BeNull();
+        schema.ShouldBeNull();
     }
 
     #endregion

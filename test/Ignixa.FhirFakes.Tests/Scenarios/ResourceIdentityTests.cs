@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 
 namespace Ignixa.FhirFakes.Tests.Scenarios;
@@ -28,9 +28,9 @@ public class ResourceIdentityTests
         var identity = new ResourceIdentity(resourceType, id, logicalName);
 
         // Assert
-        identity.ResourceType.Should().Be(resourceType);
-        identity.Id.Should().Be(id);
-        identity.LogicalName.Should().Be(logicalName);
+        identity.ResourceType.ShouldBe(resourceType);
+        identity.Id.ShouldBe(id);
+        identity.LogicalName.ShouldBe(logicalName);
     }
 
     [Fact]
@@ -44,9 +44,9 @@ public class ResourceIdentityTests
         var identity = new ResourceIdentity(resourceType, id);
 
         // Assert
-        identity.ResourceType.Should().Be(resourceType);
-        identity.Id.Should().Be(id);
-        identity.LogicalName.Should().BeNull();
+        identity.ResourceType.ShouldBe(resourceType);
+        identity.Id.ShouldBe(id);
+        identity.LogicalName.ShouldBeNull();
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class ResourceIdentityTests
         var identity = new ResourceIdentity(resourceType, id, null);
 
         // Assert
-        identity.LogicalName.Should().BeNull();
+        identity.LogicalName.ShouldBeNull();
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class ResourceIdentityTests
         var identity = new ResourceIdentity(resourceType, id);
 
         // Assert
-        identity.Id.Should().Be(id);
+        identity.Id.ShouldBe(id);
     }
 
     #endregion
@@ -91,7 +91,7 @@ public class ResourceIdentityTests
         var reference = identity.ResolvedReference;
 
         // Assert
-        reference.Should().Be("Patient/abc-123");
+        reference.ShouldBe("Patient/abc-123");
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class ResourceIdentityTests
         var reference = identity.ResolvedReference;
 
         // Assert
-        reference.Should().Be("Observation/obs-456-xyz");
+        reference.ShouldBe("Observation/obs-456-xyz");
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class ResourceIdentityTests
         var reference = identity.ResolvedReference;
 
         // Assert
-        reference.Should().Be($"Encounter/{id}");
+        reference.ShouldBe($"Encounter/{id}");
     }
 
     #endregion
@@ -136,7 +136,7 @@ public class ResourceIdentityTests
         var reference = identity.UrnUuidReference;
 
         // Assert
-        reference.Should().Be("urn:uuid:abc-123");
+        reference.ShouldBe("urn:uuid:abc-123");
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class ResourceIdentityTests
         var reference = identity.UrnUuidReference;
 
         // Assert
-        reference.Should().Be($"urn:uuid:{id}");
+        reference.ShouldBe($"urn:uuid:{id}");
     }
 
     [Fact]
@@ -163,8 +163,8 @@ public class ResourceIdentityTests
         var reference = identity.UrnUuidReference;
 
         // Assert
-        reference.Should().NotContain("Patient");
-        reference.Should().Be("urn:uuid:test-id");
+        reference.ShouldNotContain("Patient");
+        reference.ShouldBe("urn:uuid:test-id");
     }
 
     #endregion
@@ -182,8 +182,8 @@ public class ResourceIdentityTests
         var reference = identity.GetReference(ReferenceFormat.UrnUuid);
 
         // Assert
-        reference.Should().Be("urn:uuid:abc-123");
-        reference.Should().Be(identity.UrnUuidReference);
+        reference.ShouldBe("urn:uuid:abc-123");
+        reference.ShouldBe(identity.UrnUuidReference);
     }
 
     [Fact]
@@ -196,8 +196,8 @@ public class ResourceIdentityTests
         var reference = identity.GetReference(ReferenceFormat.Resolved);
 
         // Assert
-        reference.Should().Be("Patient/abc-123");
-        reference.Should().Be(identity.ResolvedReference);
+        reference.ShouldBe("Patient/abc-123");
+        reference.ShouldBe(identity.ResolvedReference);
     }
 
     [Fact]
@@ -211,8 +211,8 @@ public class ResourceIdentityTests
         var act = () => identity.GetReference(invalidFormat);
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("format");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(act);
+        exception.ParamName.ShouldBe("format");
     }
 
     [Theory]
@@ -235,7 +235,7 @@ public class ResourceIdentityTests
         var reference = identity.GetReference(format);
 
         // Assert
-        reference.Should().Be(expectedReference);
+        reference.ShouldBe(expectedReference);
     }
 
     #endregion
@@ -250,8 +250,8 @@ public class ResourceIdentityTests
         var identity2 = new ResourceIdentity("Patient", "abc-123", "current-patient");
 
         // Act & Assert
-        identity1.Should().Be(identity2);
-        (identity1 == identity2).Should().BeTrue();
+        identity1.ShouldBe(identity2);
+        (identity1 == identity2).ShouldBeTrue();
     }
 
     [Fact]
@@ -262,8 +262,8 @@ public class ResourceIdentityTests
         var identity2 = new ResourceIdentity("Patient", "xyz-789");
 
         // Act & Assert
-        identity1.Should().NotBe(identity2);
-        (identity1 != identity2).Should().BeTrue();
+        identity1.ShouldNotBe(identity2);
+        (identity1 != identity2).ShouldBeTrue();
     }
 
     [Fact]
@@ -274,7 +274,7 @@ public class ResourceIdentityTests
         var identity2 = new ResourceIdentity("Observation", "abc-123");
 
         // Act & Assert
-        identity1.Should().NotBe(identity2);
+        identity1.ShouldNotBe(identity2);
     }
 
     [Fact]
@@ -285,7 +285,7 @@ public class ResourceIdentityTests
         var identity2 = new ResourceIdentity("Patient", "abc-123", "patient-2");
 
         // Act & Assert
-        identity1.Should().NotBe(identity2);
+        identity1.ShouldNotBe(identity2);
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Builders.Profiles;
 using Ignixa.FhirFakes.Population;
@@ -35,10 +35,10 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
-        patient.MutableNode["gender"]?.GetValue<string>().Should().Be("male");
-        patient.MutableNode["birthDate"]?.GetValue<string>().Should().NotBeNullOrEmpty();
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
+        patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        patient.MutableNode["birthDate"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -53,11 +53,11 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode["gender"]?.GetValue<string>().Should().Be("female");
+        patient.ShouldNotBeNull();
+        patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
 
         // Should have ethnicity extension
-        patient.MutableNode["extension"].Should().NotBeNull();
+        patient.MutableNode["extension"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -71,14 +71,14 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["address"].Should().NotBeNull();
+        patient.MutableNode["address"].ShouldNotBeNull();
         var addresses = patient.MutableNode["address"]?.AsArray();
-        addresses.Should().HaveCount(1);
+        addresses!.Count.ShouldBe(1);
 
         var address = addresses?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Seattle");
-        address?["state"]?.GetValue<string>().Should().Be("WA");
-        address?["postalCode"]?.GetValue<string>().Should().Be("98101");
+        address?["city"]?.GetValue<string>().ShouldBe("Seattle");
+        address?["state"]?.GetValue<string>().ShouldBe("WA");
+        address?["postalCode"]?.GetValue<string>().ShouldBe("98101");
     }
 
     [Fact]
@@ -92,13 +92,13 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["address"].Should().NotBeNull();
+        patient.MutableNode["address"].ShouldNotBeNull();
         var addresses = patient.MutableNode["address"]?.AsArray();
-        addresses.Should().HaveCount(1);
+        addresses!.Count.ShouldBe(1);
 
         var address = addresses?[0]?.AsObject();
-        address?["postalCode"]?.GetValue<string>().Should().Be("02101");
-        address?["line"].Should().NotBeNull(); // Street should be auto-generated
+        address?["postalCode"]?.GetValue<string>().ShouldBe("02101");
+        address?["line"].ShouldNotBeNull(); // Street should be auto-generated
     }
 
     [Fact]
@@ -112,13 +112,13 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["telecom"].Should().NotBeNull();
+        patient.MutableNode["telecom"].ShouldNotBeNull();
         var telecoms = patient.MutableNode["telecom"]?.AsArray();
-        telecoms.Should().HaveCount(1);
+        telecoms!.Count.ShouldBe(1);
 
         var telecom = telecoms?[0]?.AsObject();
-        telecom?["system"]?.GetValue<string>().Should().Be("phone");
-        telecom?["value"]?.GetValue<string>().Should().StartWith("617-");
+        telecom?["system"]?.GetValue<string>().ShouldBe("phone");
+        telecom?["value"]?.GetValue<string>().ShouldStartWith("617-");
     }
 
     [Fact]
@@ -135,12 +135,12 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["meta"]?["tag"].Should().NotBeNull();
+        patient.MutableNode["meta"]?["tag"].ShouldNotBeNull();
         var tags = patient.MutableNode["meta"]?["tag"]?.AsArray();
-        tags.Should().HaveCount(1);
+        tags!.Count.ShouldBe(1);
 
         var metaTag = tags?[0]?.AsObject();
-        metaTag?["code"]?.GetValue<string>().Should().Be(tag);
+        metaTag?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Id.Should().Be(expectedId);
+        patient.Id.ShouldBe(expectedId);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["birthDate"]?.GetValue<string>().Should().StartWith("1980");
+        patient.MutableNode["birthDate"]?.GetValue<string>().ShouldStartWith("1980");
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["active"]?.GetValue<bool>().Should().BeFalse();
+        patient.MutableNode["active"]?.GetValue<bool>().ShouldBeFalse();
     }
 
     #endregion
@@ -200,21 +200,21 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
-        patient.MutableNode["name"].Should().NotBeNull();
-        patient.MutableNode["gender"].Should().NotBeNull();
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
+        patient.MutableNode["name"].ShouldNotBeNull();
+        patient.MutableNode["gender"].ShouldNotBeNull();
 
         // Should have address with ZIP code from Boston demographics
-        patient.MutableNode["address"].Should().NotBeNull();
+        patient.MutableNode["address"].ShouldNotBeNull();
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["postalCode"]?.GetValue<string>().Should().StartWith("02"); // Boston ZIP prefix
+        address?["postalCode"]?.GetValue<string>().ShouldStartWith("02"); // Boston ZIP prefix
 
         // Should have phone with area code from Boston demographics
-        patient.MutableNode["telecom"].Should().NotBeNull();
+        patient.MutableNode["telecom"].ShouldNotBeNull();
         var telecom = patient.MutableNode["telecom"]?.AsArray()?[0]?.AsObject();
         var phoneValue = telecom?["value"]?.GetValue<string>();
-        phoneValue.Should().Match(p => p.StartsWith("617-") || p.StartsWith("857-")); // Boston area codes
+        (phoneValue!.StartsWith("617-", StringComparison.Ordinal) || phoneValue.StartsWith("857-", StringComparison.Ordinal)).ShouldBeTrue(); // Boston area codes
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public class PatientBuilderTests
         // Assert
         var birthDate = patient.MutableNode["birthDate"]?.GetValue<string>();
         var expectedYear = DateTime.UtcNow.Year - 45;
-        birthDate.Should().StartWith(expectedYear.ToString());
+        birthDate.ShouldStartWith(expectedYear.ToString());
     }
 
     [Fact]
@@ -241,19 +241,19 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
 
         // Should have address with ZIP code from Chicago demographics
-        patient.MutableNode["address"].Should().NotBeNull();
+        patient.MutableNode["address"].ShouldNotBeNull();
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["postalCode"]?.GetValue<string>().Should().StartWith("606"); // Chicago ZIP prefix
+        address?["postalCode"]?.GetValue<string>().ShouldStartWith("606"); // Chicago ZIP prefix
 
         // Should have phone with area code from Chicago demographics
-        patient.MutableNode["telecom"].Should().NotBeNull();
+        patient.MutableNode["telecom"].ShouldNotBeNull();
         var telecom = patient.MutableNode["telecom"]?.AsArray()?[0]?.AsObject();
         var phoneValue = telecom?["value"]?.GetValue<string>();
-        phoneValue.Should().Match(p => p.StartsWith("312-") || p.StartsWith("773-") || p.StartsWith("872-")); // Chicago area codes
+        (phoneValue!.StartsWith("312-", StringComparison.Ordinal) || phoneValue.StartsWith("773-", StringComparison.Ordinal) || phoneValue.StartsWith("872-", StringComparison.Ordinal)).ShouldBeTrue(); // Chicago area codes
     }
 
     [Fact]
@@ -269,16 +269,16 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["name"].Should().NotBeNull();
+        patient.MutableNode["name"].ShouldNotBeNull();
         var names = patient.MutableNode["name"]?.AsArray();
-        names.Should().HaveCount(1);
+        names!.Count.ShouldBe(1);
 
         var name = names?[0]?.AsObject();
-        name?["family"].Should().NotBeNull();
-        name?["given"].Should().NotBeNull();
+        name?["family"].ShouldNotBeNull();
+        name?["given"].ShouldNotBeNull();
 
         // Should have US Core ethnicity extension (using us-core-race URL per FHIR spec)
-        patient.MutableNode["extension"].Should().NotBeNull();
+        patient.MutableNode["extension"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -292,16 +292,18 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["extension"].Should().NotBeNull();
+        patient.MutableNode["extension"].ShouldNotBeNull();
         var extensions = patient.MutableNode["extension"]?.AsArray();
 
         // Find BMI extension
         var bmiExtension = extensions?
             .FirstOrDefault(e => e?["url"]?.GetValue<string>() == "http://ignixa.dev/StructureDefinition/patient-bmi");
 
-        bmiExtension.Should().NotBeNull();
+        bmiExtension.ShouldNotBeNull();
         var bmi = bmiExtension?["valueDecimal"]?.GetValue<decimal>();
-        bmi.Should().BeGreaterThanOrEqualTo(19).And.BeLessThanOrEqualTo(42); // NHANES range
+        bmi.ShouldNotBeNull();
+        bmi.Value.ShouldBeGreaterThanOrEqualTo(19m); // NHANES range
+        bmi.Value.ShouldBeLessThanOrEqualTo(42m);
     }
 
     [Fact]
@@ -327,11 +329,11 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
+        patient.ShouldNotBeNull();
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("TestCity");
-        address?["state"]?.GetValue<string>().Should().Be("TestState");
-        address?["postalCode"]?.GetValue<string>().Should().StartWith("123");
+        address?["city"]?.GetValue<string>().ShouldBe("TestCity");
+        address?["state"]?.GetValue<string>().ShouldBe("TestState");
+        address?["postalCode"]?.GetValue<string>().ShouldStartWith("123");
     }
 
     [Fact]
@@ -343,19 +345,19 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
 
         // Should have address with Seattle details
-        patient.MutableNode["address"].Should().NotBeNull();
+        patient.MutableNode["address"].ShouldNotBeNull();
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Seattle");
-        address?["state"]?.GetValue<string>().Should().Be("Washington");
+        address?["city"]?.GetValue<string>().ShouldBe("Seattle");
+        address?["state"]?.GetValue<string>().ShouldBe("Washington");
 
         // Should have name and demographics
-        patient.MutableNode["name"].Should().NotBeNull();
-        patient.MutableNode["gender"].Should().NotBeNull();
-        patient.MutableNode["birthDate"].Should().NotBeNull();
+        patient.MutableNode["name"].ShouldNotBeNull();
+        patient.MutableNode["gender"].ShouldNotBeNull();
+        patient.MutableNode["birthDate"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -367,15 +369,15 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
 
         // Should have Australian address details
-        patient.MutableNode["address"].Should().NotBeNull();
+        patient.MutableNode["address"].ShouldNotBeNull();
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Melbourne");
-        address?["state"]?.GetValue<string>().Should().Be("Victoria");
-        address?["country"]?.GetValue<string>().Should().Be("AU");
+        address?["city"]?.GetValue<string>().ShouldBe("Melbourne");
+        address?["state"]?.GetValue<string>().ShouldBe("Victoria");
+        address?["country"]?.GetValue<string>().ShouldBe("AU");
 
         // Should NOT have USCore ethnicity extensions
         var extensions = patient.MutableNode["extension"]?.AsArray();
@@ -388,8 +390,8 @@ public class PatientBuilderTests
             foreach (var extension in extensions)
             {
                 var url = extension?["url"]?.GetValue<string>();
-                url.Should().NotBe(usCoreRaceUrl);
-                url.Should().NotBe(usCoreHispanicOriginUrl);
+                url.ShouldNotBe(usCoreRaceUrl);
+                url.ShouldNotBe(usCoreHispanicOriginUrl);
             }
         }
     }
@@ -403,16 +405,16 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
 
         // Should have US address
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["country"]?.GetValue<string>().Should().Be("US");
+        address?["country"]?.GetValue<string>().ShouldBe("US");
 
         // Should have USCore race extension (ethnicity is sampled from Boston demographics, uses us-core-race URL per FHIR spec)
         var extensions = patient.MutableNode["extension"]?.AsArray();
-        extensions.Should().NotBeNull();
+        extensions.ShouldNotBeNull();
 
         var usCoreRaceUrl = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-race";
         var hasUsCoreRace = false;
@@ -424,7 +426,7 @@ public class PatientBuilderTests
                 break;
             }
         }
-        hasUsCoreRace.Should().BeTrue("US patients should have USCore race extension (for ethnicity)");
+        hasUsCoreRace.ShouldBeTrue("US patients should have USCore race extension (for ethnicity)");
     }
 
     #endregion
@@ -439,13 +441,13 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
-        patient.Id.Should().NotBeNullOrEmpty();
-        patient.MutableNode["gender"].Should().NotBeNull();
-        patient.MutableNode["birthDate"].Should().NotBeNull();
-        patient.MutableNode["name"].Should().NotBeNull();
-        patient.MutableNode["active"]?.GetValue<bool>().Should().BeTrue();
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
+        patient.Id.ShouldNotBeNullOrEmpty();
+        patient.MutableNode["gender"].ShouldNotBeNull();
+        patient.MutableNode["birthDate"].ShouldNotBeNull();
+        patient.MutableNode["name"].ShouldNotBeNull();
+        patient.MutableNode["active"]?.GetValue<bool>().ShouldBeTrue();
     }
 
     [Fact]
@@ -457,8 +459,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*DemographicsDataProvider required*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("DemographicsDataProvider required");
     }
 
     [Fact]
@@ -470,8 +471,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*LocalBasedNameGenerator required*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("LocalBasedNameGenerator required");
     }
 
     [Fact]
@@ -487,7 +487,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient1.Id.Should().NotBe(patient2.Id);
+        patient1.Id.ShouldNotBe(patient2.Id);
         // Names may differ due to random sampling
     }
 
@@ -503,9 +503,9 @@ public class PatientBuilderTests
             .FromCity(KnownCities.Boston);
 
         // Assert - Check profile is US Core
-        builder.Profile.Should().Be(USCorePatientProfile.Instance);
-        builder.Profile.ProfileUrl.Should().Be("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient");
-        builder.Profile.CountryCode.Should().Be("US");
+        builder.Profile.ShouldBe(USCorePatientProfile.Instance);
+        builder.Profile.ProfileUrl.ShouldBe("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient");
+        builder.Profile.CountryCode.ShouldBe("US");
     }
 
     [Fact]
@@ -516,9 +516,9 @@ public class PatientBuilderTests
             .FromCity(KnownCities.Melbourne);
 
         // Assert - Check profile is AU Base
-        builder.Profile.Should().Be(AUBasePatientProfile.Instance);
-        builder.Profile.ProfileUrl.Should().Be("http://hl7.org.au/fhir/StructureDefinition/au-patient");
-        builder.Profile.CountryCode.Should().Be("AU");
+        builder.Profile.ShouldBe(AUBasePatientProfile.Instance);
+        builder.Profile.ProfileUrl.ShouldBe("http://hl7.org.au/fhir/StructureDefinition/au-patient");
+        builder.Profile.CountryCode.ShouldBe("AU");
     }
 
     [Fact]
@@ -530,12 +530,12 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.ResourceType.Should().Be("Patient");
+        patient.ShouldNotBeNull();
+        patient.ResourceType.ShouldBe("Patient");
 
         // Should have AU Base indigenous status extension
         var extensions = patient.MutableNode["extension"]?.AsArray();
-        extensions.Should().NotBeNull();
+        extensions.ShouldNotBeNull();
 
         var indigenousStatusUrl = "http://hl7.org.au/fhir/StructureDefinition/indigenous-status";
         var hasIndigenousStatus = false;
@@ -547,14 +547,14 @@ public class PatientBuilderTests
 
                 // Verify the coding structure
                 var valueCoding = extension["valueCoding"]?.AsObject();
-                valueCoding.Should().NotBeNull();
-                valueCoding?["system"]?.GetValue<string>().Should().Be("https://healthterminologies.gov.au/fhir/CodeSystem/australian-indigenous-status-1");
-                valueCoding?["code"]?.GetValue<string>().Should().BeOneOf("1", "2", "3", "4", "9");
-                valueCoding?["display"]?.GetValue<string>().Should().NotBeNullOrEmpty();
+                valueCoding.ShouldNotBeNull();
+                valueCoding?["system"]?.GetValue<string>().ShouldBe("https://healthterminologies.gov.au/fhir/CodeSystem/australian-indigenous-status-1");
+                valueCoding?["code"]?.GetValue<string>().ShouldBeOneOf("1", "2", "3", "4", "9");
+                valueCoding?["display"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
                 break;
             }
         }
-        hasIndigenousStatus.Should().BeTrue("AU patients should have indigenous status extension");
+        hasIndigenousStatus.ShouldBeTrue("AU patients should have indigenous status extension");
     }
 
     [Fact]
@@ -567,15 +567,15 @@ public class PatientBuilderTests
 
         // Assert - Check address is Sydney
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Sydney");
-        address?["state"]?.GetValue<string>().Should().Be("New South Wales");
-        address?["country"]?.GetValue<string>().Should().Be("AU");
+        address?["city"]?.GetValue<string>().ShouldBe("Sydney");
+        address?["state"]?.GetValue<string>().ShouldBe("New South Wales");
+        address?["country"]?.GetValue<string>().ShouldBe("AU");
 
         // Should have indigenous status extension
         var extensions = patient.MutableNode["extension"]?.AsArray();
-        extensions.Should().NotBeNull();
+        extensions.ShouldNotBeNull();
         extensions!.Any(e => e?["url"]?.GetValue<string>() == "http://hl7.org.au/fhir/StructureDefinition/indigenous-status")
-            .Should().BeTrue();
+            .ShouldBeTrue();
     }
 
     [Fact]
@@ -586,8 +586,8 @@ public class PatientBuilderTests
             .FromCity(KnownCities.Amsterdam);
 
         // Assert - Check profile is Default (no NL profile implemented)
-        builder.Profile.Should().Be(DefaultPatientProfile.Instance);
-        builder.Profile.ProfileUrl.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
+        builder.Profile.ShouldBe(DefaultPatientProfile.Instance);
+        builder.Profile.ProfileUrl.ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
     }
 
     [Fact]
@@ -599,12 +599,12 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
+        patient.ShouldNotBeNull();
 
         // Should have NL address
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Amsterdam");
-        address?["country"]?.GetValue<string>().Should().Be("NL");
+        address?["city"]?.GetValue<string>().ShouldBe("Amsterdam");
+        address?["country"]?.GetValue<string>().ShouldBe("NL");
 
         // Extensions should be null or empty (no profile-specific extensions)
         var extensions = patient.MutableNode["extension"]?.AsArray();
@@ -614,8 +614,8 @@ public class PatientBuilderTests
             foreach (var extension in extensions)
             {
                 var url = extension?["url"]?.GetValue<string>();
-                url.Should().NotContain("us-core");
-                url.Should().NotContain("hl7.org.au");
+                url!.ShouldNotContain("us-core");
+                url!.ShouldNotContain("hl7.org.au");
             }
         }
     }
@@ -632,15 +632,15 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
+        patient.ShouldNotBeNull();
 
         // Should have AU Base indigenous status extension
         var extensions = patient.MutableNode["extension"]?.AsArray();
-        extensions.Should().NotBeNull();
+        extensions.ShouldNotBeNull();
 
         var indigenousStatusUrl = "http://hl7.org.au/fhir/StructureDefinition/indigenous-status";
         extensions!.Any(e => e?["url"]?.GetValue<string>() == indigenousStatusUrl)
-            .Should().BeTrue();
+            .ShouldBeTrue();
     }
 
     [Fact]
@@ -652,8 +652,8 @@ public class PatientBuilderTests
             .WithAge(30);
 
         // Assert
-        builder.ProfileAttributes.Should().ContainKey("customKey");
-        builder.ProfileAttributes["customKey"].Should().Be("customValue");
+        builder.ProfileAttributes.ShouldContainKey("customKey");
+        builder.ProfileAttributes["customKey"].ShouldBe("customValue");
     }
 
     [Fact]
@@ -666,9 +666,9 @@ public class PatientBuilderTests
             .WithAge(40);
 
         // Assert - Profile should be US Core when explicitly set
-        builder.Profile.Should().Be(USCorePatientProfile.Instance);
-        builder.ProfileAttributes.Should().ContainKey(USCorePatientProfile.UsCoreRaceAttribute)
-            .WhoseValue.Should().Be(USCorePatientProfile.Race.Hispanic);
+        builder.Profile.ShouldBe(USCorePatientProfile.Instance);
+        builder.ProfileAttributes.ShouldContainKey(USCorePatientProfile.UsCoreRaceAttribute);
+        builder.ProfileAttributes[USCorePatientProfile.UsCoreRaceAttribute].ShouldBe(USCorePatientProfile.Race.Hispanic);
     }
 
     [Fact]
@@ -679,28 +679,28 @@ public class PatientBuilderTests
             .FromCity(KnownCities.Boston);
 
         // Assert - Ethnicity should be accessible via ProfileAttributes
-        builder.ProfileAttributes.Should().ContainKey(USCorePatientProfile.UsCoreRaceAttribute);
-        builder.ProfileAttributes.Should().ContainKey(USCorePatientProfile.UsCoreRaceAttribute);
+        builder.ProfileAttributes.ShouldContainKey(USCorePatientProfile.UsCoreRaceAttribute);
+        builder.ProfileAttributes.ShouldContainKey(USCorePatientProfile.UsCoreRaceAttribute);
     }
 
     [Fact]
     public void GivenCityDemographics_WhenAccessingProfileUrl_ThenReturnsCorrectUrl()
     {
         // Assert
-        KnownCities.Boston.ProfileUrl.Should().Be("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient");
-        KnownCities.Melbourne.ProfileUrl.Should().Be("http://hl7.org.au/fhir/StructureDefinition/au-patient");
-        KnownCities.Amsterdam.ProfileUrl.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
+        KnownCities.Boston.ProfileUrl.ShouldBe("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient");
+        KnownCities.Melbourne.ProfileUrl.ShouldBe("http://hl7.org.au/fhir/StructureDefinition/au-patient");
+        KnownCities.Amsterdam.ProfileUrl.ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
     }
 
     [Fact]
     public void GivenPatientProfileFactory_WhenGettingProfileByCountry_ThenReturnsCorrectProfile()
     {
         // Assert
-        PatientProfileFactory.GetProfile("US").Should().Be(USCorePatientProfile.Instance);
-        PatientProfileFactory.GetProfile("AU").Should().Be(AUBasePatientProfile.Instance);
-        PatientProfileFactory.GetProfile("NL").Should().Be(DefaultPatientProfile.Instance);
-        PatientProfileFactory.GetProfile(null).Should().Be(DefaultPatientProfile.Instance);
-        PatientProfileFactory.GetProfile("").Should().Be(DefaultPatientProfile.Instance);
+        PatientProfileFactory.GetProfile("US").ShouldBe(USCorePatientProfile.Instance);
+        PatientProfileFactory.GetProfile("AU").ShouldBe(AUBasePatientProfile.Instance);
+        PatientProfileFactory.GetProfile("NL").ShouldBe(DefaultPatientProfile.Instance);
+        PatientProfileFactory.GetProfile(null).ShouldBe(DefaultPatientProfile.Instance);
+        PatientProfileFactory.GetProfile("").ShouldBe(DefaultPatientProfile.Instance);
     }
 
     [Fact]
@@ -717,15 +717,15 @@ public class PatientBuilderTests
         var extensions = USCorePatientProfile.Instance.BuildExtensions(attributes, bmi: null).ToList();
 
         // Assert
-        extensions.Should().HaveCount(2);
+        extensions!.Count.ShouldBe(2);
 
         // Ethnicity uses us-core-race extension URL per FHIR spec
         var ethnicityExtension = extensions.FirstOrDefault(e => e["url"]?.GetValue<string>() == "http://hl7.org/fhir/us/core/StructureDefinition/us-core-race");
-        ethnicityExtension.Should().NotBeNull();
+        ethnicityExtension.ShouldNotBeNull();
 
         // Hispanic origin uses us-core-ethnicity extension URL per FHIR spec
         var hispanicOriginExtension = extensions.FirstOrDefault(e => e["url"]?.GetValue<string>() == "http://hl7.org/fhir/us/core/StructureDefinition/us-core-ethnicity");
-        hispanicOriginExtension.Should().NotBeNull();
+        hispanicOriginExtension.ShouldNotBeNull();
     }
 
     [Fact]
@@ -741,15 +741,15 @@ public class PatientBuilderTests
         var extensions = AUBasePatientProfile.Instance.BuildExtensions(attributes, bmi: null).ToList();
 
         // Assert
-        extensions.Should().HaveCount(1);
+        extensions!.Count.ShouldBe(1);
 
         var extension = extensions[0];
-        extension["url"]?.GetValue<string>().Should().Be("http://hl7.org.au/fhir/StructureDefinition/indigenous-status");
+        extension["url"]?.GetValue<string>().ShouldBe("http://hl7.org.au/fhir/StructureDefinition/indigenous-status");
 
         var valueCoding = extension["valueCoding"]?.AsObject();
-        valueCoding.Should().NotBeNull();
-        valueCoding?["code"]?.GetValue<string>().Should().Be("4");
-        valueCoding?["display"]?.GetValue<string>().Should().Be("Neither Aboriginal nor Torres Strait Islander origin");
+        valueCoding.ShouldNotBeNull();
+        valueCoding?["code"]?.GetValue<string>().ShouldBe("4");
+        valueCoding?["display"]?.GetValue<string>().ShouldBe("Neither Aboriginal nor Torres Strait Islander origin");
     }
 
     [Fact]
@@ -765,10 +765,10 @@ public class PatientBuilderTests
         var extensionsWithBMI = DefaultPatientProfile.Instance.BuildExtensions(attributes, bmi: 25.5m).ToList();
 
         // Assert
-        extensionsWithoutBMI.Should().BeEmpty();
-        extensionsWithBMI.Should().HaveCount(1);
-        extensionsWithBMI[0]["url"]?.GetValue<string>().Should().Be("http://ignixa.dev/StructureDefinition/patient-bmi");
-        extensionsWithBMI[0]["valueDecimal"]?.GetValue<decimal>().Should().Be(25.5m);
+        extensionsWithoutBMI.ShouldBeEmpty();
+        extensionsWithBMI.Count.ShouldBe(1);
+        extensionsWithBMI[0]["url"]?.GetValue<string>().ShouldBe("http://ignixa.dev/StructureDefinition/patient-bmi");
+        extensionsWithBMI[0]["valueDecimal"]?.GetValue<decimal>().ShouldBe(25.5m);
     }
 
     #endregion
@@ -788,7 +788,7 @@ public class PatientBuilderTests
 
         // Assert
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["state"]?.GetValue<string>().Should().Be("Massachusetts");
+        address?["state"]?.GetValue<string>().ShouldBe("Massachusetts");
     }
 
     [Fact]
@@ -804,7 +804,7 @@ public class PatientBuilderTests
 
         // Assert
         var address = patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["state"]?.GetValue<string>().Should().Be("WA");
+        address?["state"]?.GetValue<string>().ShouldBe("WA");
     }
 
     #endregion
@@ -821,7 +821,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982");
+        patient.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982");
     }
 
     [Fact]
@@ -834,7 +834,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-01");
+        patient.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982-01");
     }
 
     [Fact]
@@ -847,7 +847,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-01-15");
+        patient.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982-01-15");
     }
 
     [Fact]
@@ -857,19 +857,19 @@ public class PatientBuilderTests
         var yearOnly = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1980)
             .Build();
-        yearOnly.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1980");
+        yearOnly.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1980");
 
         // Test month-only
         var monthOnly = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1985, 3)
             .Build();
-        monthOnly.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1985-03");
+        monthOnly.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1985-03");
 
         // Test full date
         var fullDate = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1990, 12, 25)
             .Build();
-        fullDate.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1990-12-25");
+        fullDate.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1990-12-25");
     }
 
     [Theory]
@@ -883,8 +883,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithMessage("*Year must be between 1900 and 2100*");
+        Should.Throw<ArgumentOutOfRangeException>(act).Message.ShouldContain("Year must be between 1900 and 2100");
     }
 
     [Theory]
@@ -898,8 +897,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithMessage("*Month must be between 1 and 12*");
+        Should.Throw<ArgumentOutOfRangeException>(act).Message.ShouldContain("Month must be between 1 and 12");
     }
 
     [Theory]
@@ -914,8 +912,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithMessage($"*Invalid day for {year}-{month:D2}*");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(act);
+        exception.Message.ShouldContain($"Invalid day for {year}-{month:D2}");
     }
 
     [Fact]
@@ -928,7 +926,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode["birthDate"]?.GetValue<string>().Should().Be("2000-02-29");
+        patient.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("2000-02-29");
     }
 
     [Fact]
@@ -938,12 +936,12 @@ public class PatientBuilderTests
         var jan1 = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1982, 1, 1)
             .Build();
-        jan1.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-01-01");
+        jan1.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982-01-01");
 
         var dec31 = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1982, 12, 31)
             .Build();
-        dec31.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-12-31");
+        dec31.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982-12-31");
     }
 
     [Fact]
@@ -953,12 +951,12 @@ public class PatientBuilderTests
         var monthStart = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1982, 5, 1)
             .Build();
-        monthStart.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-05-01");
+        monthStart.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982-05-01");
 
         var monthEnd = PatientBuilderFactory.Create(_schemaProvider)
             .WithBirthDate(1982, 5, 31)
             .Build();
-        monthEnd.MutableNode["birthDate"]?.GetValue<string>().Should().Be("1982-05-31");
+        monthEnd.MutableNode["birthDate"]?.GetValue<string>().ShouldBe("1982-05-31");
     }
 
     #endregion
@@ -980,8 +978,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("active").Should().BeFalse("active field should be omitted");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("active").ShouldBeFalse("active field should be omitted");
     }
 
     [Fact]
@@ -996,7 +994,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("active").Should().BeFalse("WithoutActive should override WithActive");
+        patient.MutableNode.ContainsKey("active").ShouldBeFalse("WithoutActive should override WithActive");
     }
 
     [Fact]
@@ -1011,8 +1009,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("active").Should().BeTrue("WithActive should re-enable the field");
-        patient.MutableNode["active"]?.GetValue<bool>().Should().BeFalse();
+        patient.MutableNode.ContainsKey("active").ShouldBeTrue("WithActive should re-enable the field");
+        patient.MutableNode["active"]?.GetValue<bool>().ShouldBeFalse();
     }
 
     [Fact]
@@ -1025,8 +1023,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("gender").Should().BeFalse("gender field should be omitted");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("gender").ShouldBeFalse("gender field should be omitted");
     }
 
     [Fact]
@@ -1040,7 +1038,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("gender").Should().BeFalse("WithoutGender should override WithGender");
+        patient.MutableNode.ContainsKey("gender").ShouldBeFalse("WithoutGender should override WithGender");
     }
 
     [Fact]
@@ -1054,8 +1052,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("gender").Should().BeTrue("WithGender should re-enable the field");
-        patient.MutableNode["gender"]?.GetValue<string>().Should().Be("male");
+        patient.MutableNode.ContainsKey("gender").ShouldBeTrue("WithGender should re-enable the field");
+        patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
     }
 
     [Fact]
@@ -1070,8 +1068,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("telecom").Should().BeFalse("telecom field should be omitted");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("telecom").ShouldBeFalse("telecom field should be omitted");
     }
 
     [Fact]
@@ -1086,10 +1084,10 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("telecom").Should().BeTrue("WithAreaCode should re-enable telecom field");
+        patient.MutableNode.ContainsKey("telecom").ShouldBeTrue("WithAreaCode should re-enable telecom field");
         var telecoms = patient.MutableNode["telecom"]?.AsArray();
-        telecoms.Should().NotBeNull();
-        telecoms.Should().HaveCount(1);
+        telecoms.ShouldNotBeNull();
+        telecoms!.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -1104,8 +1102,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("address").Should().BeFalse("address field should be omitted");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("address").ShouldBeFalse("address field should be omitted");
     }
 
     [Fact]
@@ -1120,10 +1118,10 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithZipCode should re-enable address field");
+        patient.MutableNode.ContainsKey("address").ShouldBeTrue("WithZipCode should re-enable address field");
         var addresses = patient.MutableNode["address"]?.AsArray();
-        addresses.Should().NotBeNull();
-        addresses.Should().HaveCount(1);
+        addresses.ShouldNotBeNull();
+        addresses!.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -1138,12 +1136,12 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithCity should re-enable address field");
+        patient.MutableNode.ContainsKey("address").ShouldBeTrue("WithCity should re-enable address field");
         var addresses = patient.MutableNode["address"]?.AsArray();
-        addresses.Should().NotBeNull();
-        addresses.Should().HaveCount(1);
+        addresses.ShouldNotBeNull();
+        addresses!.Count.ShouldBe(1);
         var address = addresses?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Boston");
+        address?["city"]?.GetValue<string>().ShouldBe("Boston");
     }
 
     [Fact]
@@ -1158,7 +1156,7 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithState should re-enable address field");
+        patient.MutableNode.ContainsKey("address").ShouldBeTrue("WithState should re-enable address field");
     }
 
     [Fact]
@@ -1173,13 +1171,13 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("address").Should().BeTrue("WithAddress should re-enable address field");
+        patient.MutableNode.ContainsKey("address").ShouldBeTrue("WithAddress should re-enable address field");
         var addresses = patient.MutableNode["address"]?.AsArray();
-        addresses.Should().NotBeNull();
-        addresses.Should().HaveCount(1);
+        addresses.ShouldNotBeNull();
+        addresses!.Count.ShouldBe(1);
         var address = addresses?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Boston");
-        address?["postalCode"]?.GetValue<string>().Should().Be("02101");
+        address?["city"]?.GetValue<string>().ShouldBe("Boston");
+        address?["postalCode"]?.GetValue<string>().ShouldBe("02101");
     }
 
     [Fact]
@@ -1195,16 +1193,16 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("gender").Should().BeFalse("gender should be omitted");
-        patient.MutableNode.ContainsKey("active").Should().BeFalse("active should be omitted");
-        patient.MutableNode.ContainsKey("telecom").Should().BeFalse("telecom should be omitted");
-        patient.MutableNode.ContainsKey("address").Should().BeFalse("address should be omitted");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("gender").ShouldBeFalse("gender should be omitted");
+        patient.MutableNode.ContainsKey("active").ShouldBeFalse("active should be omitted");
+        patient.MutableNode.ContainsKey("telecom").ShouldBeFalse("telecom should be omitted");
+        patient.MutableNode.ContainsKey("address").ShouldBeFalse("address should be omitted");
 
         // Other fields should still be present
-        patient.MutableNode.ContainsKey("id").Should().BeTrue();
-        patient.MutableNode.ContainsKey("birthDate").Should().BeTrue();
-        patient.MutableNode.ContainsKey("name").Should().BeTrue();
+        patient.MutableNode.ContainsKey("id").ShouldBeTrue();
+        patient.MutableNode.ContainsKey("birthDate").ShouldBeTrue();
+        patient.MutableNode.ContainsKey("name").ShouldBeTrue();
     }
 
     [Fact]
@@ -1217,8 +1215,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("address").Should().BeFalse("address should be omitted even after FromCity");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("address").ShouldBeFalse("address should be omitted even after FromCity");
     }
 
     [Fact]
@@ -1231,8 +1229,8 @@ public class PatientBuilderTests
             .Build();
 
         // Assert
-        patient.Should().NotBeNull();
-        patient.MutableNode.ContainsKey("telecom").Should().BeFalse("telecom should be omitted even after FromCity");
+        patient.ShouldNotBeNull();
+        patient.MutableNode.ContainsKey("telecom").ShouldBeFalse("telecom should be omitted even after FromCity");
     }
     */
 

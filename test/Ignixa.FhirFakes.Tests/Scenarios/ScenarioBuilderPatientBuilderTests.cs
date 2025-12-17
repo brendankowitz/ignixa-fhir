@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.FhirFakes.Population;
 using Ignixa.FhirFakes.Scenarios;
@@ -37,13 +37,13 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
-        scenario.Patient.MutableNode["gender"]?.GetValue<string>().Should().Be("male");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
+        scenario.Patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
 
         var name = scenario.Patient.MutableNode["name"]?.AsArray()?[0]?.AsObject();
-        name?["family"]?.GetValue<string>().Should().Be("Smith");
-        name?["given"]?.AsArray()?[0]?.GetValue<string>().Should().Be("John");
+        name?["family"]?.GetValue<string>().ShouldBe("Smith");
+        name?["given"]?.AsArray()?[0]?.GetValue<string>().ShouldBe("John");
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("age");
-        scenario.GetAttribute<int>("age").Should().Be(50);
+        scenario.Attributes.ShouldContainKey("age");
+        scenario.GetAttribute<int>("age").ShouldBe(50);
     }
 
     [Fact]
@@ -68,8 +68,8 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("gender");
-        scenario.GetAttribute<string>("gender").Should().Be("female");
+        scenario.Attributes.ShouldContainKey("gender");
+        scenario.GetAttribute<string>("gender").ShouldBe("female");
     }
 
     #endregion
@@ -88,13 +88,13 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
-        scenario.Patient.MutableNode["gender"]?.GetValue<string>().Should().Be("female");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
+        scenario.Patient.MutableNode["gender"]?.GetValue<string>().ShouldBe("female");
 
         var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Seattle");
-        address?["state"]?.GetValue<string>().Should().Be("WA");
+        address?["city"]?.GetValue<string>().ShouldBe("Seattle");
+        address?["state"]?.GetValue<string>().ShouldBe("WA");
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.CurrentTime.Should().Be(startDate);
+        scenario.CurrentTime.ShouldBe(startDate);
     }
 
     #endregion
@@ -128,17 +128,17 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should have Boston address
         var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Boston");
-        address?["state"]?.GetValue<string>().Should().Be("Massachusetts");
-        address?["postalCode"]?.GetValue<string>().Should().StartWith("02");
+        address?["city"]?.GetValue<string>().ShouldBe("Boston");
+        address?["state"]?.GetValue<string>().ShouldBe("Massachusetts");
+        address?["postalCode"]?.GetValue<string>().ShouldStartWith("02");
 
         // Should have BMI extension
-        scenario.Patient.MutableNode["extension"].Should().NotBeNull();
+        scenario.Patient.MutableNode["extension"].ShouldNotBeNull();
     }
 
     [Fact]
@@ -151,8 +151,8 @@ public class ScenarioBuilderPatientBuilderTests
 
         // Assert
         // Ethnicity should be set from city demographics
-        scenario.Attributes.Should().ContainKey("ethnicity");
-        scenario.GetAttribute<string>("ethnicity").Should().NotBeNullOrEmpty();
+        scenario.Attributes.ShouldContainKey("ethnicity");
+        scenario.GetAttribute<string>("ethnicity").ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -164,8 +164,8 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Attributes.Should().ContainKey("zipCode");
-        scenario.GetAttribute<string>("zipCode").Should().StartWith("10");
+        scenario.Attributes.ShouldContainKey("zipCode");
+        scenario.GetAttribute<string>("zipCode").ShouldStartWith("10");
     }
 
     #endregion
@@ -181,13 +181,13 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should have Seattle address
         var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Seattle");
-        address?["state"]?.GetValue<string>().Should().Be("Washington");
+        address?["city"]?.GetValue<string>().ShouldBe("Seattle");
+        address?["state"]?.GetValue<string>().ShouldBe("Washington");
     }
 
     [Fact]
@@ -199,9 +199,9 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.GetAttribute<int>("age").Should().Be(35);
-        scenario.Attributes.Should().ContainKey("bmi");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.GetAttribute<int>("age").ShouldBe(35);
+        scenario.Attributes.ShouldContainKey("bmi");
     }
 
     #endregion
@@ -217,13 +217,13 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
 
         // Should have Los Angeles address
         var address = scenario.Patient.MutableNode["address"]?.AsArray()?[0]?.AsObject();
-        address?["city"]?.GetValue<string>().Should().Be("Los Angeles");
-        address?["state"]?.GetValue<string>().Should().Be("California");
+        address?["city"]?.GetValue<string>().ShouldBe("Los Angeles");
+        address?["state"]?.GetValue<string>().ShouldBe("California");
     }
 
     [Fact]
@@ -237,9 +237,9 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.MutableNode["gender"]?.GetValue<string>().Should().Be("male");
-        scenario.GetAttribute<int>("age").Should().Be(28);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.MutableNode["gender"]?.GetValue<string>().ShouldBe("male");
+        scenario.GetAttribute<int>("age").ShouldBe(28);
     }
 
     #endregion
@@ -261,14 +261,14 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
-        scenario.Observations.Should().HaveCount(1);
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
+        scenario.Observations.Count.ShouldBe(1);
 
         // Observation should reference the patient
         var observation = scenario.Observations[0];
         var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Contain(scenario.Patient!.Id);
+        subjectRef!.ShouldContain(scenario.Patient!.Id);
     }
 
     [Fact]
@@ -284,15 +284,15 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.MutableNode["meta"]?["tag"].Should().NotBeNull();
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.MutableNode["meta"]?["tag"].ShouldNotBeNull();
 
         var tags = scenario.Patient.MutableNode["meta"]?["tag"]?.AsArray();
-        tags.Should().NotBeNull();
-        tags.Should().HaveCountGreaterThanOrEqualTo(1);
+        tags.ShouldNotBeNull();
+        tags.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         var metaTag = tags?[0]?.AsObject();
-        metaTag?["code"]?.GetValue<string>().Should().Be(tag);
+        metaTag?["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario1.Patient!.Id.Should().NotBe(scenario2.Patient!.Id);
+        scenario1.Patient!.Id.ShouldNotBe(scenario2.Patient!.Id);
     }
 
     [Fact]
@@ -321,10 +321,10 @@ public class ScenarioBuilderPatientBuilderTests
             .Build();
 
         // Assert
-        scenario.Conditions.Should().HaveCount(1);
+        scenario.Conditions.Count.ShouldBe(1);
         var condition = scenario.Conditions[0];
         var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     #endregion
@@ -344,15 +344,15 @@ public class ScenarioBuilderPatientBuilderTests
         var bundle = scenario.ToBundle();
 
         // Assert
-        bundle.Should().NotBeNull();
-        bundle.MutableNode["entry"].Should().NotBeNull();
+        bundle.ShouldNotBeNull();
+        bundle.MutableNode["entry"].ShouldNotBeNull();
 
         var entries = bundle.MutableNode["entry"]?.AsArray();
-        entries.Should().HaveCountGreaterThanOrEqualTo(2);
+        entries!.Count.ShouldBeGreaterThanOrEqualTo(2);
 
         // First entry should be the patient
-        var firstResource = entries?[0]?["resource"];
-        firstResource?["resourceType"]?.GetValue<string>().Should().Be("Patient");
+        var firstResource = entries[0]?["resource"];
+        firstResource?["resourceType"]?.GetValue<string>().ShouldBe("Patient");
     }
 
     #endregion

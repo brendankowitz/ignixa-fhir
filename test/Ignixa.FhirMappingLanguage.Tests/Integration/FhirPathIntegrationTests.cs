@@ -4,7 +4,7 @@
  * Integration tests for FhirPath integration in mapping language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
 using Xunit;
@@ -73,8 +73,8 @@ public class FhirPathIntegrationTests
         var results = integration.Evaluate("family", patient).ToList();
 
         // Assert
-        results.Should().HaveCount(1);
-        results[0].Value.Should().Be("Doe");
+        results.Count.ShouldBe(1);
+        results[0].Value.ShouldBe("Doe");
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class FhirPathIntegrationTests
         var results = integration.Evaluate("", patient).ToList();
 
         // Assert
-        results.Should().BeEmpty();
+        results.ShouldBeEmpty();
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class FhirPathIntegrationTests
         var results = integration.Evaluate("   ", patient).ToList();
 
         // Assert
-        results.Should().BeEmpty();
+        results.ShouldBeEmpty();
     }
 
     #endregion
@@ -120,7 +120,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateBoolean("true", element);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateBoolean("false", element);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateBoolean("name.where(use='official')", patient);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateBoolean("'string value'", element);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     #endregion
@@ -182,7 +182,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateScalar("id", patient);
 
         // Assert
-        result.Should().Be("patient-123");
+        result.ShouldBe("patient-123");
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateScalar("name", patient);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateScalar("name", patient);
 
         // Assert
-        result.Should().Be("First");
+        result.ShouldBe("First");
     }
 
     #endregion
@@ -233,9 +233,9 @@ public class FhirPathIntegrationTests
         var result2 = integration.Evaluate("id", patient).ToList();
 
         // Assert
-        result1.Should().HaveCount(1);
-        result2.Should().HaveCount(1);
-        result1[0].Value.Should().Be(result2[0].Value);
+        result1.Count.ShouldBe(1);
+        result2.Count.ShouldBe(1);
+        result1[0].Value.ShouldBe(result2[0].Value);
     }
 
     [Fact]
@@ -253,8 +253,8 @@ public class FhirPathIntegrationTests
         var result = integration.Evaluate("id", patient).ToList();
 
         // Assert
-        result.Should().HaveCount(1);
-        result[0].Value.Should().Be("patient-123");
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe("patient-123");
     }
 
     [Fact]
@@ -274,7 +274,7 @@ public class FhirPathIntegrationTests
         };
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -292,8 +292,7 @@ public class FhirPathIntegrationTests
         var act = () => integration.Evaluate("invalid..syntax", patient).ToList();
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*FHIRPath*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("FHIRPath");
     }
 
     #endregion
@@ -308,7 +307,7 @@ public class FhirPathIntegrationTests
 
         // Assert
         // Constructor should not throw
-        evaluator.Should().NotBeNull();
+        evaluator.ShouldNotBeNull();
     }
 
     [Fact]
@@ -319,7 +318,7 @@ public class FhirPathIntegrationTests
 
         // Assert
         // Constructor should not throw
-        evaluator.Should().NotBeNull();
+        evaluator.ShouldNotBeNull();
     }
 
     #endregion
@@ -341,7 +340,7 @@ public class FhirPathIntegrationTests
         var result = integration.EvaluateScalar("name.count()", patient);
 
         // Assert
-        result.Should().Be(2);
+        result.ShouldBe(2);
     }
 
     [Fact]
@@ -359,7 +358,7 @@ public class FhirPathIntegrationTests
         var results = integration.Evaluate("name.where(use='official')", patient).ToList();
 
         // Assert
-        results.Should().HaveCount(1);
+        results.Count.ShouldBe(1);
     }
 
     #endregion

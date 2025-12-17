@@ -5,7 +5,8 @@
 
 using System.Net.Http.Headers;
 using System.Text;
-using FluentAssertions;
+using System.Text.RegularExpressions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -36,8 +37,8 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         var content = await response.Content.ReadAsStringAsync();
 
         // Indented JSON should contain newlines and multiple spaces (indentation)
-        content.Should().Contain("\n", "indented JSON should contain newlines");
-        content.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        content.Contains('\n', StringComparison.Ordinal).ShouldBeTrue();
+        Regex.IsMatch(content, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 
     [Fact]
@@ -55,7 +56,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         // Minified JSON should not contain newlines (except possibly in string values)
         // Check that the first 1000 characters don't have newlines (sufficient to verify minification)
         var sample = content.Length > 1000 ? content[..1000] : content;
-        sample.Should().NotContain("\n", "minified JSON should not contain newlines");
+        sample.Contains('\n', StringComparison.Ordinal).ShouldBeFalse("minified JSON should not contain newlines");
     }
 
     [Fact]
@@ -71,8 +72,8 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         var content = await response.Content.ReadAsStringAsync();
 
         // Indented JSON should contain newlines and multiple spaces (indentation)
-        content.Should().Contain("\n", "FHIR spec says ?_pretty without value should return indented JSON");
-        content.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        content.Contains('\n', StringComparison.Ordinal).ShouldBeTrue("FHIR spec says ?_pretty without value should return indented JSON");
+        Regex.IsMatch(content, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 
     [Fact]
@@ -89,7 +90,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
 
         // Minified JSON should not contain newlines
         var sample = content.Length > 1000 ? content[..1000] : content;
-        sample.Should().NotContain("\n", "minified JSON should not contain newlines when _pretty=false");
+        sample.Contains('\n', StringComparison.Ordinal).ShouldBeFalse("minified JSON should not contain newlines when _pretty=false");
     }
 
     [Fact]
@@ -105,8 +106,8 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         var content = await response.Content.ReadAsStringAsync();
 
         // Indented JSON should contain newlines and multiple spaces (indentation)
-        content.Should().Contain("\n", "case-insensitive TRUE should return indented JSON");
-        content.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        content.Contains('\n', StringComparison.Ordinal).ShouldBeTrue("case-insensitive TRUE should return indented JSON");
+        Regex.IsMatch(content, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 
     [Fact]
@@ -122,8 +123,8 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         var content = await response.Content.ReadAsStringAsync();
 
         // Indented JSON should contain newlines and multiple spaces (indentation)
-        content.Should().Contain("\n", "_pretty=1 should return indented JSON");
-        content.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        content.Contains('\n', StringComparison.Ordinal).ShouldBeTrue("_pretty=1 should return indented JSON");
+        Regex.IsMatch(content, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 
     [Fact]
@@ -140,7 +141,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
 
         // Minified JSON should not contain newlines
         var sample = content.Length > 1000 ? content[..1000] : content;
-        sample.Should().NotContain("\n", "_pretty=0 should return minified JSON");
+        sample.Contains('\n', StringComparison.Ordinal).ShouldBeFalse("_pretty=0 should return minified JSON");
     }
 
     [Fact]
@@ -157,7 +158,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
 
         // Minified JSON should not contain newlines (invalid values default to false)
         var sample = content.Length > 1000 ? content[..1000] : content;
-        sample.Should().NotContain("\n", "invalid _pretty value should default to minified JSON");
+        sample.Contains('\n', StringComparison.Ordinal).ShouldBeFalse("invalid _pretty value should default to minified JSON");
     }
 
     [Fact]
@@ -173,8 +174,8 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
 
         // Assert
         response.EnsureSuccessStatusCode();
-        content.Should().Contain("\n", "stored resource with _pretty=true should return indented JSON");
-        content.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        content.Contains('\n', StringComparison.Ordinal).ShouldBeTrue("stored resource with _pretty=true should return indented JSON");
+        Regex.IsMatch(content, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 
     [Fact]
@@ -191,7 +192,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
         // Assert
         response.EnsureSuccessStatusCode();
         var sample = content.Length > 1000 ? content[..1000] : content;
-        sample.Should().NotContain("\n", "stored resource without _pretty should return minified JSON");
+        sample.Contains('\n', StringComparison.Ordinal).ShouldBeFalse("stored resource without _pretty should return minified JSON");
     }
 
     [Fact]
@@ -209,8 +210,8 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
 
         // Assert
         response.EnsureSuccessStatusCode();
-        responseContent.Should().Contain("\n", "POST with _pretty=true should return indented JSON");
-        responseContent.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        responseContent.Contains('\n', StringComparison.Ordinal).ShouldBeTrue("POST with _pretty=true should return indented JSON");
+        Regex.IsMatch(responseContent, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 
     [Fact]
@@ -230,7 +231,7 @@ public class PrettyParameterE2ETests : CapabilityDrivenTestBase
 
         // Assert
         response.EnsureSuccessStatusCode();
-        responseContent.Should().Contain("\n", "PUT with _pretty=true should return indented JSON");
-        responseContent.Should().MatchRegex(@"\s{2,}", "indented JSON should contain multi-space indentation");
+        responseContent.Contains('\n', StringComparison.Ordinal).ShouldBeTrue("PUT with _pretty=true should return indented JSON");
+        Regex.IsMatch(responseContent, @"\s{2,}").ShouldBeTrue("indented JSON should contain multi-space indentation");
     }
 }

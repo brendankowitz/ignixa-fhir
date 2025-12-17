@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
@@ -156,8 +156,8 @@ public class ComprehensiveValidationTests
                 try
                 {
                     var resource = faker.Generate(resourceType);
-                    resource.Should().NotBeNull($"{resourceType} should be generated for {version}");
-                    resource.ResourceType.Should().Be(resourceType);
+                    resource.ShouldNotBeNull($"{resourceType} should be generated for {version}");
+                    resource.ResourceType.ShouldBe(resourceType);
 
                     // Validate the resource
                     var validationResult = ValidateResource(resource, version);
@@ -172,7 +172,7 @@ public class ComprehensiveValidationTests
                         }
                     }
 
-                    errors.Should().BeEmpty($"{resourceType} should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                    errors.ShouldBeEmpty($"{resourceType} should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                     _output.WriteLine($"    OK: {resourceType} passed validation in {version}");
                     testedCount++;
                 }
@@ -216,7 +216,7 @@ public class ComprehensiveValidationTests
                         if (result != null)
                         {
                             var errors = GetErrorIssues(result).ToList();
-                            errors.Should().BeEmpty($"Patient in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                            errors.ShouldBeEmpty($"Patient in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -227,7 +227,7 @@ public class ComprehensiveValidationTests
                         if (result != null)
                         {
                             var errors = GetErrorIssues(result).ToList();
-                            errors.Should().BeEmpty($"Encounter in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                            errors.ShouldBeEmpty($"Encounter in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -238,7 +238,7 @@ public class ComprehensiveValidationTests
                         if (result != null)
                         {
                             var errors = GetErrorIssues(result).ToList();
-                            errors.Should().BeEmpty($"Observation in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                            errors.ShouldBeEmpty($"Observation in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -249,7 +249,7 @@ public class ComprehensiveValidationTests
                         if (result != null)
                         {
                             var errors = GetErrorIssues(result).ToList();
-                            errors.Should().BeEmpty($"Condition in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                            errors.ShouldBeEmpty($"Condition in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -265,7 +265,7 @@ public class ComprehensiveValidationTests
                             if (result != null)
                             {
                                 var errors = GetErrorIssues(result).ToList();
-                                errors.Should().BeEmpty($"MedicationRequest in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                                errors.ShouldBeEmpty($"MedicationRequest in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                             }
                         }
                     }
@@ -277,7 +277,7 @@ public class ComprehensiveValidationTests
                         if (result != null)
                         {
                             var errors = GetErrorIssues(result).ToList();
-                            errors.Should().BeEmpty($"Procedure in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                            errors.ShouldBeEmpty($"Procedure in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -288,7 +288,7 @@ public class ComprehensiveValidationTests
                         if (result != null)
                         {
                             var errors = GetErrorIssues(result).ToList();
-                            errors.Should().BeEmpty($"DiagnosticReport in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                            errors.ShouldBeEmpty($"DiagnosticReport in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                         }
                     }
 
@@ -304,7 +304,7 @@ public class ComprehensiveValidationTests
                             if (result != null)
                             {
                                 var errors = GetErrorIssues(result).ToList();
-                                errors.Should().BeEmpty($"Immunization in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                                errors.ShouldBeEmpty($"Immunization in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                             }
                         }
                     }
@@ -321,7 +321,7 @@ public class ComprehensiveValidationTests
                             if (result != null)
                             {
                                 var errors = GetErrorIssues(result).ToList();
-                                errors.Should().BeEmpty($"AllergyIntolerance in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                                errors.ShouldBeEmpty($"AllergyIntolerance in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                             }
                         }
                     }
@@ -335,7 +335,7 @@ public class ComprehensiveValidationTests
                             if (result != null)
                             {
                                 var errors = GetErrorIssues(result).ToList();
-                                errors.Should().BeEmpty($"ServiceRequest in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
+                                errors.ShouldBeEmpty($"ServiceRequest in '{name}' scenario should pass validation in {version}. Issues: {string.Join(", ", errors.Select(e => $"{e.Path}: {e.Message}"))}");
                             }
                         }
                     }
@@ -370,52 +370,52 @@ public class ComprehensiveValidationTests
             var built = scenario.Build();
 
             // All scenarios should have a patient
-            built.Patient.Should().NotBeNull($"'{name}' scenario should have a patient");
+            built.Patient.ShouldNotBeNull($"'{name}' scenario should have a patient");
 
             // Verify expected resources based on scenario name
             if (name.Contains("Encounter", StringComparison.Ordinal))
             {
-                built.Encounters.Should().NotBeEmpty($"'{name}' scenario should have encounters");
+                built.Encounters.ShouldNotBeEmpty($"'{name}' scenario should have encounters");
             }
 
             if (name.Contains("Observation", StringComparison.Ordinal))
             {
-                built.Observations.Should().NotBeEmpty($"'{name}' scenario should have observations");
+                built.Observations.ShouldNotBeEmpty($"'{name}' scenario should have observations");
             }
 
             if (name.Contains("Condition", StringComparison.Ordinal))
             {
-                built.Conditions.Should().NotBeEmpty($"'{name}' scenario should have conditions");
+                built.Conditions.ShouldNotBeEmpty($"'{name}' scenario should have conditions");
             }
 
             if (name.Contains("Medication", StringComparison.Ordinal))
             {
-                built.Medications.Should().NotBeEmpty($"'{name}' scenario should have medications");
+                built.Medications.ShouldNotBeEmpty($"'{name}' scenario should have medications");
             }
 
             if (name.Contains("Procedure", StringComparison.Ordinal))
             {
-                built.Procedures.Should().NotBeEmpty($"'{name}' scenario should have procedures");
+                built.Procedures.ShouldNotBeEmpty($"'{name}' scenario should have procedures");
             }
 
             if (name.Contains("DiagnosticReport", StringComparison.Ordinal))
             {
-                built.DiagnosticReports.Should().NotBeEmpty($"'{name}' scenario should have diagnostic reports");
+                built.DiagnosticReports.ShouldNotBeEmpty($"'{name}' scenario should have diagnostic reports");
             }
 
             if (name.Contains("Immunization", StringComparison.Ordinal))
             {
-                built.Immunizations.Should().NotBeEmpty($"'{name}' scenario should have immunizations");
+                built.Immunizations.ShouldNotBeEmpty($"'{name}' scenario should have immunizations");
             }
 
             if (name.Contains("Allergy", StringComparison.Ordinal))
             {
-                built.Allergies.Should().NotBeEmpty($"'{name}' scenario should have allergies");
+                built.Allergies.ShouldNotBeEmpty($"'{name}' scenario should have allergies");
             }
 
             if (name.Contains("ServiceRequest", StringComparison.Ordinal) && !name.Contains("STU3", StringComparison.Ordinal))
             {
-                built.ServiceRequests.Should().NotBeEmpty($"'{name}' scenario should have service requests");
+                built.ServiceRequests.ShouldNotBeEmpty($"'{name}' scenario should have service requests");
             }
 
             _output.WriteLine($"  OK: '{name}' generated expected resource types");

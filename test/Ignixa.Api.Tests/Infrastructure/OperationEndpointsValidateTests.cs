@@ -5,7 +5,7 @@
 
 #nullable disable
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.Http;
 using Ignixa.Serialization;
 using System.Text.Json.Nodes;
@@ -40,8 +40,8 @@ public class OperationEndpointsValidateTests
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
 
         // Assert
-        jsonNode.Should().NotBeNull();
-        jsonNode.ResourceType.Should().Be("Patient");
+        jsonNode.ShouldNotBeNull();
+        jsonNode.ResourceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class OperationEndpointsValidateTests
         var length = memoryStream.Length;
 
         // Assert
-        length.Should().Be(0);
+        length.ShouldBe(0);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class OperationEndpointsValidateTests
             await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
         });
 
-        exception.Should().NotBeNull();
+        exception.ShouldNotBeNull();
     }
 
     #endregion
@@ -124,7 +124,7 @@ public class OperationEndpointsValidateTests
         }
 
         // Assert
-        mode.Should().Be("create");
+        mode.ShouldBe("create");
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class OperationEndpointsValidateTests
         }
 
         // Assert
-        profile.Should().Be("http://example.com/profile/Patient");
+        profile.ShouldBe("http://example.com/profile/Patient");
     }
 
     [Fact]
@@ -213,9 +213,9 @@ public class OperationEndpointsValidateTests
         }
 
         // Assert
-        extractedResource.Should().NotBeNull();
-        extractedResource["resourceType"]?.GetValue<string>().Should().Be("Observation");
-        extractedResource["id"]?.GetValue<string>().Should().Be("obs-456");
+        extractedResource.ShouldNotBeNull();
+        extractedResource["resourceType"]?.GetValue<string>().ShouldBe("Observation");
+        extractedResource["id"]?.GetValue<string>().ShouldBe("obs-456");
     }
 
     #endregion
@@ -246,11 +246,11 @@ public class OperationEndpointsValidateTests
         };
 
         // Assert
-        response.resourceType.Should().Be("OperationOutcome");
-        response.issue.Should().NotBeNull();
-        response.issue[0].severity.Should().Be("error");
-        response.issue[0].code.Should().Be("invalid");
-        response.issue[0].diagnostics.Should().Be("Invalid resource");
+        response.resourceType.ShouldBe("OperationOutcome");
+        response.issue.ShouldNotBeNull();
+        response.issue[0].severity.ShouldBe("error");
+        response.issue[0].code.ShouldBe("invalid");
+        response.issue[0].diagnostics.ShouldBe("Invalid resource");
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class OperationEndpointsValidateTests
         };
 
         // Assert
-        response.issue[0].diagnostics.Should().Contain("resourceType");
+        response.issue[0].diagnostics.ShouldContain("resourceType");
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public class OperationEndpointsValidateTests
         };
 
         // Assert
-        response.issue[0].diagnostics.Should().Contain(profileUri);
+        response.issue[0].diagnostics.ShouldContain(profileUri);
     }
 
     #endregion
@@ -326,7 +326,7 @@ public class OperationEndpointsValidateTests
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
 
         // Assert
-        jsonNode.ResourceType.Should().Be("Observation");
+        jsonNode.ResourceType.ShouldBe("Observation");
     }
 
     [Fact]
@@ -346,7 +346,7 @@ public class OperationEndpointsValidateTests
         var jsonNode = await JsonSourceNodeFactory.ParseAsync(memoryStream, CancellationToken.None);
 
         // Assert
-        jsonNode.ResourceType.Should().BeNullOrEmpty();
+        jsonNode.ResourceType.ShouldBeNullOrEmpty();
     }
 
     #endregion
@@ -360,7 +360,7 @@ public class OperationEndpointsValidateTests
         var expectedMessage = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/$validate";
 
         // Act & Assert
-        expectedMessage.Should().Contain("TenantId");
+        expectedMessage.ShouldContain("TenantId");
     }
 
     [Fact]
@@ -370,7 +370,7 @@ public class OperationEndpointsValidateTests
         var expectedMessage = "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/{resourceType}/$validate";
 
         // Act & Assert
-        expectedMessage.Should().Contain("TenantId");
+        expectedMessage.ShouldContain("TenantId");
     }
 
     #endregion
@@ -385,8 +385,8 @@ public class OperationEndpointsValidateTests
         var fhirJson = KnownContentTypes.ApplicationFhirJson;
         var json = KnownContentTypes.ApplicationJson;
 
-        fhirJson.Should().NotBeNullOrEmpty();
-        json.Should().NotBeNullOrEmpty();
+        fhirJson.ShouldNotBeNullOrEmpty();
+        json.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -396,7 +396,7 @@ public class OperationEndpointsValidateTests
         var fhirJson = KnownContentTypes.ApplicationFhirJson;
 
         // Assert
-        fhirJson.Should().Be("application/fhir+json");
+        fhirJson.ShouldBe("application/fhir+json");
     }
 
     [Fact]
@@ -406,7 +406,7 @@ public class OperationEndpointsValidateTests
         var json = KnownContentTypes.ApplicationJson;
 
         // Assert
-        json.Should().Be("application/json");
+        json.ShouldBe("application/json");
     }
 
     #endregion
@@ -424,8 +424,8 @@ public class OperationEndpointsValidateTests
         var result = jsonNode.ToString();
 
         // Assert
-        result.Should().NotBeNullOrEmpty();
-        result.Should().Contain("Patient");
+        result.ShouldNotBeNullOrEmpty();
+        result.ShouldContain("Patient");
     }
 
     #endregion

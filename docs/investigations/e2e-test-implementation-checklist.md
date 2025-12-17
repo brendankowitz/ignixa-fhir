@@ -297,7 +297,7 @@
 
 - [ ] All tests use tag-based isolation
 - [ ] All tests have capability checks
-- [ ] All tests use FluentAssertions
+- [ ] All tests use Shouldly
 - [ ] All tests follow AAA pattern (Arrange, Act, Assert)
 - [ ] No hardcoded resource IDs (except in conditional tests)
 - [ ] Tests are independent (no shared state)

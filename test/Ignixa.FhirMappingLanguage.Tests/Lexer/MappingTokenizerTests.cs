@@ -4,7 +4,7 @@
  * Comprehensive unit tests for FHIR Mapping Language lexer/tokenizer.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Lexer;
 using Xunit;
 
@@ -69,8 +69,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(keyword);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(expectedKind);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(expectedKind);
     }
 
     [Theory]
@@ -86,8 +86,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(expectedKind);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(expectedKind);
     }
 
     [Fact]
@@ -100,9 +100,9 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize("mapName");
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.Identifier);
-        result.First().ToStringValue().Should().Be("mapName");
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.Identifier);
+        result.First().ToStringValue().ShouldBe("mapName");
     }
 
     #endregion
@@ -133,8 +133,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(op);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(expectedKind);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(expectedKind);
     }
 
     // NOTE: DoubleColon (::) test removed - not part of FHIR Mapping Language spec
@@ -157,9 +157,9 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.StringLiteral);
-        UnescapeStringToken(result.First().ToStringValue()).Should().Be(expected);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.StringLiteral);
+        UnescapeStringToken(result.First().ToStringValue()).ShouldBe(expected);
     }
 
     [Theory]
@@ -175,9 +175,9 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.IntegerLiteral);
-        result.First().ToStringValue().Should().Be(input);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.IntegerLiteral);
+        result.First().ToStringValue().ShouldBe(input);
     }
 
     [Theory]
@@ -193,8 +193,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.DecimalLiteral);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.DecimalLiteral);
     }
 
     [Theory]
@@ -209,8 +209,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(expectedKind);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(expectedKind);
     }
 
     #endregion
@@ -233,9 +233,9 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(identifier);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.Identifier);
-        result.First().ToStringValue().Should().Be(identifier);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.Identifier);
+        result.First().ToStringValue().ShouldBe(identifier);
     }
 
     [Theory]
@@ -250,8 +250,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(identifier);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.DelimitedIdentifier);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.DelimitedIdentifier);
     }
 
     #endregion
@@ -271,9 +271,9 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(url);
 
         // Assert
-        result.Should().HaveCount(1);
-        result.First().Kind.Should().Be(MappingTokenKind.Url);
-        result.First().ToStringValue().Should().Be(url);
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.Url);
+        result.First().ToStringValue().ShouldBe(url);
     }
 
     #endregion
@@ -291,7 +291,7 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().Contain(t => t.Kind == MappingTokenKind.LineComment);
+        result.ShouldContain(t => t.Kind == MappingTokenKind.LineComment);
     }
 
     [Fact]
@@ -305,7 +305,7 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input);
 
         // Assert
-        result.Should().Contain(t => t.Kind == MappingTokenKind.BlockComment);
+        result.ShouldContain(t => t.Kind == MappingTokenKind.BlockComment);
     }
 
     [Fact]
@@ -319,8 +319,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result.Should().HaveCount(1);
-        result[0].Kind.Should().Be(MappingTokenKind.Map);
+        result.Count.ShouldBe(1);
+        result[0].Kind.ShouldBe(MappingTokenKind.Map);
     }
 
     #endregion
@@ -338,7 +338,7 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result.Should().Contain(t => t.Kind == MappingTokenKind.Whitespace);
+        result.ShouldContain(t => t.Kind == MappingTokenKind.Whitespace);
     }
 
     [Fact]
@@ -352,8 +352,8 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result.Should().HaveCount(2);
-        result.Should().NotContain(t => t.Kind == MappingTokenKind.Whitespace);
+        result.Count.ShouldBe(2);
+        result.ShouldNotContain(t => t.Kind == MappingTokenKind.Whitespace);
     }
 
     #endregion
@@ -371,11 +371,11 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result.Should().HaveCount(4); // map, 'url', =, 'name'
-        result[0].Kind.Should().Be(MappingTokenKind.Map);
-        result[1].Kind.Should().Be(MappingTokenKind.StringLiteral);
-        result[2].Kind.Should().Be(MappingTokenKind.Equals);
-        result[3].Kind.Should().Be(MappingTokenKind.StringLiteral);
+        result.Count.ShouldBe(4); // map, 'url', =, 'name'
+        result[0].Kind.ShouldBe(MappingTokenKind.Map);
+        result[1].Kind.ShouldBe(MappingTokenKind.StringLiteral);
+        result[2].Kind.ShouldBe(MappingTokenKind.Equals);
+        result[3].Kind.ShouldBe(MappingTokenKind.StringLiteral);
     }
 
     [Fact]
@@ -389,12 +389,12 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result[0].Kind.Should().Be(MappingTokenKind.Uses);
-        result[1].Kind.Should().Be(MappingTokenKind.StringLiteral);
-        result[2].Kind.Should().Be(MappingTokenKind.Alias);
-        result[3].Kind.Should().Be(MappingTokenKind.Identifier);
-        result[4].Kind.Should().Be(MappingTokenKind.As);
-        result[5].Kind.Should().Be(MappingTokenKind.Source);
+        result[0].Kind.ShouldBe(MappingTokenKind.Uses);
+        result[1].Kind.ShouldBe(MappingTokenKind.StringLiteral);
+        result[2].Kind.ShouldBe(MappingTokenKind.Alias);
+        result[3].Kind.ShouldBe(MappingTokenKind.Identifier);
+        result[4].Kind.ShouldBe(MappingTokenKind.As);
+        result[5].Kind.ShouldBe(MappingTokenKind.Source);
     }
 
     [Fact]
@@ -408,14 +408,14 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result[0].Kind.Should().Be(MappingTokenKind.Group);
-        result[1].Kind.Should().Be(MappingTokenKind.Identifier); // PatientToBundle
-        result[2].Kind.Should().Be(MappingTokenKind.LeftParen);
-        result[3].Kind.Should().Be(MappingTokenKind.Source);
-        result[4].Kind.Should().Be(MappingTokenKind.Identifier); // src
-        result[5].Kind.Should().Be(MappingTokenKind.Colon); // Type annotation uses single colon
-        result[6].Kind.Should().Be(MappingTokenKind.Identifier); // Patient
-        result[7].Kind.Should().Be(MappingTokenKind.Comma);
+        result[0].Kind.ShouldBe(MappingTokenKind.Group);
+        result[1].Kind.ShouldBe(MappingTokenKind.Identifier); // PatientToBundle
+        result[2].Kind.ShouldBe(MappingTokenKind.LeftParen);
+        result[3].Kind.ShouldBe(MappingTokenKind.Source);
+        result[4].Kind.ShouldBe(MappingTokenKind.Identifier); // src
+        result[5].Kind.ShouldBe(MappingTokenKind.Colon); // Type annotation uses single colon
+        result[6].Kind.ShouldBe(MappingTokenKind.Identifier); // Patient
+        result[7].Kind.ShouldBe(MappingTokenKind.Comma);
     }
 
     [Fact]
@@ -429,13 +429,13 @@ public class MappingTokenizerTests
         var result = tokenizer.Tokenize(input).ToList();
 
         // Assert
-        result[0].Kind.Should().Be(MappingTokenKind.Identifier); // src
-        result[1].Kind.Should().Be(MappingTokenKind.Dot);
-        result[2].Kind.Should().Be(MappingTokenKind.Identifier); // name
-        result[3].Kind.Should().Be(MappingTokenKind.Arrow);
-        result[4].Kind.Should().Be(MappingTokenKind.Identifier); // tgt
-        result[5].Kind.Should().Be(MappingTokenKind.Dot);
-        result[6].Kind.Should().Be(MappingTokenKind.Identifier); // name
+        result[0].Kind.ShouldBe(MappingTokenKind.Identifier); // src
+        result[1].Kind.ShouldBe(MappingTokenKind.Dot);
+        result[2].Kind.ShouldBe(MappingTokenKind.Identifier); // name
+        result[3].Kind.ShouldBe(MappingTokenKind.Arrow);
+        result[4].Kind.ShouldBe(MappingTokenKind.Identifier); // tgt
+        result[5].Kind.ShouldBe(MappingTokenKind.Dot);
+        result[6].Kind.ShouldBe(MappingTokenKind.Identifier); // name
     }
 
     #endregion
@@ -452,7 +452,7 @@ public class MappingTokenizerTests
 
         // Act & Assert
         var act = () => tokenizer.Tokenize(input).ToList();
-        act.Should().Throw<Exception>();
+        Should.Throw<Exception>(act);
     }
 
     #endregion

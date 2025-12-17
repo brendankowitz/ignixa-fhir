@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Extensions;
@@ -30,8 +30,8 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => map.Const.Add(new StructureMapConstJsonNode()));
-        exception.Message.Should().Contain("Const is not supported in R4");
-        exception.Message.Should().Contain("introduced in FHIR R5");
+        exception.Message.ShouldContain("Const is not supported in R4");
+        exception.Message.ShouldContain("introduced in FHIR R5");
     }
 
     [Fact]
@@ -43,10 +43,10 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var getException = Assert.Throws<NotSupportedException>(() => _ = map.VersionAlgorithmString);
-        getException.Message.Should().Contain("VersionAlgorithmString is not supported in R4");
+        getException.Message.ShouldContain("VersionAlgorithmString is not supported in R4");
 
         var setException = Assert.Throws<NotSupportedException>(() => map.VersionAlgorithmString = "semver");
-        setException.Message.Should().Contain("VersionAlgorithmString is not supported in R4");
+        setException.Message.ShouldContain("VersionAlgorithmString is not supported in R4");
     }
 
     [Fact]
@@ -58,10 +58,10 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var getException = Assert.Throws<NotSupportedException>(() => _ = map.CopyrightLabel);
-        getException.Message.Should().Contain("CopyrightLabel is not supported in R4");
+        getException.Message.ShouldContain("CopyrightLabel is not supported in R4");
 
         var setException = Assert.Throws<NotSupportedException>(() => map.CopyrightLabel = "© 2025");
-        setException.Message.Should().Contain("CopyrightLabel is not supported in R4");
+        setException.Message.ShouldContain("CopyrightLabel is not supported in R4");
     }
 
     [Fact]
@@ -80,8 +80,8 @@ public class StructureMapVersionTests
         map.Const.Add(constNode);
 
         // Assert
-        map.Const.Should().HaveCount(1);
-        map.Const.First().Name.Should().Be("myConstant");
+        map.Const.Count.ShouldBe(1);
+        map.Const.First().Name.ShouldBe("myConstant");
     }
 
     #endregion
@@ -96,8 +96,8 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => dependent.Variable.Add("var1"));
-        exception.Message.Should().Contain("Variable is not supported in R5");
-        exception.Message.Should().Contain("use the Parameter property instead");
+        exception.Message.ShouldContain("Variable is not supported in R5");
+        exception.Message.ShouldContain("use the Parameter property instead");
     }
 
     [Fact]
@@ -109,8 +109,8 @@ public class StructureMapVersionTests
         // Act & Assert
         var param = new StructureMapParameterJsonNode(new JsonObject(), FhirVersion.R4);
         var exception = Assert.Throws<NotSupportedException>(() => dependent.Parameter.Add(param));
-        exception.Message.Should().Contain("Parameter is not supported in R4");
-        exception.Message.Should().Contain("use the Variable property instead");
+        exception.Message.ShouldContain("Parameter is not supported in R4");
+        exception.Message.ShouldContain("use the Variable property instead");
     }
 
     [Fact]
@@ -127,9 +127,9 @@ public class StructureMapVersionTests
         dependent.Variable.Add("var2");
 
         // Assert
-        dependent.Variable.Should().HaveCount(2);
-        dependent.Variable.Should().Contain("var1");
-        dependent.Variable.Should().Contain("var2");
+        dependent.Variable.Count.ShouldBe(2);
+        dependent.Variable.ShouldContain("var1");
+        dependent.Variable.ShouldContain("var2");
     }
 
     [Fact]
@@ -147,8 +147,8 @@ public class StructureMapVersionTests
         dependent.Parameter.Add(param);
 
         // Assert
-        dependent.Parameter.Should().HaveCount(1);
-        dependent.Parameter.First().GetValueAs<string>().Should().Be("value1");
+        dependent.Parameter.Count.ShouldBe(1);
+        dependent.Parameter.First().GetValueAs<string>().ShouldBe("value1");
     }
 
     #endregion
@@ -165,7 +165,7 @@ public class StructureMapVersionTests
         source.DefaultValue = "'some FHIRPath expression'";
 
         // Assert
-        source.DefaultValue.Should().Be("'some FHIRPath expression'");
+        source.DefaultValue.ShouldBe("'some FHIRPath expression'");
     }
 
     [Fact]
@@ -176,10 +176,10 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var getException = Assert.Throws<NotSupportedException>(() => _ = source.DefaultValue);
-        getException.Message.Should().Contain("DefaultValue (string) is not supported in R4");
+        getException.Message.ShouldContain("DefaultValue (string) is not supported in R4");
 
         var setException = Assert.Throws<NotSupportedException>(() => source.DefaultValue = "value");
-        setException.Message.Should().Contain("DefaultValue (string) is not supported in R4");
+        setException.Message.ShouldContain("DefaultValue (string) is not supported in R4");
     }
 
     [Fact]
@@ -193,8 +193,8 @@ public class StructureMapVersionTests
 
         // Assert
         var defaultValue = source.GetDefaultValue();
-        defaultValue.Should().NotBeNull();
-        defaultValue!.GetValue<string>().Should().Be("test");
+        defaultValue.ShouldNotBeNull();
+        defaultValue!.GetValue<string>().ShouldBe("test");
     }
 
     [Fact]
@@ -206,7 +206,7 @@ public class StructureMapVersionTests
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() =>
             source.SetDefaultValue("String", JsonValue.Create("test")));
-        exception.Message.Should().Contain("SetDefaultValue(suffix, value) is not supported in R5");
+        exception.Message.ShouldContain("SetDefaultValue(suffix, value) is not supported in R5");
     }
 
     #endregion
@@ -224,8 +224,8 @@ public class StructureMapVersionTests
 
         // Assert
         var value = param.GetValue();
-        value.Should().NotBeNull();
-        value!.GetValue<string>().Should().Be("2025-01-15");
+        value.ShouldNotBeNull();
+        value!.GetValue<string>().ShouldBe("2025-01-15");
     }
 
     [Fact]
@@ -236,8 +236,8 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => param.SetValueDate("2025-01-15"));
-        exception.Message.Should().Contain("valueDate is not supported in R4");
-        exception.Message.Should().Contain("id, string, boolean, integer, decimal");
+        exception.Message.ShouldContain("valueDate is not supported in R4");
+        exception.Message.ShouldContain("id, string, boolean, integer, decimal");
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => param.SetValueTime("14:30:00"));
-        exception.Message.Should().Contain("valueTime is not supported in R4");
+        exception.Message.ShouldContain("valueTime is not supported in R4");
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<NotSupportedException>(() => param.SetValueDateTime("2025-01-15T14:30:00Z"));
-        exception.Message.Should().Contain("valueDateTime is not supported in R4");
+        exception.Message.ShouldContain("valueDateTime is not supported in R4");
     }
 
     #endregion
@@ -278,8 +278,8 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentNullException>(() => group.TypeMode = null);
-        exception.Message.Should().Contain("TypeMode is required in R4");
-        exception.Message.Should().Contain("In R5+, this field became optional");
+        exception.Message.ShouldContain("TypeMode is required in R4");
+        exception.Message.ShouldContain("In R5+, this field became optional");
     }
 
     [Fact]
@@ -296,7 +296,7 @@ public class StructureMapVersionTests
         group.TypeMode = null;
 
         // Assert
-        group.TypeMode.Should().BeNull();
+        group.TypeMode.ShouldBeNull();
     }
 
     [Fact]
@@ -310,7 +310,7 @@ public class StructureMapVersionTests
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentNullException>(() => rule.Name = null);
-        exception.Message.Should().Contain("Name is required in R4");
+        exception.Message.ShouldContain("Name is required in R4");
     }
 
     [Fact]
@@ -326,7 +326,7 @@ public class StructureMapVersionTests
         rule.Name = null;
 
         // Assert
-        rule.Name.Should().BeNull();
+        rule.Name.ShouldBeNull();
     }
 
     #endregion
@@ -345,9 +345,9 @@ public class StructureMapVersionTests
         var variables = dependent.GetDependentVariables().ToList();
 
         // Assert
-        variables.Should().HaveCount(2);
-        variables.Should().Contain("var1");
-        variables.Should().Contain("var2");
+        variables.Count.ShouldBe(2);
+        variables.ShouldContain("var1");
+        variables.ShouldContain("var2");
     }
 
     [Fact]
@@ -363,8 +363,8 @@ public class StructureMapVersionTests
         var variables = dependent.GetDependentVariables().ToList();
 
         // Assert
-        variables.Should().HaveCount(1);
-        variables.Should().Contain("var1");
+        variables.Count.ShouldBe(1);
+        variables.ShouldContain("var1");
     }
 
     [Fact]
@@ -377,8 +377,8 @@ public class StructureMapVersionTests
         dependent.AddDependentVariable("var1");
 
         // Assert
-        dependent.Variable.Should().HaveCount(1);
-        dependent.Variable.Should().Contain("var1");
+        dependent.Variable.Count.ShouldBe(1);
+        dependent.Variable.ShouldContain("var1");
     }
 
     [Fact]
@@ -391,8 +391,8 @@ public class StructureMapVersionTests
         dependent.AddDependentVariable("var1");
 
         // Assert
-        dependent.Parameter.Should().HaveCount(1);
-        dependent.Parameter.First().GetValueAs<string>().Should().Be("var1");
+        dependent.Parameter.Count.ShouldBe(1);
+        dependent.Parameter.First().GetValueAs<string>().ShouldBe("var1");
     }
 
     [Fact]
@@ -405,7 +405,7 @@ public class StructureMapVersionTests
         source.SetDefaultValueString("test value");
 
         // Assert
-        source.DefaultValue.Should().Be("test value");
+        source.DefaultValue.ShouldBe("test value");
     }
 
     [Fact]
@@ -419,8 +419,8 @@ public class StructureMapVersionTests
 
         // Assert
         var defaultValue = source.GetDefaultValue();
-        defaultValue.Should().NotBeNull();
-        defaultValue!.GetValue<string>().Should().Be("test value");
+        defaultValue.ShouldNotBeNull();
+        defaultValue!.GetValue<string>().ShouldBe("test value");
     }
 
     [Fact]
@@ -434,7 +434,7 @@ public class StructureMapVersionTests
         var supportsConstants = map.SupportsConstants();
 
         // Assert
-        supportsConstants.Should().BeTrue();
+        supportsConstants.ShouldBeTrue();
     }
 
     [Fact]
@@ -448,7 +448,7 @@ public class StructureMapVersionTests
         var supportsConstants = map.SupportsConstants();
 
         // Assert
-        supportsConstants.Should().BeFalse();
+        supportsConstants.ShouldBeFalse();
     }
 
     [Fact]
@@ -462,7 +462,7 @@ public class StructureMapVersionTests
         var constants = map.GetConstantsOrEmpty().ToList();
 
         // Assert
-        constants.Should().BeEmpty();
+        constants.ShouldBeEmpty();
     }
 
     #endregion
@@ -483,11 +483,11 @@ public class StructureMapVersionTests
 
         // Assert
         var defaultValue = roundTripped.GetDefaultValue();
-        defaultValue.Should().NotBeNull();
-        defaultValue!.GetValue<int>().Should().Be(42);
+        defaultValue.ShouldNotBeNull();
+        defaultValue!.GetValue<int>().ShouldBe(42);
 
         // Check the property name is preserved
-        roundTripped.MutableNode.ContainsKey("defaultValueInteger").Should().BeTrue();
+        roundTripped.MutableNode.ContainsKey("defaultValueInteger").ShouldBeTrue();
     }
 
     #endregion

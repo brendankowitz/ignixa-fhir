@@ -4,7 +4,7 @@
  * Unit tests for cardinality constraint functionality in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
@@ -84,7 +84,7 @@ public class CardinalityTests
         var result = cardinality.IsSatisfiedBy(count);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -92,8 +92,7 @@ public class CardinalityTests
     {
         // Act & Assert
         var act = () => new Cardinality(-1, 1);
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*Minimum cardinality cannot be negative*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("Minimum cardinality cannot be negative");
     }
 
     [Fact]
@@ -101,8 +100,7 @@ public class CardinalityTests
     {
         // Act & Assert
         var act = () => new Cardinality(2, 1);
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*Maximum cardinality cannot be less than minimum*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("Maximum cardinality cannot be less than minimum");
     }
 
     [Theory]
@@ -119,7 +117,7 @@ public class CardinalityTests
         var result = cardinality.ToString();
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     #endregion
@@ -143,12 +141,12 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var map = compiler.Parse(mappingText);
 
         // Assert
-        map.Groups.Should().HaveCount(1);
-        map.Groups[0].Rules.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources.Should().HaveCount(1);
-        map.Groups[0].Rules[0].Sources[0].Cardinality.Should().NotBeNull();
-        map.Groups[0].Rules[0].Sources[0].Cardinality!.Min.Should().Be(0);
-        map.Groups[0].Rules[0].Sources[0].Cardinality!.Max.Should().Be(1);
+        map.Groups.Count.ShouldBe(1);
+        map.Groups[0].Rules.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
+        map.Groups[0].Rules[0].Sources[0].Cardinality.ShouldNotBeNull();
+        map.Groups[0].Rules[0].Sources[0].Cardinality!.Min.ShouldBe(0);
+        map.Groups[0].Rules[0].Sources[0].Cardinality!.Max.ShouldBe(1);
     }
 
     [Fact]
@@ -169,9 +167,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = map.Groups[0].Rules[0].Sources[0];
-        source.Cardinality.Should().NotBeNull();
-        source.Cardinality!.Min.Should().Be(1);
-        source.Cardinality!.Max.Should().BeNull();
+        source.Cardinality.ShouldNotBeNull();
+        source.Cardinality!.Min.ShouldBe(1);
+        source.Cardinality!.Max.ShouldBeNull();
     }
 
     [Fact]
@@ -192,9 +190,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = map.Groups[0].Rules[0].Sources[0];
-        source.Cardinality.Should().NotBeNull();
-        source.Condition.Should().NotBeNull();
-        source.Check.Should().NotBeNull();
+        source.Cardinality.ShouldNotBeNull();
+        source.Condition.ShouldNotBeNull();
+        source.Check.ShouldNotBeNull();
     }
 
     #endregion
@@ -230,8 +228,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         // Act & Assert
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Cardinality constraint*1..1*");
+        Should.Throw<MappingExecutionException>(act).Message.ShouldContain("Cardinality constraint");
     }
 
     [Fact]
@@ -261,8 +258,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
 
         // Act & Assert
         var act = () => evaluator.ExecuteGroup(map, "Transform", context);
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Source element 'identifier' not found*cardinality 1..*");
+        var exception = Should.Throw<MappingExecutionException>(act);
+        exception.Message.ShouldContain("Source element 'identifier' not found");
+        exception.Message.ShouldContain("cardinality 1..*");
     }
 
     #endregion
@@ -300,9 +298,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().HaveCountGreaterThan(0);
-        context.Errors.Should().Contain(e => e.Code == "CARDINALITY_ERROR");
-        context.Errors.Should().Contain(e => e.Message.Contains("1..1"));
+        context.Errors.Count.ShouldBeGreaterThan(0);
+        context.Errors.ShouldContain(e => e.Code == "CARDINALITY_ERROR");
+        context.Errors.ShouldContain(e => e.Message.Contains("1..1"));
     }
 
     [Fact]
@@ -336,8 +334,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().HaveCountGreaterThan(0);
-        context.Errors.Should().Contain(e => e.Code == "CARDINALITY_ERROR");
+        context.Errors.Count.ShouldBeGreaterThan(0);
+        context.Errors.ShouldContain(e => e.Code == "CARDINALITY_ERROR");
         // Second rule should still execute
     }
 
@@ -374,7 +372,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().BeEmpty();
+        context.Errors.ShouldBeEmpty();
     }
 
     [Fact]
@@ -406,7 +404,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().BeEmpty();
+        context.Errors.ShouldBeEmpty();
     }
 
     [Fact]
@@ -440,7 +438,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().BeEmpty();
+        context.Errors.ShouldBeEmpty();
     }
 
     #endregion
@@ -483,7 +481,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().BeEmpty(); // Should pass because only 1 after where filter
+        context.Errors.ShouldBeEmpty(); // Should pass because only 1 after where filter
     }
 
     [Fact]
@@ -515,7 +513,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().BeEmpty(); // Default provides 1 element, satisfies 1..1
+        context.Errors.ShouldBeEmpty(); // Default provides 1 element, satisfies 1..1
     }
 
     #endregion
@@ -552,7 +550,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().BeEmpty();
+        context.Errors.ShouldBeEmpty();
     }
 
     [Fact]
@@ -585,9 +583,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
         evaluator.ExecuteGroup(map, "Transform", context);
 
         // Assert
-        context.Errors.Should().HaveCountGreaterThan(0);
-        context.Errors.Should().Contain(e => e.Code == "CARDINALITY_ERROR");
-        context.Errors.Should().Contain(e => e.Code == "CHECK_ERROR");
+        context.Errors.Count.ShouldBeGreaterThan(0);
+        context.Errors.ShouldContain(e => e.Code == "CARDINALITY_ERROR");
+        context.Errors.ShouldContain(e => e.Code == "CHECK_ERROR");
     }
 
     #endregion

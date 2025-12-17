@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
@@ -76,8 +76,8 @@ public class ReferenceSearchParameterTests : TestBase
         var results = await query.ToListAsync();
 
         // Assert: Should return only the Encounter with the matching reference
-        results.Should().ContainSingle();
-        results.First().Should().Be(encounter.ResourceSurrogateId);
+        results.ShouldHaveSingleItem();
+        results.First().ShouldBe(encounter.ResourceSurrogateId);
     }
 
     [Fact]
@@ -154,9 +154,9 @@ public class ReferenceSearchParameterTests : TestBase
         var results = await query.ToListAsync();
 
         // Assert: Should return only the two encounters referencing the specified patient
-        results.Should().HaveCount(2);
-        results.Should().Contain(new[] { encounter1.ResourceSurrogateId, encounter2.ResourceSurrogateId });
-        results.Should().NotContain(encounter3.ResourceSurrogateId);
+        results.Count.ShouldBe(2);
+        results.ShouldContain(new[] { encounter1.ResourceSurrogateId, encounter2.ResourceSurrogateId });
+        results.ShouldNotContain(encounter3.ResourceSurrogateId);
     }
 
     [Fact]
@@ -203,7 +203,7 @@ public class ReferenceSearchParameterTests : TestBase
         var results = await query.ToListAsync();
 
         // Assert: Should return empty results
-        results.Should().BeEmpty();
+        results.ShouldBeEmpty();
     }
 
     [Fact]
@@ -250,6 +250,6 @@ public class ReferenceSearchParameterTests : TestBase
         var results = await query.ToListAsync();
 
         // Assert: Should return empty results because resource type doesn't match
-        results.Should().BeEmpty();
+        results.ShouldBeEmpty();
     }
 }

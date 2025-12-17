@@ -4,7 +4,7 @@
  * Unit tests for FHIR Mapping Language evaluator.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.Abstractions;
@@ -73,7 +73,7 @@ public class MappingEvaluatorTests
         var retrieved = context.GetSource("src");
 
         // Assert
-        retrieved.Should().BeSameAs(source);
+        retrieved.ShouldBeSameAs(source);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class MappingEvaluatorTests
         var retrieved = context.GetTarget("tgt");
 
         // Assert
-        retrieved.Should().BeSameAs(target);
+        retrieved.ShouldBeSameAs(target);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class MappingEvaluatorTests
         var retrieved = context.GetVariable("myVar");
 
         // Assert
-        retrieved.Should().Be(value);
+        retrieved.ShouldBe(value);
     }
 
     #endregion
@@ -142,7 +142,7 @@ public class MappingEvaluatorTests
         var act = () => evaluator.Execute(map, context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -171,8 +171,7 @@ public class MappingEvaluatorTests
 
         // Act & Assert
         var act = () => evaluator.Execute(map, context);
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*src*");
+        Should.Throw<MappingExecutionException>(act).Message.ShouldContain("src");
     }
 
     #endregion
@@ -189,8 +188,8 @@ public class MappingEvaluatorTests
             TransformResolver = (name, args) =>
             {
                 called = true;
-                name.Should().Be("create");
-                args.Should().HaveCount(1);
+                name.ShouldBe("create");
+                args.Count().ShouldBe(1);
                 return new TestTypedElement("Result");
             }
         };
@@ -240,7 +239,7 @@ public class MappingEvaluatorTests
         evaluator.Execute(map, context);
 
         // Assert
-        called.Should().BeTrue();
+        called.ShouldBeTrue();
     }
 
     #endregion
@@ -257,7 +256,7 @@ public class MappingEvaluatorTests
             FhirPathEvaluator = (expression, element) =>
             {
                 called = true;
-                expression.Should().Be("name.exists()");
+                expression.ShouldBe("name.exists()");
                 return new[] { new TestTypedElement("result", true, "boolean") };
             }
         };
@@ -302,7 +301,7 @@ public class MappingEvaluatorTests
         evaluator.Execute(map, context);
 
         // Assert
-        called.Should().BeTrue();
+        called.ShouldBeTrue();
     }
 
     #endregion
@@ -356,7 +355,7 @@ public class MappingEvaluatorTests
         var act = () => evaluator.Execute(map, context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -409,7 +408,7 @@ public class MappingEvaluatorTests
 
         // Assert
         var variable = context.GetVariable("myVar");
-        variable.Should().NotBeNull();
+        variable.ShouldNotBeNull();
     }
 
     #endregion
@@ -454,7 +453,7 @@ public class MappingEvaluatorTests
         var act = () => evaluator.ExecuteGroup(map, "Group2", context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -473,8 +472,7 @@ public class MappingEvaluatorTests
 
         // Act & Assert
         var act = () => evaluator.ExecuteGroup(map, "NonExistent", context);
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*NonExistent*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("NonExistent");
     }
 
     #endregion
@@ -525,7 +523,7 @@ public class MappingEvaluatorTests
         var act = () => evaluator.Execute(map, context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion

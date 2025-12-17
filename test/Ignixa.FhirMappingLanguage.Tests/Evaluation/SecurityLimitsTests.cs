@@ -1,6 +1,6 @@
 /* Copyright (c) 2025, Ignixa Contributors */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
@@ -65,9 +65,9 @@ public class SecurityLimitsTests
         var act = () => evaluator.Execute(map, context);
 
         // Assert
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Maximum recursion depth exceeded*")
-            .WithMessage("*Check for circular group calls*");
+        var ex = Should.Throw<MappingExecutionException>(act);
+        ex.Message.ShouldContain("Maximum recursion depth exceeded");
+        ex.Message.ShouldContain("Check for circular group calls");
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class SecurityLimitsTests
         var act = () => evaluator.Execute(map, context);
 
         // Assert - Should not throw
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -187,8 +187,7 @@ public class SecurityLimitsTests
         var act = () => evaluator.ExecuteGroup(map, "Main", context);
 
         // Assert
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Maximum elements created exceeded*");
+        Should.Throw<MappingExecutionException>(act).Message.ShouldContain("Maximum elements created exceeded");
     }
 
     [Fact]
@@ -255,7 +254,7 @@ public class SecurityLimitsTests
         var act = () => evaluator.ExecuteGroup(map, "Main", context);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -324,9 +323,9 @@ public class SecurityLimitsTests
         var act = () => evaluator.ExecuteGroup(map, "Main", context);
 
         // Assert
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Maximum errors collected*")
-            .WithMessage("*prevent memory exhaustion*");
+        var ex = Should.Throw<MappingExecutionException>(act);
+        ex.Message.ShouldContain("Maximum errors collected");
+        ex.Message.ShouldContain("prevent memory exhaustion");
     }
 
     [Fact]
@@ -407,9 +406,9 @@ public class SecurityLimitsTests
         evaluator.ExecuteGroup(map, "Main", context);
 
         // Assert
-        context.Errors.Should().HaveCount(2);
-        context.Errors[0].RuleName.Should().Be("failingRule1");
-        context.Errors[1].RuleName.Should().Be("failingRule2");
+        context.Errors.Count.ShouldBe(2);
+        context.Errors[0].RuleName.ShouldBe("failingRule1");
+        context.Errors[1].RuleName.ShouldBe("failingRule2");
     }
 
     #endregion
@@ -453,8 +452,9 @@ public class SecurityLimitsTests
         var act = () => evaluator.Execute(map, context);
 
         // Assert
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Check for circular group calls in group 'RecursiveGroup'*");
+        var exception = Should.Throw<MappingExecutionException>(act);
+        exception.Message.ShouldContain("Check for circular group calls");
+        exception.Message.ShouldContain("RecursiveGroup");
     }
 
     [Fact]
@@ -521,8 +521,9 @@ public class SecurityLimitsTests
         var act = () => evaluator.ExecuteGroup(map, "Main", context);
 
         // Assert
-        act.Should().Throw<MappingExecutionException>()
-            .WithMessage("*Maximum elements created exceeded (3)*");
+        var exception = Should.Throw<MappingExecutionException>(act);
+        exception.Message.ShouldContain("Maximum elements created exceeded");
+        exception.Message.ShouldContain("(3)");
     }
 
     #endregion

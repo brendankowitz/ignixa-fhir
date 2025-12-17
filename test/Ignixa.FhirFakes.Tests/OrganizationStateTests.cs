@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.States;
 using Ignixa.Specification.Generated;
@@ -30,10 +30,10 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
         var organization = scenario.Organizations[0];
-        organization.ResourceType.Should().Be("Organization");
-        organization.Id.Should().NotBeNullOrEmpty();
+        organization.ResourceType.ShouldBe("Organization");
+        organization.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class OrganizationStateTests
         // Assert
         var organization = scenario.Organizations[0];
         var name = organization.MutableNode["name"]?.GetValue<string>();
-        name.Should().Be("Test General Hospital");
+        name.ShouldBe("Test General Hospital");
     }
 
     [Fact]
@@ -62,8 +62,8 @@ public class OrganizationStateTests
 
         // Assert
         var organization = scenario.Organizations[0];
-        var active = organization.MutableNode["active"]?.GetValue<bool>();
-        active.Should().BeTrue();
+        var active = organization.MutableNode["active"]?.GetValue<bool?>();
+        active!.Value.ShouldBeTrue();
     }
 
     #endregion
@@ -82,16 +82,16 @@ public class OrganizationStateTests
         // Assert
         var organization = scenario.Organizations[0];
         var identifiers = organization.MutableNode["identifier"];
-        identifiers.Should().NotBeNull();
+        identifiers.ShouldNotBeNull();
 
         var npiIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.NpiSystem);
 
-        npiIdentifier.Should().NotBeNull();
+        npiIdentifier.ShouldNotBeNull();
         var npi = npiIdentifier!["value"]?.GetValue<string>();
-        npi.Should().NotBeNullOrEmpty();
-        npi.Should().HaveLength(10);
-        OrganizationState.ValidateNpi(npi!).Should().BeTrue("NPI should pass Luhn check");
+        npi.ShouldNotBeNullOrEmpty();
+        npi.Length.ShouldBe(10);
+        OrganizationState.ValidateNpi(npi!).ShouldBeTrue("NPI should pass Luhn check");
     }
 
     [Fact]
@@ -101,9 +101,9 @@ public class OrganizationStateTests
         var npi = OrganizationState.GenerateNpi();
 
         // Assert
-        npi.Should().HaveLength(10);
-        npi.Should().StartWith("2", "Type 2 NPI should start with 2 for organizations");
-        OrganizationState.ValidateNpi(npi).Should().BeTrue("Generated NPI should be valid");
+        npi.Length.ShouldBe(10);
+        npi.ShouldStartWith("2", Case.Sensitive);
+        OrganizationState.ValidateNpi(npi).ShouldBeTrue("Generated NPI should be valid");
     }
 
     [Fact]
@@ -113,9 +113,9 @@ public class OrganizationStateTests
         var npi = OrganizationState.GenerateType1Npi();
 
         // Assert
-        npi.Should().HaveLength(10);
-        npi.Should().StartWith("1", "Type 1 NPI should start with 1 for individuals");
-        OrganizationState.ValidateNpi(npi).Should().BeTrue("Generated NPI should be valid");
+        npi.Length.ShouldBe(10);
+        npi.ShouldStartWith("1", Case.Sensitive);
+        OrganizationState.ValidateNpi(npi).ShouldBeTrue("Generated NPI should be valid");
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class OrganizationStateTests
         // Assert
         foreach (var npi in invalidNpis)
         {
-            OrganizationState.ValidateNpi(npi).Should().BeFalse($"NPI '{npi}' should be invalid");
+            OrganizationState.ValidateNpi(npi).ShouldBeFalse($"NPI '{npi}' should be invalid");
         }
     }
 
@@ -153,7 +153,7 @@ public class OrganizationStateTests
         }
 
         // Assert - All 100 NPIs should be unique
-        npis.Should().HaveCount(100, "Generated NPIs should be unique");
+        npis.Count.ShouldBe(100, "Generated NPIs should be unique");
     }
 
     #endregion
@@ -176,10 +176,10 @@ public class OrganizationStateTests
         var taxIdIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.TaxIdSystem);
 
-        taxIdIdentifier.Should().NotBeNull();
+        taxIdIdentifier.ShouldNotBeNull();
         var taxId = taxIdIdentifier!["value"]?.GetValue<string>();
-        taxId.Should().NotBeNullOrEmpty();
-        OrganizationState.ValidateTaxIdFormat(taxId!).Should().BeTrue("Tax ID should be in XX-XXXXXXX format");
+        taxId.ShouldNotBeNullOrEmpty();
+        OrganizationState.ValidateTaxIdFormat(taxId!).ShouldBeTrue("Tax ID should be in XX-XXXXXXX format");
     }
 
     [Fact]
@@ -189,9 +189,9 @@ public class OrganizationStateTests
         var taxId = OrganizationState.GenerateTaxId();
 
         // Assert
-        taxId.Should().HaveLength(10); // XX-XXXXXXX = 10 characters
-        taxId[2].Should().Be('-');
-        OrganizationState.ValidateTaxIdFormat(taxId).Should().BeTrue();
+        taxId.Length.ShouldBe(10); // XX-XXXXXXX = 10 characters
+        taxId[2].ShouldBe('-');
+        OrganizationState.ValidateTaxIdFormat(taxId).ShouldBeTrue();
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class OrganizationStateTests
         // Assert
         foreach (var taxId in invalidTaxIds)
         {
-            OrganizationState.ValidateTaxIdFormat(taxId).Should().BeFalse($"Tax ID '{taxId}' should be invalid");
+            OrganizationState.ValidateTaxIdFormat(taxId).ShouldBeFalse($"Tax ID '{taxId}' should be invalid");
         }
     }
 
@@ -230,10 +230,10 @@ public class OrganizationStateTests
         // Assert
         var organization = scenario.Organizations[0];
         var typeArray = organization.MutableNode["type"];
-        typeArray.Should().NotBeNull();
+        typeArray.ShouldNotBeNull();
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        typeCode.Should().Be("prov");
+        typeCode.ShouldBe("prov");
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public class OrganizationStateTests
         var typeArray = organization.MutableNode["type"];
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        typeCode.Should().Be("ins");
+        typeCode.ShouldBe("ins");
     }
 
     [Fact]
@@ -267,7 +267,7 @@ public class OrganizationStateTests
         var typeArray = organization.MutableNode["type"];
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        typeCode.Should().Be("dept");
+        typeCode.ShouldBe("dept");
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class OrganizationStateTests
         var typeArray = organization.MutableNode["type"];
 
         var typeCode = typeArray![0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        typeCode.Should().Be("pay");
+        typeCode.ShouldBe("pay");
     }
 
     #endregion
@@ -301,9 +301,9 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
         var name = scenario.Organizations[0].MutableNode["name"]?.GetValue<string>();
-        name.Should().Be("City General Hospital");
+        name.ShouldBe("City General Hospital");
     }
 
     [Fact]
@@ -316,9 +316,9 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
         var name = scenario.Organizations[0].MutableNode["name"]?.GetValue<string>();
-        name.Should().NotBeNullOrEmpty();
+        name.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -344,7 +344,7 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -357,7 +357,7 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -370,7 +370,7 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -386,9 +386,9 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
+        scenario.Organizations.Count.ShouldBe(1);
         var name = scenario.Organizations[0].MutableNode["name"]?.GetValue<string>();
-        name.Should().Contain("Cardiology");
+        name!.ShouldContain("Cardiology");
     }
 
     #endregion
@@ -407,17 +407,17 @@ public class OrganizationStateTests
         // Assert
         var organization = scenario.Organizations[0];
         var telecom = organization.MutableNode["telecom"];
-        telecom.Should().NotBeNull();
+        telecom.ShouldNotBeNull();
 
         var phoneEntry = telecom!.AsArray()
             .FirstOrDefault(t => t?["system"]?.GetValue<string>() == "phone");
 
-        phoneEntry.Should().NotBeNull();
+        phoneEntry.ShouldNotBeNull();
         var phone = phoneEntry!["value"]?.GetValue<string>();
-        phone.Should().NotBeNullOrEmpty();
+        phone.ShouldNotBeNullOrEmpty();
         // Phone format varies by country: US uses (XXX) XXX-XXXX, international may use different formats
-        phone.Should().Contain("-", "Phone should contain dashes");
-        phone.Should().MatchRegex(@"[\d\(\)\s\-]+", "Phone should contain only digits, spaces, parentheses, and dashes");
+        phone!.ShouldContain("-");
+        phone.ShouldMatch(@"[\d\(\)\s\-]+");
     }
 
     [Fact]
@@ -436,10 +436,10 @@ public class OrganizationStateTests
         var emailEntry = telecom!.AsArray()
             .FirstOrDefault(t => t?["system"]?.GetValue<string>() == "email");
 
-        emailEntry.Should().NotBeNull();
+        emailEntry.ShouldNotBeNull();
         var email = emailEntry!["value"]?.GetValue<string>();
-        email.Should().NotBeNullOrEmpty();
-        email.Should().Contain("@", "Email should contain @ symbol");
+        email.ShouldNotBeNullOrEmpty();
+        email!.ShouldContain("@");
     }
 
     #endregion
@@ -458,13 +458,13 @@ public class OrganizationStateTests
         // Assert
         var organization = scenario.Organizations[0];
         var addresses = organization.MutableNode["address"];
-        addresses.Should().NotBeNull();
+        addresses.ShouldNotBeNull();
 
         var address = addresses![0];
-        address!["city"]?.GetValue<string>().Should().NotBeNullOrEmpty();
-        address["state"]?.GetValue<string>().Should().NotBeNullOrEmpty();
-        address["postalCode"]?.GetValue<string>().Should().NotBeNullOrEmpty();
-        address["country"]?.GetValue<string>().Should().Be("USA");
+        address!["city"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+        address["state"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+        address["postalCode"]?.GetValue<string>().ShouldNotBeNullOrEmpty();
+        address["country"]?.GetValue<string>().ShouldBe("USA");
     }
 
     [Fact]
@@ -494,9 +494,9 @@ public class OrganizationStateTests
         // Assert
         var organization = scenario.Organizations[0];
         var address = organization.MutableNode["address"]![0];
-        address!["city"]?.GetValue<string>().Should().Be("Boston");
-        address["state"]?.GetValue<string>().Should().Be("Massachusetts");
-        address["postalCode"]?.GetValue<string>().Should().Be("02101");
+        address!["city"]?.GetValue<string>().ShouldBe("Boston");
+        address["state"]?.GetValue<string>().ShouldBe("Massachusetts");
+        address["postalCode"]?.GetValue<string>().ShouldBe("02101");
     }
 
     #endregion
@@ -513,8 +513,8 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.CurrentOrganization.Should().NotBeNull();
-        scenario.CurrentOrganization.Should().Be(scenario.Organizations[0]);
+        scenario.CurrentOrganization.ShouldNotBeNull();
+        scenario.CurrentOrganization.ShouldBe(scenario.Organizations[0]);
     }
 
     [Fact]
@@ -528,10 +528,10 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(2);
-        scenario.CurrentOrganization.Should().Be(scenario.Organizations[1]);
+        scenario.Organizations.Count.ShouldBe(2);
+        scenario.CurrentOrganization.ShouldBe(scenario.Organizations[1]);
         var name = scenario.CurrentOrganization!.MutableNode["name"]?.GetValue<string>();
-        name.Should().Be("Second Clinic");
+        name.ShouldBe("Second Clinic");
     }
 
     [Fact]
@@ -545,7 +545,7 @@ public class OrganizationStateTests
 
         // Assert
         var orgEvents = scenario.Timeline.Where(e => e.EventType == "Organization").ToList();
-        orgEvents.Should().HaveCount(1);
+        orgEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -558,7 +558,7 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.Organizations[0]);
+        scenario.AllResources.ShouldContain(scenario.Organizations[0]);
     }
 
     #endregion
@@ -578,8 +578,8 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
-        scenario.Organizations[0].ResourceType.Should().Be("Organization");
+        scenario.Organizations.Count.ShouldBe(1);
+        scenario.Organizations[0].ResourceType.ShouldBe("Organization");
     }
 
     [Fact]
@@ -595,8 +595,8 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
-        scenario.Organizations[0].ResourceType.Should().Be("Organization");
+        scenario.Organizations.Count.ShouldBe(1);
+        scenario.Organizations[0].ResourceType.ShouldBe("Organization");
     }
 
     [Fact]
@@ -612,8 +612,8 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(1);
-        scenario.Organizations[0].ResourceType.Should().Be("Organization");
+        scenario.Organizations.Count.ShouldBe(1);
+        scenario.Organizations[0].ResourceType.ShouldBe("Organization");
     }
 
     #endregion
@@ -637,8 +637,8 @@ public class OrganizationStateTests
         var orgEntry = entries.FirstOrDefault(e =>
             e?["resource"]?["resourceType"]?.GetValue<string>() == "Organization");
 
-        orgEntry.Should().NotBeNull();
-        orgEntry!["resource"]?["name"]?.GetValue<string>().Should().Be("Test Hospital");
+        orgEntry.ShouldNotBeNull();
+        orgEntry!["resource"]?["name"]?.GetValue<string>().ShouldBe("Test Hospital");
     }
 
     #endregion
@@ -663,8 +663,8 @@ public class OrganizationStateTests
             .Build();
 
         // Assert
-        scenario.Organizations.Should().HaveCount(2);
-        scenario.CurrentOrganization!.MutableNode["name"]?.GetValue<string>().Should().Be("Main Hospital");
+        scenario.Organizations.Count.ShouldBe(2);
+        scenario.CurrentOrganization!.MutableNode["name"]?.GetValue<string>().ShouldBe("Main Hospital");
     }
 
     [Fact]
@@ -690,7 +690,7 @@ public class OrganizationStateTests
         var npiIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.NpiSystem);
 
-        npiIdentifier!["value"]?.GetValue<string>().Should().Be(customNpi);
+        npiIdentifier!["value"]?.GetValue<string>().ShouldBe(customNpi);
     }
 
     [Fact]
@@ -716,7 +716,7 @@ public class OrganizationStateTests
         var taxIdIdentifier = identifiers!.AsArray()
             .FirstOrDefault(i => i?["system"]?.GetValue<string>() == OrganizationState.TaxIdSystem);
 
-        taxIdIdentifier!["value"]?.GetValue<string>().Should().Be(customTaxId);
+        taxIdIdentifier!["value"]?.GetValue<string>().ShouldBe(customTaxId);
     }
 
     #endregion

@@ -4,7 +4,7 @@
 // </copyright>
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -63,8 +63,8 @@ public class FhirValidatorIntegrationTests
         }", ValidationDepth.Minimal);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Issues.Should().BeEmpty();
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public class FhirValidatorIntegrationTests
         }", ValidationDepth.Minimal);
 
         // Assert - Fast tier runs universal checks (IdFormat)
-        result.IsValid.Should().BeFalse();
-        result.Issues.Should().Contain(i => i.Path.Contains("id"));
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Path.Contains("id"));
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public class FhirValidatorIntegrationTests
         }", ValidationDepth.Spec);
 
         // Assert - Spec tier runs universal + schema checks
-        result.IsValid.Should().BeFalse();
-        result.Issues.Should().Contain(i => i.Severity == IssueSeverity.Error);
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Error);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class FhirValidatorIntegrationTests
         }");
 
         // Assert
-        result.IsValid.Should().BeTrue();
+        result.IsValid.ShouldBeTrue();
     }
 
     #endregion
@@ -134,8 +134,8 @@ public class FhirValidatorIntegrationTests
         }");
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Issues.Should().Contain(i => i.Path.Contains("text.status"));
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Path.Contains("text.status"));
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class FhirValidatorIntegrationTests
 
         // Assert - Should pass because text.div is present and valid
         // Currently fails due to bug in StructureDefinitionSchemaBuilder
-        result.IsValid.Should().BeTrue($"Observation with valid narrative should pass validation. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
+        result.IsValid.ShouldBeTrue($"Observation with valid narrative should pass validation. Issues: {string.Join(", ", result.Issues.Select(i => i.Message))}");
     }
 
     #endregion
@@ -192,8 +192,8 @@ public class FhirValidatorIntegrationTests
         }");
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Issues.Should().Contain(i => i.Path.Contains("subject.reference"));
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldContain(i => i.Path.Contains("subject.reference"));
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public class FhirValidatorIntegrationTests
         }");
 
         // Assert
-        result.IsValid.Should().BeTrue();
+        result.IsValid.ShouldBeTrue();
     }
 
     #endregion
@@ -238,12 +238,12 @@ public class FhirValidatorIntegrationTests
         for (int i = 0; i < 100; i++)
         {
             var result = ValidateResource(json, ValidationDepth.Minimal);
-            result.IsValid.Should().BeTrue();
+            result.IsValid.ShouldBeTrue();
         }
         var duration = DateTime.UtcNow - start;
 
         // Assert - Should complete quickly (< 500ms for 100 validations with caching)
-        duration.Should().BeLessThan(TimeSpan.FromMilliseconds(500));
+        duration.ShouldBeLessThan(TimeSpan.FromMilliseconds(500));
     }
 
     #endregion

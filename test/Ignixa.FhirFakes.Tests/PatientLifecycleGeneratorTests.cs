@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Lifecycle;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
@@ -28,8 +28,8 @@ public class PatientLifecycleGeneratorTests
         var generator = new PatientLifecycleGenerator(_schemaProvider);
 
         // Assert
-        generator.Should().NotBeNull();
-        generator.Events.Should().BeEmpty();
+        generator.ShouldNotBeNull();
+        generator.Events.ShouldBeEmpty();
     }
 
     [Fact]
@@ -39,8 +39,8 @@ public class PatientLifecycleGeneratorTests
         var act = () => new PatientLifecycleGenerator(null!);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("schemaProvider");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("schemaProvider");
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class PatientLifecycleGeneratorTests
         generator.WithBirthYear(1990);
 
         // Assert
-        generator.BirthYear.Should().Be(1990);
+        generator.BirthYear.ShouldBe(1990);
     }
 
     [Theory]
@@ -68,8 +68,8 @@ public class PatientLifecycleGeneratorTests
         var act = () => generator.WithBirthYear(year);
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName(nameof(year));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(act);
+        exception.ParamName.ShouldBe(nameof(year));
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class PatientLifecycleGeneratorTests
         generator.WithGender("female");
 
         // Assert
-        generator.Gender.Should().Be("female");
+        generator.Gender.ShouldBe("female");
     }
 
     [Fact]
@@ -95,8 +95,8 @@ public class PatientLifecycleGeneratorTests
         var act = () => generator.WithGender(null!);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("gender");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("gender");
     }
 
     #endregion
@@ -113,8 +113,8 @@ public class PatientLifecycleGeneratorTests
         generator.AddWellnessSchedule(pediatric: true, adult: false);
 
         // Assert
-        generator.Events.Should().HaveCount(1);
-        generator.Events[0].Should().BeOfType<PediatricWellnessSchedule>();
+        generator.Events.Count.ShouldBe(1);
+        generator.Events[0].ShouldBeOfType<PediatricWellnessSchedule>();
     }
 
     [Fact]
@@ -127,8 +127,8 @@ public class PatientLifecycleGeneratorTests
         generator.AddWellnessSchedule(pediatric: false, adult: true);
 
         // Assert
-        generator.Events.Should().HaveCount(1);
-        generator.Events[0].Should().BeOfType<AdultWellnessSchedule>();
+        generator.Events.Count.ShouldBe(1);
+        generator.Events[0].ShouldBeOfType<AdultWellnessSchedule>();
     }
 
     [Fact]
@@ -141,9 +141,9 @@ public class PatientLifecycleGeneratorTests
         generator.AddWellnessSchedule(pediatric: true, adult: true);
 
         // Assert
-        generator.Events.Should().HaveCount(2);
-        generator.Events[0].Should().BeOfType<PediatricWellnessSchedule>();
-        generator.Events[1].Should().BeOfType<AdultWellnessSchedule>();
+        generator.Events.Count.ShouldBe(2);
+        generator.Events[0].ShouldBeOfType<PediatricWellnessSchedule>();
+        generator.Events[1].ShouldBeOfType<AdultWellnessSchedule>();
     }
 
     #endregion
@@ -160,8 +160,8 @@ public class PatientLifecycleGeneratorTests
         generator.AddImmunizationSchedule();
 
         // Assert
-        generator.Events.Should().HaveCount(1);
-        generator.Events[0].Should().BeOfType<ImmunizationScheduleEvent>();
+        generator.Events.Count.ShouldBe(1);
+        generator.Events[0].ShouldBeOfType<ImmunizationScheduleEvent>();
     }
 
     #endregion
@@ -183,8 +183,8 @@ public class PatientLifecycleGeneratorTests
                 .AddConditionOnset(FhirCode.Conditions.Asthma));
 
         // Assert
-        generator.Events.Should().HaveCount(1);
-        generator.Events[0].Should().BeOfType<ProbabilisticConditionOnset>();
+        generator.Events.Count.ShouldBe(1);
+        generator.Events[0].ShouldBeOfType<ProbabilisticConditionOnset>();
     }
 
     [Fact]
@@ -201,8 +201,8 @@ public class PatientLifecycleGeneratorTests
             scenarioFactory: sp => new ScenarioBuilder(sp));
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("probability");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(act);
+        exception.ParamName.ShouldBe("probability");
     }
 
     [Fact]
@@ -219,8 +219,8 @@ public class PatientLifecycleGeneratorTests
             scenarioFactory: sp => new ScenarioBuilder(sp));
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("conditionName");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("conditionName");
     }
 
     #endregion
@@ -239,8 +239,8 @@ public class PatientLifecycleGeneratorTests
         var act = () => generator.SimulateUntilAge(-1);
 
         // Assert
-        act.Should().Throw<ArgumentOutOfRangeException>()
-            .WithParameterName("targetAge");
+        var exception = Should.Throw<ArgumentOutOfRangeException>(act);
+        exception.ParamName.ShouldBe("targetAge");
     }
 
     [Fact]
@@ -257,11 +257,11 @@ public class PatientLifecycleGeneratorTests
         var context = generator.SimulateUntilAge(5);
 
         // Assert
-        context.Should().NotBeNull();
-        context.Patient.Should().NotBeNull();
-        context.BirthDate.Year.Should().Be(2015);
-        context.GetAttribute<string>("gender").Should().Be("male");
-        context.GetAttribute<int>("birthYear").Should().Be(2015);
+        context.ShouldNotBeNull();
+        context.Patient.ShouldNotBeNull();
+        context.BirthDate.Year.ShouldBe(2015);
+        context.GetAttribute<string>("gender").ShouldBe("male");
+        context.GetAttribute<int>("birthYear").ShouldBe(2015);
     }
 
     [Fact]
@@ -277,7 +277,7 @@ public class PatientLifecycleGeneratorTests
         var context = generator.SimulateUntilAge(4);
 
         // Assert
-        context.Encounters.Should().NotBeEmpty("pediatric wellness visits at ages 1, 2, 4 should generate encounters");
+        context.Encounters.ShouldNotBeEmpty("pediatric wellness visits at ages 1, 2, 4 should generate encounters");
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public class PatientLifecycleGeneratorTests
         var context = generator.SimulateUntilAge(2);
 
         // Assert
-        context.Immunizations.Should().NotBeEmpty("childhood immunizations should be generated for ages 0-2");
+        context.Immunizations.ShouldNotBeEmpty("childhood immunizations should be generated for ages 0-2");
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public class PatientLifecycleGeneratorTests
         var context = generator.SimulateUntilAge(25);
 
         // Assert
-        context.Encounters.Should().NotBeEmpty("adult wellness visits should be generated for ages 18-25");
+        context.Encounters.ShouldNotBeEmpty("adult wellness visits should be generated for ages 18-25");
     }
 
     #endregion
@@ -337,7 +337,7 @@ public class PatientLifecycleGeneratorTests
                 scenarioFactory: sp => new ScenarioBuilder(sp).AddConditionOnset(FhirCode.Conditions.Asthma));
 
         // Assert
-        result.Should().BeSameAs(generator);
+        result.ShouldBeSameAs(generator);
     }
 
     #endregion
@@ -368,7 +368,7 @@ public class PatientLifecycleGeneratorTests
         var result = schedule.IsApplicable(age);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     #endregion
@@ -390,7 +390,7 @@ public class PatientLifecycleGeneratorTests
         var result = schedule.IsApplicable(age);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     #endregion
@@ -413,7 +413,7 @@ public class PatientLifecycleGeneratorTests
         var result = schedule.IsApplicable(age);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     #endregion
@@ -439,7 +439,7 @@ public class PatientLifecycleGeneratorTests
         var result = condition.IsApplicable(age);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -464,8 +464,8 @@ public class PatientLifecycleGeneratorTests
         condition.Execute(context, _schemaProvider);
 
         // Assert - Should no longer be applicable
-        condition.HasOccurred.Should().BeTrue();
-        condition.IsApplicable(10).Should().BeFalse("condition already occurred");
+        condition.HasOccurred.ShouldBeTrue();
+        condition.IsApplicable(10).ShouldBeFalse("condition already occurred");
     }
 
     [Fact]
@@ -488,14 +488,14 @@ public class PatientLifecycleGeneratorTests
 
         // Trigger the condition
         condition.Execute(context, _schemaProvider);
-        condition.HasOccurred.Should().BeTrue();
+        condition.HasOccurred.ShouldBeTrue();
 
         // Act
         condition.Reset();
 
         // Assert
-        condition.HasOccurred.Should().BeFalse();
-        condition.IsApplicable(10).Should().BeTrue();
+        condition.HasOccurred.ShouldBeFalse();
+        condition.IsApplicable(10).ShouldBeTrue();
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -52,8 +52,8 @@ public class MapRegistryCacheTests
         var result = await _cache.GetOrLoadAsync(TestMapUrl);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Url.Should().Be(TestMapUrl);
+        result.ShouldNotBeNull();
+        result.Url.ShouldBe(TestMapUrl);
 
         await _mockRepository.Received(1).GetStructureMapByUrlAsync(
             TestMapUrl,
@@ -75,8 +75,8 @@ public class MapRegistryCacheTests
         var result = await _cache.GetOrLoadAsync(TestMapUrl);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Url.Should().Be(TestMapUrl);
+        result.ShouldNotBeNull();
+        result.Url.ShouldBe(TestMapUrl);
 
         // Repository should only be called once (first call)
         await _mockRepository.Received(1).GetStructureMapByUrlAsync(
@@ -94,8 +94,8 @@ public class MapRegistryCacheTests
         // Act & Assert
         var act = async () => await _cache.GetOrLoadAsync(TestMapUrl);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage($"StructureMap not found: {TestMapUrl}");
+        (await Should.ThrowAsync<InvalidOperationException>(act))
+            .Message.ShouldContain("StructureMap not found");
     }
 
     #endregion
@@ -112,10 +112,10 @@ public class MapRegistryCacheTests
         _cache.Register(map);
 
         // Assert
-        _cache.Contains(map.Url).Should().BeTrue();
+        _cache.Contains(map.Url).ShouldBeTrue();
         var retrieved = _cache.GetByUrl(map.Url);
-        retrieved.Should().NotBeNull();
-        retrieved!.Url.Should().Be(map.Url);
+        retrieved.ShouldNotBeNull();
+        retrieved!.Url.ShouldBe(map.Url);
     }
 
     [Fact]
@@ -131,9 +131,9 @@ public class MapRegistryCacheTests
         _cache.Register(map2);
 
         // Assert
-        _cache.Contains(map1.Url).Should().BeTrue();
+        _cache.Contains(map1.Url).ShouldBeTrue();
         var stats = _cache.GetStatistics();
-        stats.CachedMapCount.Should().Be(1);
+        stats.CachedMapCount.ShouldBe(1);
     }
 
     #endregion
@@ -150,14 +150,14 @@ public class MapRegistryCacheTests
 
         await _cache.GetOrLoadAsync(TestMapUrl);
 
-        _cache.Contains(TestMapUrl).Should().BeTrue();
+        _cache.Contains(TestMapUrl).ShouldBeTrue();
 
         // Act
         _cache.InvalidatePackage(TestPackageId);
 
         // Assert
-        _cache.Contains(TestMapUrl).Should().BeFalse();
-        _cache.GetStatistics().CachedMapCount.Should().Be(0);
+        _cache.Contains(TestMapUrl).ShouldBeFalse();
+        _cache.GetStatistics().CachedMapCount.ShouldBe(0);
     }
 
     [Fact]
@@ -179,8 +179,8 @@ public class MapRegistryCacheTests
         _cache.InvalidatePackage("package.a");
 
         // Assert
-        _cache.Contains("http://example.org/Map1").Should().BeFalse();
-        _cache.Contains("http://example.org/Map2").Should().BeTrue();
+        _cache.Contains("http://example.org/Map1").ShouldBeFalse();
+        _cache.Contains("http://example.org/Map2").ShouldBeTrue();
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class MapRegistryCacheTests
         _cache.InvalidatePackage(TestPackageId);
 
         // Assert
-        _cache.Contains(inlineMap.Url).Should().BeTrue();
+        _cache.Contains(inlineMap.Url).ShouldBeTrue();
     }
 
     #endregion
@@ -214,10 +214,10 @@ public class MapRegistryCacheTests
 
         // Assert
         var stats = _cache.GetStatistics();
-        stats.CacheMisses.Should().Be(1);
-        stats.CacheHits.Should().Be(0);
-        stats.TotalRequests.Should().Be(1);
-        stats.HitRate.Should().Be(0.0);
+        stats.CacheMisses.ShouldBe(1);
+        stats.CacheHits.ShouldBe(0);
+        stats.TotalRequests.ShouldBe(1);
+        stats.HitRate.ShouldBe(0.0);
     }
 
     [Fact]
@@ -236,10 +236,10 @@ public class MapRegistryCacheTests
 
         // Assert
         var stats = _cache.GetStatistics();
-        stats.CacheMisses.Should().Be(1);
-        stats.CacheHits.Should().Be(2);
-        stats.TotalRequests.Should().Be(3);
-        stats.HitRate.Should().BeApproximately(0.667, 0.01); // 2/3
+        stats.CacheMisses.ShouldBe(1);
+        stats.CacheHits.ShouldBe(2);
+        stats.TotalRequests.ShouldBe(3);
+        stats.HitRate.ShouldBe(0.667, 0.01); // 2/3
     }
 
     [Fact]
@@ -250,16 +250,16 @@ public class MapRegistryCacheTests
         _cache.Register(map);
         _cache.GetByUrl(map.Url); // Hit
 
-        _cache.GetStatistics().CacheHits.Should().BeGreaterThan(0);
+        _cache.GetStatistics().CacheHits.ShouldBeGreaterThan(0);
 
         // Act
         _cache.ResetStatistics();
 
         // Assert
         var stats = _cache.GetStatistics();
-        stats.CacheHits.Should().Be(0);
-        stats.CacheMisses.Should().Be(0);
-        stats.TotalRequests.Should().Be(0);
+        stats.CacheHits.ShouldBe(0);
+        stats.CacheMisses.ShouldBe(0);
+        stats.TotalRequests.ShouldBe(0);
     }
 
     #endregion
@@ -281,8 +281,8 @@ public class MapRegistryCacheTests
         var result = _cache.GetByUrl(map.Url);
 
         // Assert
-        result.Should().BeNull();
-        _cache.Contains(map.Url).Should().BeFalse();
+        result.ShouldBeNull();
+        _cache.Contains(map.Url).ShouldBeFalse();
     }
 
     #endregion
@@ -299,15 +299,15 @@ public class MapRegistryCacheTests
         _cache.Register(map1);
         _cache.Register(map2);
 
-        _cache.GetStatistics().CachedMapCount.Should().Be(2);
+        _cache.GetStatistics().CachedMapCount.ShouldBe(2);
 
         // Act
         _cache.Clear();
 
         // Assert
-        _cache.GetStatistics().CachedMapCount.Should().Be(0);
-        _cache.Contains(map1.Url).Should().BeFalse();
-        _cache.Contains(map2.Url).Should().BeFalse();
+        _cache.GetStatistics().CachedMapCount.ShouldBe(0);
+        _cache.Contains(map1.Url).ShouldBeFalse();
+        _cache.Contains(map2.Url).ShouldBeFalse();
     }
 
     #endregion

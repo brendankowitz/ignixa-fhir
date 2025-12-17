@@ -244,7 +244,7 @@ roslyn_semantic_query for unused    # Dead code
 
 ### Testing Standards
 
-**Pattern** (AAA):
+**Pattern** (AAA with Shouldly):
 ```csharp
 [Fact]
 public void GivenAPatient_WhenGettingById_ThenReturnsPatient() {
@@ -255,9 +255,49 @@ public void GivenAPatient_WhenGettingById_ThenReturnsPatient() {
     var result = GetPatient(patientId);
 
     // Assert
-    result.Should().NotBeNull();
-    result.Id.Should().Be(patientId);
+    result.ShouldNotBeNull();
+    result.Id.ShouldBe(patientId);
 }
+```
+
+**Common Shouldly Assertions**:
+```csharp
+// Null checks
+result.ShouldNotBeNull();
+result.ShouldBeNull();
+
+// Equality
+value.ShouldBe(expected);
+value.ShouldNotBe(other);
+
+// Boolean
+flag.ShouldBeTrue();
+flag.ShouldBeFalse();
+
+// Collections
+list.ShouldNotBeEmpty();
+list.ShouldBeEmpty();
+list.Count().ShouldBe(5);
+list.ShouldContain(item);
+list.ShouldHaveSingleItem();
+
+// Strings
+text.ShouldContain("substring");
+text.ShouldStartWith("prefix");
+text.ShouldEndWith("suffix");
+text.ShouldMatch(@"regex");
+
+// Types
+obj.ShouldBeOfType<ExpectedType>();
+obj.ShouldBeAssignableTo<IInterface>();
+
+// Comparisons
+number.ShouldBeGreaterThan(10);
+number.ShouldBeLessThan(100);
+
+// Exceptions (note: different pattern from FluentAssertions)
+Should.Throw<ArgumentException>(() => MethodThatThrows());
+(await Should.ThrowAsync<InvalidOperationException>(async () => await AsyncMethod())).Message.ShouldContain("error");
 ```
 
 **Naming**:
@@ -475,7 +515,7 @@ var builder = new StructureMapBuilder(FhirVersion.R5); // or R4
 var structureMap = builder.Build(parser.Parse(fml));
 
 // FhirVersion is automatically set on all nodes
-structureMap.FhirVersion.Should().Be(FhirVersion.R5);
+structureMap.FhirVersion.ShouldBe(FhirVersion.R5);
 ```
 
 #### Migration R4 → R5

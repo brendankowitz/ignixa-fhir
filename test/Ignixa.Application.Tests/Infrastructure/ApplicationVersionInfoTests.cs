@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Infrastructure;
 
 namespace Ignixa.Application.Tests.Infrastructure;
@@ -20,7 +20,7 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly: null);
 
         // Assert
-        versionInfo.Version.Should().Be("0.0.0-dev");
+        versionInfo.Version.ShouldBe("0.0.0-dev");
     }
 
     [Fact]
@@ -34,9 +34,9 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly);
 
         // Assert
-        versionInfo.Version.Should().NotBeNullOrEmpty();
+        versionInfo.Version.ShouldNotBeNullOrEmpty();
         // Should be in semver format (at least x.y.z)
-        versionInfo.Version.Should().MatchRegex(@"^\d+\.\d+\.\d+");
+        versionInfo.Version.ShouldMatch(@"^\d+\.\d+\.\d+");
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly);
 
         // Assert
-        versionInfo.Version.Should().NotBeNullOrEmpty();
+        versionInfo.Version.ShouldNotBeNullOrEmpty();
         // GitVersion typically adds metadata like +Branch.main.Sha.abc123
         // We should get the full string for FHIR compliance
     }
@@ -65,7 +65,7 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly: null);
 
         // Assert
-        versionInfo.Name.Should().Be("Ignixa FHIR Server");
+        versionInfo.Name.ShouldBe("Ignixa FHIR Server");
     }
 
     [Fact]
@@ -79,9 +79,9 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly);
 
         // Assert
-        versionInfo.Name.Should().NotBeNullOrEmpty();
+        versionInfo.Name.ShouldNotBeNullOrEmpty();
         // Should be "Ignixa FHIR Server" from Directory.Build.props Product attribute
-        versionInfo.Name.Should().Contain("Ignixa");
+        versionInfo.Name.ShouldContain("Ignixa");
     }
 
     #endregion
@@ -95,9 +95,9 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly: null);
 
         // Assert
-        versionInfo.ReleaseDate.Should().NotBeNullOrEmpty();
+        versionInfo.ReleaseDate.ShouldNotBeNullOrEmpty();
         // Should be in ISO 8601 format (YYYY-MM-DD)
-        versionInfo.ReleaseDate.Should().MatchRegex(@"^\d{4}-\d{2}-\d{2}$");
+        versionInfo.ReleaseDate.ShouldMatch(@"^\d{4}-\d{2}-\d{2}$");
     }
 
     [Fact]
@@ -111,13 +111,13 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly);
 
         // Assert
-        versionInfo.ReleaseDate.Should().NotBeNullOrEmpty();
+        versionInfo.ReleaseDate.ShouldNotBeNullOrEmpty();
         // Should be in ISO 8601 format (YYYY-MM-DD)
-        versionInfo.ReleaseDate.Should().MatchRegex(@"^\d{4}-\d{2}-\d{2}$");
+        versionInfo.ReleaseDate.ShouldMatch(@"^\d{4}-\d{2}-\d{2}$");
 
         // Should be parseable as a date
-        DateOnly.TryParse(versionInfo.ReleaseDate, out var parsedDate).Should().BeTrue();
-        parsedDate.Should().BeOnOrBefore(DateOnly.FromDateTime(DateTime.UtcNow));
+        DateOnly.TryParse(versionInfo.ReleaseDate, out var parsedDate).ShouldBeTrue();
+        parsedDate.ShouldBeLessThanOrEqualTo(DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
     #endregion
@@ -135,13 +135,13 @@ public class ApplicationVersionInfoTests
         var versionInfo = new ApplicationVersionInfo(assembly);
 
         // Assert - All properties should be valid for FHIR CapabilityStatement
-        versionInfo.Version.Should().NotBeNullOrEmpty();
-        versionInfo.Name.Should().NotBeNullOrEmpty();
-        versionInfo.ReleaseDate.Should().NotBeNullOrEmpty();
+        versionInfo.Version.ShouldNotBeNullOrEmpty();
+        versionInfo.Name.ShouldNotBeNullOrEmpty();
+        versionInfo.ReleaseDate.ShouldNotBeNullOrEmpty();
 
         // Version should be valid semver (FHIR requirement)
         // Pattern: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILDMETA]
-        versionInfo.Version.Should().MatchRegex(@"^\d+\.\d+\.\d+");
+        versionInfo.Version.ShouldMatch(@"^\d+\.\d+\.\d+");
     }
 
     [Fact]
@@ -156,8 +156,8 @@ public class ApplicationVersionInfoTests
         var versionInfo2 = new ApplicationVersionInfo(assembly);
 
         // Assert - Multiple instances should return consistent values
-        versionInfo1.Version.Should().Be(versionInfo2.Version);
-        versionInfo1.Name.Should().Be(versionInfo2.Name);
+        versionInfo1.Version.ShouldBe(versionInfo2.Version);
+        versionInfo1.Name.ShouldBe(versionInfo2.Name);
         // ReleaseDate may vary slightly if based on file timestamp, but should be same date
     }
 

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -70,12 +70,12 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982");
 
         // Assert
-        results.Should().HaveCount(3, "Should return all patients born in 1982");
-        results.Should().Contain(r => r.Id == created[0].Id);
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[3].Id, "Should not match 1980");
-        results.Should().NotContain(r => r.Id == created[4].Id, "Should not match 1985");
+        results.Length.ShouldBe(3, "Should return all patients born in 1982");
+        results.ShouldContain(r => r.Id == created[0].Id);
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[3].Id, "Should not match 1980");
+        results.ShouldNotContain(r => r.Id == created[4].Id, "Should not match 1985");
     }
 
     [Fact]
@@ -98,10 +98,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only the patient born in 1982");
-        results.Should().Contain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[1].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(1, "Should return only the patient born in 1982");
+        results.ShouldContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[1].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     [Fact]
@@ -125,11 +125,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982");
 
         // Assert
-        results.Should().HaveCount(3, "Should match year-only, month-only, and full date in 1982");
-        results.Should().Contain(r => r.Id == created[0].Id);
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[3].Id);
+        results.Length.ShouldBe(3, "Should match year-only, month-only, and full date in 1982");
+        results.ShouldContain(r => r.Id == created[0].Id);
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[3].Id);
     }
 
     #endregion
@@ -158,12 +158,12 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01");
 
         // Assert
-        results.Should().HaveCount(3, "Should return all patients born in January 1982");
-        results.Should().Contain(r => r.Id == created[0].Id);
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[3].Id, "Should not match February");
-        results.Should().NotContain(r => r.Id == created[4].Id, "Should not match different year");
+        results.Length.ShouldBe(3, "Should return all patients born in January 1982");
+        results.ShouldContain(r => r.Id == created[0].Id);
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[3].Id, "Should not match February");
+        results.ShouldNotContain(r => r.Id == created[4].Id, "Should not match different year");
     }
 
     [Fact]
@@ -186,10 +186,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only the patient born in January 1982");
-        results.Should().Contain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[1].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(1, "Should return only the patient born in January 1982");
+        results.ShouldContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[1].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     [Fact]
@@ -213,11 +213,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01");
 
         // Assert
-        results.Should().HaveCount(3, "Should match year-only, month-only, and full date containing January 1982");
-        results.Should().Contain(r => r.Id == created[0].Id, "Year 1982 contains January");
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[3].Id);
+        results.Length.ShouldBe(3, "Should match year-only, month-only, and full date containing January 1982");
+        results.ShouldContain(r => r.Id == created[0].Id, "Year 1982 contains January");
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[3].Id);
     }
 
     #endregion
@@ -245,11 +245,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982");
 
         // Assert
-        results.Should().HaveCount(2, "Should match only 1982-01-01 and 1982-12-31");
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[0].Id, "1981-12-31 should not match 1982");
-        results.Should().NotContain(r => r.Id == created[3].Id, "1983-01-01 should not match 1982");
+        results.Length.ShouldBe(2, "Should match only 1982-01-01 and 1982-12-31");
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[0].Id, "1981-12-31 should not match 1982");
+        results.ShouldNotContain(r => r.Id == created[3].Id, "1983-01-01 should not match 1982");
     }
 
     [Fact]
@@ -273,11 +273,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-05");
 
         // Assert
-        results.Should().HaveCount(2, "Should match only May 1 and May 31");
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[0].Id, "April 30 should not match May");
-        results.Should().NotContain(r => r.Id == created[3].Id, "June 1 should not match May");
+        results.Length.ShouldBe(2, "Should match only May 1 and May 31");
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[0].Id, "April 30 should not match May");
+        results.ShouldNotContain(r => r.Id == created[3].Id, "June 1 should not match May");
     }
 
     [Fact]
@@ -301,11 +301,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=2000-02");
 
         // Assert
-        results.Should().HaveCount(3, "Should match all three days in February including leap day");
-        results.Should().Contain(r => r.Id == created[0].Id);
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[3].Id);
+        results.Length.ShouldBe(3, "Should match all three days in February including leap day");
+        results.ShouldContain(r => r.Id == created[0].Id);
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[3].Id);
     }
 
     #endregion
@@ -332,10 +332,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=gt1982");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only patients born after 1982");
-        results.Should().Contain(r => r.Id == created[2].Id, "1985 is after 1982");
-        results.Should().NotContain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[1].Id);
+        results.Length.ShouldBe(1, "Should return only patients born after 1982");
+        results.ShouldContain(r => r.Id == created[2].Id, "1985 is after 1982");
+        results.ShouldNotContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[1].Id);
     }
 
     [Fact]
@@ -358,10 +358,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=ge1982");
 
         // Assert
-        results.Should().HaveCount(2, "Should return patients born in or after 1982");
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[0].Id);
+        results.Length.ShouldBe(2, "Should return patients born in or after 1982");
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[0].Id);
     }
 
     [Fact]
@@ -384,10 +384,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=lt1982");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only patients born before 1982");
-        results.Should().Contain(r => r.Id == created[0].Id, "1980 is before 1982");
-        results.Should().NotContain(r => r.Id == created[1].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(1, "Should return only patients born before 1982");
+        results.ShouldContain(r => r.Id == created[0].Id, "1980 is before 1982");
+        results.ShouldNotContain(r => r.Id == created[1].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     [Fact]
@@ -410,10 +410,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=gt1982-05");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only patients born after May 1982");
-        results.Should().Contain(r => r.Id == created[2].Id, "June is after May");
-        results.Should().NotContain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[1].Id);
+        results.Length.ShouldBe(1, "Should return only patients born after May 1982");
+        results.ShouldContain(r => r.Id == created[2].Id, "June is after May");
+        results.ShouldNotContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[1].Id);
     }
 
     [Fact]
@@ -436,10 +436,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=lt1982-05");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only patients born before May 1982");
-        results.Should().Contain(r => r.Id == created[0].Id, "April is before May");
-        results.Should().NotContain(r => r.Id == created[1].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(1, "Should return only patients born before May 1982");
+        results.ShouldContain(r => r.Id == created[0].Id, "April is before May");
+        results.ShouldNotContain(r => r.Id == created[1].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     #endregion
@@ -467,11 +467,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982,1985");
 
         // Assert
-        results.Should().HaveCount(2, "Should return patients born in 1982 or 1985");
-        results.Should().Contain(r => r.Id == created[1].Id, "1982 matches");
-        results.Should().Contain(r => r.Id == created[3].Id, "1985 matches");
-        results.Should().NotContain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(2, "Should return patients born in 1982 or 1985");
+        results.ShouldContain(r => r.Id == created[1].Id, "1982 matches");
+        results.ShouldContain(r => r.Id == created[3].Id, "1985 matches");
+        results.ShouldNotContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     [Fact]
@@ -495,11 +495,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01,1982-12");
 
         // Assert
-        results.Should().HaveCount(2, "Should return patients born in January or December 1982");
-        results.Should().Contain(r => r.Id == created[0].Id, "January matches");
-        results.Should().Contain(r => r.Id == created[3].Id, "December matches");
-        results.Should().NotContain(r => r.Id == created[1].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(2, "Should return patients born in January or December 1982");
+        results.ShouldContain(r => r.Id == created[0].Id, "January matches");
+        results.ShouldContain(r => r.Id == created[3].Id, "December matches");
+        results.ShouldNotContain(r => r.Id == created[1].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     #endregion
@@ -526,10 +526,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01-15");
 
         // Assert
-        results.Should().HaveCount(1, "Should match only the exact date");
-        results.Should().Contain(r => r.Id == created[1].Id);
-        results.Should().NotContain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[2].Id);
+        results.Length.ShouldBe(1, "Should match only the exact date");
+        results.ShouldContain(r => r.Id == created[1].Id);
+        results.ShouldNotContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
     [Fact]
@@ -552,10 +552,10 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=gt1982-01-15");
 
         // Assert
-        results.Should().HaveCount(1, "Should return only dates after Jan 15");
-        results.Should().Contain(r => r.Id == created[2].Id);
-        results.Should().NotContain(r => r.Id == created[0].Id);
-        results.Should().NotContain(r => r.Id == created[1].Id);
+        results.Length.ShouldBe(1, "Should return only dates after Jan 15");
+        results.ShouldContain(r => r.Id == created[2].Id);
+        results.ShouldNotContain(r => r.Id == created[0].Id);
+        results.ShouldNotContain(r => r.Id == created[1].Id);
     }
 
     #endregion

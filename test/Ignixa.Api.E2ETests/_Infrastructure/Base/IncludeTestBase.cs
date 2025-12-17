@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure.Harness;
 using Ignixa.Api.E2ETests._TestData.Scenarios;
 using Ignixa.FhirFakes.Builders;
@@ -369,7 +369,7 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
 
         foreach (var expectedId in expectedIds)
         {
-            actualIds.Should().Contain(expectedId, $"bundle should contain resource with ID {expectedId}");
+            actualIds.ShouldContain(expectedId, $"bundle should contain resource with ID {expectedId}");
         }
     }
 
@@ -384,7 +384,7 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             if (entry.Resource is null) continue;
 
             var expectedMode = entry.Resource.ResourceType == matchResourceType ? "match" : "include";
-            entry.Search?.Mode.Should().Be(expectedMode,
+            entry.Search?.Mode.ShouldBe(expectedMode,
                 $"Resource {entry.Resource.ResourceType}/{entry.Resource.Id} should have search mode {expectedMode}");
         }
     }

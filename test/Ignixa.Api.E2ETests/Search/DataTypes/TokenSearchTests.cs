@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -64,12 +64,12 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length);
+        results.Length.ShouldBe(expectedObservations.Length);
 
         // Verify each expected observation is in results (order may vary)
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} (index in test data) should be in results");
         }
     }
@@ -93,11 +93,11 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length);
+        results.Length.ShouldBe(expectedObservations.Length);
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results for :text search");
         }
     }
@@ -122,11 +122,11 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
             .Where((_, i) => !excludeIndices.Contains(i))
             .ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length);
+        results.Length.ShouldBe(expectedObservations.Length);
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results (not excluded)");
         }
 
@@ -134,7 +134,7 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         foreach (var excludeIndex in excludeIndices)
         {
             var excludedObs = _fixture.Observations[excludeIndex];
-            results.Should().NotContain(r => r.Id == excludedObs.Id,
+            results.ShouldNotContain(r => r.Id == excludedObs.Id,
                 $"Observation {excludedObs.Id} (index {excludeIndex}) should be excluded by :not modifier");
         }
     }
@@ -159,17 +159,17 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
             .Where((_, i) => i != 8)
             .ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length);
+        results.Length.ShouldBe(expectedObservations.Length);
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results");
         }
 
         // Verify observation[8] is excluded
         var excludedObs = _fixture.Observations[8];
-        results.Should().NotContain(r => r.Id == excludedObs.Id,
+        results.ShouldNotContain(r => r.Id == excludedObs.Id,
             "Observation[8] with category=test should be excluded by :not modifier");
     }
 
@@ -195,11 +195,11 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
             .Where((_, i) => !excludeIndices.Contains(i))
             .ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length);
+        results.Length.ShouldBe(expectedObservations.Length);
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results");
         }
 
@@ -207,7 +207,7 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         foreach (var excludeIndex in excludeIndices)
         {
             var excludedObs = _fixture.Observations[excludeIndex];
-            results.Should().NotContain(r => r.Id == excludedObs.Id,
+            results.ShouldNotContain(r => r.Id == excludedObs.Id,
                 $"Observation {excludedObs.Id} (index {excludeIndex}) should be excluded");
         }
     }
@@ -228,18 +228,18 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         // Assert - Should return all observations except first 'count'
         var expectedObservations = _fixture.Observations.Skip(count).ToArray();
 
-        results.Should().HaveCount(expectedObservations.Length);
+        results.Length.ShouldBe(expectedObservations.Length);
 
         foreach (var expected in expectedObservations)
         {
-            results.Should().Contain(r => r.Id == expected.Id,
+            results.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results");
         }
 
         // Verify excluded observations are NOT in results
         foreach (var excludedObs in _fixture.Observations.Take(count))
         {
-            results.Should().NotContain(r => r.Id == excludedObs.Id,
+            results.ShouldNotContain(r => r.Id == excludedObs.Id,
                 $"Observation {excludedObs.Id} should be excluded by _id:not");
         }
     }
@@ -262,13 +262,13 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
             .Select(e => e.Resource!)
             .ToArray();
 
-        resources.Should().HaveCount(_fixture.Observations.Count);
-        resources.Should().AllSatisfy(r => r.ResourceType.Should().Be("Observation"));
+        resources.Length.ShouldBe(_fixture.Observations.Count);
+        resources.ShouldAllBe(r => r.ResourceType == "Observation");
 
         // Verify all our observations are in results
         foreach (var expected in _fixture.Observations)
         {
-            resources.Should().Contain(r => r.Id == expected.Id,
+            resources.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results");
         }
     }
@@ -297,11 +297,11 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
             .Where((_, i) => !excludeIndices.Contains(i))
             .ToArray();
 
-        resources.Should().HaveCount(expectedObservations.Length);
+        resources.Length.ShouldBe(expectedObservations.Length);
 
         foreach (var expected in expectedObservations)
         {
-            resources.Should().Contain(r => r.Id == expected.Id,
+            resources.ShouldContain(r => r.Id == expected.Id,
                 $"Expected observation {expected.Id} should be in results");
         }
 
@@ -309,7 +309,7 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         foreach (var excludeIndex in excludeIndices)
         {
             var excludedObs = _fixture.Observations[excludeIndex];
-            resources.Should().NotContain(r => r.Id == excludedObs.Id,
+            resources.ShouldNotContain(r => r.Id == excludedObs.Id,
                 $"Observation {excludedObs.Id} (index {excludeIndex}) should be excluded");
         }
     }
@@ -331,13 +331,13 @@ public class TokenSearchTests : CapabilityDrivenTestBase, IClassFixture<TokenSea
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&identifier={queryValue}");
 
         // Assert - Should find observation[9] which has both "VALUE" and "value" identifiers
-        results.Should().HaveCount(1, "observation[9] has both case variants");
+        results.Length.ShouldBe(1, "observation[9] has both case variants");
 
         var matchedObs = results.First();
-        matchedObs.Id.Should().Be(_fixture.Observations[9].Id);
+        matchedObs.Id.ShouldBe(_fixture.Observations[9].Id);
 
         // Verify the observation has identifiers with the expected values
         var identifiers = matchedObs.MutableNode["identifier"];
-        identifiers.Should().NotBeNull();
+        identifiers.ShouldNotBeNull();
     }
 }

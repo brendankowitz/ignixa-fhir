@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -61,10 +61,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert - Should return both Smith's SNOMED and LOINC diagnostic reports
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.SmithLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithLoincDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -83,10 +83,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.SmithLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithLoincDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -105,10 +105,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert - Only Smith's reports (linked to org with that city)
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.SmithLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithLoincDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -127,12 +127,12 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert - Should return all 4 diagnostic reports (2 Smith + 2 Truman)
-        results.Should().HaveCount(4);
+        results.Length.ShouldBe(4);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.SmithLoincDiagnosticReport.Id);
-        resultIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.TrumanLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.TrumanLoincDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -151,12 +151,12 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert - All 4 diagnostic reports
-        results.Should().HaveCount(4);
+        results.Length.ShouldBe(4);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.SmithLoincDiagnosticReport.Id);
-        resultIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.TrumanLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithLoincDiagnosticReport.Id);
+        resultIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.TrumanLoincDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -175,25 +175,25 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("DiagnosticReport", query);
 
         // Assert - First page should have 2 results
-        bundle.Entry.Should().HaveCount(2);
+        bundle.Entry.Count.ShouldBe(2);
 
         // Get next page
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
-        nextLink.Should().NotBeNullOrEmpty("Should have next link for pagination");
+        nextLink.ShouldNotBeNullOrEmpty("Should have next link for pagination");
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
 
         // Assert - Second page should have remaining 2 results
-        nextBundle.Entry.Should().HaveCount(2);
+        nextBundle.Entry.Count.ShouldBe(2);
 
         // Verify all 4 reports are returned across both pages
         var allIds = bundle.Entry.Select(e => e.Resource!.Id)
             .Concat(nextBundle.Entry.Select(e => e.Resource!.Id))
             .ToList();
-        allIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        allIds.Should().Contain(data.SmithLoincDiagnosticReport.Id);
-        allIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
-        allIds.Should().Contain(data.TrumanLoincDiagnosticReport.Id);
+        allIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        allIds.ShouldContain(data.SmithLoincDiagnosticReport.Id);
+        allIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
+        allIds.ShouldContain(data.TrumanLoincDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -212,7 +212,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert - No results
-        results.Should().BeEmpty();
+        results.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -231,19 +231,19 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var notFemaleResults = await Harness.SearchAsync("Observation", notFemaleQuery);
 
         // Smith (male) and Truman (male) have 2+1 observations each = 4 observations (excluding Device observations)
-        notFemaleResults.Should().HaveCount(4);
+        notFemaleResults.Length.ShouldBe(4);
 
         // Act - Search for observations where subject is NOT male
         var notMaleQuery = $"subject:Patient.gender:not=male&subject:Patient._tag={tag}";
         var notMaleResults = await Harness.SearchAsync("Observation", notMaleQuery);
 
         // Adams (female) has 1 observation
-        notMaleResults.Should().HaveCount(1);
+        notMaleResults.Length.ShouldBe(1);
 
         // Verify totals add up
         var allPatientQuery = $"subject:Patient._tag={tag}";
         var allPatientResults = await Harness.SearchAsync("Observation", allPatientQuery);
-        allPatientResults.Should().HaveCount(notFemaleResults.Length + notMaleResults.Length);
+        allPatientResults.Length.ShouldBe(notFemaleResults.Length + notMaleResults.Length);
     }
 
     #endregion
@@ -266,10 +266,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", query);
 
         // Assert - Smith and Truman have SNOMED observations
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithPatient.Id);
-        resultIds.Should().Contain(data.TrumanPatient.Id);
+        resultIds.ShouldContain(data.SmithPatient.Id);
+        resultIds.ShouldContain(data.TrumanPatient.Id);
     }
 
     /// <summary>
@@ -288,21 +288,21 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", query);
 
         // Assert - First page has 1 result
-        bundle.Entry.Should().HaveCount(1);
+        bundle.Entry.Count.ShouldBe(1);
 
         // Get next page
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
-        nextLink.Should().NotBeNullOrEmpty();
+        nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
-        nextBundle.Entry.Should().HaveCount(1);
+        nextBundle.Entry.Count.ShouldBe(1);
 
         // Verify both patients returned across pages
         var allIds = bundle.Entry.Select(e => e.Resource!.Id)
             .Concat(nextBundle.Entry.Select(e => e.Resource!.Id))
             .ToList();
-        allIds.Should().Contain(data.SmithPatient.Id);
-        allIds.Should().Contain(data.TrumanPatient.Id);
+        allIds.ShouldContain(data.SmithPatient.Id);
+        allIds.ShouldContain(data.TrumanPatient.Id);
     }
 
     /// <summary>
@@ -322,11 +322,11 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
 
         // Assert - Should return Smith, Truman, and DeviceSnomedSubject
         var resources = bundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!).ToList();
-        resources.Should().HaveCount(3);
+        resources.Count.ShouldBe(3);
         var resultIds = resources.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithPatient.Id);
-        resultIds.Should().Contain(data.TrumanPatient.Id);
-        resultIds.Should().Contain(data.DeviceSnomedSubject.Id);
+        resultIds.ShouldContain(data.SmithPatient.Id);
+        resultIds.ShouldContain(data.TrumanPatient.Id);
+        resultIds.ShouldContain(data.DeviceSnomedSubject.Id);
     }
 
     /// <summary>
@@ -345,10 +345,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", query);
 
         // Assert - Smith and Truman have observations linked to SNOMED diagnostic reports
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithPatient.Id);
-        resultIds.Should().Contain(data.TrumanPatient.Id);
+        resultIds.ShouldContain(data.SmithPatient.Id);
+        resultIds.ShouldContain(data.TrumanPatient.Id);
     }
 
     /// <summary>
@@ -367,11 +367,11 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", query);
 
         // Assert - Adams, Smith, and Truman are members of the group
-        results.Should().HaveCount(3);
+        results.Length.ShouldBe(3);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.AdamsPatient.Id);
-        resultIds.Should().Contain(data.SmithPatient.Id);
-        resultIds.Should().Contain(data.TrumanPatient.Id);
+        resultIds.ShouldContain(data.AdamsPatient.Id);
+        resultIds.ShouldContain(data.SmithPatient.Id);
+        resultIds.ShouldContain(data.TrumanPatient.Id);
     }
 
     /// <summary>
@@ -388,12 +388,12 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         // Act - _type=Group should match (Group resource type)
         var groupTypeQuery = $"_tag={tag}&_has:Group:member:_type=Group";
         var groupTypeResults = await Harness.SearchAsync("Patient", groupTypeQuery);
-        groupTypeResults.Should().NotBeEmpty();
+        groupTypeResults.ShouldNotBeEmpty();
 
         // Act - _type=Patient should NOT match (Group is not a Patient)
         var patientTypeQuery = $"_tag={tag}&_has:Group:member:_type=Patient";
         var patientTypeResults = await Harness.SearchAsync("Patient", patientTypeQuery);
-        patientTypeResults.Should().BeEmpty();
+        patientTypeResults.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -417,7 +417,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("Patient", query);
 
         // Assert - Only 1 (Adams), not 2 (deleted patient should not be counted)
-        bundle.Total.Should().Be(1);
+        bundle.Total.ShouldBe(1);
     }
 
     #endregion
@@ -440,10 +440,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert - Only SNOMED diagnostic reports for patients in the group
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -462,21 +462,21 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("DiagnosticReport", query);
 
         // Assert - First page
-        bundle.Entry.Should().HaveCount(1);
+        bundle.Entry.Count.ShouldBe(1);
 
         // Get second page
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
-        nextLink.Should().NotBeNullOrEmpty();
+        nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
-        nextBundle.Entry.Should().HaveCount(1);
+        nextBundle.Entry.Count.ShouldBe(1);
 
         // Verify both SNOMED reports returned
         var allIds = bundle.Entry.Select(e => e.Resource!.Id)
             .Concat(nextBundle.Entry.Select(e => e.Resource!.Id))
             .ToList();
-        allIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        allIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
+        allIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        allIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -495,10 +495,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("DiagnosticReport", query);
 
         // Assert
-        results.Should().HaveCount(2);
+        results.Length.ShouldBe(2);
         var resultIds = results.Select(r => r.Id).ToList();
-        resultIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        resultIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        resultIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
     }
 
     /// <summary>
@@ -517,21 +517,21 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("DiagnosticReport", query);
 
         // Assert - First page
-        bundle.Entry.Should().HaveCount(1);
+        bundle.Entry.Count.ShouldBe(1);
 
         // Get second page
         var nextLink = bundle.Link.FirstOrDefault(l => l.Relation == "next")?.Url;
-        nextLink.Should().NotBeNullOrEmpty();
+        nextLink.ShouldNotBeNullOrEmpty();
 
         var nextBundle = await Harness.GetBundleAsync(nextLink!);
-        nextBundle.Entry.Should().HaveCount(1);
+        nextBundle.Entry.Count.ShouldBe(1);
 
         // Verify both SNOMED reports returned
         var allIds = bundle.Entry.Select(e => e.Resource!.Id)
             .Concat(nextBundle.Entry.Select(e => e.Resource!.Id))
             .ToList();
-        allIds.Should().Contain(data.SmithSnomedDiagnosticReport.Id);
-        allIds.Should().Contain(data.TrumanSnomedDiagnosticReport.Id);
+        allIds.ShouldContain(data.SmithSnomedDiagnosticReport.Id);
+        allIds.ShouldContain(data.TrumanSnomedDiagnosticReport.Id);
     }
 
     #endregion
@@ -552,7 +552,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         // Act - Get complete results first
         var query = $"subject:Patient._type=Patient&subject:Patient._tag={tag}";
         var completeBundle = await Harness.SearchBundleAsync("DiagnosticReport", query);
-        completeBundle.Entry.Count.Should().BeGreaterThan(2);
+        completeBundle.Entry.Count.ShouldBeGreaterThan(2);
 
         // Paginate through all results
         var paginatedBundle = await Harness.SearchBundleAsync("DiagnosticReport", query + "&_count=1");
@@ -570,10 +570,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         }
 
         // Assert - Paginated results should match complete results
-        allResources.Should().HaveCount(completeBundle.Entry.Count);
+        allResources.Count.ShouldBe(completeBundle.Entry.Count);
         var completeIds = completeBundle.Entry.Select(e => e.Resource!.Id).OrderBy(x => x).ToList();
         var paginatedIds = allResources.Select(r => r.Id).OrderBy(x => x).ToList();
-        paginatedIds.Should().BeEquivalentTo(completeIds);
+        paginatedIds.ShouldBe(completeIds);
     }
 
     /// <summary>
@@ -590,7 +590,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         // Act - Get complete results first
         var query = $"_has:Observation:patient:_tag={tag}";
         var completeBundle = await Harness.SearchBundleAsync("Patient", query);
-        completeBundle.Entry.Count.Should().BeGreaterThan(2);
+        completeBundle.Entry.Count.ShouldBeGreaterThan(2);
 
         // Paginate through all results
         var paginatedBundle = await Harness.SearchBundleAsync("Patient", query + "&_count=1");
@@ -608,10 +608,10 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         }
 
         // Assert - Paginated results should match complete results
-        allResources.Should().HaveCount(completeBundle.Entry.Count);
+        allResources.Count.ShouldBe(completeBundle.Entry.Count);
         var completeIds = completeBundle.Entry.Select(e => e.Resource!.Id).OrderBy(x => x).ToList();
         var paginatedIds = allResources.Select(r => r.Id).OrderBy(x => x).ToList();
-        paginatedIds.Should().BeEquivalentTo(completeIds);
+        paginatedIds.ShouldBe(completeIds);
     }
 
     #endregion
@@ -648,7 +648,7 @@ public class ChainingSearchTests : CapabilityDrivenTestBase
         var bundle = await Harness.SearchBundleAsync("OrganizationAffiliation", query);
 
         // Assert - Should return 2 entries (affiliation + included location)
-        bundle.Entry.Should().HaveCount(2);
+        bundle.Entry.Count.ShouldBe(2);
     }
 
     #endregion

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -64,8 +64,8 @@ public class BindingCheckTests
         var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
 
         // Assert
-        result.IsValid.Should().BeTrue("extensible bindings are skipped in Spec depth");
-        result.Issues.Should().BeEmpty();
+        result.IsValid.ShouldBeTrue("extensible bindings are skipped in Spec depth");
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class BindingCheckTests
         var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
 
         // Assert
-        result.IsValid.Should().BeTrue("extensible bindings in Full depth should warn, not fail");
-        result.Issues.Should().ContainSingle(i => i.Severity == IssueSeverity.Warning);
+        result.IsValid.ShouldBeTrue("extensible bindings in Full depth should warn, not fail");
+        result.Issues.ShouldContain(i => i.Severity == IssueSeverity.Warning);
     }
 }

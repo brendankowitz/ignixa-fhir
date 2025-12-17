@@ -1,5 +1,5 @@
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.PackageManagement.DTOs;
 using Xunit;
 
@@ -96,55 +96,55 @@ public class PackageMetadataDeserializationTests
         var metadata = JsonSerializer.Deserialize<PackageMetadata>(json, JsonOptions);
 
         // Assert - Root level properties
-        metadata.Should().NotBeNull();
-        metadata!.Id.Should().Be("hl7.fhir.uv.bulkdata");
-        metadata.Name.Should().Be("hl7.fhir.uv.bulkdata");
-        metadata.Description.Should().Contain("FHIR based approach");
-        metadata.Description.Should().Contain("exporting large data sets");
+        metadata.ShouldNotBeNull();
+        metadata!.Id.ShouldBe("hl7.fhir.uv.bulkdata");
+        metadata.Name.ShouldBe("hl7.fhir.uv.bulkdata");
+        metadata.Description!.ShouldContain("FHIR based approach");
+        metadata.Description!.ShouldContain("exporting large data sets");
 
         // Assert - Dist tags (latest version)
-        metadata.DistTags.Should().NotBeNull();
-        metadata.DistTags!.Latest.Should().Be("2.0.0");
+        metadata.DistTags.ShouldNotBeNull();
+        metadata.DistTags!.Latest.ShouldBe("2.0.0");
 
         // Assert - Versions collection
-        metadata.Versions.Should().NotBeNull();
-        metadata.Versions.Should().HaveCount(5);
-        metadata.Versions.Should().ContainKey("1.0.0");
-        metadata.Versions.Should().ContainKey("1.0.1");
-        metadata.Versions.Should().ContainKey("1.1.0");
-        metadata.Versions.Should().ContainKey("2.0.0");
-        metadata.Versions.Should().ContainKey("3.0.0-ballot");
+        metadata.Versions.ShouldNotBeNull();
+        metadata.Versions.Count.ShouldBe(5);
+        metadata.Versions.ShouldContainKey("1.0.0");
+        metadata.Versions.ShouldContainKey("1.0.1");
+        metadata.Versions.ShouldContainKey("1.1.0");
+        metadata.Versions.ShouldContainKey("2.0.0");
+        metadata.Versions.ShouldContainKey("3.0.0-ballot");
 
         // Assert - Version 2.0.0 (latest stable) details
         var version200 = metadata.Versions!["2.0.0"];
-        version200.Should().NotBeNull();
-        version200.Name.Should().Be("hl7.fhir.uv.bulkdata");
-        version200.Version.Should().Be("2.0.0");
-        version200.Description.Should().Contain("FHIR based approach");
-        version200.FhirVersion.Should().Be("R4");
-        version200.Url.Should().Be("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/2.0.0");
+        version200.ShouldNotBeNull();
+        version200.Name.ShouldBe("hl7.fhir.uv.bulkdata");
+        version200.Version.ShouldBe("2.0.0");
+        version200.Description!.ShouldContain("FHIR based approach");
+        version200.FhirVersion.ShouldBe("R4");
+        version200.Url.ShouldBe("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/2.0.0");
 
         // Assert - Version 2.0.0 distribution metadata
-        version200.Dist.Should().NotBeNull();
-        version200.Dist!.Shasum.Should().Be("eb8ec8b8c876450ae885e19e457cb2900d704459");
-        version200.Dist.Tarball.Should().Be("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/2.0.0");
+        version200.Dist.ShouldNotBeNull();
+        version200.Dist!.Shasum.ShouldBe("eb8ec8b8c876450ae885e19e457cb2900d704459");
+        version200.Dist.Tarball.ShouldBe("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/2.0.0");
 
         // Assert - Version 1.0.1 (missing shasum)
         var version101 = metadata.Versions["1.0.1"];
-        version101.Should().NotBeNull();
-        version101.Version.Should().Be("1.0.1");
-        version101.Dist.Should().NotBeNull();
-        version101.Dist!.Shasum.Should().BeNull();
-        version101.Dist.Tarball.Should().Be("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/1.0.1");
+        version101.ShouldNotBeNull();
+        version101.Version.ShouldBe("1.0.1");
+        version101.Dist.ShouldNotBeNull();
+        version101.Dist!.Shasum.ShouldBeNull();
+        version101.Dist.Tarball.ShouldBe("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/1.0.1");
 
         // Assert - Version 3.0.0-ballot (pre-release version)
         var versionBallot = metadata.Versions["3.0.0-ballot"];
-        versionBallot.Should().NotBeNull();
-        versionBallot.Version.Should().Be("3.0.0-ballot");
-        versionBallot.FhirVersion.Should().Be("R4");
-        versionBallot.Dist.Should().NotBeNull();
-        versionBallot.Dist!.Shasum.Should().NotBeNullOrEmpty();
-        versionBallot.Dist.Tarball.Should().Be("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/3.0.0-ballot");
+        versionBallot.ShouldNotBeNull();
+        versionBallot.Version.ShouldBe("3.0.0-ballot");
+        versionBallot.FhirVersion.ShouldBe("R4");
+        versionBallot.Dist.ShouldNotBeNull();
+        versionBallot.Dist!.Shasum.ShouldNotBeNullOrEmpty();
+        versionBallot.Dist.Tarball.ShouldBe("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/3.0.0-ballot");
     }
 
     [Fact]
@@ -158,10 +158,10 @@ public class PackageMetadataDeserializationTests
         var version101 = metadata!.Versions!["1.0.1"];
 
         // Assert - Shasum should be null, but tarball should exist
-        version101.Dist.Should().NotBeNull();
-        version101.Dist!.Shasum.Should().BeNull();
-        version101.Dist.Tarball.Should().NotBeNullOrEmpty();
-        version101.Dist.Tarball.Should().Be("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/1.0.1");
+        version101.Dist.ShouldNotBeNull();
+        version101.Dist!.Shasum.ShouldBeNull();
+        version101.Dist.Tarball.ShouldNotBeNullOrEmpty();
+        version101.Dist.Tarball.ShouldBe("https://packages.simplifier.net/hl7.fhir.uv.bulkdata/1.0.1");
     }
 
     [Fact]
@@ -174,37 +174,37 @@ public class PackageMetadataDeserializationTests
         var metadata = JsonSerializer.Deserialize<PackageMetadata>(json, JsonOptions);
 
         // Assert - All versions should have correct structure
-        metadata.Should().NotBeNull();
-        metadata!.Versions.Should().HaveCount(5);
+        metadata.ShouldNotBeNull();
+        metadata!.Versions!.Count.ShouldBe(5);
 
         // Version 1.0.0
         var v100 = metadata.Versions!["1.0.0"];
-        v100.Version.Should().Be("1.0.0");
-        v100.FhirVersion.Should().Be("R4");
-        v100.Dist!.Shasum.Should().NotBeNullOrEmpty();
+        v100.Version.ShouldBe("1.0.0");
+        v100.FhirVersion.ShouldBe("R4");
+        v100.Dist!.Shasum.ShouldNotBeNullOrEmpty();
 
         // Version 1.0.1 (no shasum)
         var v101 = metadata.Versions["1.0.1"];
-        v101.Version.Should().Be("1.0.1");
-        v101.FhirVersion.Should().Be("R4");
-        v101.Dist!.Shasum.Should().BeNull();
+        v101.Version.ShouldBe("1.0.1");
+        v101.FhirVersion.ShouldBe("R4");
+        v101.Dist!.Shasum.ShouldBeNull();
 
         // Version 1.1.0
         var v110 = metadata.Versions["1.1.0"];
-        v110.Version.Should().Be("1.1.0");
-        v110.FhirVersion.Should().Be("R4");
-        v110.Dist!.Shasum.Should().NotBeNullOrEmpty();
+        v110.Version.ShouldBe("1.1.0");
+        v110.FhirVersion.ShouldBe("R4");
+        v110.Dist!.Shasum.ShouldNotBeNullOrEmpty();
 
         // Version 2.0.0 (latest)
         var v200 = metadata.Versions["2.0.0"];
-        v200.Version.Should().Be("2.0.0");
-        v200.FhirVersion.Should().Be("R4");
-        v200.Dist!.Shasum.Should().Be("eb8ec8b8c876450ae885e19e457cb2900d704459");
+        v200.Version.ShouldBe("2.0.0");
+        v200.FhirVersion.ShouldBe("R4");
+        v200.Dist!.Shasum.ShouldBe("eb8ec8b8c876450ae885e19e457cb2900d704459");
 
         // Version 3.0.0-ballot (pre-release)
         var v300ballot = metadata.Versions["3.0.0-ballot"];
-        v300ballot.Version.Should().Be("3.0.0-ballot");
-        v300ballot.FhirVersion.Should().Be("R4");
-        v300ballot.Dist!.Shasum.Should().NotBeNullOrEmpty();
+        v300ballot.Version.ShouldBe("3.0.0-ballot");
+        v300ballot.FhirVersion.ShouldBe("R4");
+        v300ballot.Dist!.Shasum.ShouldNotBeNullOrEmpty();
     }
 }

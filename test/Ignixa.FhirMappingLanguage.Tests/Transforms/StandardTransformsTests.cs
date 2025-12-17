@@ -4,7 +4,7 @@
  * Unit tests for standard transform functions.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Abstractions;
@@ -87,8 +87,8 @@ public class StandardTransformsTests
         var transform = StandardTransforms.Get(name);
 
         // Assert
-        transform.Should().NotBeNull();
-        transform.Name.Should().Be(name);
+        transform.ShouldNotBeNull();
+        transform.Name.ShouldBe(name);
     }
 
     [Fact]
@@ -98,17 +98,17 @@ public class StandardTransformsTests
         var result = StandardTransforms.Get("unknownTransform");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
     public void GivenAllTransforms_WhenListing_ThenReturns17Transforms()
     {
         // Act
-        var transforms = StandardTransforms.All();
+        var transforms = StandardTransforms.All().ToList();
 
         // Assert
-        transforms.Should().HaveCount(17);
+        transforms.Count.ShouldBe(17);
     }
 
     #endregion
@@ -123,7 +123,7 @@ public class StandardTransformsTests
         {
             ResourceCreator = typeName =>
             {
-                typeName.Should().Be("Patient");
+                typeName.ShouldBe("Patient");
                 return new TestTypedElement("Patient", null, "Patient");
             }
         };
@@ -133,9 +133,9 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "Patient" }, context);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().BeOfType<TestTypedElement>();
-        ((TestTypedElement)result).InstanceType.Should().Be("Patient");
+        result.ShouldNotBeNull();
+        result.ShouldBeOfType<TestTypedElement>();
+        ((TestTypedElement)result).InstanceType.ShouldBe("Patient");
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { original }, context);
 
         // Assert
-        result.Should().BeSameAs(original);
+        result.ShouldBeSameAs(original);
     }
 
     [Fact]
@@ -164,8 +164,8 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object>(), context);
 
         // Assert
-        result.Should().BeOfType<string>();
-        Guid.TryParse((string)result, out _).Should().BeTrue();
+        result.ShouldBeOfType<string>();
+        Guid.TryParse((string)result, out _).ShouldBeTrue();
     }
 
     #endregion
@@ -183,7 +183,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "Hello World", 5 }, context);
 
         // Assert
-        result.Should().Be("Hello");
+        result.ShouldBe("Hello");
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "Hi", 10 }, context);
 
         // Assert
-        result.Should().Be("Hi");
+        result.ShouldBe("Hi");
     }
 
     [Theory]
@@ -214,7 +214,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { input, format }, context);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "Hello", " World" }, context);
 
         // Assert
-        result.Should().Be("Hello World");
+        result.ShouldBe("Hello World");
     }
 
     #endregion
@@ -250,7 +250,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { input, targetType }, context);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -264,8 +264,8 @@ public class StandardTransformsTests
         {
             FhirPathEvaluator = (expression, element) =>
             {
-                expression.Should().Be("name.first()");
-                element.Should().BeSameAs(sourceElement);
+                expression.ShouldBe("name.first()");
+                element.ShouldBeSameAs(sourceElement);
                 return new[] { resultElement };
             }
         };
@@ -276,7 +276,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { sourceElement, "name.first()" }, context);
 
         // Assert
-        result.Should().Be("John");
+        result.ShouldBe("John");
     }
 
     #endregion
@@ -294,13 +294,13 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "http://loinc.org", "1234-5" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["coding"].Should().NotBeNull();
+        obj["coding"].ShouldNotBeNull();
         var coding = obj["coding"]!.AsArray();
-        coding.Should().HaveCount(1);
-        coding[0]!["system"]!.GetValue<string>().Should().Be("http://loinc.org");
-        coding[0]!["code"]!.GetValue<string>().Should().Be("1234-5");
+        coding.Count.ShouldBe(1);
+        coding[0]!["system"]!.GetValue<string>().ShouldBe("http://loinc.org");
+        coding[0]!["code"]!.GetValue<string>().ShouldBe("1234-5");
     }
 
     [Fact]
@@ -314,10 +314,10 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "http://loinc.org", "1234-5", "Test Display" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
         var coding = obj["coding"]!.AsArray();
-        coding[0]!["display"]!.GetValue<string>().Should().Be("Test Display");
+        coding[0]!["display"]!.GetValue<string>().ShouldBe("Test Display");
     }
 
     [Fact]
@@ -331,10 +331,10 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "http://snomed.info/sct", "12345" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["system"]!.GetValue<string>().Should().Be("http://snomed.info/sct");
-        obj["code"]!.GetValue<string>().Should().Be("12345");
+        obj["system"]!.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        obj["code"]!.GetValue<string>().ShouldBe("12345");
     }
 
     [Fact]
@@ -348,10 +348,10 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { 12.5, "mg" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["value"]!.GetValue<decimal>().Should().Be(12.5m);
-        obj["unit"]!.GetValue<string>().Should().Be("mg");
+        obj["value"]!.GetValue<decimal>().ShouldBe(12.5m);
+        obj["unit"]!.GetValue<string>().ShouldBe("mg");
     }
 
     [Fact]
@@ -365,10 +365,10 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "12345", "http://example.org/ids" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["system"]!.GetValue<string>().Should().Be("http://example.org/ids");
-        obj["value"]!.GetValue<string>().Should().Be("12345");
+        obj["system"]!.GetValue<string>().ShouldBe("http://example.org/ids");
+        obj["value"]!.GetValue<string>().ShouldBe("12345");
     }
 
     [Fact]
@@ -382,10 +382,10 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "phone", "555-1234" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["system"]!.GetValue<string>().Should().Be("phone");
-        obj["value"]!.GetValue<string>().Should().Be("555-1234");
+        obj["system"]!.GetValue<string>().ShouldBe("phone");
+        obj["value"]!.GetValue<string>().ShouldBe("555-1234");
     }
 
     [Fact]
@@ -400,9 +400,9 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { element }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["reference"]!.GetValue<string>().Should().Be("Patient/patient-123");
+        obj["reference"]!.GetValue<string>().ShouldBe("Patient/patient-123");
     }
 
     [Fact]
@@ -416,9 +416,9 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "Observation/obs-456" }, context);
 
         // Assert
-        result.Should().BeOfType<JsonObject>();
+        result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
-        obj["reference"]!.GetValue<string>().Should().Be("Observation/obs-456");
+        obj["reference"]!.GetValue<string>().ShouldBe("Observation/obs-456");
     }
 
     #endregion
@@ -433,9 +433,9 @@ public class StandardTransformsTests
         {
             ConceptMapResolver = (conceptMapUrl, sourceSystem, sourceCode) =>
             {
-                conceptMapUrl.Should().Be("http://example.org/ConceptMap/test");
-                sourceSystem.Should().Be("http://loinc.org");
-                sourceCode.Should().Be("1234-5");
+                conceptMapUrl.ShouldBe("http://example.org/ConceptMap/test");
+                sourceSystem.ShouldBe("http://loinc.org");
+                sourceCode.ShouldBe("1234-5");
                 return "http://snomed.info/sct|98765";
             }
         };
@@ -447,7 +447,7 @@ public class StandardTransformsTests
             context);
 
         // Assert
-        result.Should().Be("http://snomed.info/sct|98765");
+        result.ShouldBe("http://snomed.info/sct|98765");
     }
 
     [Fact]
@@ -466,7 +466,7 @@ public class StandardTransformsTests
             context);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -485,9 +485,9 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { element }, context);
 
         // Assert
-        result.Should().BeOfType<string>();
+        result.ShouldBeOfType<string>();
         var pointer = (string)result;
-        pointer.Should().StartWith("/");
+        pointer.ShouldStartWith("/");
     }
 
     [Theory]
@@ -506,8 +506,8 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { date, operation, amount, unit }, context);
 
         // Assert
-        result.Should().BeOfType<DateTime>();
-        ((DateTime)result).Date.Should().Be(expected.Date);
+        result.ShouldBeOfType<DateTime>();
+        ((DateTime)result).Date.ShouldBe(expected.Date);
     }
 
     #endregion
@@ -525,8 +525,7 @@ public class StandardTransformsTests
         var act = () => transform.Execute(new List<object> { "Patient" }, context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*ResourceCreator*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("ResourceCreator");
     }
 
     [Fact]
@@ -541,8 +540,7 @@ public class StandardTransformsTests
         var act = () => transform.Execute(new List<object> { element, "name.first()" }, context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*FhirPathEvaluator*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("FhirPathEvaluator");
     }
 
     [Fact]
@@ -558,8 +556,7 @@ public class StandardTransformsTests
             context);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*ConceptMapResolver*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("ConceptMapResolver");
     }
 
     [Fact]
@@ -573,7 +570,7 @@ public class StandardTransformsTests
         var act = () => transform.Execute(new List<object> { "test" }, context); // Missing length argument
 
         // Assert
-        act.Should().Throw<ArgumentException>();
+        Should.Throw<ArgumentException>(act);
     }
 
     #endregion

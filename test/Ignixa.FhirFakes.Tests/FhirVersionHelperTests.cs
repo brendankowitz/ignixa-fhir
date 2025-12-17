@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -44,7 +44,7 @@ public class FhirVersionHelperTests
         var result = schema.IsStu3();
 
         // Assert
-        result.Should().BeTrue("STU3 schema should be detected as STU3");
+        result.ShouldBeTrue("STU3 schema should be detected as STU3");
     }
 
     [Theory]
@@ -60,7 +60,7 @@ public class FhirVersionHelperTests
         var result = schema.IsStu3();
 
         // Assert
-        result.Should().BeFalse($"{schema.Version} schema should not be detected as STU3");
+        result.ShouldBeFalse($"{schema.Version} schema should not be detected as STU3");
     }
 
     [Theory]
@@ -76,7 +76,7 @@ public class FhirVersionHelperTests
         var result = schema.IsR4OrLater();
 
         // Assert
-        result.Should().BeTrue($"{schema.Version} schema should be detected as R4 or later");
+        result.ShouldBeTrue($"{schema.Version} schema should be detected as R4 or later");
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class FhirVersionHelperTests
         var result = schema.IsR4OrLater();
 
         // Assert
-        result.Should().BeFalse("STU3 schema should not be detected as R4 or later");
+        result.ShouldBeFalse("STU3 schema should not be detected as R4 or later");
     }
 
     #endregion
@@ -105,13 +105,13 @@ public class FhirVersionHelperTests
 
             // Act & Assert - status exists in Patient across all versions
             schema.HasProperty("Patient", "gender")
-                .Should().BeTrue($"gender should exist in Patient for {schema.Version}");
+                .ShouldBeTrue($"gender should exist in Patient for {schema.Version}");
 
             schema.HasProperty("Observation", "status")
-                .Should().BeTrue($"status should exist in Observation for {schema.Version}");
+                .ShouldBeTrue($"status should exist in Observation for {schema.Version}");
 
             schema.HasProperty("MedicationRequest", "intent")
-                .Should().BeTrue($"intent should exist in MedicationRequest for {schema.Version}");
+                .ShouldBeTrue($"intent should exist in MedicationRequest for {schema.Version}");
         }
     }
 
@@ -124,7 +124,7 @@ public class FhirVersionHelperTests
 
             // Act & Assert - nonExistentField should not exist
             schema.HasProperty("Patient", "nonExistentField")
-                .Should().BeFalse($"nonExistentField should not exist in Patient for {schema.Version}");
+                .ShouldBeFalse($"nonExistentField should not exist in Patient for {schema.Version}");
         }
     }
 
@@ -136,17 +136,17 @@ public class FhirVersionHelperTests
         var r4 = new R4CoreSchemaProvider();
 
         stu3.HasProperty("Immunization", "protocolApplied")
-            .Should().BeFalse("protocolApplied should not exist in STU3");
+            .ShouldBeFalse("protocolApplied should not exist in STU3");
 
         r4.HasProperty("Immunization", "protocolApplied")
-            .Should().BeTrue("protocolApplied should exist in R4");
+            .ShouldBeTrue("protocolApplied should exist in R4");
 
         // Immunization.vaccinationProtocol exists in STU3 but not R4+
         stu3.HasProperty("Immunization", "vaccinationProtocol")
-            .Should().BeTrue("vaccinationProtocol should exist in STU3");
+            .ShouldBeTrue("vaccinationProtocol should exist in STU3");
 
         r4.HasProperty("Immunization", "vaccinationProtocol")
-            .Should().BeFalse("vaccinationProtocol should not exist in R4");
+            .ShouldBeFalse("vaccinationProtocol should not exist in R4");
     }
 
     #endregion
@@ -168,21 +168,20 @@ public class FhirVersionHelperTests
                 "Reference");
 
             // Assert
-            field.Should().NotBeNullOrEmpty($"medication field should exist in {schema.Version}");
+            field.ShouldNotBeNullOrEmpty($"medication field should exist in {schema.Version}");
 
             // Accept any valid medication field returned by the schema
             // The field could be "medication", "medicationCodeableConcept", "medicationReference", etc.
             // depending on what the schema actually defines
-            field.Should().Match(f =>
-                f == "medication" ||
-                f == "medicationCodeableConcept" ||
-                f == "medicationReference" ||
-                f.StartsWith("medication", StringComparison.OrdinalIgnoreCase),
-                $"should return a valid medication field in {schema.Version}");
+            var matchesPattern = field == "medication" ||
+                field == "medicationCodeableConcept" ||
+                field == "medicationReference" ||
+                field!.StartsWith("medication", StringComparison.OrdinalIgnoreCase);
+            matchesPattern.ShouldBeTrue($"should return a valid medication field in {schema.Version}");
 
             // Verify the field actually exists in the schema
             schema.HasProperty("MedicationRequest", field!)
-                .Should().BeTrue($"{field} should exist in MedicationRequest for {schema.Version}");
+                .ShouldBeTrue($"{field} should exist in MedicationRequest for {schema.Version}");
         }
     }
 
@@ -202,12 +201,12 @@ public class FhirVersionHelperTests
                 "String");
 
             // Assert
-            field.Should().NotBeNullOrEmpty($"value field should exist in {schema.Version}");
-            field.Should().StartWith("value", $"should be a value[x] field in {schema.Version}");
+            field.ShouldNotBeNullOrEmpty($"value field should exist in {schema.Version}");
+            field!.ShouldStartWith("value", Case.Sensitive);
 
             // Verify the field actually exists in the schema
             schema.HasProperty("Observation", field!)
-                .Should().BeTrue($"{field} should exist in Observation for {schema.Version}");
+                .ShouldBeTrue($"{field} should exist in Observation for {schema.Version}");
         }
     }
 
@@ -226,8 +225,8 @@ public class FhirVersionHelperTests
         // Assert - GetChoiceFieldName now uses VersionFieldOverrides which is version-aware
         // For R4, it should return either "medicationCodeableConcept" (choice variant)
         // or "medication" if using VersionFieldOverrides
-        field.Should().Match(f => f == "medicationCodeableConcept" || f == "medication",
-            "should return valid medication field for the schema version");
+        var matchesPattern = field == "medicationCodeableConcept" || field == "medication";
+        matchesPattern.ShouldBeTrue("should return valid medication field for the schema version");
     }
 
     [Fact]
@@ -244,8 +243,8 @@ public class FhirVersionHelperTests
 
         // Assert - GetChoiceFieldName uses VersionFieldOverrides which is version-aware
         // Should return a valid medication field for the schema version
-        field.Should().Match(f => f == "medicationCodeableConcept" || f == "medication",
-            "should return valid medication field when fallback is requested");
+        var matchesPattern = field == "medicationCodeableConcept" || field == "medication";
+        matchesPattern.ShouldBeTrue("should return valid medication field when fallback is requested");
     }
 
     [Fact]
@@ -261,7 +260,7 @@ public class FhirVersionHelperTests
             "CodeableConcept");
 
         // Assert
-        field.Should().BeNull("should return null when no matching choice field exists");
+        field.ShouldBeNull("should return null when no matching choice field exists");
     }
 
     #endregion
@@ -277,11 +276,11 @@ public class FhirVersionHelperTests
 
             // Act & Assert - status is required in Observation across all versions
             schema.IsRequired("Observation", "status")
-                .Should().BeTrue($"status should be required in Observation for {schema.Version}");
+                .ShouldBeTrue($"status should be required in Observation for {schema.Version}");
 
             // intent is required in MedicationRequest
             schema.IsRequired("MedicationRequest", "intent")
-                .Should().BeTrue($"intent should be required in MedicationRequest for {schema.Version}");
+                .ShouldBeTrue($"intent should be required in MedicationRequest for {schema.Version}");
         }
     }
 
@@ -294,7 +293,7 @@ public class FhirVersionHelperTests
 
             // Act & Assert - note is optional in Observation
             schema.IsRequired("Observation", "note")
-                .Should().BeFalse($"note should be optional in Observation for {schema.Version}");
+                .ShouldBeFalse($"note should be optional in Observation for {schema.Version}");
         }
     }
 
@@ -314,8 +313,8 @@ public class FhirVersionHelperTests
         _output.WriteLine($"R4 has code field: {r4HasCode}");
 
         // Both versions should have the 'code' field for AllergyIntolerance
-        stu3HasCode.Should().BeTrue("STU3 should have code field in AllergyIntolerance");
-        r4HasCode.Should().BeTrue("R4 should have code field in AllergyIntolerance");
+        stu3HasCode.ShouldBeTrue("STU3 should have code field in AllergyIntolerance");
+        r4HasCode.ShouldBeTrue("R4 should have code field in AllergyIntolerance");
 
         // Verify the method works without exceptions
         var stu3CodeRequired = stu3.IsRequired("AllergyIntolerance", "code");
@@ -324,9 +323,10 @@ public class FhirVersionHelperTests
         _output.WriteLine($"STU3 code required: {stu3CodeRequired}");
         _output.WriteLine($"R4 code required: {r4CodeRequired}");
 
-        // The method should return a valid boolean for both
-        (stu3CodeRequired || !stu3CodeRequired).Should().BeTrue("IsRequired should work for STU3");
-        (r4CodeRequired || !r4CodeRequired).Should().BeTrue("IsRequired should work for R4");
+        // Verify that the requirement status is consistent across versions
+        // Both versions should have the same requirement for AllergyIntolerance.code
+        stu3CodeRequired.ShouldBe(r4CodeRequired,
+            "AllergyIntolerance.code requirement should be consistent across STU3 and R4");
     }
 
     #endregion
@@ -349,7 +349,7 @@ public class FhirVersionHelperTests
             _output.WriteLine($"  Patient.identifier in summary: {identifierInSummary}");
 
             // At least one of these core fields should be in summary
-            (statusInSummary || identifierInSummary).Should().BeTrue(
+            (statusInSummary || identifierInSummary).ShouldBeTrue(
                 $"core fields should be in summary for {schema.Version}");
         }
     }
@@ -385,7 +385,7 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationProtocolFieldName();
 
         // Assert
-        fieldName.Should().Be("vaccinationProtocol", "STU3 uses vaccinationProtocol");
+        fieldName.ShouldBe("vaccinationProtocol", "STU3 uses vaccinationProtocol");
     }
 
     [Theory]
@@ -401,7 +401,7 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationProtocolFieldName();
 
         // Assert
-        fieldName.Should().Be("protocolApplied", $"{schema.Version} uses protocolApplied");
+        fieldName.ShouldBe("protocolApplied", $"{schema.Version} uses protocolApplied");
     }
 
     [Fact]
@@ -414,7 +414,7 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationDoseNumberFieldName();
 
         // Assert
-        fieldName.Should().Be("doseSequence", "STU3 uses doseSequence");
+        fieldName.ShouldBe("doseSequence", "STU3 uses doseSequence");
     }
 
     [Theory]
@@ -430,7 +430,7 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationDoseNumberFieldName();
 
         // Assert
-        fieldName.Should().Be("doseNumberPositiveInt", $"{schema.Version} uses doseNumberPositiveInt");
+        fieldName.ShouldBe("doseNumberPositiveInt", $"{schema.Version} uses doseNumberPositiveInt");
     }
 
     [Fact]
@@ -443,7 +443,7 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationSeriesDosesFieldName();
 
         // Assert
-        fieldName.Should().BeNull("STU3 doesn't have seriesDosesPositiveInt field");
+        fieldName.ShouldBeNull("STU3 doesn't have seriesDosesPositiveInt field");
     }
 
     [Theory]
@@ -459,7 +459,7 @@ public class FhirVersionHelperTests
         var fieldName = schema.GetImmunizationSeriesDosesFieldName();
 
         // Assert
-        fieldName.Should().Be("seriesDosesPositiveInt", $"{schema.Version} uses seriesDosesPositiveInt");
+        fieldName.ShouldBe("seriesDosesPositiveInt", $"{schema.Version} uses seriesDosesPositiveInt");
     }
 
     #endregion
@@ -474,22 +474,22 @@ public class FhirVersionHelperTests
 
         // Act & Assert
         var act1 = () => nullSchema!.IsStu3();
-        act1.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => act1());
 
         var act2 = () => nullSchema!.IsR4OrLater();
-        act2.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => act2());
 
         var act3 = () => nullSchema!.HasProperty("Patient", "name");
-        act3.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => act3());
 
         var act4 = () => nullSchema!.GetChoiceFieldName("Patient", "name", "String");
-        act4.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => act4());
 
         var act5 = () => nullSchema!.IsRequired("Patient", "name");
-        act5.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => act5());
 
         var act6 = () => nullSchema!.IsInSummary("Patient", "name");
-        act6.Should().Throw<ArgumentNullException>();
+        Should.Throw<ArgumentNullException>(() => act6());
     }
 
     [Fact]
@@ -504,7 +504,7 @@ public class FhirVersionHelperTests
             "String");
 
         // Assert
-        field.Should().BeNull("should return null for non-existent resource type");
+        field.ShouldBeNull("should return null for non-existent resource type");
     }
 
     [Fact]
@@ -516,7 +516,7 @@ public class FhirVersionHelperTests
         var hasProperty = schema.HasProperty("NonExistentResource", "someField");
 
         // Assert
-        hasProperty.Should().BeFalse("should return false for non-existent resource type");
+        hasProperty.ShouldBeFalse("should return false for non-existent resource type");
     }
 
     #endregion

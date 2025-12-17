@@ -4,7 +4,7 @@
  * Unit tests for import resolution in FHIR Mapping Language.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Registry;
@@ -61,8 +61,8 @@ group TestGroup(source src : Patient, target tgt : Bundle) {
         registry.Register(map);
 
         // Assert
-        registry.Contains(map.Url).Should().BeTrue();
-        registry.GetByUrl(map.Url).Should().NotBeNull();
+        registry.Contains(map.Url).ShouldBeTrue();
+        registry.GetByUrl(map.Url).ShouldNotBeNull();
     }
 
     [Fact]
@@ -85,8 +85,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
         var act = () => registry.Register(map2);
 
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*already registered*");
+        Should.Throw<InvalidOperationException>(act).Message.ShouldContain("already registered");
     }
 
     [Fact]
@@ -105,8 +104,8 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
         var result = registry.Unregister(map.Url);
 
         // Assert
-        result.Should().BeTrue();
-        registry.Contains(map.Url).Should().BeFalse();
+        result.ShouldBeTrue();
+        registry.Contains(map.Url).ShouldBeFalse();
     }
 
     [Fact]
@@ -131,9 +130,9 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
         var urls = registry.GetAllUrls().ToList();
 
         // Assert
-        urls.Should().HaveCount(2);
-        urls.Should().Contain(map1.Url);
-        urls.Should().Contain(map2.Url);
+        urls.Count.ShouldBe(2);
+        urls.ShouldContain(map1.Url);
+        urls.ShouldContain(map2.Url);
     }
 
     #endregion
@@ -153,7 +152,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
         var result = loader.LoadAsync(url).Result;
 
         // Assert
-        result.Should().Be(content);
+        result.ShouldBe(content);
     }
 
     [Fact]
@@ -166,7 +165,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
         var result = loader.LoadAsync("http://example.org/nonexistent").Result;
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -181,7 +180,7 @@ group TestGroup(source src : Patient, target tgt : Bundle) {}");
         var result = loader.CanLoad(url);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     #endregion
@@ -219,8 +218,8 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
         await resolver.ResolveImportsAsync(mainMap);
 
         // Assert
-        registry.Contains("http://example.org/fhir/StructureMap/Main").Should().BeTrue();
-        registry.Contains("http://example.org/fhir/StructureMap/Imported").Should().BeTrue();
+        registry.Contains("http://example.org/fhir/StructureMap/Main").ShouldBeTrue();
+        registry.Contains("http://example.org/fhir/StructureMap/Imported").ShouldBeTrue();
     }
 
     [Fact]
@@ -255,9 +254,9 @@ group TopGroup(source src : Patient, target tgt : Bundle) {}";
         await resolver.ResolveImportsAsync(topMap);
 
         // Assert
-        registry.Contains("http://example.org/fhir/StructureMap/Top").Should().BeTrue();
-        registry.Contains("http://example.org/fhir/StructureMap/Middle").Should().BeTrue();
-        registry.Contains("http://example.org/fhir/StructureMap/Base").Should().BeTrue();
+        registry.Contains("http://example.org/fhir/StructureMap/Top").ShouldBeTrue();
+        registry.Contains("http://example.org/fhir/StructureMap/Middle").ShouldBeTrue();
+        registry.Contains("http://example.org/fhir/StructureMap/Base").ShouldBeTrue();
     }
 
     [Fact]
@@ -288,8 +287,9 @@ group Group2(source src : Patient, target tgt : Bundle) {}";
         var act = async () => await resolver.ResolveImportsAsync(map1);
 
         // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*circular*import*");
+        var exception = await Should.ThrowAsync<InvalidOperationException>(act);
+        exception.Message.ShouldContain("circular");
+        exception.Message.ShouldContain("import");
     }
 
     [Fact]
@@ -325,8 +325,8 @@ group MainGroup(source src : Patient, target tgt : Bundle) {
         var group = resolver.FindGroup(mainMap, "ImportedGroup");
 
         // Assert
-        group.Should().NotBeNull();
-        group!.Name.Should().Be("ImportedGroup");
+        group.ShouldNotBeNull();
+        group!.Name.ShouldBe("ImportedGroup");
     }
 
     [Fact]
@@ -350,8 +350,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) {}";
         var act = async () => await resolver.ResolveImportsAsync(mainMap);
 
         // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*Failed to load*");
+        (await Should.ThrowAsync<InvalidOperationException>(act)).Message.ShouldContain("Failed to load");
     }
 
     #endregion
@@ -400,7 +399,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
         var act = () => evaluator.ExecuteGroup(mainMap, "MainGroup", context);
 
         // Assert - Should execute both imported and main group without errors
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     #endregion
@@ -428,8 +427,8 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
         var result2 = await composite.LoadAsync("http://example.org/map2");
 
         // Assert
-        result1.Should().Be("content1");
-        result2.Should().Be("content2");
+        result1.ShouldBe("content1");
+        result2.ShouldBe("content2");
     }
 
     [Fact]
@@ -448,7 +447,7 @@ group MainGroup(source src : Patient, target tgt : Bundle) extends ImportedGroup
         var result = await composite.LoadAsync("http://example.org/nonexistent");
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion

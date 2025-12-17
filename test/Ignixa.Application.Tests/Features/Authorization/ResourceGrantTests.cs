@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Models;
 
 namespace Ignixa.Application.Tests.Features.Authorization;
@@ -21,7 +21,7 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -101,8 +101,8 @@ public class ResourceGrantTests
         var grant = ResourceGrant.ReadOnly("Patient");
 
         // Assert
-        grant.ResourceType.Should().Be("Patient");
-        grant.Interaction.Should().Be("read");
+        grant.ResourceType.ShouldBe("Patient");
+        grant.Interaction.ShouldBe("read");
     }
 
     [Fact]
@@ -112,8 +112,8 @@ public class ResourceGrantTests
         var grant = ResourceGrant.FullAccess("Patient");
 
         // Assert
-        grant.ResourceType.Should().Be("Patient");
-        grant.Interaction.Should().Be("*");
+        grant.ResourceType.ShouldBe("Patient");
+        grant.Interaction.ShouldBe("*");
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class ResourceGrantTests
         var grant = ResourceGrant.GlobalReadOnly();
 
         // Assert
-        grant.ResourceType.Should().Be("*");
-        grant.Interaction.Should().Be("read");
+        grant.ResourceType.ShouldBe("*");
+        grant.Interaction.ShouldBe("read");
     }
 
     [Fact]
@@ -138,6 +138,6 @@ public class ResourceGrantTests
         var result = grant.Matches(required);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 }

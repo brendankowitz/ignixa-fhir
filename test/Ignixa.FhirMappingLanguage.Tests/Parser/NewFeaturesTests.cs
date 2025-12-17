@@ -4,7 +4,7 @@
  * Tests for new FML features: ConceptMap declarations, Constants, and Rule names.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
@@ -33,9 +33,9 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.Groups.Should().HaveCount(1);
-        result.Groups[0].Rules.Should().HaveCount(1);
-        result.Groups[0].Rules[0].Name.Should().Be("copy name");
+        result.Groups.Count.ShouldBe(1);
+        result.Groups[0].Rules.Count.ShouldBe(1);
+        result.Groups[0].Rules[0].Name.ShouldBe("copy name");
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.Groups[0].Rules[0].Name.Should().BeNull();
+        result.Groups[0].Rules[0].Name.ShouldBeNull();
     }
 
     [Fact]
@@ -72,9 +72,9 @@ public class NewFeaturesTests
 
         // Assert
         var rule = result.Groups[0].Rules[0];
-        rule.Name.Should().Be("create gender code");
-        rule.Targets[0].Transform.Should().BeOfType<TransformExpression>();
-        (rule.Targets[0].Transform as TransformExpression)!.FunctionName.Should().Be("create");
+        rule.Name.ShouldBe("create gender code");
+        rule.Targets[0].Transform.ShouldBeOfType<TransformExpression>();
+        (rule.Targets[0].Transform as TransformExpression)!.FunctionName.ShouldBe("create");
     }
 
     #endregion
@@ -96,10 +96,10 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.Constants.Should().HaveCount(1);
-        result.Constants[0].Name.Should().Be("SYSTEM_URL");
-        result.Constants[0].Value.Should().BeOfType<LiteralExpression>();
-        (result.Constants[0].Value as LiteralExpression)!.Value.Should().Be("http://terminology.hl7.org/CodeSystem/v3-ActCode");
+        result.Constants.Count.ShouldBe(1);
+        result.Constants[0].Name.ShouldBe("SYSTEM_URL");
+        result.Constants[0].Value.ShouldBeOfType<LiteralExpression>();
+        (result.Constants[0].Value as LiteralExpression)!.Value.ShouldBe("http://terminology.hl7.org/CodeSystem/v3-ActCode");
     }
 
     [Fact]
@@ -117,10 +117,10 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.Constants.Should().HaveCount(1);
-        result.Constants[0].Name.Should().Be("MAX_LENGTH");
-        result.Constants[0].Value.Should().BeOfType<LiteralExpression>();
-        (result.Constants[0].Value as LiteralExpression)!.Value.Should().Be(100);
+        result.Constants.Count.ShouldBe(1);
+        result.Constants[0].Name.ShouldBe("MAX_LENGTH");
+        result.Constants[0].Value.ShouldBeOfType<LiteralExpression>();
+        (result.Constants[0].Value as LiteralExpression)!.Value.ShouldBe(100);
     }
 
     [Fact]
@@ -140,10 +140,10 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.Constants.Should().HaveCount(3);
-        result.Constants[0].Name.Should().Be("SYSTEM_URL");
-        result.Constants[1].Name.Should().Be("MAX_LENGTH");
-        result.Constants[2].Name.Should().Be("IS_ACTIVE");
+        result.Constants.Count.ShouldBe(3);
+        result.Constants[0].Name.ShouldBe("SYSTEM_URL");
+        result.Constants[1].Name.ShouldBe("MAX_LENGTH");
+        result.Constants[2].Name.ShouldBe("IS_ACTIVE");
     }
 
     #endregion
@@ -168,12 +168,12 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.ConceptMaps.Should().HaveCount(1);
-        result.ConceptMaps[0].Identifier.Should().Be("#genderMap");
-        result.ConceptMaps[0].Prefixes.Should().HaveCount(2);
-        result.ConceptMaps[0].Prefixes[0].PrefixName.Should().Be("fhir");
-        result.ConceptMaps[0].Prefixes[0].Url.Should().Be("http://hl7.org/fhir/administrative-gender");
-        result.ConceptMaps[0].Prefixes[1].PrefixName.Should().Be("v2");
+        result.ConceptMaps.Count.ShouldBe(1);
+        result.ConceptMaps[0].Identifier.ShouldBe("#genderMap");
+        result.ConceptMaps[0].Prefixes.Count.ShouldBe(2);
+        result.ConceptMaps[0].Prefixes[0].PrefixName.ShouldBe("fhir");
+        result.ConceptMaps[0].Prefixes[0].Url.ShouldBe("http://hl7.org/fhir/administrative-gender");
+        result.ConceptMaps[0].Prefixes[1].PrefixName.ShouldBe("v2");
     }
 
     [Fact]
@@ -197,20 +197,20 @@ public class NewFeaturesTests
         var result = _parser.Parse(fml);
 
         // Assert
-        result.ConceptMaps.Should().HaveCount(1);
+        result.ConceptMaps.Count.ShouldBe(1);
         var conceptMap = result.ConceptMaps[0];
-        conceptMap.Groups.Should().HaveCount(1);
-        conceptMap.Groups[0].CodeMaps.Should().HaveCount(3);
+        conceptMap.Groups.Count.ShouldBe(1);
+        conceptMap.Groups[0].CodeMaps.Count.ShouldBe(3);
 
         var map1 = conceptMap.Groups[0].CodeMaps[0];
-        map1.SourcePrefix.Should().Be("s");
-        map1.SourceCode.Should().Be("male");
-        map1.Equivalence.Should().Be(ConceptMapEquivalence.Equivalent);
-        map1.TargetPrefix.Should().Be("t");
-        map1.TargetCode.Should().Be("M");
+        map1.SourcePrefix.ShouldBe("s");
+        map1.SourceCode.ShouldBe("male");
+        map1.Equivalence.ShouldBe(ConceptMapEquivalence.Equivalent);
+        map1.TargetPrefix.ShouldBe("t");
+        map1.TargetCode.ShouldBe("M");
 
         var map3 = conceptMap.Groups[0].CodeMaps[2];
-        map3.Equivalence.Should().Be(ConceptMapEquivalence.RelatedTo);
+        map3.Equivalence.ShouldBe(ConceptMapEquivalence.RelatedTo);
     }
 
     [Fact]
@@ -233,8 +233,8 @@ public class NewFeaturesTests
 
         // Assert
         var map = result.ConceptMaps[0].Groups[0].CodeMaps[0];
-        map.SourceCode.Should().Be("12345");
-        map.TargetCode.Should().Be("67890");
+        map.SourceCode.ShouldBe("12345");
+        map.TargetCode.ShouldBe("67890");
     }
 
     #endregion

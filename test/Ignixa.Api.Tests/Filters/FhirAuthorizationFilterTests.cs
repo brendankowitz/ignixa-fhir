@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Security.Claims;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
@@ -61,7 +61,7 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        nextCalled.Should().BeTrue();
+        nextCalled.ShouldBeTrue();
         await _authzService.DidNotReceive().AuthorizeAsync(
             Arg.Any<FhirAuthorizationContext>(),
             Arg.Any<CancellationToken>());
@@ -86,7 +86,7 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        nextCalled.Should().BeTrue();
+        nextCalled.ShouldBeTrue();
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class FhirAuthorizationFilterTests
         var result = await _filter.InvokeAsync(context, next);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await next.DidNotReceive().Invoke(Arg.Any<EndpointFilterInvocationContext>());
     }
 
@@ -117,7 +117,7 @@ public class FhirAuthorizationFilterTests
         var result = await _filter.InvokeAsync(context, next);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await next.DidNotReceive().Invoke(Arg.Any<EndpointFilterInvocationContext>());
     }
 
@@ -137,10 +137,10 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        context.HttpContext.Items.Should().ContainKey("FhirAuthorizationFilter");
+        context.HttpContext.Items.ShouldContainKey("FhirAuthorizationFilter");
         var storedFilter = context.HttpContext.Items["FhirAuthorizationFilter"] as DataFilter;
-        storedFilter.Should().NotBeNull();
-        storedFilter!.PatientFilter.Should().Be("Patient/123");
+        storedFilter.ShouldNotBeNull();
+        storedFilter!.PatientFilter.ShouldBe("Patient/123");
     }
 
     #endregion
@@ -171,10 +171,10 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Interaction.Should().Be(FhirInteraction.Read);
-        capturedContext.ResourceType.Should().Be("Patient");
-        capturedContext.ResourceId.Should().Be("123");
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Interaction.ShouldBe(FhirInteraction.Read);
+        capturedContext.ResourceType.ShouldBe("Patient");
+        capturedContext.ResourceId.ShouldBe("123");
     }
 
     [Fact]
@@ -200,8 +200,8 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Interaction.Should().Be(FhirInteraction.Create);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Interaction.ShouldBe(FhirInteraction.Create);
     }
 
     [Fact]
@@ -228,8 +228,8 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Interaction.Should().Be(FhirInteraction.SearchType);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Interaction.ShouldBe(FhirInteraction.SearchType);
     }
 
     [Fact]
@@ -254,8 +254,8 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Interaction.Should().Be(FhirInteraction.Capabilities);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Interaction.ShouldBe(FhirInteraction.Capabilities);
     }
 
     #endregion
@@ -292,10 +292,10 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        capturedContext.Should().NotBeNull();
-        capturedContext!.UserId.Should().Be("user-123");
-        capturedContext.RequestContext.Should().NotBeNull();
-        capturedContext.RequestContext.TenantId.Should().Be(1);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.UserId.ShouldBe("user-123");
+        capturedContext.RequestContext.ShouldNotBeNull();
+        capturedContext.RequestContext.TenantId.ShouldBe(1);
     }
 
     [Fact]
@@ -329,9 +329,9 @@ public class FhirAuthorizationFilterTests
         await _filter.InvokeAsync(context, next);
 
         // Assert
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Roles.Should().Contain("Admin");
-        capturedContext.Roles.Should().Contain("Clinician");
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Roles.ShouldContain("Admin");
+        capturedContext.Roles.ShouldContain("Clinician");
     }
 
     #endregion

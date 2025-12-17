@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -57,9 +57,9 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Doe"); // Should contain family name
-        narrative.Should().NotContain("<script"); // Should be sanitized
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Doe"); // Should contain family name
+        narrative.ShouldNotContain("<script"); // Should be sanitized
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, culture);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Smith");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Smith");
     }
 
     #endregion
@@ -111,8 +111,8 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, observation.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Observation"); // Generic template should show resource type
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Observation"); // Generic template should show resource type
     }
 
     #endregion
@@ -129,8 +129,7 @@ public class FhirNarrativeGeneratorTests
         var act = async () => await _generator.GenerateNarrativeAsync(element!, "Patient");
 
         // Assert
-        await act.Should().ThrowAsync<ArgumentNullException>()
-            .WithParameterName("element");
+        (await Should.ThrowAsync<ArgumentNullException>(act)).ParamName.ShouldBe("element");
     }
 
     [Fact]
@@ -151,8 +150,7 @@ public class FhirNarrativeGeneratorTests
         var act = async () => await _generator.GenerateNarrativeAsync(element, string.Empty);
 
         // Assert
-        await act.Should().ThrowAsync<ArgumentException>()
-            .WithParameterName("resourceType");
+        (await Should.ThrowAsync<ArgumentException>(act)).ParamName.ShouldBe("resourceType");
     }
 
     #endregion
@@ -180,10 +178,10 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType);
 
         // Assert
-        narrative.Should().NotContain("<script");
-        narrative.Should().NotContain("javascript:");
-        narrative.Should().NotContain("onerror=");
-        narrative.Should().NotContain("onclick=");
+        narrative.ShouldNotContain("<script");
+        narrative.ShouldNotContain("javascript:");
+        narrative.ShouldNotContain("onerror=");
+        narrative.ShouldNotContain("onclick=");
     }
 
     #endregion
@@ -200,8 +198,8 @@ public class FhirNarrativeGeneratorTests
         var generator = FhirNarrativeGenerator.Create(schema);
 
         // Assert
-        generator.Should().NotBeNull();
-        generator.Should().BeAssignableTo<INarrativeGenerator>();
+        generator.ShouldNotBeNull();
+        generator.ShouldBeAssignableTo<INarrativeGenerator>();
 
         // Verify it actually works with a real resource
         var json = """
@@ -225,9 +223,9 @@ public class FhirNarrativeGeneratorTests
             element,
             patient.ResourceType);
 
-        narrative.Should().NotBeNullOrWhiteSpace();
-        narrative.Should().Contain("FactoryTest");
-        narrative.Should().Contain("John");
+        narrative.ShouldNotBeNullOrWhiteSpace();
+        narrative.ShouldContain("FactoryTest");
+        narrative.ShouldContain("John");
     }
 
     [Fact]
@@ -241,7 +239,7 @@ public class FhirNarrativeGeneratorTests
         var generator = FhirNarrativeGenerator.Create(schema, customLocalizer);
 
         // Assert
-        generator.Should().NotBeNull();
+        generator.ShouldNotBeNull();
 
         // Verify it works
         var json = """
@@ -261,8 +259,8 @@ public class FhirNarrativeGeneratorTests
             element,
             patient.ResourceType);
 
-        narrative.Should().NotBeNullOrWhiteSpace();
-        narrative.Should().Contain("LocalizedPatient");
+        narrative.ShouldNotBeNullOrWhiteSpace();
+        narrative.ShouldContain("LocalizedPatient");
     }
 
     [Fact]
@@ -275,8 +273,7 @@ public class FhirNarrativeGeneratorTests
         var act = () => FhirNarrativeGenerator.Create(schema!);
 
         // Assert
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("schema");
+        Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("schema");
     }
 
     #endregion
@@ -308,7 +305,7 @@ public class FhirNarrativeGeneratorTests
         try
         {
             var result = await act();
-            result.Should().NotBeNull(); // Completed successfully
+            result.ShouldNotBeNull(); // Completed successfully
         }
         catch (OperationCanceledException)
         {
@@ -356,9 +353,9 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, account.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Account");  // Resource type should be displayed in badge
-        narrative.Should().Contain("fhir-account");  // CSS class should be present
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Account");  // Resource type should be displayed in badge
+        narrative.ShouldContain("fhir-account");  // CSS class should be present
     }
 
     [Fact]
@@ -403,9 +400,9 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, claim.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Claim");  // Resource type should be displayed in badge
-        narrative.Should().Contain("fhir-claim");  // CSS class should be present
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Claim");  // Resource type should be displayed in badge
+        narrative.ShouldContain("fhir-claim");  // CSS class should be present
     }
 
     [Fact]
@@ -440,9 +437,9 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, device.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Device");  // Resource type should be displayed in badge
-        narrative.Should().Contain("fhir-device");  // CSS class should be present
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Device");  // Resource type should be displayed in badge
+        narrative.ShouldContain("fhir-device");  // CSS class should be present
     }
 
     #endregion
@@ -477,11 +474,11 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Html);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("<div"); // Should be XHTML
-        narrative.Should().Contain("HtmlTest"); // Should contain family name
-        narrative.Should().Contain("class="); // Should have CSS classes
-        narrative.Should().NotContain("<script"); // Should be sanitized
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("<div"); // Should be XHTML
+        narrative.ShouldContain("HtmlTest"); // Should contain family name
+        narrative.ShouldContain("class="); // Should have CSS classes
+        narrative.ShouldNotContain("<script"); // Should be sanitized
     }
 
     [Fact]
@@ -524,12 +521,12 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Markdown);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("#"); // Should contain Markdown headers
-        narrative.Should().Contain("MarkdownPatient"); // Should contain family name
-        narrative.Should().Contain("**"); // Should contain Markdown bold syntax
-        narrative.Should().NotContain("<div"); // Should NOT be HTML
-        narrative.Should().NotContain("class="); // Should NOT have CSS classes
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("#"); // Should contain Markdown headers
+        narrative.ShouldContain("MarkdownPatient"); // Should contain family name
+        narrative.ShouldContain("**"); // Should contain Markdown bold syntax
+        narrative.ShouldNotContain("<div"); // Should NOT be HTML
+        narrative.ShouldNotContain("class="); // Should NOT have CSS classes
     }
 
     [Fact]
@@ -567,16 +564,16 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // Should NOT have resource type prefix
-        narrative.Should().Contain("VectorPatient"); // Should contain family name
-        narrative.Should().Contain("male"); // Should contain gender
-        narrative.Should().Contain("Seattle"); // Should contain city
-        narrative.Should().Contain("General Hospital"); // Should contain organization
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // Should NOT have resource type prefix
+        narrative.ShouldContain("VectorPatient"); // Should contain family name
+        narrative.ShouldContain("male"); // Should contain gender
+        narrative.ShouldContain("Seattle"); // Should contain city
+        narrative.ShouldContain("General Hospital"); // Should contain organization
         // Compact should be dense, single-line format
-        narrative.Trim().Should().NotContain("\n\n"); // Should not have multiple blank lines
-        narrative.Should().NotContain("<div"); // Should NOT be HTML
-        narrative.Should().NotContain("#"); // Should NOT have Markdown headers
+        narrative.Trim().ShouldNotContain("\n\n"); // Should not have multiple blank lines
+        narrative.ShouldNotContain("<div"); // Should NOT be HTML
+        narrative.ShouldNotContain("#"); // Should NOT have Markdown headers
     }
 
     [Fact]
@@ -603,8 +600,8 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Markdown);
 
         // Assert - Just verify it generates without error and contains content
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("NoSanitize");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("NoSanitize");
     }
 
     [Fact]
@@ -631,8 +628,8 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Compact);
 
         // Assert - Just verify it generates without error and contains content
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("NoSanitizeCompact");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("NoSanitizeCompact");
     }
 
     [Fact]
@@ -658,9 +655,9 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Markdown);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Account"); // Should contain resource type
-        narrative.Should().Contain("#"); // Should be Markdown format
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Account"); // Should contain resource type
+        narrative.ShouldContain("#"); // Should be Markdown format
     }
 
     [Fact]
@@ -685,9 +682,9 @@ public class FhirNarrativeGeneratorTests
             format: TemplateFormat.Compact);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().NotStartWith("["); // Should NOT have resource type prefix
-        narrative.Should().Contain("active"); // Should contain status
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldNotStartWith("["); // Should NOT have resource type prefix
+        narrative.ShouldContain("active"); // Should contain status
     }
 
     [Fact]
@@ -730,14 +727,14 @@ public class FhirNarrativeGeneratorTests
         var compactNarrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, format: TemplateFormat.Compact);
 
         // Assert - All formats should contain the patient name
-        htmlNarrative.Should().Contain("ComprehensivePatient");
-        mdNarrative.Should().Contain("ComprehensivePatient");
-        compactNarrative.Should().Contain("ComprehensivePatient");
+        htmlNarrative.ShouldContain("ComprehensivePatient");
+        mdNarrative.ShouldContain("ComprehensivePatient");
+        compactNarrative.ShouldContain("ComprehensivePatient");
 
         // Each format should have distinct characteristics
-        htmlNarrative.Should().Contain("<"); // HTML tags
-        mdNarrative.Should().Contain("#"); // Markdown headers
-        compactNarrative.Should().NotStartWith("["); // Compact has no resource type prefix
+        htmlNarrative.ShouldContain("<"); // HTML tags
+        mdNarrative.ShouldContain("#"); // Markdown headers
+        compactNarrative.ShouldNotStartWith("["); // Compact has no resource type prefix
     }
 
     [Fact]
@@ -768,10 +765,10 @@ public class FhirNarrativeGeneratorTests
 
         // Assert - verify that localized strings from NarrativeStrings.resx are used
         // NOT the keys like "Patient.Title" but the actual values like "Patient"
-        result.Should().Contain("Patient");  // From Patient.Title = "Patient"
-        result.Should().Contain("Male");      // From Patient.Gender.male = "Male"
-        result.Should().NotContain("Patient.Title");     // Should NOT contain the key
-        result.Should().NotContain("Patient.Gender.male"); // Should NOT contain the key
+        result.ShouldContain("Patient");  // From Patient.Title = "Patient"
+        result.ShouldContain("Male");      // From Patient.Gender.male = "Male"
+        result.ShouldNotContain("Patient.Title");     // Should NOT contain the key
+        result.ShouldNotContain("Patient.Gender.male"); // Should NOT contain the key
     }
 
     #endregion
@@ -811,12 +808,12 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Bundle");  // Bundle header
-        narrative.Should().Contain("Patient");  // Entry type
-        narrative.Should().Contain("Smith");  // Patient name from nested rendering
-        narrative.Should().Contain("John");  // Given name from nested rendering
-        narrative.Should().Contain("Male");  // Gender from nested rendering
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Bundle");  // Bundle header
+        narrative.ShouldContain("Patient");  // Entry type
+        narrative.ShouldContain("Smith");  // Patient name from nested rendering
+        narrative.ShouldContain("John");  // Given name from nested rendering
+        narrative.ShouldContain("Male");  // Gender from nested rendering
     }
 
     [Fact]
@@ -870,12 +867,12 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Patient");  // First entry type
-        narrative.Should().Contain("Doe");  // Patient name
-        narrative.Should().Contain("Observation");  // Second entry type
-        narrative.Should().Contain("Glucose");  // Observation code display
-        narrative.Should().Contain("95");  // Observation value
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Patient");  // First entry type
+        narrative.ShouldContain("Doe");  // Patient name
+        narrative.ShouldContain("Observation");  // Second entry type
+        narrative.ShouldContain("Glucose");  // Observation code display
+        narrative.ShouldContain("95");  // Observation value
     }
 
     [Fact]
@@ -906,11 +903,11 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Bundle");
-        narrative.Should().Contain("Account");  // Entry type should be shown
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Bundle");
+        narrative.ShouldContain("Account");  // Entry type should be shown
         // Should render using generic template or show resource details
-        narrative.Should().ContainAny("active", "Generic", "Account");
+        (narrative.Contains("active") || narrative.Contains("Generic") || narrative.Contains("Account")).ShouldBeTrue();
     }
 
     [Fact]
@@ -943,10 +940,10 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Bundle");
-        narrative.Should().Contain("Patient");
-        narrative.Should().Contain("Circular");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Bundle");
+        narrative.ShouldContain("Patient");
+        narrative.ShouldContain("Circular");
     }
 
     [Fact]
@@ -1000,13 +997,13 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Smith");
-        narrative.Should().Contain("Jones");
-        narrative.Should().Contain("Brown");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Smith");
+        narrative.ShouldContain("Jones");
+        narrative.ShouldContain("Brown");
         // Verify all three entries are rendered
         var smithCount = System.Text.RegularExpressions.Regex.Matches(narrative, "Smith").Count;
-        smithCount.Should().BeGreaterThan(0);
+        smithCount.ShouldBeGreaterThan(0);
     }
 
     [Fact]
@@ -1029,8 +1026,8 @@ public class FhirNarrativeGeneratorTests
         var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
 
         // Assert
-        narrative.Should().NotBeNullOrEmpty();
-        narrative.Should().Contain("Bundle");
+        narrative.ShouldNotBeNullOrEmpty();
+        narrative.ShouldContain("Bundle");
         // Should not throw error for empty entries
     }
 

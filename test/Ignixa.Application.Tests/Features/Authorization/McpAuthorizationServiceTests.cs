@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Security.Claims;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
@@ -53,7 +53,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeMcpAccessAsync();
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     #endregion
@@ -164,7 +164,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeOperationAsync(McpOperationType.Read, "Patient");
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeOperationAsync(McpOperationType.Create, "Patient");
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class McpAuthorizationServiceTests
         var result = await _service.AuthorizeOperationAsync(McpOperationType.Read);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
         await _rolePermissionStore.DidNotReceive().GetPermissionsAsync(
             Arg.Any<string>(),
             Arg.Any<IReadOnlyList<string>>(),
@@ -213,7 +213,7 @@ public class McpAuthorizationServiceTests
         var act = () => _service.EnsureMcpAccessAsync();
 
         // Assert
-        await act.Should().NotThrowAsync();
+        await Should.NotThrowAsync(async () => await act());
     }
 
     [Fact]
@@ -226,8 +226,8 @@ public class McpAuthorizationServiceTests
         var act = () => _service.EnsureMcpAccessAsync();
 
         // Assert
-        await act.Should().ThrowAsync<ForbiddenException>()
-            .WithMessage("*MCP access denied*");
+        var ex = await Should.ThrowAsync<ForbiddenException>(act);
+        ex.Message.ShouldContain("MCP access denied");
     }
 
     #endregion
@@ -246,7 +246,7 @@ public class McpAuthorizationServiceTests
         var act = () => _service.EnsureOperationAuthorizedAsync(McpOperationType.Create, "Patient");
 
         // Assert
-        await act.Should().NotThrowAsync();
+        await Should.NotThrowAsync(async () => await act());
     }
 
     [Fact]
@@ -261,8 +261,8 @@ public class McpAuthorizationServiceTests
         var act = () => _service.EnsureOperationAuthorizedAsync(McpOperationType.Delete, "Patient");
 
         // Assert
-        await act.Should().ThrowAsync<ForbiddenException>()
-            .WithMessage("*MCP operation denied*");
+        var ex = await Should.ThrowAsync<ForbiddenException>(act);
+        ex.Message.ShouldContain("MCP operation denied");
     }
 
     #endregion
@@ -279,7 +279,7 @@ public class McpAuthorizationServiceTests
         var roles = _service.GetCurrentUserRoles();
 
         // Assert
-        roles.Should().BeEmpty();
+        roles.ShouldBeEmpty();
     }
 
     [Fact]
@@ -298,9 +298,9 @@ public class McpAuthorizationServiceTests
         var roles = _service.GetCurrentUserRoles();
 
         // Assert
-        roles.Should().Contain("Admin");
-        roles.Should().Contain("Clinician");
-        roles.Should().Contain("ReadOnly");
+        roles.ShouldContain("Admin");
+        roles.ShouldContain("Clinician");
+        roles.ShouldContain("ReadOnly");
     }
 
     [Fact]
@@ -317,9 +317,9 @@ public class McpAuthorizationServiceTests
         var roles = _service.GetCurrentUserRoles();
 
         // Assert
-        roles.Should().Contain("Admin");
-        roles.Should().Contain("Clinician");
-        roles.Should().Contain("ReadOnly");
+        roles.ShouldContain("Admin");
+        roles.ShouldContain("Clinician");
+        roles.ShouldContain("ReadOnly");
     }
 
     [Fact]
@@ -338,7 +338,7 @@ public class McpAuthorizationServiceTests
         var roles = _service.GetCurrentUserRoles();
 
         // Assert
-        roles.Should().HaveCount(1); // Case-insensitive deduplication
+        roles.Count.ShouldBe(1); // Case-insensitive deduplication
     }
 
     #endregion

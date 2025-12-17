@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -30,13 +30,13 @@ public class CareTeamBuilderTests
             .WithName("Primary Care Team")
             .Build();
 
-        careTeam.Should().NotBeNull();
-        careTeam.ResourceType.Should().Be("CareTeam");
-        careTeam.Id.Should().NotBeNullOrEmpty();
+        careTeam.ShouldNotBeNull();
+        careTeam.ResourceType.ShouldBe("CareTeam");
+        careTeam.Id.ShouldNotBeNullOrEmpty();
 
         var node = careTeam.MutableNode;
-        node["status"]?.GetValue<string>().Should().Be("active");
-        node["name"]?.GetValue<string>().Should().Be("Primary Care Team");
+        node["status"]?.GetValue<string>().ShouldBe("active");
+        node["name"]?.GetValue<string>().ShouldBe("Primary Care Team");
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class CareTeamBuilderTests
             .WithId(expectedId)
             .Build();
 
-        careTeam.Id.Should().Be(expectedId);
+        careTeam.Id.ShouldBe(expectedId);
     }
 
     [Fact]
@@ -63,12 +63,12 @@ public class CareTeamBuilderTests
         var node = careTeam.MutableNode;
         var metaTags = node["meta"]?["tag"] as JsonArray;
 
-        metaTags.Should().NotBeNull();
-        metaTags.Should().HaveCount(1);
+        metaTags.ShouldNotBeNull();
+        metaTags.Count.ShouldBe(1);
 
         var tagObj = metaTags![0] as JsonObject;
-        tagObj!["system"]?.GetValue<string>().Should().Be("http://ignixa.dev/test-isolation");
-        tagObj["code"]?.GetValue<string>().Should().Be(tag);
+        tagObj!["system"]?.GetValue<string>().ShouldBe("http://ignixa.dev/test-isolation");
+        tagObj["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     #endregion
@@ -88,7 +88,7 @@ public class CareTeamBuilderTests
             .Build();
 
         var node = careTeam.MutableNode;
-        node["status"]?.GetValue<string>().Should().Be(status);
+        node["status"]?.GetValue<string>().ShouldBe(status);
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class CareTeamBuilderTests
             .Build();
 
         var node = careTeam.MutableNode;
-        node["status"]?.GetValue<string>().Should().Be("active");
+        node["status"]?.GetValue<string>().ShouldBe("active");
     }
 
     #endregion
@@ -117,8 +117,8 @@ public class CareTeamBuilderTests
         var node = careTeam.MutableNode;
         var subject = node["subject"] as JsonObject;
 
-        subject.Should().NotBeNull();
-        subject!["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        subject.ShouldNotBeNull();
+        subject!["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class CareTeamBuilderTests
             .Build();
 
         var node = careTeam.MutableNode;
-        node["subject"].Should().BeNull();
+        node["subject"].ShouldBeNull();
     }
 
     #endregion
@@ -147,12 +147,12 @@ public class CareTeamBuilderTests
         var node = careTeam.MutableNode;
         var participants = node["participant"] as JsonArray;
 
-        participants.Should().NotBeNull();
-        participants.Should().HaveCount(1);
+        participants.ShouldNotBeNull();
+        participants.Count.ShouldBe(1);
 
         var participant = participants![0] as JsonObject;
         var member = participant!["member"] as JsonObject;
-        member!["reference"]?.GetValue<string>().Should().Be($"Practitioner/{practitionerId}");
+        member!["reference"]?.GetValue<string>().ShouldBe($"Practitioner/{practitionerId}");
     }
 
     [Fact]
@@ -170,15 +170,15 @@ public class CareTeamBuilderTests
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
 
-        roles.Should().NotBeNull();
-        roles.Should().HaveCount(1);
+        roles.ShouldNotBeNull();
+        roles.Count.ShouldBe(1);
 
         var role = roles![0] as JsonObject;
         var codings = role!["coding"] as JsonArray;
         var coding = codings![0] as JsonObject;
 
-        coding!["system"]?.GetValue<string>().Should().Be("http://snomed.info/sct");
-        coding["code"]?.GetValue<string>().Should().Be(roleCode);
+        coding!["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        coding["code"]?.GetValue<string>().ShouldBe(roleCode);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class CareTeamBuilderTests
         var participants = node["participant"] as JsonArray;
         var participant = participants![0] as JsonObject;
 
-        participant!["role"].Should().BeNull();
+        participant!["role"].ShouldBeNull();
     }
 
     [Fact]
@@ -216,8 +216,8 @@ public class CareTeamBuilderTests
         var codings = role!["coding"] as JsonArray;
         var coding = codings![0] as JsonObject;
 
-        coding!["system"]?.GetValue<string>().Should().Be(customSystem);
-        coding["code"]?.GetValue<string>().Should().Be(roleCode);
+        coding!["system"]?.GetValue<string>().ShouldBe(customSystem);
+        coding["code"]?.GetValue<string>().ShouldBe(roleCode);
     }
 
     #endregion
@@ -240,15 +240,15 @@ public class CareTeamBuilderTests
         var node = careTeam.MutableNode;
         var participants = node["participant"] as JsonArray;
 
-        participants.Should().NotBeNull();
-        participants.Should().HaveCount(3);
+        participants.ShouldNotBeNull();
+        participants.Count.ShouldBe(3);
 
         var references = participants!.Select(p =>
             ((JsonObject)p!)["member"]!.AsObject()["reference"]?.GetValue<string>()).ToList();
 
-        references.Should().Contain($"Practitioner/{practitionerId1}");
-        references.Should().Contain($"Practitioner/{practitionerId2}");
-        references.Should().Contain($"Organization/{organizationId}");
+        references.ShouldContain($"Practitioner/{practitionerId1}");
+        references.ShouldContain($"Practitioner/{practitionerId2}");
+        references.ShouldContain($"Organization/{organizationId}");
     }
 
     [Fact]
@@ -267,11 +267,11 @@ public class CareTeamBuilderTests
 
         // First participant should have role
         var participant1 = participants![0] as JsonObject;
-        participant1!["role"].Should().NotBeNull();
+        participant1!["role"].ShouldNotBeNull();
 
         // Second participant should not have role
         var participant2 = participants[1] as JsonObject;
-        participant2!["role"].Should().BeNull();
+        participant2!["role"].ShouldBeNull();
     }
 
     #endregion
@@ -292,7 +292,7 @@ public class CareTeamBuilderTests
         var participant = participants![0] as JsonObject;
         var member = participant!["member"] as JsonObject;
 
-        member!["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        member!["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
     }
 
     [Fact]
@@ -312,8 +312,8 @@ public class CareTeamBuilderTests
         var codings = role!["coding"] as JsonArray;
         var coding = codings![0] as JsonObject;
 
-        coding!["system"]?.GetValue<string>().Should().Be("http://snomed.info/sct");
-        coding["code"]?.GetValue<string>().Should().Be("223366009"); // Default Healthcare professional
+        coding!["system"]?.GetValue<string>().ShouldBe("http://snomed.info/sct");
+        coding["code"]?.GetValue<string>().ShouldBe("223366009"); // Default Healthcare professional
     }
 
     [Fact]
@@ -334,7 +334,7 @@ public class CareTeamBuilderTests
         var codings = role!["coding"] as JsonArray;
         var coding = codings![0] as JsonObject;
 
-        coding!["code"]?.GetValue<string>().Should().Be(customRole);
+        coding!["code"]?.GetValue<string>().ShouldBe(customRole);
     }
 
     [Fact]
@@ -351,7 +351,7 @@ public class CareTeamBuilderTests
         var participant = participants![0] as JsonObject;
         var member = participant!["member"] as JsonObject;
 
-        member!["reference"]?.GetValue<string>().Should().Be($"Organization/{organizationId}");
+        member!["reference"]?.GetValue<string>().ShouldBe($"Organization/{organizationId}");
     }
 
     [Fact]
@@ -369,14 +369,14 @@ public class CareTeamBuilderTests
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
 
-        roles.Should().NotBeNull();
-        roles.Should().HaveCount(1);
+        roles.ShouldNotBeNull();
+        roles.Count.ShouldBe(1);
 
         var role = roles![0] as JsonObject;
         var codings = role!["coding"] as JsonArray;
         var coding = codings![0] as JsonObject;
 
-        coding!["code"]?.GetValue<string>().Should().Be(roleCode);
+        coding!["code"]?.GetValue<string>().ShouldBe(roleCode);
     }
 
     [Fact]
@@ -394,8 +394,8 @@ public class CareTeamBuilderTests
         var participant = participants![0] as JsonObject;
         var roles = participant!["role"] as JsonArray;
 
-        roles.Should().NotBeNull();
-        roles.Should().HaveCount(1);
+        roles.ShouldNotBeNull();
+        roles.Count.ShouldBe(1);
     }
 
     #endregion
@@ -420,14 +420,14 @@ public class CareTeamBuilderTests
         var node = careTeam.MutableNode;
         var participants = node["participant"] as JsonArray;
 
-        participants.Should().HaveCount(3);
+        participants!.Count.ShouldBe(3);
 
         var references = participants!.Select(p =>
             ((JsonObject)p!)["member"]!.AsObject()["reference"]?.GetValue<string>()).ToList();
 
-        references.Should().Contain($"Patient/{patientId}");
-        references.Should().Contain($"Practitioner/{practitionerId}");
-        references.Should().Contain($"Organization/{organizationId}");
+        references.ShouldContain($"Patient/{patientId}");
+        references.ShouldContain($"Practitioner/{practitionerId}");
+        references.ShouldContain($"Organization/{organizationId}");
     }
 
     #endregion
@@ -456,21 +456,21 @@ public class CareTeamBuilderTests
             .WithOrganizationParticipant(organizationId)
             .Build();
 
-        careTeam.Id.Should().Be(careTeamId);
+        careTeam.Id.ShouldBe(careTeamId);
 
         var node = careTeam.MutableNode;
-        node["status"]?.GetValue<string>().Should().Be("active");
-        node["name"]?.GetValue<string>().Should().Be("Comprehensive Care Team");
+        node["status"]?.GetValue<string>().ShouldBe("active");
+        node["name"]?.GetValue<string>().ShouldBe("Comprehensive Care Team");
 
         var subject = node["subject"] as JsonObject;
-        subject!["reference"]?.GetValue<string>().Should().Be($"Patient/{patientId}");
+        subject!["reference"]?.GetValue<string>().ShouldBe($"Patient/{patientId}");
 
         var participants = node["participant"] as JsonArray;
-        participants.Should().HaveCount(4);
+        participants!.Count.ShouldBe(4);
 
         var metaTags = node["meta"]?["tag"] as JsonArray;
         var tagObj = metaTags![0] as JsonObject;
-        tagObj!["code"]?.GetValue<string>().Should().Be(tag);
+        tagObj!["code"]?.GetValue<string>().ShouldBe(tag);
     }
 
     #endregion
@@ -482,8 +482,8 @@ public class CareTeamBuilderTests
     {
         var act = () => CareTeamBuilder.Create(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("schemaProvider");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("schemaProvider");
     }
 
     [Fact]
@@ -493,8 +493,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithStatus(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("status");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("status");
     }
 
     [Fact]
@@ -504,8 +504,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithName(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("name");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("name");
     }
 
     [Fact]
@@ -515,8 +515,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithSubject(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("patientId");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("patientId");
     }
 
     [Fact]
@@ -526,8 +526,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithParticipant(null!, "id-123");
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("resourceType");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("resourceType");
     }
 
     [Fact]
@@ -537,8 +537,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithParticipant("Practitioner", null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("id");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("id");
     }
 
     [Fact]
@@ -548,8 +548,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithPatientParticipant(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("patientId");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("patientId");
     }
 
     [Fact]
@@ -559,8 +559,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithPractitionerParticipant(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("practitionerId");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("practitionerId");
     }
 
     [Fact]
@@ -570,8 +570,8 @@ public class CareTeamBuilderTests
 
         var act = () => builder.WithOrganizationParticipant(null!);
 
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("organizationId");
+        var exception = Should.Throw<ArgumentNullException>(act);
+        exception.ParamName.ShouldBe("organizationId");
     }
 
     #endregion

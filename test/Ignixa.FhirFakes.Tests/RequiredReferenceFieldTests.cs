@@ -3,7 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Specification.Generated;
 
 namespace Ignixa.FhirFakes.Tests;
@@ -25,16 +25,16 @@ public class RequiredReferenceFieldTests
         var allergy = faker.Generate("AllergyIntolerance");
 
         // Assert
-        allergy.Should().NotBeNull();
-        allergy.ResourceType.Should().Be("AllergyIntolerance");
+        allergy.ShouldNotBeNull();
+        allergy.ResourceType.ShouldBe("AllergyIntolerance");
 
         // Verify patient field is present and is a valid reference
         var patientNode = allergy.MutableNode["patient"];
-        patientNode.Should().NotBeNull("patient is a required field in AllergyIntolerance");
+        patientNode.ShouldNotBeNull("patient is a required field in AllergyIntolerance");
 
         var referenceNode = patientNode?["reference"];
-        referenceNode.Should().NotBeNull();
-        referenceNode!.ToString().Should().StartWith("Patient/", "patient reference should point to a Patient resource");
+        referenceNode.ShouldNotBeNull();
+        referenceNode!.ToString().ShouldStartWith("Patient/", Case.Sensitive);
     }
 
     [Fact]
@@ -48,16 +48,16 @@ public class RequiredReferenceFieldTests
         var allergy = faker.Generate("AllergyIntolerance");
 
         // Assert
-        allergy.Should().NotBeNull();
-        allergy.ResourceType.Should().Be("AllergyIntolerance");
+        allergy.ShouldNotBeNull();
+        allergy.ResourceType.ShouldBe("AllergyIntolerance");
 
         // Verify patient field is present and is a valid reference
         var patientNode = allergy.MutableNode["patient"];
-        patientNode.Should().NotBeNull("patient is a required field in AllergyIntolerance");
+        patientNode.ShouldNotBeNull("patient is a required field in AllergyIntolerance");
 
         var referenceNode = patientNode?["reference"];
-        referenceNode.Should().NotBeNull();
-        referenceNode!.ToString().Should().StartWith("Patient/", "patient reference should point to a Patient resource");
+        referenceNode.ShouldNotBeNull();
+        referenceNode!.ToString().ShouldStartWith("Patient/", Case.Sensitive);
     }
 
     [Fact]
@@ -71,15 +71,15 @@ public class RequiredReferenceFieldTests
         var allergy = faker.Generate("AllergyIntolerance");
 
         // Assert
-        allergy.Should().NotBeNull();
-        allergy.ResourceType.Should().Be("AllergyIntolerance");
+        allergy.ShouldNotBeNull();
+        allergy.ResourceType.ShouldBe("AllergyIntolerance");
 
         // Verify patient field is present and is a valid reference
         var patientNode = allergy.MutableNode["patient"];
-        patientNode.Should().NotBeNull("patient is a required field in AllergyIntolerance");
+        patientNode.ShouldNotBeNull("patient is a required field in AllergyIntolerance");
 
         var referenceNode = patientNode?["reference"];
-        referenceNode.Should().NotBeNull();
-        referenceNode!.ToString().Should().StartWith("Patient/", "patient reference should point to a Patient resource");
+        referenceNode.ShouldNotBeNull();
+        referenceNode!.ToString().ShouldStartWith("Patient/", Case.Sensitive);
     }
 }

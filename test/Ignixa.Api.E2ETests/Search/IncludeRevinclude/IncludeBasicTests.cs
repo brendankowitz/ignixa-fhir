@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.FhirFakes.Builders;
@@ -55,11 +55,11 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
 
         // Verify included resources are not counted in total
         var countBundle = await Harness.SearchBundleAsync("Location", $"_include=Location:organization:Organization&_tag={tag}&_summary=count");
-        countBundle.Total.Should().Be(1, "only match resources should be counted");
+        countBundle.Total.ShouldBe(1, "only match resources should be counted");
 
         // Verify _total=accurate also doesn't count included resources
         var accurateBundle = await Harness.SearchBundleAsync("Location", $"_include=Location:organization:Organization&_tag={tag}&_total=accurate");
-        accurateBundle.Total.Should().Be(1, "only match resources should be counted with _total=accurate");
+        accurateBundle.Total.ShouldBe(1, "only match resources should be counted with _total=accurate");
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         // Verify included resources are not counted
         var countBundle = await Harness.SearchBundleAsync("Location",
             $"_include=Location:organization:Organization&_tag={tag}&_id={createdLocation.Id}&_summary=count");
-        countBundle.Total.Should().Be(1);
+        countBundle.Total.ShouldBe(1);
     }
 
     /// <summary>
@@ -168,8 +168,8 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
         var matchEntries = bundle.Entry.Where(e => e.Search?.Mode == "match").ToList();
         var includeEntries = bundle.Entry.Where(e => e.Search?.Mode == "include").ToList();
 
-        matchEntries.Should().Contain(e => e.Resource != null && e.Resource.Id == createdGroup.Id);
-        includeEntries.Should().Contain(e => e.Resource != null && e.Resource.Id == createdPatient.Id);
+        matchEntries.ShouldContain(e => e.Resource != null && e.Resource.Id == createdGroup.Id);
+        includeEntries.ShouldContain(e => e.Resource != null && e.Resource.Id == createdPatient.Id);
     }
 
     /// <summary>
@@ -241,8 +241,8 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
 
         // Assert - should include patients
         var resources = bundle.Entry.Where(e => e.Resource is not null).Select(e => e.Resource!).ToList();
-        resources.Should().Contain(r => r.ResourceType == "DiagnosticReport");
-        resources.Should().Contain(r => r.ResourceType == "Patient");
+        resources.ShouldContain(r => r.ResourceType == "DiagnosticReport");
+        resources.ShouldContain(r => r.ResourceType == "Patient");
 
         ValidateSearchEntryMode(bundle, "DiagnosticReport");
     }
@@ -300,9 +300,9 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("DiagnosticReport");
-        resourceTypes.Should().Contain("Patient");
-        resourceTypes.Should().Contain("Observation");
+        resourceTypes.ShouldContain("DiagnosticReport");
+        resourceTypes.ShouldContain("Patient");
+        resourceTypes.ShouldContain("Observation");
     }
 
     /// <summary>
@@ -358,9 +358,9 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("DiagnosticReport");
-        resourceTypes.Should().Contain("Patient");
-        resourceTypes.Should().Contain("Observation");
+        resourceTypes.ShouldContain("DiagnosticReport");
+        resourceTypes.ShouldContain("Patient");
+        resourceTypes.ShouldContain("Observation");
     }
 
     /// <summary>
@@ -415,9 +415,9 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("Observation");
-        resourceTypes.Should().Contain("Practitioner");
-        resourceTypes.Should().Contain("Organization");
+        resourceTypes.ShouldContain("Observation");
+        resourceTypes.ShouldContain("Practitioner");
+        resourceTypes.ShouldContain("Organization");
     }
 
     /// <summary>
@@ -454,7 +454,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
 
         // Assert - should not include the patient since reference is untyped
         var resourceCount = bundle.Entry.Count(e => e.Resource is not null);
-        resourceCount.Should().Be(1, "untyped references should not be included");
+        resourceCount.ShouldBe(1, "untyped references should not be included");
     }
 
     /// <summary>
@@ -508,7 +508,7 @@ public class IncludeSearchTests_BasicInclude : IncludeTestBase
             .Select(e => e.Resource!.Id)
             .ToList();
 
-        includedOrgIds.Should().Contain(createdActiveOrg.Id);
-        includedOrgIds.Should().NotContain(createdDeletedOrg.Id);
+        includedOrgIds.ShouldContain(createdActiveOrg.Id);
+        includedOrgIds.ShouldNotContain(createdDeletedOrg.Id);
     }
 }

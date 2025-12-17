@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -39,9 +39,9 @@ public class StateIdPatternTests
 
         // Assert
         var observation = scenario.GetStateResource("obs_glucose");
-        observation.Should().NotBeNull();
-        observation!.ResourceType.Should().Be("Observation");
-        observation.Id.Should().Be(scenario.Observations[0].Id);
+        observation.ShouldNotBeNull();
+        observation!.ResourceType.ShouldBe("Observation");
+        observation.Id.ShouldBe(scenario.Observations[0].Id);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class StateIdPatternTests
 
         // Assert
         var observation = scenario.GetStateResource("any_id");
-        observation.Should().BeNull();
+        observation.ShouldBeNull();
     }
 
     [Fact]
@@ -87,9 +87,9 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.GetStateResource("obs1").Should().NotBeNull();
-        scenario.GetStateResource("obs2").Should().NotBeNull();
-        scenario.GetStateResource("cond1").Should().NotBeNull();
+        scenario.GetStateResource("obs1").ShouldNotBeNull();
+        scenario.GetStateResource("obs2").ShouldNotBeNull();
+        scenario.GetStateResource("cond1").ShouldNotBeNull();
     }
 
     #endregion
@@ -118,10 +118,10 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(1, "should not create duplicate observations");
+        scenario.Observations.Count.ShouldBe(1, "should not create duplicate observations");
         var report = scenario.DiagnosticReports[0];
         var resultRef = report.MutableNode["result"]![0]!["reference"]!.GetValue<string>();
-        resultRef.Should().Be($"urn:uuid:{scenario.Observations[0].Id}");
+        resultRef.ShouldBe($"urn:uuid:{scenario.Observations[0].Id}");
     }
 
     [Fact]
@@ -153,12 +153,12 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(2);
+        scenario.Observations.Count.ShouldBe(2);
         var report = scenario.DiagnosticReports[0];
         var results = report.MutableNode["result"]!.AsArray();
-        results.Should().HaveCount(2);
-        results[0]!["reference"]!.GetValue<string>().Should().Contain(scenario.Observations[0].Id);
-        results[1]!["reference"]!.GetValue<string>().Should().Contain(scenario.Observations[1].Id);
+        results!.Count.ShouldBe(2);
+        results[0]!["reference"]!.GetValue<string>().ShouldContain(scenario.Observations[0].Id);
+        results[1]!["reference"]!.GetValue<string>().ShouldContain(scenario.Observations[1].Id);
     }
 
     [Fact]
@@ -185,10 +185,10 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(2, "one referenced + one inline");
+        scenario.Observations.Count.ShouldBe(2, "one referenced + one inline");
         var report = scenario.DiagnosticReports[0];
         var results = report.MutableNode["result"]!.AsArray();
-        results.Should().HaveCount(2);
+        results!.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -206,14 +206,14 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(0, "no observations created");
+        scenario.Observations.Count.ShouldBe(0, "no observations created");
         var report = scenario.DiagnosticReports[0];
         var results = report.MutableNode["result"]?.AsArray();
 
         // The result field might be null or an empty array depending on implementation
         if (results is not null)
         {
-            results.Should().BeEmpty("should not add invalid references");
+            results.ShouldBeEmpty("should not add invalid references");
         }
     }
 
@@ -240,7 +240,7 @@ public class StateIdPatternTests
         // Assert
         var org = scenario.Organizations[0];
         var identifiers = org.MutableNode["identifier"]!.AsArray();
-        identifiers.Should().Contain(i =>
+        identifiers.ShouldContain(i =>
             i!["system"]!.GetValue<string>() == "http://test-system" &&
             i["value"]!.GetValue<string>() == customId);
     }
@@ -268,9 +268,9 @@ public class StateIdPatternTests
         // Assert
         var org = scenario.Organizations[0];
         var identifiers = org.MutableNode["identifier"]!.AsArray();
-        identifiers.Should().HaveCountGreaterThanOrEqualTo(4, "NPI + TaxId + 2 custom");
-        identifiers.Should().Contain(i => i!["value"]!.GetValue<string>() == id1);
-        identifiers.Should().Contain(i => i!["value"]!.GetValue<string>() == id2);
+        identifiers.Count.ShouldBeGreaterThanOrEqualTo(4, "NPI + TaxId + 2 custom");
+        identifiers.ShouldContain(i => i!["value"]!.GetValue<string>() == id1);
+        identifiers.ShouldContain(i => i!["value"]!.GetValue<string>() == id2);
     }
 
     [Fact]
@@ -288,15 +288,15 @@ public class StateIdPatternTests
         // Assert
         var org = scenario.Organizations[0];
         var identifiers = org.MutableNode["identifier"]!.AsArray();
-        identifiers.Should().HaveCount(2, "NPI + TaxId only");
+        identifiers.Count.ShouldBe(2, "NPI + TaxId only");
 
         var npiIdentifier = identifiers.FirstOrDefault(i =>
             i!["system"]!.GetValue<string>() == OrganizationState.NpiSystem);
         var taxIdIdentifier = identifiers.FirstOrDefault(i =>
             i!["system"]!.GetValue<string>() == OrganizationState.TaxIdSystem);
 
-        npiIdentifier.Should().NotBeNull();
-        taxIdIdentifier.Should().NotBeNull();
+        npiIdentifier.ShouldNotBeNull();
+        taxIdIdentifier.ShouldNotBeNull();
     }
 
     #endregion
@@ -313,10 +313,10 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.CareTeams.Should().HaveCount(1);
+        scenario.CareTeams.Count.ShouldBe(1);
         var careTeam = scenario.CareTeams[0];
         careTeam.MutableNode["subject"]!["reference"]!.GetValue<string>()
-            .Should().Contain(scenario.Patient!.Id);
+            .ShouldContain(scenario.Patient!.Id);
     }
 
     [Fact]
@@ -347,11 +347,11 @@ public class StateIdPatternTests
         // Assert
         var careTeam = scenario.CareTeams[0];
         var participants = careTeam.MutableNode["participant"]!.AsArray();
-        participants.Should().HaveCount(2);
+        participants!.Count.ShouldBe(2);
         participants[0]!["member"]!["reference"]!.GetValue<string>()
-            .Should().Contain(scenario.Practitioners[0].Id);
+            .ShouldContain(scenario.Practitioners[0].Id);
         participants[1]!["member"]!["reference"]!.GetValue<string>()
-            .Should().Contain(scenario.Practitioners[1].Id);
+            .ShouldContain(scenario.Practitioners[1].Id);
     }
 
     [Fact]
@@ -366,7 +366,7 @@ public class StateIdPatternTests
         // Assert
         var careTeam = scenario.CareTeams[0];
         var participants = careTeam.MutableNode["participant"];
-        participants.Should().BeNull("no participants specified");
+        participants.ShouldBeNull("no participants specified");
     }
 
     [Fact]
@@ -385,8 +385,8 @@ public class StateIdPatternTests
         // Assert
         var careTeam = scenario.CareTeams[0];
         var participants = careTeam.MutableNode["participant"]?.AsArray();
-        participants.Should().NotBeNull();
-        participants!.Should().BeEmpty("should not add invalid references");
+        participants.ShouldNotBeNull();
+        participants!.ShouldBeEmpty("should not add invalid references");
     }
 
     [Fact]
@@ -411,9 +411,9 @@ public class StateIdPatternTests
         // Assert
         var careTeam = scenario.CareTeams[0];
         var participants = careTeam.MutableNode["participant"]!.AsArray();
-        participants.Should().HaveCount(1, "only valid practitioner should be added");
+        participants!.Count.ShouldBe(1, "only valid practitioner should be added");
         participants[0]!["member"]!["reference"]!.GetValue<string>()
-            .Should().Contain(scenario.Practitioners[0].Id);
+            .ShouldContain(scenario.Practitioners[0].Id);
     }
 
     #endregion
@@ -460,17 +460,17 @@ public class StateIdPatternTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(2, "two observations created");
-        scenario.DiagnosticReports.Should().HaveCount(1);
-        scenario.CareTeams.Should().HaveCount(1);
+        scenario.Observations.Count.ShouldBe(2, "two observations created");
+        scenario.DiagnosticReports.Count.ShouldBe(1);
+        scenario.CareTeams.Count.ShouldBe(1);
 
         var report = scenario.DiagnosticReports[0];
         var reportResults = report.MutableNode["result"]!.AsArray();
-        reportResults.Should().HaveCount(2, "references both observations");
+        reportResults.Count.ShouldBe(2, "references both observations");
 
         var careTeam = scenario.CareTeams[0];
         var careTeamParticipants = careTeam.MutableNode["participant"]!.AsArray();
-        careTeamParticipants.Should().HaveCount(1, "references the practitioner");
+        careTeamParticipants.Count.ShouldBe(1, "references the practitioner");
     }
 
     [Fact]
@@ -498,13 +498,13 @@ public class StateIdPatternTests
         var obs = scenario.GetStateResource("unique1");
         var pract = scenario.GetStateResource("unique2");
 
-        obs.Should().NotBeNull();
-        obs!.ResourceType.Should().Be("Observation");
+        obs.ShouldNotBeNull();
+        obs!.ResourceType.ShouldBe("Observation");
 
-        pract.Should().NotBeNull();
-        pract!.ResourceType.Should().Be("Practitioner");
+        pract.ShouldNotBeNull();
+        pract!.ResourceType.ShouldBe("Practitioner");
 
-        obs.Id.Should().NotBe(pract.Id, "different resources have different IDs");
+        obs.Id.ShouldNotBe(pract.Id, "different resources have different IDs");
     }
 
     [Fact]
@@ -522,9 +522,9 @@ public class StateIdPatternTests
 
         // Assert
         var org = scenario.GetStateResource("org_main");
-        org.Should().NotBeNull();
-        org!.ResourceType.Should().Be("Organization");
-        org.MutableNode["name"]!.GetValue<string>().Should().Be("Main Hospital");
+        org.ShouldNotBeNull();
+        org!.ResourceType.ShouldBe("Organization");
+        org.MutableNode["name"]!.GetValue<string>().ShouldBe("Main Hospital");
     }
 
     #endregion

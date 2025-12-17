@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Infrastructure;
@@ -39,7 +39,7 @@ public class AuthenticationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -60,8 +60,8 @@ public class AuthenticationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Be("Authentication required");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldBe("Authentication required");
     }
 
     [Fact]
@@ -83,14 +83,14 @@ public class AuthenticationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
     public void Priority_Is10()
     {
         // Assert
-        _handler.Priority.Should().Be(10);
+        _handler.Priority.ShouldBe(10);
     }
 
     private static IFhirRequestContext CreateRequestContext(int tenantId = 1)

@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Builders;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -30,24 +30,24 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        patient.MutableNode["identifier"].Should().NotBeNull();
+        patient.MutableNode["identifier"].ShouldNotBeNull();
         var identifiers = patient.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(1);
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["value"]?.GetValue<string>().Should().Be("12345");
+        identifier?["value"]?.GetValue<string>().ShouldBe("12345");
 
         // Verify type structure
         var type = identifier?["type"]?.AsObject();
-        type.Should().NotBeNull();
+        type.ShouldNotBeNull();
 
         var codings = type?["coding"]?.AsArray();
-        codings.Should().HaveCount(1);
+        codings!.Count.ShouldBe(1);
 
         var coding = codings?[0]?.AsObject();
-        coding?["system"]?.GetValue<string>().Should().Be("http://terminology.hl7.org/CodeSystem/v2-0203");
-        coding?["code"]?.GetValue<string>().Should().Be("MR");
-        coding?["display"]?.GetValue<string>().Should().Be("Medical Record");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://terminology.hl7.org/CodeSystem/v2-0203");
+        coding?["code"]?.GetValue<string>().ShouldBe("MR");
+        coding?["display"]?.GetValue<string>().ShouldBe("Medical Record");
     }
 
     [Fact]
@@ -61,17 +61,17 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        patient.MutableNode["identifier"].Should().NotBeNull();
+        patient.MutableNode["identifier"].ShouldNotBeNull();
         var identifiers = patient.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(1);
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["value"]?.GetValue<string>().Should().Be("123-45-6789");
+        identifier?["value"]?.GetValue<string>().ShouldBe("123-45-6789");
 
         var coding = identifier?["type"]?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["system"]?.GetValue<string>().Should().Be("http://terminology.hl7.org/CodeSystem/v2-0203");
-        coding?["code"]?.GetValue<string>().Should().Be("SS");
-        coding?.ContainsKey("display").Should().BeFalse("display was not provided");
+        coding?["system"]?.GetValue<string>().ShouldBe("http://terminology.hl7.org/CodeSystem/v2-0203");
+        coding?["code"]?.GetValue<string>().ShouldBe("SS");
+        coding?.ContainsKey("display").ShouldBeFalse("display was not provided");
     }
 
     [Fact]
@@ -91,14 +91,14 @@ public class PatientBuilder_TypedIdentifierTests
 
         // Assert
         var identifiers = patient.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(1);
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["value"]?.GetValue<string>().Should().Be("123-45-6789");
-        identifier?["system"]?.GetValue<string>().Should().Be("http://hl7.org/fhir/sid/us-ssn");
+        identifier?["value"]?.GetValue<string>().ShouldBe("123-45-6789");
+        identifier?["system"]?.GetValue<string>().ShouldBe("http://hl7.org/fhir/sid/us-ssn");
 
         var coding = identifier?["type"]?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["code"]?.GetValue<string>().Should().Be("SS");
+        coding?["code"]?.GetValue<string>().ShouldBe("SS");
     }
 
     [Fact]
@@ -115,28 +115,28 @@ public class PatientBuilder_TypedIdentifierTests
 
         // Assert
         var identifiers = patient.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(3);
+        identifiers!.Count.ShouldBe(3);
 
         // Check MR identifier
         var mrIdentifier = identifiers?.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == "MR-12345");
-        mrIdentifier.Should().NotBeNull();
+        mrIdentifier.ShouldNotBeNull();
         var mrCoding = mrIdentifier?["type"]?["coding"]?.AsArray()?[0]?.AsObject();
-        mrCoding?["code"]?.GetValue<string>().Should().Be("MR");
+        mrCoding?["code"]?.GetValue<string>().ShouldBe("MR");
 
         // Check SSN identifier
         var ssnIdentifier = identifiers?.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == "123-45-6789");
-        ssnIdentifier.Should().NotBeNull();
+        ssnIdentifier.ShouldNotBeNull();
         var ssnCoding = ssnIdentifier?["type"]?["coding"]?.AsArray()?[0]?.AsObject();
-        ssnCoding?["code"]?.GetValue<string>().Should().Be("SS");
+        ssnCoding?["code"]?.GetValue<string>().ShouldBe("SS");
 
         // Check DL identifier
         var dlIdentifier = identifiers?.FirstOrDefault(i =>
             i?["value"]?.GetValue<string>() == "DL-ABC123");
-        dlIdentifier.Should().NotBeNull();
+        dlIdentifier.ShouldNotBeNull();
         var dlCoding = dlIdentifier?["type"]?["coding"]?.AsArray()?[0]?.AsObject();
-        dlCoding?["code"]?.GetValue<string>().Should().Be("DL");
+        dlCoding?["code"]?.GetValue<string>().ShouldBe("DL");
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class PatientBuilder_TypedIdentifierTests
             .Build();
 
         // Assert
-        patient.MutableNode.ContainsKey("identifier").Should().BeFalse("no identifiers were added");
+        patient.MutableNode.ContainsKey("identifier").ShouldBeFalse("no identifiers were added");
     }
 
     [Theory]
@@ -171,14 +171,14 @@ public class PatientBuilder_TypedIdentifierTests
 
         // Assert
         var identifiers = patient.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().HaveCount(1);
+        identifiers!.Count.ShouldBe(1);
 
         var identifier = identifiers?[0]?.AsObject();
-        identifier?["value"]?.GetValue<string>().Should().Be("TEST-VALUE");
+        identifier?["value"]?.GetValue<string>().ShouldBe("TEST-VALUE");
 
         var coding = identifier?["type"]?["coding"]?.AsArray()?[0]?.AsObject();
-        coding?["system"]?.GetValue<string>().Should().Be("http://terminology.hl7.org/CodeSystem/v2-0203");
-        coding?["code"]?.GetValue<string>().Should().Be(typeCode);
-        coding?["display"]?.GetValue<string>().Should().Be(typeDisplay);
+        coding?["system"]?.GetValue<string>().ShouldBe("http://terminology.hl7.org/CodeSystem/v2-0203");
+        coding?["code"]?.GetValue<string>().ShouldBe(typeCode);
+        coding?["display"]?.GetValue<string>().ShouldBe(typeDisplay);
     }
 }

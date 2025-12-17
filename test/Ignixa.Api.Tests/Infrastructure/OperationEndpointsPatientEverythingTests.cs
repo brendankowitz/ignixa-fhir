@@ -5,7 +5,7 @@
 
 #nullable disable
 
-using FluentAssertions;
+using Shouldly;
 using Xunit;
 
 namespace Ignixa.Api.Tests.Infrastructure;
@@ -28,9 +28,9 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(1);
-        result.Should().Contain("Observation");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(1);
+        result.ShouldContain("Observation");
     }
 
     [Fact]
@@ -43,11 +43,11 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(3);
-        result.Should().Contain("Observation");
-        result.Should().Contain("Condition");
-        result.Should().Contain("MedicationRequest");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(3);
+        result.ShouldContain("Observation");
+        result.ShouldContain("Condition");
+        result.ShouldContain("MedicationRequest");
     }
 
     [Fact]
@@ -60,13 +60,13 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(3);
-        result.Should().Contain("Observation");
-        result.Should().Contain("Condition");
-        result.Should().Contain("MedicationRequest");
-        result.Should().NotContain(" Observation");
-        result.Should().NotContain("Condition ");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(3);
+        result.ShouldContain("Observation");
+        result.ShouldContain("Condition");
+        result.ShouldContain("MedicationRequest");
+        result.ShouldNotContain(" Observation");
+        result.ShouldNotContain("Condition ");
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -107,8 +107,8 @@ public class OperationEndpointsPatientEverythingTests
         // Assert
         // Note: Whitespace-only strings pass !string.IsNullOrEmpty check,
         // but after Split with RemoveEmptyEntries, result is empty HashSet
-        result.Should().NotBeNull();
-        result.Should().BeEmpty();
+        result.ShouldNotBeNull();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -121,10 +121,10 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(2);
-        result.Should().Contain("Observation");
-        result.Should().Contain("Condition");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(2);
+        result.ShouldContain("Observation");
+        result.ShouldContain("Condition");
     }
 
     [Fact]
@@ -137,11 +137,11 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(3);
-        result.Should().Contain("Observation");
-        result.Should().Contain("Condition");
-        result.Should().Contain("MedicationRequest");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(3);
+        result.ShouldContain("Observation");
+        result.ShouldContain("Condition");
+        result.ShouldContain("MedicationRequest");
     }
 
     #endregion
@@ -158,15 +158,15 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertStartDate(startDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.Year.Should().Be(2024);
-        result.Value.Month.Should().Be(1);
-        result.Value.Day.Should().Be(15);
-        result.Value.Hour.Should().Be(0);
-        result.Value.Minute.Should().Be(0);
-        result.Value.Second.Should().Be(0);
-        result.Value.Millisecond.Should().Be(0);
-        result.Value.Offset.Should().Be(TimeSpan.Zero);
+        result.ShouldNotBeNull();
+        result.Value.Year.ShouldBe(2024);
+        result.Value.Month.ShouldBe(1);
+        result.Value.Day.ShouldBe(15);
+        result.Value.Hour.ShouldBe(0);
+        result.Value.Minute.ShouldBe(0);
+        result.Value.Second.ShouldBe(0);
+        result.Value.Millisecond.ShouldBe(0);
+        result.Value.Offset.ShouldBe(TimeSpan.Zero);
     }
 
     [Fact]
@@ -179,14 +179,14 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertEndDate(endDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.Year.Should().Be(2024);
-        result.Value.Month.Should().Be(12);
-        result.Value.Day.Should().Be(31);
-        result.Value.Hour.Should().Be(23);
-        result.Value.Minute.Should().Be(59);
-        result.Value.Second.Should().Be(59);
-        result.Value.Offset.Should().Be(TimeSpan.Zero);
+        result.ShouldNotBeNull();
+        result.Value.Year.ShouldBe(2024);
+        result.Value.Month.ShouldBe(12);
+        result.Value.Day.ShouldBe(31);
+        result.Value.Hour.ShouldBe(23);
+        result.Value.Minute.ShouldBe(59);
+        result.Value.Second.ShouldBe(59);
+        result.Value.Offset.ShouldBe(TimeSpan.Zero);
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertStartDate(startDate);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertEndDate(endDate);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -225,8 +225,8 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertStartDate(startDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.DateTime.Should().Be(new DateTime(2024, 1, 1, 0, 0, 0));
+        result.ShouldNotBeNull();
+        result.Value.DateTime.ShouldBe(new DateTime(2024, 1, 1, 0, 0, 0));
     }
 
     [Fact]
@@ -239,8 +239,8 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertEndDate(endDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.DateTime.Should().Be(new DateTime(2024, 12, 31, 23, 59, 59, 999).AddTicks(9999));
+        result.ShouldNotBeNull();
+        result.Value.DateTime.ShouldBe(new DateTime(2024, 12, 31, 23, 59, 59, 999).AddTicks(9999));
     }
 
     [Fact]
@@ -253,10 +253,10 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertStartDate(startDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.Year.Should().Be(2024);
-        result.Value.Month.Should().Be(2);
-        result.Value.Day.Should().Be(29);
+        result.ShouldNotBeNull();
+        result.Value.Year.ShouldBe(2024);
+        result.Value.Month.ShouldBe(2);
+        result.Value.Day.ShouldBe(29);
     }
 
     #endregion
@@ -280,17 +280,17 @@ public class OperationEndpointsPatientEverythingTests
         var types = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert - verify all components are correctly prepared
-        startOffset.Should().NotBeNull();
-        endOffset.Should().NotBeNull();
-        types.Should().NotBeNull();
-        types.Should().HaveCount(2);
+        startOffset.ShouldNotBeNull();
+        endOffset.ShouldNotBeNull();
+        types.ShouldNotBeNull();
+        types.Count.ShouldBe(2);
 
         // Verify query parameters would be correctly set
-        patientId.Should().Be("patient-123");
-        startOffset.Value.DateTime.TimeOfDay.Should().Be(TimeOnly.MinValue.ToTimeSpan());
-        endOffset.Value.DateTime.TimeOfDay.Should().Be(TimeOnly.MaxValue.ToTimeSpan());
-        since.Should().Be(new DateTimeOffset(2024, 6, 1, 0, 0, 0, TimeSpan.Zero));
-        count.Should().Be(50);
+        patientId.ShouldBe("patient-123");
+        startOffset.Value.DateTime.TimeOfDay.ShouldBe(TimeOnly.MinValue.ToTimeSpan());
+        endOffset.Value.DateTime.TimeOfDay.ShouldBe(TimeOnly.MaxValue.ToTimeSpan());
+        since.ShouldBe(new DateTimeOffset(2024, 6, 1, 0, 0, 0, TimeSpan.Zero));
+        count.ShouldBe(50);
     }
 
     [Fact]
@@ -310,12 +310,12 @@ public class OperationEndpointsPatientEverythingTests
         var types = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert - verify optional parameters are correctly null
-        startOffset.Should().BeNull();
-        endOffset.Should().BeNull();
-        since.Should().BeNull();
-        types.Should().BeNull();
-        count.Should().BeNull();
-        patientId.Should().Be("patient-456");
+        startOffset.ShouldBeNull();
+        endOffset.ShouldBeNull();
+        since.ShouldBeNull();
+        types.ShouldBeNull();
+        count.ShouldBeNull();
+        patientId.ShouldBe("patient-456");
     }
 
     [Fact]
@@ -335,13 +335,13 @@ public class OperationEndpointsPatientEverythingTests
         var types = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        startOffset.Should().NotBeNull();
-        startOffset.Value.Year.Should().Be(2024);
-        endOffset.Should().BeNull();
-        since.Year.Should().Be(2024);
-        types.Should().BeNull();
-        count.Should().Be(100);
-        patientId.Should().Be("patient-789");
+        startOffset.ShouldNotBeNull();
+        startOffset.Value.Year.ShouldBe(2024);
+        endOffset.ShouldBeNull();
+        since.Year.ShouldBe(2024);
+        types.ShouldBeNull();
+        count.ShouldBe(100);
+        patientId.ShouldBe("patient-789");
     }
 
     #endregion
@@ -358,9 +358,9 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(1);
-        result.Should().Contain("A");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(1);
+        result.ShouldContain("A");
     }
 
     [Fact]
@@ -373,10 +373,10 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(2);
-        result.Should().Contain("Observation");
-        result.Should().Contain("Condition");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(2);
+        result.ShouldContain("Observation");
+        result.ShouldContain("Condition");
     }
 
     [Fact]
@@ -389,10 +389,10 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ParseTypeParameter(typeParam);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(2);
-        result.Should().Contain("Observation");
-        result.Should().Contain("Condition");
+        result.ShouldNotBeNull();
+        result.Count.ShouldBe(2);
+        result.ShouldContain("Observation");
+        result.ShouldContain("Condition");
     }
 
     [Fact]
@@ -405,10 +405,10 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertStartDate(startDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.Year.Should().Be(1);
-        result.Value.Month.Should().Be(1);
-        result.Value.Day.Should().Be(1);
+        result.ShouldNotBeNull();
+        result.Value.Year.ShouldBe(1);
+        result.Value.Month.ShouldBe(1);
+        result.Value.Day.ShouldBe(1);
     }
 
     [Fact]
@@ -421,10 +421,10 @@ public class OperationEndpointsPatientEverythingTests
         var result = PatientEverythingParameterParser.ConvertEndDate(endDate);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Value.Year.Should().Be(9999);
-        result.Value.Month.Should().Be(12);
-        result.Value.Day.Should().Be(31);
+        result.ShouldNotBeNull();
+        result.Value.Year.ShouldBe(9999);
+        result.Value.Month.ShouldBe(12);
+        result.Value.Day.ShouldBe(31);
     }
 
     #endregion

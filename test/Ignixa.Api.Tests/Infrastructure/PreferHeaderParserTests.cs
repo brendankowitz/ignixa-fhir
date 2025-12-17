@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Domain.Models;
@@ -32,7 +32,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Minimal);
+        result.ShouldBe(ValidationDepth.Minimal);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Minimal);
+        result.ShouldBe(ValidationDepth.Minimal);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Spec);
+        result.ShouldBe(ValidationDepth.Spec);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Full);
+        result.ShouldBe(ValidationDepth.Full);
     }
 
     #endregion
@@ -88,7 +88,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Spec);
+        result.ShouldBe(ValidationDepth.Spec);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Full);
+        result.ShouldBe(ValidationDepth.Full);
     }
 
     #endregion
@@ -118,7 +118,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Spec);
+        result.ShouldBe(ValidationDepth.Spec);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().Be(ValidationDepth.Minimal);
+        result.ShouldBe(ValidationDepth.Minimal);
     }
 
     #endregion
@@ -148,7 +148,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.TryParseValidationLevel(headers);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -227,7 +227,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationDepth.Minimal);
 
         // Assert
-        result.Should().Be("validation=minimal");
+        result.ShouldBe("validation=minimal");
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationDepth.Spec);
 
         // Assert
-        result.Should().Be("validation=spec");
+        result.ShouldBe("validation=spec");
     }
 
     [Fact]
@@ -247,7 +247,7 @@ public class PreferHeaderParserTests
         var result = PreferHeaderParser.ToPreferenceAppliedHeader(ValidationDepth.Full);
 
         // Assert
-        result.Should().Be("validation=full");
+        result.ShouldBe("validation=full");
     }
 
     #endregion

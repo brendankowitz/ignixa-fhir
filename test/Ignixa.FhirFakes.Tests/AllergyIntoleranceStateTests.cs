@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -31,10 +31,10 @@ public class AllergyIntoleranceStateTests
             .Build();
 
         // Assert
-        scenario.Allergies.Should().HaveCount(1);
+        scenario.Allergies.Count.ShouldBe(1);
         var allergy = scenario.Allergies[0];
-        allergy.ResourceType.Should().Be("AllergyIntolerance");
-        allergy.Id.Should().NotBeNullOrEmpty();
+        allergy.ResourceType.ShouldBe("AllergyIntolerance");
+        allergy.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var statusCode = allergy.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        statusCode.Should().Be("active");
+        statusCode.ShouldBe("active");
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var statusCode = allergy.MutableNode["verificationStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        statusCode.Should().Be("confirmed");
+        statusCode.ShouldBe("confirmed");
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var code = allergy.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("91935009"); // SNOMED CT for peanut
+        code.ShouldBe("91935009"); // SNOMED CT for peanut
     }
 
     #endregion
@@ -98,7 +98,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var patientRef = allergy.MutableNode["patient"]?["reference"]?.GetValue<string>();
-        patientRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        patientRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var encounterRef = allergy.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
+        encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion
@@ -133,7 +133,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var criticality = allergy.MutableNode["criticality"]?.GetValue<string>();
-        criticality.Should().Be("high");
+        criticality.ShouldBe("high");
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var criticality = allergy.MutableNode["criticality"]?.GetValue<string>();
-        criticality.Should().Be("low");
+        criticality.ShouldBe("low");
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var criticality = allergy.MutableNode["criticality"]?.GetValue<string>();
-        criticality.Should().Be("low");
+        criticality.ShouldBe("low");
     }
 
     #endregion
@@ -182,7 +182,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
-        category.Should().Be("food");
+        category.ShouldBe("food");
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
-        category.Should().Be("medication");
+        category.ShouldBe("medication");
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
-        category.Should().Be("environment");
+        category.ShouldBe("environment");
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
-        category.Should().Be("biologic");
+        category.ShouldBe("biologic");
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var category = allergy.MutableNode["category"]?[0]?.GetValue<string>();
-        category.Should().Be("medication");
+        category.ShouldBe("medication");
     }
 
     #endregion
@@ -261,8 +261,8 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
-        reactions.Should().NotBeNull();
-        reactions!.Count.Should().Be(3);
+        reactions.ShouldNotBeNull();
+        reactions!.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class AllergyIntoleranceStateTests
         var allergy = scenario.Allergies[0];
         var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
         var anaphylaxisCode = reactions?[0]?["manifestation"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        anaphylaxisCode.Should().Be("39579001"); // SNOMED CT for anaphylaxis
+        anaphylaxisCode.ShouldBe("39579001"); // SNOMED CT for anaphylaxis
     }
 
     [Fact]
@@ -294,7 +294,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
-        reactions!.Count.Should().Be(2);
+        reactions!.Count.ShouldBe(2);
     }
 
     #endregion
@@ -314,7 +314,7 @@ public class AllergyIntoleranceStateTests
         var allergy = scenario.Allergies[0];
         var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
         var severity = reactions?[0]?["severity"]?.GetValue<string>();
-        severity.Should().Be("severe");
+        severity.ShouldBe("severe");
     }
 
     [Fact]
@@ -330,7 +330,7 @@ public class AllergyIntoleranceStateTests
         var allergy = scenario.Allergies[0];
         var reactions = allergy.MutableNode["reaction"] as System.Text.Json.Nodes.JsonArray;
         var severity = reactions?[0]?["severity"]?.GetValue<string>();
-        severity.Should().Be("mild");
+        severity.ShouldBe("mild");
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var type = allergy.MutableNode["type"]?.GetValue<string>();
-        type.Should().Be("intolerance");
+        type.ShouldBe("intolerance");
     }
 
     #endregion
@@ -364,7 +364,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var recordedDate = allergy.MutableNode["recordedDate"]?.GetValue<string>();
-        recordedDate.Should().NotBeNullOrEmpty();
+        recordedDate.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -379,7 +379,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var onsetDate = allergy.MutableNode["onsetDateTime"]?.GetValue<string>();
-        onsetDate.Should().NotBeNullOrEmpty();
+        onsetDate.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -395,7 +395,7 @@ public class AllergyIntoleranceStateTests
         var allergy = scenario.Allergies[0];
         var onsetDate = DateTime.Parse(allergy.MutableNode["onsetDateTime"]!.GetValue<string>()!);
         var recordedDate = DateTime.Parse(allergy.MutableNode["recordedDate"]!.GetValue<string>()!);
-        onsetDate.Should().BeBefore(recordedDate);
+        onsetDate.ShouldBeLessThan(recordedDate);
     }
 
     #endregion
@@ -414,7 +414,7 @@ public class AllergyIntoleranceStateTests
             .Build();
 
         // Assert
-        scenario.Allergies.Should().HaveCount(3);
+        scenario.Allergies.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -428,7 +428,7 @@ public class AllergyIntoleranceStateTests
 
         // Assert
         var allergyEvents = scenario.Timeline.Where(e => e.EventType == "AllergyIntolerance").ToList();
-        allergyEvents.Should().HaveCount(1);
+        allergyEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -441,7 +441,7 @@ public class AllergyIntoleranceStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.Allergies[0]);
+        scenario.AllResources.ShouldContain(scenario.Allergies[0]);
     }
 
     #endregion
@@ -460,7 +460,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var encounterRef = allergy.MutableNode["encounter"];
-        encounterRef.Should().BeNull();
+        encounterRef.ShouldBeNull();
     }
 
     [Fact]
@@ -475,8 +475,8 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var recorder = allergy.MutableNode["recorder"]?["display"]?.GetValue<string>();
-        recorder.Should().NotBeNullOrEmpty();
-        recorder.Should().Contain("MD");
+        recorder.ShouldNotBeNullOrEmpty();
+        recorder.ShouldContain("MD");
     }
 
     [Fact]
@@ -491,7 +491,7 @@ public class AllergyIntoleranceStateTests
         // Assert
         var allergy = scenario.Allergies[0];
         var type = allergy.MutableNode["type"]?.GetValue<string>();
-        type.Should().Be("allergy");
+        type.ShouldBe("allergy");
     }
 
     #endregion

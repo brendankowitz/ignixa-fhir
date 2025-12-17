@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Cli.Discovery;
 
 namespace Ignixa.FhirFakes.Cli.Tests;
@@ -12,10 +12,10 @@ public class StateDiscoveryTests
         var names = StateDiscovery.GetObservationStateNames().ToList();
 
         // Assert
-        names.Should().NotBeEmpty();
-        names.Should().Contain("BloodGlucose");
-        names.Should().Contain("HemoglobinA1c");
-        names.Should().Contain("BloodPressure");
+        names.ShouldNotBeEmpty();
+        names.ShouldContain("BloodGlucose");
+        names.ShouldContain("HemoglobinA1c");
+        names.ShouldContain("BloodPressure");
     }
 
     [Fact]
@@ -25,10 +25,10 @@ public class StateDiscoveryTests
         var state = StateDiscovery.CreateObservationState("BloodGlucose");
 
         // Assert
-        state.Should().NotBeNull();
+        state.ShouldNotBeNull();
         // Note: The Name property might not be set by factory methods,
         // but the state should have the correct code
-        state!.Code.Should().NotBeNull();
+        state!.Code.ShouldNotBeNull();
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class StateDiscoveryTests
         var state = StateDiscovery.CreateObservationState("InvalidState");
 
         // Assert
-        state.Should().BeNull();
+        state.ShouldBeNull();
     }
 
     [Fact]
@@ -48,8 +48,8 @@ public class StateDiscoveryTests
         var city = StateDiscovery.FindCity("Seattle");
 
         // Assert
-        city.Should().NotBeNull();
-        city!.Name.Should().Be("Seattle");
+        city.ShouldNotBeNull();
+        city!.Name.ShouldBe("Seattle");
     }
 
     [Fact]
@@ -59,6 +59,6 @@ public class StateDiscoveryTests
         var city = StateDiscovery.FindCity("NonExistentCity");
 
         // Assert
-        city.Should().BeNull();
+        city.ShouldBeNull();
     }
 }

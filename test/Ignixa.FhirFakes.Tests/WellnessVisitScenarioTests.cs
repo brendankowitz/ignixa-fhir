@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification.Generated;
 
@@ -26,10 +26,10 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Encounters.Should().HaveCount(1);
-        scenario.DiagnosticReports.Should().HaveCount(2); // BMP + Lipid Panel
-        scenario.Observations.Should().HaveCountGreaterThanOrEqualTo(7); // 7 vital signs + lab observations
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Encounters.Count.ShouldBe(1);
+        scenario.DiagnosticReports.Count.ShouldBe(2); // BMP + Lipid Panel
+        scenario.Observations.Count.ShouldBeGreaterThanOrEqualTo(7); // 7 vital signs + lab observations
     }
 
     [Fact]
@@ -39,9 +39,9 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
-        scenario.Patient.Id.Should().NotBeNullOrEmpty();
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
+        scenario.Patient.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -51,10 +51,10 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.Encounters.Should().HaveCount(1);
+        scenario.Encounters.Count.ShouldBe(1);
         var encounter = scenario.Encounters[0];
-        encounter.ResourceType.Should().Be("Encounter");
-        encounter.Id.Should().NotBeNullOrEmpty();
+        encounter.ResourceType.ShouldBe("Encounter");
+        encounter.Id.ShouldNotBeNullOrEmpty();
     }
 
     #endregion
@@ -76,7 +76,7 @@ public class WellnessVisitScenarioTests
             })
             .ToList();
 
-        vitalSigns.Should().HaveCount(7); // Height, Weight, BMI, BP Systolic, BP Diastolic, Heart Rate, Respiratory Rate, Temperature
+        vitalSigns.Count.ShouldBe(7); // Height, Weight, BMI, BP Systolic, BP Diastolic, Heart Rate, Respiratory Rate, Temperature
     }
 
     [Fact]
@@ -92,11 +92,11 @@ public class WellnessVisitScenarioTests
             return code == "8302-2"; // LOINC code for body height
         });
 
-        heightObs.Should().NotBeNull();
+        heightObs.ShouldNotBeNull();
         var value = heightObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
         var unit = heightObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("cm");
+        unit.ShouldBe("cm");
     }
 
     [Fact]
@@ -112,11 +112,11 @@ public class WellnessVisitScenarioTests
             return code == "29463-7"; // LOINC code for body weight
         });
 
-        weightObs.Should().NotBeNull();
+        weightObs.ShouldNotBeNull();
         var value = weightObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
         var unit = weightObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("kg");
+        unit.ShouldBe("kg");
     }
 
     [Fact]
@@ -132,11 +132,11 @@ public class WellnessVisitScenarioTests
             return code == "39156-5"; // LOINC code for BMI
         });
 
-        bmiObs.Should().NotBeNull();
+        bmiObs.ShouldNotBeNull();
         var value = bmiObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
         var unit = bmiObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("kg/m2");
+        unit.ShouldBe("kg/m2");
     }
 
     [Fact]
@@ -152,10 +152,10 @@ public class WellnessVisitScenarioTests
             return code == "85354-9"; // LOINC code for blood pressure panel
         });
 
-        bpObs.Should().NotBeNull();
+        bpObs.ShouldNotBeNull();
         var components = bpObs!.MutableNode["component"] as System.Text.Json.Nodes.JsonArray;
-        components.Should().NotBeNull();
-        components!.Count.Should().Be(2); // Systolic and diastolic
+        components.ShouldNotBeNull();
+        components!.Count.ShouldBe(2); // Systolic and diastolic
     }
 
     [Fact]
@@ -171,11 +171,11 @@ public class WellnessVisitScenarioTests
             return code == "8867-4"; // LOINC code for heart rate
         });
 
-        hrObs.Should().NotBeNull();
+        hrObs.ShouldNotBeNull();
         var value = hrObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
         var unit = hrObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("beats/minute");
+        unit.ShouldBe("beats/minute");
     }
 
     [Fact]
@@ -191,11 +191,11 @@ public class WellnessVisitScenarioTests
             return code == "9279-1"; // LOINC code for respiratory rate
         });
 
-        rrObs.Should().NotBeNull();
+        rrObs.ShouldNotBeNull();
         var value = rrObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
         var unit = rrObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("breaths/minute");
+        unit.ShouldBe("breaths/minute");
     }
 
     [Fact]
@@ -211,11 +211,11 @@ public class WellnessVisitScenarioTests
             return code == "8310-5"; // LOINC code for body temperature
         });
 
-        tempObs.Should().NotBeNull();
+        tempObs.ShouldNotBeNull();
         var value = tempObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
         var unit = tempObs.MutableNode["valueQuantity"]?["unit"]?.GetValue<string>();
-        unit.Should().Be("Cel");
+        unit.ShouldBe("Cel");
     }
 
     #endregion
@@ -235,7 +235,7 @@ public class WellnessVisitScenarioTests
             return code == "51990-0"; // LOINC code for BMP
         });
 
-        bmpReport.Should().NotBeNull();
+        bmpReport.ShouldNotBeNull();
     }
 
     [Fact]
@@ -251,10 +251,10 @@ public class WellnessVisitScenarioTests
             return code == "51990-0"; // LOINC code for BMP
         });
 
-        bmpReport.Should().NotBeNull();
+        bmpReport.ShouldNotBeNull();
         var results = bmpReport!.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
-        results.Should().NotBeNull();
-        results!.Count.Should().Be(8); // Glucose, BUN, Creatinine, Sodium, Potassium, Chloride, CO2, Calcium
+        results.ShouldNotBeNull();
+        results!.Count.ShouldBe(8); // Glucose, BUN, Creatinine, Sodium, Potassium, Chloride, CO2, Calcium
     }
 
     [Fact]
@@ -271,9 +271,9 @@ public class WellnessVisitScenarioTests
             return code == "2339-0" && category == "laboratory"; // LOINC code for glucose
         });
 
-        glucoseObs.Should().NotBeNull();
+        glucoseObs.ShouldNotBeNull();
         var value = glucoseObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThan(0);
+        value!.Value.ShouldBeGreaterThan(0);
     }
 
     #endregion
@@ -293,7 +293,7 @@ public class WellnessVisitScenarioTests
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
-        lipidReport.Should().NotBeNull();
+        lipidReport.ShouldNotBeNull();
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public class WellnessVisitScenarioTests
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
-        lipidReport.Should().NotBeNull();
+        lipidReport.ShouldNotBeNull();
     }
 
     [Fact]
@@ -319,14 +319,14 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit(age: 25, includeLipidPanel: false);
 
         // Assert - Should only have BMP, not lipid panel
-        scenario.DiagnosticReports.Should().HaveCount(1);
+        scenario.DiagnosticReports.Count.ShouldBe(1);
         var bmpReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
             var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "51990-0"; // LOINC code for BMP
         });
 
-        bmpReport.Should().NotBeNull();
+        bmpReport.ShouldNotBeNull();
     }
 
     [Fact]
@@ -336,14 +336,14 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit(age: 25, includeLipidPanel: true);
 
         // Assert - Should have both BMP and Lipid Panel
-        scenario.DiagnosticReports.Should().HaveCount(2);
+        scenario.DiagnosticReports.Count.ShouldBe(2);
         var lipidReport = scenario.DiagnosticReports.FirstOrDefault(dr =>
         {
             var code = dr.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
-        lipidReport.Should().NotBeNull();
+        lipidReport.ShouldNotBeNull();
     }
 
     [Fact]
@@ -359,10 +359,10 @@ public class WellnessVisitScenarioTests
             return code == "24331-1"; // LOINC code for Lipid Panel
         });
 
-        lipidReport.Should().NotBeNull();
+        lipidReport.ShouldNotBeNull();
         var results = lipidReport!.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
-        results.Should().NotBeNull();
-        results!.Count.Should().Be(4); // Total Cholesterol, HDL, LDL, Triglycerides
+        results.ShouldNotBeNull();
+        results!.Count.ShouldBe(4); // Total Cholesterol, HDL, LDL, Triglycerides
     }
 
     #endregion
@@ -379,7 +379,7 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit(age: customAge);
 
         // Assert
-        scenario.CurrentAge.Should().Be(customAge);
+        scenario.CurrentAge.ShouldBe(customAge);
     }
 
     [Fact]
@@ -393,7 +393,7 @@ public class WellnessVisitScenarioTests
 
         // Assert
         var gender = scenario.Patient!.MutableNode["gender"]?.GetValue<string>();
-        gender.Should().Be(customGender);
+        gender.ShouldBe(customGender);
     }
 
     #endregion
@@ -407,10 +407,10 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.Timeline.Should().NotBeEmpty();
-        scenario.Timeline.Should().Contain(e => e.EventType == "Encounter");
-        scenario.Timeline.Should().Contain(e => e.EventType == "Observation");
-        scenario.Timeline.Should().Contain(e => e.EventType == "DiagnosticReport");
+        scenario.Timeline.ShouldNotBeEmpty();
+        scenario.Timeline.ShouldContain(e => e.EventType == "Encounter");
+        scenario.Timeline.ShouldContain(e => e.EventType == "Observation");
+        scenario.Timeline.ShouldContain(e => e.EventType == "DiagnosticReport");
     }
 
     [Fact]
@@ -420,9 +420,9 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.AllResources.Should().NotBeEmpty();
-        scenario.AllResources.Should().Contain(scenario.Encounters[0]);
-        scenario.AllResources.Should().Contain(scenario.DiagnosticReports[0]);
+        scenario.AllResources.ShouldNotBeEmpty();
+        scenario.AllResources.ShouldContain(scenario.Encounters[0]);
+        scenario.AllResources.ShouldContain(scenario.DiagnosticReports[0]);
     }
 
     #endregion
@@ -436,7 +436,7 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert - 1 Patient + 1 Encounter + 7 vitals + 8 BMP obs + 4 lipid obs + 2 diagnostic reports = 23 total
-        scenario.AllResources.Should().HaveCountGreaterThanOrEqualTo(20);
+        scenario.AllResources.Count.ShouldBeGreaterThanOrEqualTo(20);
     }
 
     [Fact]
@@ -446,7 +446,7 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit(age: 25, includeLipidPanel: false);
 
         // Assert - 1 Patient + 1 Encounter + 7 vitals + 8 BMP obs + 1 diagnostic report = 18 total
-        scenario.AllResources.Should().HaveCountGreaterThanOrEqualTo(17);
+        scenario.AllResources.Count.ShouldBeGreaterThanOrEqualTo(17);
     }
 
     #endregion
@@ -460,7 +460,7 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.ScenarioName.Should().Be("Annual Wellness Visit");
+        scenario.ScenarioName.ShouldBe("Annual Wellness Visit");
     }
 
     [Fact]
@@ -470,8 +470,8 @@ public class WellnessVisitScenarioTests
         var scenario = _schemaProvider.GetWellnessVisit();
 
         // Assert
-        scenario.Description.Should().NotBeNullOrEmpty();
-        scenario.Description.Should().Contain("wellness");
+        scenario.Description.ShouldNotBeNullOrEmpty();
+        scenario.Description.ShouldContain("wellness");
     }
 
     #endregion

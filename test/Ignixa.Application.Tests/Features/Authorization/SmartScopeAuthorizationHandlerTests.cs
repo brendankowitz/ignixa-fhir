@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Smart;
@@ -43,7 +43,7 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
+        result.Allowed.ShouldBeFalse();
     }
 
     [Fact]
@@ -143,9 +143,9 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.Filter.Should().NotBeNull();
-        result.Filter!.PatientFilter.Should().Be("patient-123");
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.PatientFilter.ShouldBe("patient-123");
     }
 
     [Fact]
@@ -179,8 +179,8 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Contain("patient context");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldContain("patient context");
     }
 
     [Fact]
@@ -214,16 +214,16 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.Filter.Should().NotBeNull();
-        result.Filter!.PractitionerFilter.Should().Be("Practitioner/pract-456");
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.PractitionerFilter.ShouldBe("Practitioner/pract-456");
     }
 
     [Fact]
     public void Priority_Is40()
     {
         // Assert
-        _handler.Priority.Should().Be(40);
+        _handler.Priority.ShouldBe(40);
     }
 
     [Fact]
@@ -270,8 +270,8 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Contain("POST _search is not supported with constrained SMART scopes");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldContain("POST _search is not supported with constrained SMART scopes");
     }
 
     [Fact]
@@ -318,11 +318,11 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.Filter.Should().NotBeNull();
-        result.Filter!.PatientFilter.Should().Be("patient-123");
-        result.Filter.SearchFilters.Should().ContainKey("category");
-        result.Filter.SearchFilters!["category"].Should().Be("laboratory");
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.PatientFilter.ShouldBe("patient-123");
+        result.Filter.SearchFilters.ShouldContainKey("category");
+        result.Filter.SearchFilters!["category"].ShouldBe("laboratory");
     }
 
     [Fact]
@@ -368,8 +368,8 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Contain("POST _search is not supported with constrained SMART scopes");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldContain("POST _search is not supported with constrained SMART scopes");
     }
 
     [Fact]
@@ -416,10 +416,10 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.Filter.Should().NotBeNull();
-        result.Filter!.PatientFilter.Should().Be("patient-123");
-        result.Filter.SearchFilters.Should().BeNull();
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.PatientFilter.ShouldBe("patient-123");
+        result.Filter.SearchFilters.ShouldBeNull();
     }
 
     [Fact]
@@ -465,8 +465,8 @@ public class SmartScopeAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Contain("POST _search is not supported with constrained SMART scopes");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldContain("POST _search is not supported with constrained SMART scopes");
     }
 
     private static IFhirRequestContext CreateRequestContext(int tenantId = 1)

@@ -7,7 +7,7 @@
 
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Serialization.Extensions;
 using Xunit;
 
@@ -48,22 +48,22 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
 
         // versionId and lastUpdated should be removed
-        meta.TryGetProperty("versionId", out _).Should().BeFalse();
-        meta.TryGetProperty("lastUpdated", out _).Should().BeFalse();
+        meta.TryGetProperty("versionId", out _).ShouldBeFalse();
+        meta.TryGetProperty("lastUpdated", out _).ShouldBeFalse();
 
         // Other meta properties should be preserved
-        meta.TryGetProperty("profile", out _).Should().BeTrue();
+        meta.TryGetProperty("profile", out _).ShouldBeTrue();
 
         // Non-meta properties should be unchanged
-        resource.TryGetProperty("resourceType", out var rt).Should().BeTrue();
-        rt.GetString().Should().Be("Patient");
-        resource.TryGetProperty("id", out var id).Should().BeTrue();
-        id.GetString().Should().Be("123");
-        resource.TryGetProperty("active", out var active).Should().BeTrue();
-        active.GetBoolean().Should().BeTrue();
+        resource.TryGetProperty("resourceType", out var rt).ShouldBeTrue();
+        rt.GetString().ShouldBe("Patient");
+        resource.TryGetProperty("id", out var id).ShouldBeTrue();
+        id.GetString().ShouldBe("123");
+        resource.TryGetProperty("active", out var active).ShouldBeTrue();
+        active.GetBoolean().ShouldBeTrue();
     }
 
     /// <summary>
@@ -90,11 +90,11 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out _).Should().BeFalse();
-        resource.TryGetProperty("resourceType", out var rt).Should().BeTrue();
-        rt.GetString().Should().Be("Patient");
-        resource.TryGetProperty("id", out var id).Should().BeTrue();
-        id.GetString().Should().Be("456");
+        resource.TryGetProperty("meta", out _).ShouldBeFalse();
+        resource.TryGetProperty("resourceType", out var rt).ShouldBeTrue();
+        rt.GetString().ShouldBe("Patient");
+        resource.TryGetProperty("id", out var id).ShouldBeTrue();
+        id.GetString().ShouldBe("456");
     }
 
     /// <summary>
@@ -128,22 +128,22 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
 
         // Version fields removed
-        meta.TryGetProperty("versionId", out _).Should().BeFalse();
-        meta.TryGetProperty("lastUpdated", out _).Should().BeFalse();
+        meta.TryGetProperty("versionId", out _).ShouldBeFalse();
+        meta.TryGetProperty("lastUpdated", out _).ShouldBeFalse();
 
         // Other meta fields preserved
-        meta.TryGetProperty("profile", out var profile).Should().BeTrue();
-        meta.TryGetProperty("security", out var security).Should().BeTrue();
-        meta.TryGetProperty("tag", out var tag).Should().BeTrue();
-        meta.TryGetProperty("source", out var source).Should().BeTrue();
-        source.GetString().Should().Be("#system-source");
+        meta.TryGetProperty("profile", out var profile).ShouldBeTrue();
+        meta.TryGetProperty("security", out var security).ShouldBeTrue();
+        meta.TryGetProperty("tag", out var tag).ShouldBeTrue();
+        meta.TryGetProperty("source", out var source).ShouldBeTrue();
+        source.GetString().ShouldBe("#system-source");
 
         // Main resource properties preserved
-        resource.TryGetProperty("status", out var status).Should().BeTrue();
-        status.GetString().Should().Be("final");
+        resource.TryGetProperty("status", out var status).ShouldBeTrue();
+        status.GetString().ShouldBe("final");
     }
 
     /// <summary>
@@ -170,9 +170,9 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
         var properties = meta.EnumerateObject().ToList();
-        properties.Should().BeEmpty();
+        properties.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -202,10 +202,10 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
-        meta.TryGetProperty("versionId", out _).Should().BeFalse();
-        meta.TryGetProperty("lastUpdated", out _).Should().BeFalse();
-        meta.TryGetProperty("profile", out _).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
+        meta.TryGetProperty("versionId", out _).ShouldBeFalse();
+        meta.TryGetProperty("lastUpdated", out _).ShouldBeFalse();
+        meta.TryGetProperty("profile", out _).ShouldBeTrue();
     }
 
     /// <summary>
@@ -235,10 +235,10 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
-        meta.TryGetProperty("versionId", out _).Should().BeFalse();
-        meta.TryGetProperty("lastUpdated", out _).Should().BeFalse();
-        meta.TryGetProperty("profile", out _).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
+        meta.TryGetProperty("versionId", out _).ShouldBeFalse();
+        meta.TryGetProperty("lastUpdated", out _).ShouldBeFalse();
+        meta.TryGetProperty("profile", out _).ShouldBeTrue();
     }
 
     /// <summary>
@@ -268,9 +268,9 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
         var properties = meta.EnumerateObject().ToList();
-        properties.Should().BeEmpty();
+        properties.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -311,22 +311,22 @@ public class ResourceNormalizerTests
         var resource = doc.RootElement;
 
         // Assert
-        resource.TryGetProperty("meta", out var meta).Should().BeTrue();
+        resource.TryGetProperty("meta", out var meta).ShouldBeTrue();
 
         // Version fields removed
-        meta.TryGetProperty("versionId", out _).Should().BeFalse();
-        meta.TryGetProperty("lastUpdated", out _).Should().BeFalse();
+        meta.TryGetProperty("versionId", out _).ShouldBeFalse();
+        meta.TryGetProperty("lastUpdated", out _).ShouldBeFalse();
 
         // Nested arrays preserved
-        meta.TryGetProperty("security", out var security).Should().BeTrue();
+        meta.TryGetProperty("security", out var security).ShouldBeTrue();
         var securityArray = security.EnumerateArray().ToList();
-        securityArray.Should().HaveCount(1);
-        securityArray[0].TryGetProperty("code", out var code).Should().BeTrue();
-        code.GetString().Should().Be("RESTRICTED");
+        securityArray.Count.ShouldBe(1);
+        securityArray[0].TryGetProperty("code", out var code).ShouldBeTrue();
+        code.GetString().ShouldBe("RESTRICTED");
 
-        meta.TryGetProperty("tag", out var tag).Should().BeTrue();
+        meta.TryGetProperty("tag", out var tag).ShouldBeTrue();
         var tagArray = tag.EnumerateArray().ToList();
-        tagArray.Should().HaveCount(2);
+        tagArray.Count.ShouldBe(2);
     }
 
     /// <summary>
@@ -362,7 +362,7 @@ public class ResourceNormalizerTests
             _ = doc.RootElement;
         });
 
-        exception.Should().BeNull();
+        exception.ShouldBeNull();
     }
 
     /// <summary>
@@ -413,14 +413,14 @@ public class ResourceNormalizerTests
         var doc1 = JsonDocument.Parse(normalized1);
         var doc2 = JsonDocument.Parse(normalized2);
 
-        doc1.RootElement.GetProperty("id").GetString().Should().Be(
+        doc1.RootElement.GetProperty("id").GetString().ShouldBe(
             doc2.RootElement.GetProperty("id").GetString());
 
-        doc1.RootElement.GetProperty("meta").GetProperty("profile").ToString().Should().Be(
+        doc1.RootElement.GetProperty("meta").GetProperty("profile").ToString().ShouldBe(
             doc2.RootElement.GetProperty("meta").GetProperty("profile").ToString());
 
         // Both should NOT have versionId or lastUpdated
-        doc1.RootElement.GetProperty("meta").TryGetProperty("versionId", out _).Should().BeFalse();
-        doc2.RootElement.GetProperty("meta").TryGetProperty("versionId", out _).Should().BeFalse();
+        doc1.RootElement.GetProperty("meta").TryGetProperty("versionId", out _).ShouldBeFalse();
+        doc2.RootElement.GetProperty("meta").TryGetProperty("versionId", out _).ShouldBeFalse();
     }
 }

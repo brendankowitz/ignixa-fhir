@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -58,13 +58,13 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Patient={patientId}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCountGreaterThanOrEqualTo(2, "both observations have Patient1 as subject");
-        results.Should().AllSatisfy(obs =>
+        results.Length.ShouldBeGreaterThanOrEqualTo(2, "both observations have Patient1 as subject");
+        foreach (var obs in results)
         {
             var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().NotBeNull();
-            subjectRef.Should().Contain("Patient/", "subject should reference a Patient resource");
-        });
+            subjectRef.ShouldNotBeNull();
+            subjectRef!.ShouldContain("Patient/");
+        }
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Device={patientId}&_tag={tag}");
 
         // Assert
-        results.Should().BeEmpty("no observations have Device as subject, only Patient");
+        results.ShouldBeEmpty("no observations have Device as subject, only Patient");
     }
 
     #endregion
@@ -115,13 +115,13 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"performer:Practitioner={practitionerId}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only Observation1 has Practitioner as performer");
-        results[0].Id.Should().Be(scenario.Observation1.Id);
+        results.Length.ShouldBe(1, "only Observation1 has Practitioner as performer");
+        results[0].Id.ShouldBe(scenario.Observation1.Id);
 
         // Verify performer is actually a Practitioner reference
         var performerRef = results[0].MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
-        performerRef.Should().NotBeNull();
-        performerRef.Should().Contain("Practitioner/", "performer should reference a Practitioner resource");
+        performerRef.ShouldNotBeNull();
+        performerRef!.ShouldContain("Practitioner/");
     }
 
     /// <summary>
@@ -144,13 +144,13 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"performer:Organization={organizationId}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only Observation2 has Organization as performer");
-        results[0].Id.Should().Be(scenario.Observation2.Id);
+        results.Length.ShouldBe(1, "only Observation2 has Organization as performer");
+        results[0].Id.ShouldBe(scenario.Observation2.Id);
 
         // Verify performer is actually an Organization reference
         var performerRef = results[0].MutableNode["performer"]?[0]?["reference"]?.GetValue<string>();
-        performerRef.Should().NotBeNull();
-        performerRef.Should().Contain("Organization/", "performer should reference an Organization resource");
+        performerRef.ShouldNotBeNull();
+        performerRef!.ShouldContain("Organization/", customMessage: "performer should reference an Organization resource");
     }
 
     /// <summary>
@@ -173,8 +173,8 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"performer={practitionerId}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "Observation1 has this Practitioner as performer");
-        results[0].Id.Should().Be(scenario.Observation1.Id);
+        results.Length.ShouldBe(1, "Observation1 has this Practitioner as performer");
+        results[0].Id.ShouldBe(scenario.Observation1.Id);
     }
 
     /// <summary>
@@ -197,7 +197,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"performer:Patient={practitionerId}&_tag={tag}");
 
         // Assert
-        results.Should().BeEmpty("no observations have Patient as performer, only Practitioner and Organization");
+        results.ShouldBeEmpty("no observations have Patient as performer, only Practitioner and Organization");
     }
 
     #endregion
@@ -256,12 +256,12 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"general-practitioner:Practitioner={createdPractitioner.Id}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only one patient has Practitioner as generalPractitioner");
-        results[0].Id.Should().Be(patientWithPractitionerGP.Id);
+        results.Length.ShouldBe(1, "only one patient has Practitioner as generalPractitioner");
+        results[0].Id.ShouldBe(patientWithPractitionerGP.Id);
 
         var gpRef = results[0].MutableNode["generalPractitioner"]?[0]?["reference"]?.GetValue<string>();
-        gpRef.Should().NotBeNull();
-        gpRef.Should().Contain("Practitioner/", "generalPractitioner should reference a Practitioner");
+        gpRef.ShouldNotBeNull();
+        gpRef.ShouldContain("Practitioner/", customMessage: "generalPractitioner should reference a Practitioner");
     }
 
     /// <summary>
@@ -315,12 +315,12 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"general-practitioner:Organization={createdOrganization.Id}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only one patient has Organization as generalPractitioner");
-        results[0].Id.Should().Be(patientWithOrganizationGP.Id);
+        results.Length.ShouldBe(1, "only one patient has Organization as generalPractitioner");
+        results[0].Id.ShouldBe(patientWithOrganizationGP.Id);
 
         var gpRef = results[0].MutableNode["generalPractitioner"]?[0]?["reference"]?.GetValue<string>();
-        gpRef.Should().NotBeNull();
-        gpRef.Should().Contain("Organization/", "generalPractitioner should reference an Organization");
+        gpRef.ShouldNotBeNull();
+        gpRef.ShouldContain("Organization/", customMessage: "generalPractitioner should reference an Organization");
     }
 
     #endregion
@@ -385,16 +385,16 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Patient={createdPatient1.Id},{createdPatient2.Id}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(2, "both observations match either patient1 or patient2");
-        results.Should().Contain(r => r.Id == obs1.Id);
-        results.Should().Contain(r => r.Id == obs2.Id);
+        results.Length.ShouldBe(2, "both observations match either patient1 or patient2");
+        results.ShouldContain(r => r.Id == obs1.Id);
+        results.ShouldContain(r => r.Id == obs2.Id);
 
-        results.Should().AllSatisfy(obs =>
+        foreach (var obs in results)
         {
             var subjectRef = obs.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().NotBeNull();
-            subjectRef.Should().Contain("Patient/", "subject should reference a Patient resource");
-        });
+            subjectRef.ShouldNotBeNull();
+            subjectRef!.ShouldContain("Patient/");
+        }
     }
 
     #endregion
@@ -433,12 +433,12 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Patient={createdPatient.Id}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "observation with relative Patient reference should match");
-        results[0].Id.Should().Be(observation.Id);
+        results.Length.ShouldBe(1, "observation with relative Patient reference should match");
+        results[0].Id.ShouldBe(observation.Id);
 
         var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().NotBeNull();
-        subjectRef.Should().Contain("Patient/", "subject should be a relative Patient reference");
+        subjectRef.ShouldNotBeNull();
+        subjectRef!.ShouldContain("Patient/", customMessage: "subject should be a relative Patient reference");
     }
 
     /// <summary>
@@ -480,12 +480,12 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Patient={createdPatient.Id}&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "observation with full URL Patient reference should match");
-        results[0].Id.Should().Be(observation.Id);
+        results.Length.ShouldBe(1, "observation with full URL Patient reference should match");
+        results[0].Id.ShouldBe(observation.Id);
 
         var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().NotBeNull();
-        subjectRef.Should().Contain("Patient/", "subject should reference a Patient (full URL or relative)");
+        subjectRef.ShouldNotBeNull();
+        subjectRef!.ShouldContain("Patient/", customMessage: "subject should reference a Patient (full URL or relative)");
     }
 
     #endregion
@@ -522,7 +522,7 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         if (results.Any(r => r.ResourceType == "OperationOutcome"))
         {
             // If OperationOutcome is present, it should indicate the parameter is not supported
-            results.Should().Contain(r => r.ResourceType == "OperationOutcome", "server returned a warning about unsupported parameter");
+            results.ShouldContain(r => r.ResourceType == "OperationOutcome", "server returned a warning about unsupported parameter");
         }
         // Note: Test passes regardless of whether server returns empty, OperationOutcome, or resources
         // This flexible assertion allows for different valid FHIR server implementations
@@ -571,12 +571,12 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Observation", $"subject:Patient={createdPatient.Id}&status=final&_tag={tag}");
 
         // Assert
-        results.Should().HaveCount(1, "only the final observation should match");
-        results[0].Id.Should().Be(obsFinal.Id);
-        results[0].MutableNode["status"]?.GetValue<string>().Should().Be("final");
+        results.Length.ShouldBe(1, "only the final observation should match");
+        results[0].Id.ShouldBe(obsFinal.Id);
+        results[0].MutableNode["status"]?.GetValue<string>().ShouldBe("final");
 
         var subjectRef = results[0].MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Contain("Patient/");
+        subjectRef!.ShouldContain("Patient/");
     }
 
     #endregion

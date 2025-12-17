@@ -1,4 +1,4 @@
-﻿namespace Ignixa.Api.Tests;
+namespace Ignixa.Api.Tests;
 
 public class UnitTest1
 {

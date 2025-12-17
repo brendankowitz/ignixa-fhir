@@ -5,7 +5,7 @@
 
 using System.Net;
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -82,22 +82,22 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created, "server should create new resource when search returns 0 matches");
-        response.Headers.Location.Should().NotBeNull("Location header should be present");
-        response.Headers.Location!.ToString().Should().Contain("Patient/", "Location should reference the created Patient resource");
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, "server should create new resource when search returns 0 matches");
+        response.Headers.Location.ShouldNotBeNull("Location header should be present");
+        response.Headers.Location!.ToString().ShouldContain("Patient/");
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
-        createdPatient.ResourceType.Should().Be("Patient");
-        createdPatient.Id.Should().NotBeNullOrEmpty();
+        createdPatient.ResourceType.ShouldBe("Patient");
+        createdPatient.Id.ShouldNotBeNullOrEmpty();
 
         // Verify the identifier was preserved
         var identifiers = createdPatient.MutableNode["identifier"]?.AsArray();
-        identifiers.Should().NotBeNull();
+        identifiers.ShouldNotBeNull();
 
         var matchingIdentifier = identifiers!.FirstOrDefault(i =>
             i!["system"]?.GetValue<string>() == "http://hospital.example.org/mrn" &&
             i!["value"]?.GetValue<string>() == uniqueIdentifier);
-        matchingIdentifier.Should().NotBeNull("identifier should be preserved in created resource");
+        matchingIdentifier.ShouldNotBeNull("identifier should be preserved in created resource");
     }
 
     /// <summary>
@@ -126,11 +126,11 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        response.Headers.Location.Should().NotBeNull();
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        response.Headers.Location.ShouldNotBeNull();
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
-        createdPatient.Id.Should().NotBe(nonExistentId, "server should assign new ID, not use the search parameter ID");
+        createdPatient.Id.ShouldNotBe(nonExistentId, "server should assign new ID, not use the search parameter ID");
     }
 
     #endregion
@@ -197,15 +197,15 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK, "server should return 200 OK when search returns 1 match (idempotent)");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, "server should return 200 OK when search returns 1 match (idempotent)");
 
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
-        returnedPatient.Id.Should().Be(existingId, "server should return the existing resource ID");
-        returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>().Should().Be(existingVersionId, "no new version should be created");
+        returnedPatient.Id.ShouldBe(existingId, "server should return the existing resource ID");
+        returnedPatient.MutableNode["meta"]?["versionId"]?.GetValue<string>().ShouldBe(existingVersionId, "no new version should be created");
 
         // Verify it returned the ORIGINAL patient (with "Charlie"), not the duplicate request (with "David")
         var givenName = returnedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
-        givenName.Should().Be("Charlie", "server should return the existing resource, not create a new one");
+        givenName.ShouldBe("Charlie", "server should return the existing resource, not create a new one");
     }
 
     /// <summary>
@@ -248,14 +248,14 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
-        returnedPatient.Id.Should().Be(existingId);
+        returnedPatient.Id.ShouldBe(existingId);
 
         // Verify original patient returned (Eve, not Frank)
         var givenName = returnedPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
-        givenName.Should().Be("Eve");
+        givenName.ShouldBe("Eve");
     }
 
     #endregion
@@ -311,11 +311,11 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.PreconditionFailed, "server should return 412 when search returns multiple matches");
+        response.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed, "server should return 412 when search returns multiple matches");
 
         // Verify OperationOutcome is returned
         var responseJson = await response.Content.ReadAsStringAsync();
-        responseJson.Should().Contain("OperationOutcome", "error response should include OperationOutcome");
+        responseJson!.ShouldContain("OperationOutcome", customMessage: "error response should include OperationOutcome");
     }
 
     /// <summary>
@@ -369,7 +369,7 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.PreconditionFailed);
+        response.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
     }
 
     #endregion
@@ -415,11 +415,11 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created, "combined criteria should not match existing patient (John != Jane)");
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, "combined criteria should not match existing patient (John != Jane)");
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
         var givenName = createdPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
-        givenName.Should().Be("Jane");
+        givenName.ShouldBe("Jane");
     }
 
     /// <summary>
@@ -462,10 +462,10 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK, "combined criteria should match existing patient");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, "combined criteria should match existing patient");
 
         var returnedPatient = await Harness.ParseResourceResponseAsync(response);
-        returnedPatient.Id.Should().Be(existingId);
+        returnedPatient.Id.ShouldBe(existingId);
     }
 
     #endregion
@@ -492,11 +492,11 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
         var response = await Harness.PostResourceWithHeadersAsync(patient);
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        response.Headers.Location.Should().NotBeNull();
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        response.Headers.Location.ShouldNotBeNull();
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
-        createdPatient.ResourceType.Should().Be("Patient");
+        createdPatient.ResourceType.ShouldBe("Patient");
     }
 
     /// <summary>
@@ -537,16 +537,16 @@ public class ConditionalOperationTests : CapabilityDrivenTestBase
             });
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var createdPatient = await Harness.ParseResourceResponseAsync(response);
 
         // Verify all content preserved
-        createdPatient.MutableNode["birthDate"]?.GetValue<string>().Should().Be(birthDate);
+        createdPatient.MutableNode["birthDate"]?.GetValue<string>().ShouldBe(birthDate);
         var familyName = createdPatient.MutableNode["name"]?[0]?["family"]?.GetValue<string>();
-        familyName.Should().Be("ContentTest");
+        familyName.ShouldBe("ContentTest");
         var givenName = createdPatient.MutableNode["name"]?[0]?["given"]?[0]?.GetValue<string>();
-        givenName.Should().Be("Maria");
+        givenName.ShouldBe("Maria");
     }
 
     #endregion

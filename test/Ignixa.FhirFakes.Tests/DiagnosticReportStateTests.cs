@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -32,10 +32,10 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
-        scenario.DiagnosticReports.Should().HaveCount(1);
+        scenario.DiagnosticReports.Count.ShouldBe(1);
         var report = scenario.DiagnosticReports[0];
-        report.ResourceType.Should().Be("DiagnosticReport");
-        report.Id.Should().NotBeNullOrEmpty();
+        report.ResourceType.ShouldBe("DiagnosticReport");
+        report.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var status = report.MutableNode["status"]?.GetValue<string>();
-        status.Should().Be("final");
+        status.ShouldBe("final");
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var categoryCode = report.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("LAB");
+        categoryCode.ShouldBe("LAB");
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var code = report.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("24323-8"); // LOINC code for CMP
+        code.ShouldBe("24323-8"); // LOINC code for CMP
     }
 
     #endregion
@@ -103,7 +103,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var subjectRef = report.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var encounterRef = report.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
+        encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion
@@ -137,7 +137,7 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert - CMP should have 14 observations
-        scenario.Observations.Should().HaveCount(14);
+        scenario.Observations.Count.ShouldBe(14);
     }
 
     [Fact]
@@ -153,8 +153,8 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var results = report.MutableNode["result"] as System.Text.Json.Nodes.JsonArray;
-        results.Should().NotBeNull();
-        results!.Count.Should().Be(14);
+        results.ShouldNotBeNull();
+        results!.Count.ShouldBe(14);
     }
 
     [Fact]
@@ -174,9 +174,9 @@ public class DiagnosticReportStateTests
             return code == "2339-0"; // LOINC code for glucose
         });
 
-        glucoseObs.Should().NotBeNull();
+        glucoseObs.ShouldNotBeNull();
         var value = glucoseObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().Be(95); // Default value in CMP factory method
+        value.ShouldBe(95); // Default value in CMP factory method
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().HaveCount(2);
+        scenario.Observations.Count.ShouldBe(2);
 
         var glucoseObs = scenario.Observations.FirstOrDefault(o =>
         {
@@ -204,9 +204,9 @@ public class DiagnosticReportStateTests
             return code == "2339-0";
         });
 
-        glucoseObs.Should().NotBeNull();
+        glucoseObs.ShouldNotBeNull();
         var value = glucoseObs!.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().Be(150);
+        value.ShouldBe(150);
     }
 
     #endregion
@@ -226,7 +226,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var categoryCode = report.MutableNode["category"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("RAD");
+        categoryCode.ShouldBe("RAD");
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var reportConclusion = report.MutableNode["conclusion"]?.GetValue<string>();
-        reportConclusion.Should().Be(conclusion);
+        reportConclusion.ShouldBe(conclusion);
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
-        scenario.Observations.Should().BeEmpty();
+        scenario.Observations.ShouldBeEmpty();
     }
 
     #endregion
@@ -275,7 +275,7 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert - CBC has 8 observations
-        scenario.Observations.Should().HaveCount(8);
+        scenario.Observations.Count.ShouldBe(8);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert - Lipid panel has 4 observations
-        scenario.Observations.Should().HaveCount(4);
+        scenario.Observations.Count.ShouldBe(4);
     }
 
     #endregion
@@ -309,8 +309,8 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
-        scenario.DiagnosticReports.Should().HaveCount(3);
-        scenario.Observations.Should().HaveCount(14 + 8 + 4); // CMP + CBC + Lipid
+        scenario.DiagnosticReports.Count.ShouldBe(3);
+        scenario.Observations.Count.ShouldBe(14 + 8 + 4); // CMP + CBC + Lipid
     }
 
     [Fact]
@@ -325,7 +325,7 @@ public class DiagnosticReportStateTests
 
         // Assert
         var reportEvents = scenario.Timeline.Where(e => e.EventType == "DiagnosticReport").ToList();
-        reportEvents.Should().HaveCount(1);
+        reportEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -339,7 +339,7 @@ public class DiagnosticReportStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.DiagnosticReports[0]);
+        scenario.AllResources.ShouldContain(scenario.DiagnosticReports[0]);
     }
 
     #endregion
@@ -358,7 +358,7 @@ public class DiagnosticReportStateTests
         // Assert
         var report = scenario.DiagnosticReports[0];
         var encounterRef = report.MutableNode["encounter"];
-        encounterRef.Should().BeNull();
+        encounterRef.ShouldBeNull();
     }
 
     [Fact]
@@ -376,9 +376,9 @@ public class DiagnosticReportStateTests
         // The actor reference can have either "reference" or "display" or both
         var report = scenario.DiagnosticReports[0];
         var performerActor = report.MutableNode["performer"]?[0]?["actor"];
-        performerActor.Should().NotBeNull();
+        performerActor.ShouldNotBeNull();
         var hasRefOrDisplay = performerActor?["reference"] != null || performerActor?["display"] != null;
-        hasRefOrDisplay.Should().BeTrue("performer.actor should have either reference or display");
+        hasRefOrDisplay.ShouldBeTrue("performer.actor should have either reference or display");
     }
 
     #endregion

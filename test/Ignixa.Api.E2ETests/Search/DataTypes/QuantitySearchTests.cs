@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
@@ -66,8 +66,8 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=gt185");
 
         // Assert
-        results.Should().HaveCount(1, "gt185 should match only values > 185");
-        results[0].Id.Should().Be(_fixture.Observations[2].Id, "should match obs[2] with value 190");
+        results.Length.ShouldBe(1, "gt185 should match only values > 185");
+        results[0].Id.ShouldBe(_fixture.Observations[2].Id, "should match obs[2] with value 190");
     }
 
     /// <summary>
@@ -89,7 +89,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=ge185");
 
         // Assert - includes both 185 [lb_av] and 185 kg
-        results.Should().HaveCount(3, "ge185 should match values >= 185 (185 [lb_av], 185 kg, and 190)");
+        results.Length.ShouldBe(3, "ge185 should match values >= 185 (185 [lb_av], 185 kg, and 190)");
 
         var expectedIds = new[]
         {
@@ -97,7 +97,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
             _fixture.Observations[2].Id, // 190 [lb_av]
             _fixture.Observations[4].Id  // 185 kg
         };
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match obs[1] (185 [lb_av]), obs[2] (190), and obs[4] (185 kg)");
     }
 
@@ -120,14 +120,14 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=lt185");
 
         // Assert
-        results.Should().HaveCount(2, "lt185 should match values < 185 (120 and 180)");
+        results.Length.ShouldBe(2, "lt185 should match values < 185 (120 and 180)");
 
         var expectedIds = new[]
         {
             _fixture.Observations[0].Id, // 180 [lb_av]
             _fixture.Observations[3].Id  // 120 mmHg
         };
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match obs[0] (180) and obs[3] (120)");
     }
 
@@ -150,7 +150,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=le185");
 
         // Assert - includes both 185 values plus lower ones
-        results.Should().HaveCount(4, "le185 should match values <= 185 (120, 180, 185, 185)");
+        results.Length.ShouldBe(4, "le185 should match values <= 185 (120, 180, 185, 185)");
 
         var expectedIds = new[]
         {
@@ -159,7 +159,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
             _fixture.Observations[3].Id, // 120 mmHg
             _fixture.Observations[4].Id  // 185 kg
         };
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match obs[0] (180), obs[1] (185), obs[3] (120), and obs[4] (185)");
     }
 
@@ -183,14 +183,14 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
             $"_tag={_fixture.Tag}&value-quantity=gt180&value-quantity=lt190");
 
         // Assert
-        results.Should().HaveCount(2, "range query (180 < x < 190) should match both 185 values");
+        results.Length.ShouldBe(2, "range query (180 < x < 190) should match both 185 values");
 
         var expectedIds = new[]
         {
             _fixture.Observations[1].Id, // 185 [lb_av]
             _fixture.Observations[4].Id  // 185 kg
         };
-        results.Select(r => r.Id).Should().BeEquivalentTo(expectedIds,
+        results.Select(r => r.Id).ShouldBe(expectedIds,
             "should match obs[1] (185 [lb_av]) and obs[4] (185 kg)");
     }
 
@@ -207,7 +207,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=gt200");
 
         // Assert
-        results.Should().BeEmpty("gt200 should return no results when maximum value is 190");
+        results.ShouldBeEmpty("gt200 should return no results when maximum value is 190");
     }
 
     /// <summary>
@@ -223,7 +223,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=lt100");
 
         // Assert
-        results.Should().BeEmpty("lt100 should return no results when minimum value is 120");
+        results.ShouldBeEmpty("lt100 should return no results when minimum value is 120");
     }
 
     /// <summary>
@@ -240,7 +240,7 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
         var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&value-quantity=le190");
 
         // Assert
-        results.Should().HaveCount(5, "le190 should match all 5 observations");
+        results.Length.ShouldBe(5, "le190 should match all 5 observations");
     }
 
     #region Skipped Tests - Unit/System Filtering Not Implemented
@@ -264,8 +264,8 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
             $"_tag={_fixture.Tag}&value-quantity=185|http://unitsofmeasure.org|[lb_av]");
 
         // Assert
-        results.Should().HaveCount(1, "should match only 185 with UCUM [lb_av]");
-        results[0].Id.Should().Be(_fixture.Observations[1].Id,
+        results.Length.ShouldBe(1, "should match only 185 with UCUM [lb_av]");
+        results[0].Id.ShouldBe(_fixture.Observations[1].Id,
             "should match obs[1] (185 [lb_av]), not obs[4] (185 kg)");
     }
 
@@ -287,8 +287,8 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
             $"_tag={_fixture.Tag}&value-quantity=185||[lb_av]");
 
         // Assert
-        results.Should().HaveCount(1, "should match 185 [lb_av] regardless of system");
-        results[0].Id.Should().Be(_fixture.Observations[1].Id,
+        results.Length.ShouldBe(1, "should match 185 [lb_av] regardless of system");
+        results[0].Id.ShouldBe(_fixture.Observations[1].Id,
             "should match obs[1] with [lb_av] unit");
     }
 
@@ -309,8 +309,8 @@ public class QuantitySearchTests : CapabilityDrivenTestBase, IClassFixture<Quant
             $"_tag={_fixture.Tag}&value-quantity=185|http://unitsofmeasure.org|kg");
 
         // Assert
-        results.Should().HaveCount(1, "should match only 185 kg, not 185 [lb_av]");
-        results[0].Id.Should().Be(_fixture.Observations[4].Id,
+        results.Length.ShouldBe(1, "should match only 185 kg, not 185 [lb_av]");
+        results[0].Id.ShouldBe(_fixture.Observations[4].Id,
             "should match obs[4] (185 kg)");
     }
 

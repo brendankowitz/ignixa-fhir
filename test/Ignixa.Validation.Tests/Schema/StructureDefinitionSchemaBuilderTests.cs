@@ -3,7 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
@@ -39,9 +39,9 @@ public class StructureDefinitionSchemaBuilderTests
         var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema.ResourceType.Should().Be("Patient");
-        schema.CanonicalUrl.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
+        schema.ShouldNotBeNull();
+        schema.ResourceType.ShouldBe("Patient");
+        schema.CanonicalUrl.ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
 
         // Note: Patient may not have many required elements in base profile
         // The builder creates CardinalityCheck objects for all elements (which includes required fields as min=1)
@@ -50,7 +50,7 @@ public class StructureDefinitionSchemaBuilderTests
         // All elements should have cardinality checks
         var elements = typeDefinition!.Children;
         var elementCount = elements.Count(e => !e.Info.Name.Contains('.'));  // Top-level only
-        cardinalityChecks.Should().HaveCount(elementCount);
+        cardinalityChecks.Count.ShouldBe(elementCount);
     }
 
     [Fact]
@@ -63,11 +63,11 @@ public class StructureDefinitionSchemaBuilderTests
         var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert
-        schema.Should().NotBeNull();
-        schema.ResourceType.Should().Be("Observation");
+        schema.ShouldNotBeNull();
+        schema.ResourceType.ShouldBe("Observation");
 
         var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
-        cardinalityChecks.Should().NotBeEmpty();
+        cardinalityChecks.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -85,11 +85,11 @@ public class StructureDefinitionSchemaBuilderTests
 
         // Assert
         var cardinalityChecks = schema.Checks.OfType<CardinalityCheck>().ToList();
-        cardinalityChecks.Should().NotBeEmpty();
+        cardinalityChecks.ShouldNotBeEmpty();
 
         // Every element should have a cardinality check
         var elements = typeDefinition!.Children;
-        cardinalityChecks.Should().HaveCount(elements.Count);
+        cardinalityChecks.Count.ShouldBe(elements.Count);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class StructureDefinitionSchemaBuilderTests
             return minField != null && (int)minField.GetValue(c)! == 0;
         });
 
-        optionalElements.Should().NotBeEmpty();
+        optionalElements.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class StructureDefinitionSchemaBuilderTests
         });
 
         // Observation has required elements like 'status' and 'code'
-        requiredElements.Should().NotBeEmpty();
+        requiredElements.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -156,7 +156,7 @@ public class StructureDefinitionSchemaBuilderTests
 
         // Assert
         var typeChecks = schema.Checks.OfType<TypeCheck>().ToList();
-        typeChecks.Should().NotBeEmpty();
+        typeChecks.ShouldNotBeEmpty();
 
         // Should have type checks for primitive fields
         // Patient has primitive fields like 'active' (boolean), 'birthDate' (date), etc.
@@ -167,7 +167,7 @@ public class StructureDefinitionSchemaBuilderTests
             return typeField != null && typeField.GetValue(c) is string type &&
                    (type == "boolean" || type == "date");
         });
-        hasPrimitiveTypeCheck.Should().BeTrue();
+        hasPrimitiveTypeCheck.ShouldBeTrue();
 
         // Note: "id" element validation is handled by IdFormatCheck (universal check)
         // not by TypeCheck, because the "id" element is inherited from Resource base type
@@ -202,7 +202,7 @@ public class StructureDefinitionSchemaBuilderTests
                 "unsignedInt", "code", "oid", "uuid"
             };
 
-            primitiveTypes.Should().Contain(expectedType);
+            primitiveTypes.ShouldContain(expectedType);
         }
     }
 
@@ -223,7 +223,7 @@ public class StructureDefinitionSchemaBuilderTests
         var referenceChecks = schema.Checks.OfType<ReferenceFormatCheck>().ToList();
 
         // Observation has reference fields like 'subject', 'performer', etc.
-        referenceChecks.Should().NotBeEmpty();
+        referenceChecks.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public class StructureDefinitionSchemaBuilderTests
         var referenceChecks = schema.Checks.OfType<ReferenceFormatCheck>().ToList();
 
         // Patient has reference fields like 'managingOrganization', 'generalPractitioner', etc.
-        referenceChecks.Should().NotBeEmpty();
+        referenceChecks.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -259,7 +259,7 @@ public class StructureDefinitionSchemaBuilderTests
         var codingChecks = schema.Checks.OfType<CodingStructureCheck>().ToList();
 
         // Observation has CodeableConcept fields like 'code', 'category', etc.
-        codingChecks.Should().NotBeEmpty();
+        codingChecks.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class StructureDefinitionSchemaBuilderTests
         var codingChecks = schema.Checks.OfType<CodingStructureCheck>().ToList();
 
         // AllergyIntolerance has multiple CodeableConcept fields
-        codingChecks.Should().NotBeEmpty();
+        codingChecks.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -290,8 +290,8 @@ public class StructureDefinitionSchemaBuilderTests
 
         // Act & Assert
         var act = () => builder.BuildSchema(null!, _schema);
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("typeDefinition");
+        Should.Throw<ArgumentNullException>(act)
+            .ParamName.ShouldBe("typeDefinition");
     }
 
     [Fact]
@@ -303,8 +303,8 @@ public class StructureDefinitionSchemaBuilderTests
 
         // Act & Assert
         var act = () => builder.BuildSchema(typeDefinition!, null!);
-        act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("schema");
+        Should.Throw<ArgumentNullException>(act)
+            .ParamName.ShouldBe("schema");
     }
 
     #endregion
@@ -323,11 +323,11 @@ public class StructureDefinitionSchemaBuilderTests
             .ToList();
 
         // Assert
-        schemas.Should().HaveCount(3);
-        schemas.Select(s => s.CanonicalUrl).Should().OnlyHaveUniqueItems();
-        schemas.Should().Contain(s => s.CanonicalUrl == "http://hl7.org/fhir/StructureDefinition/Patient");
-        schemas.Should().Contain(s => s.CanonicalUrl == "http://hl7.org/fhir/StructureDefinition/Observation");
-        schemas.Should().Contain(s => s.CanonicalUrl == "http://hl7.org/fhir/StructureDefinition/Condition");
+        schemas.Count.ShouldBe(3);
+        schemas.Select(s => s.CanonicalUrl).Distinct().ToList().Count.ShouldBe(3);
+        schemas.ShouldContain(s => s.CanonicalUrl == "http://hl7.org/fhir/StructureDefinition/Patient");
+        schemas.ShouldContain(s => s.CanonicalUrl == "http://hl7.org/fhir/StructureDefinition/Observation");
+        schemas.ShouldContain(s => s.CanonicalUrl == "http://hl7.org/fhir/StructureDefinition/Condition");
     }
 
     [Fact]
@@ -340,11 +340,11 @@ public class StructureDefinitionSchemaBuilderTests
         var schema = _builder.BuildSchema(typeDefinition!, _schema);
 
         // Assert - Observation should have all types of checks
-        schema.Checks.Should().NotBeEmpty();
-        schema.Checks.OfType<CardinalityCheck>().Should().NotBeEmpty();
-        schema.Checks.OfType<TypeCheck>().Should().NotBeEmpty();
-        schema.Checks.OfType<ReferenceFormatCheck>().Should().NotBeEmpty();
-        schema.Checks.OfType<CodingStructureCheck>().Should().NotBeEmpty();
+        schema.Checks.ShouldNotBeEmpty();
+        schema.Checks.OfType<CardinalityCheck>().ShouldNotBeEmpty();
+        schema.Checks.OfType<TypeCheck>().ShouldNotBeEmpty();
+        schema.Checks.OfType<ReferenceFormatCheck>().ShouldNotBeEmpty();
+        schema.Checks.OfType<CodingStructureCheck>().ShouldNotBeEmpty();
     }
 
     #endregion

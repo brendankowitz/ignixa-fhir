@@ -6,7 +6,7 @@
 #nullable disable
 
 using System.Runtime.CompilerServices;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.PatientEverything;
@@ -101,8 +101,8 @@ public class PatientEverythingHandlerTests
 
         // Act & Assert
         var act = async () => await _handler.HandleAsync(query, CancellationToken.None);
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*request context not available*");
+        (await Should.ThrowAsync<InvalidOperationException>(act))
+            .Message.ShouldContain("request context not available");
     }
 
     [Fact]
@@ -137,11 +137,12 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Should().NotBeNull();
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.ShouldNotBeNull();
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
-        expression.PatientIds.Should().ContainSingle().Which.Should().Be("patient-456");
+        expression.PatientIds.ShouldHaveSingleItem();
+        expression.PatientIds[0].ShouldBe("patient-456");
     }
 
     [Fact]
@@ -160,11 +161,11 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
-        expression.StartDate.Should().Be(startDate);
-        expression.EndDate.Should().Be(endDate);
+        expression.StartDate.ShouldBe(startDate);
+        expression.EndDate.ShouldBe(endDate);
     }
 
     [Fact]
@@ -181,12 +182,12 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
-        expression.FilteredResourceTypes.Should().BeEquivalentTo(types);
+        expression.FilteredResourceTypes.ShouldBe(types);
         // When _type filter is specified, referenced resources should NOT be included
-        expression.IncludeReferencedResources.Should().BeFalse();
+        expression.IncludeReferencedResources.ShouldBeFalse();
     }
 
     [Fact]
@@ -203,10 +204,10 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
-        expression.SinceDate.Should().Be(sinceDate);
+        expression.SinceDate.ShouldBe(sinceDate);
     }
 
     [Fact]
@@ -230,16 +231,17 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
-        expression.PatientIds.Should().ContainSingle().Which.Should().Be("patient-999");
-        expression.StartDate.Should().Be(startDate);
-        expression.EndDate.Should().Be(endDate);
-        expression.SinceDate.Should().Be(sinceDate);
-        expression.FilteredResourceTypes.Should().BeEquivalentTo(types);
+        expression.PatientIds.ShouldHaveSingleItem();
+        expression.PatientIds[0].ShouldBe("patient-999");
+        expression.StartDate.ShouldBe(startDate);
+        expression.EndDate.ShouldBe(endDate);
+        expression.SinceDate.ShouldBe(sinceDate);
+        expression.FilteredResourceTypes.ShouldBe(types);
         // When _type filter is specified, referenced resources should NOT be included
-        expression.IncludeReferencedResources.Should().BeFalse();
+        expression.IncludeReferencedResources.ShouldBeFalse();
     }
 
     [Fact]
@@ -253,10 +255,10 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
         var expression = (PatientEverythingExpression)result.SearchOptions.Expression;
-        expression.IncludeReferencedResources.Should().BeTrue();
+        expression.IncludeReferencedResources.ShouldBeTrue();
     }
 
     #endregion
@@ -274,8 +276,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.MaxItemCount.Should().Be(100);
+        result.ShouldNotBeNull();
+        result.SearchOptions.MaxItemCount.ShouldBe(100);
     }
 
     [Fact]
@@ -289,8 +291,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.MaxItemCount.Should().Be(50);
+        result.ShouldNotBeNull();
+        result.SearchOptions.MaxItemCount.ShouldBe(50);
     }
 
     [Fact]
@@ -304,8 +306,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.ResourceType.Should().BeNull();
+        result.ShouldNotBeNull();
+        result.SearchOptions.ResourceType.ShouldBeNull();
     }
 
     [Fact]
@@ -319,8 +321,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Sort.Should().BeEmpty();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Sort.ShouldBeEmpty();
     }
 
     [Fact]
@@ -334,9 +336,9 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Include.Should().BeEmpty();
-        result.SearchOptions.RevInclude.Should().BeEmpty();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Include.ShouldBeEmpty();
+        result.SearchOptions.RevInclude.ShouldBeEmpty();
     }
 
     [Fact]
@@ -350,8 +352,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Total.Should().Be(TotalType.None);
+        result.ShouldNotBeNull();
+        result.SearchOptions.Total.ShouldBe(TotalType.None);
     }
 
     [Fact]
@@ -365,8 +367,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Summary.Should().Be(Ignixa.Search.Models.SummaryType.False);
+        result.ShouldNotBeNull();
+        result.SearchOptions.Summary.ShouldBe(Ignixa.Search.Models.SummaryType.False);
     }
 
     [Fact]
@@ -380,8 +382,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Elements.Should().BeEmpty();
+        result.ShouldNotBeNull();
+        result.SearchOptions.Elements.ShouldBeEmpty();
     }
 
     #endregion
@@ -437,9 +439,9 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().BeOfType<SearchResourcesResult>();
-        result.Resources.Should().NotBeNull();
+        result.ShouldNotBeNull();
+        result.ShouldBeOfType<SearchResourcesResult>();
+        result.Resources.ShouldNotBeNull();
     }
 
     [Fact]
@@ -453,10 +455,10 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.SearchOptions.Should().NotBeNull();
-        result.SearchOptions.MaxItemCount.Should().Be(75);
-        result.SearchOptions.Expression.Should().BeOfType<PatientEverythingExpression>();
+        result.ShouldNotBeNull();
+        result.SearchOptions.ShouldNotBeNull();
+        result.SearchOptions.MaxItemCount.ShouldBe(75);
+        result.SearchOptions.Expression.ShouldBeOfType<PatientEverythingExpression>();
     }
 
     [Fact]
@@ -470,8 +472,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Total.Should().BeNull();
+        result.ShouldNotBeNull();
+        result.Total.ShouldBeNull();
     }
 
     [Fact]
@@ -485,8 +487,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.ContinuationToken.Should().BeNull();
+        result.ShouldNotBeNull();
+        result.ContinuationToken.ShouldBeNull();
     }
 
     [Fact]
@@ -500,8 +502,8 @@ public class PatientEverythingHandlerTests
         var result = await _handler.HandleAsync(query, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.HasMore.Should().BeFalse();
+        result.ShouldNotBeNull();
+        result.HasMore.ShouldBeFalse();
     }
 
     #endregion

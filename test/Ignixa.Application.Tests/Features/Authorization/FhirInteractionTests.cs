@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Models;
 
 namespace Ignixa.Application.Tests.Features.Authorization;
@@ -26,7 +26,7 @@ public class FhirInteractionTests
         var result = interaction.ToFhirCode();
 
         // Assert
-        result.Should().Be(expectedCode);
+        result.ShouldBe(expectedCode);
     }
 
 }

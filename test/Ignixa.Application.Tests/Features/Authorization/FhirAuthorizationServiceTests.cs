@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
@@ -31,8 +31,8 @@ public class FhirAuthorizationServiceTests
         var result = await service.AuthorizeAsync(context);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.DenialReason.Should().BeNull();
+        result.Allowed.ShouldBeTrue();
+        result.DenialReason.ShouldBeNull();
     }
 
     [Fact]
@@ -49,8 +49,8 @@ public class FhirAuthorizationServiceTests
         var result = await service.AuthorizeAsync(context);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Be("Authentication required");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldBe("Authentication required");
 
         // Verify second handler was not called (fail-fast)
         await handler2.DidNotReceive().HandleAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>());
@@ -71,8 +71,8 @@ public class FhirAuthorizationServiceTests
         var result = await service.AuthorizeAsync(context);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Be("Tenant access denied");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldBe("Tenant access denied");
 
         // Verify third handler was not called
         await handler3.DidNotReceive().HandleAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>());
@@ -95,10 +95,10 @@ public class FhirAuthorizationServiceTests
         var result = await service.AuthorizeAsync(context);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.Filter.Should().NotBeNull();
-        result.Filter!.PatientFilter.Should().Be("Patient/123");
-        result.Filter!.PractitionerFilter.Should().Be("Practitioner/456");
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.PatientFilter.ShouldBe("Patient/123");
+        result.Filter!.PractitionerFilter.ShouldBe("Practitioner/456");
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class FhirAuthorizationServiceTests
         await service.AuthorizeAsync(context);
 
         // Assert - should execute in priority order: 10, 20, 30
-        executionOrder.Should().BeEquivalentTo([10, 20, 30], options => options.WithStrictOrdering());
+        executionOrder.ShouldBe([10, 20, 30]);
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class FhirAuthorizationServiceTests
         var result = await service.AuthorizeAsync(context);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -173,9 +173,9 @@ public class FhirAuthorizationServiceTests
         var result = await service.AuthorizeAsync(context);
 
         // Assert
-        result.Allowed.Should().BeTrue();
-        result.Filter.Should().NotBeNull();
-        result.Filter!.PatientFilter.Should().Be("Patient/123");
+        result.Allowed.ShouldBeTrue();
+        result.Filter.ShouldNotBeNull();
+        result.Filter!.PatientFilter.ShouldBe("Patient/123");
     }
 
     #region Helper Methods

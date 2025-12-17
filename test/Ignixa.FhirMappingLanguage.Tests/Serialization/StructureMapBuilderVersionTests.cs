@@ -5,7 +5,7 @@
  * Ensures builder correctly sets FhirVersion and uses version-appropriate serialization.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage;
 using Ignixa.FhirMappingLanguage.Expressions;
@@ -41,7 +41,7 @@ public class StructureMapBuilderVersionTests
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirVersion.R5);
+        structureMap.FhirVersion.ShouldBe(FhirVersion.R5);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class StructureMapBuilderVersionTests
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirVersion.R4);
+        structureMap.FhirVersion.ShouldBe(FhirVersion.R4);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class StructureMapBuilderVersionTests
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.FhirVersion.Should().Be(FhirVersion.R5);
+        structureMap.FhirVersion.ShouldBe(FhirVersion.R5);
     }
 
     [Fact]
@@ -106,13 +106,13 @@ public class StructureMapBuilderVersionTests
 
         // Assert
         var rule = structureMap.Group[0].Rule[0];
-        rule.Dependent.Should().HaveCount(1);
+        rule.Dependent.Count.ShouldBe(1);
         var dependent = rule.Dependent[0];
-        dependent.Name.Should().Be("Helper");
+        dependent.Name.ShouldBe("Helper");
 
         // R5 should use Parameter property (not Variable)
-        dependent.Parameter.Should().HaveCount(1);
-        dependent.Parameter[0].GetValueAs<string>().Should().Be("src");
+        dependent.Parameter.Count.ShouldBe(1);
+        dependent.Parameter[0].GetValueAs<string>().ShouldBe("src");
     }
 
     [Fact]
@@ -137,13 +137,13 @@ public class StructureMapBuilderVersionTests
 
         // Assert
         var rule = structureMap.Group[0].Rule[0];
-        rule.Dependent.Should().HaveCount(1);
+        rule.Dependent.Count.ShouldBe(1);
         var dependent = rule.Dependent[0];
-        dependent.Name.Should().Be("Helper");
+        dependent.Name.ShouldBe("Helper");
 
         // R4 should use Variable property (not Parameter)
-        dependent.Variable.Should().HaveCount(1);
-        dependent.Variable.Should().Contain("src");
+        dependent.Variable.Count.ShouldBe(1);
+        dependent.Variable.ShouldContain("src");
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class StructureMapBuilderVersionTests
         var source = structureMap.Group[0].Rule[0].Source[0];
 
         // R5 should use DefaultValue property
-        source.DefaultValue.Should().Be("'Unknown'");
+        source.DefaultValue.ShouldBe("'Unknown'");
     }
 
     [Fact]
@@ -191,8 +191,8 @@ public class StructureMapBuilderVersionTests
         var source = structureMap.Group[0].Rule[0].Source[0];
 
         // R4 should use defaultValueString in underlying JSON
-        source.MutableNode.ContainsKey("defaultValueString").Should().BeTrue();
-        source.MutableNode["defaultValueString"]!.GetValue<string>().Should().Be("'Unknown'");
+        source.MutableNode.ContainsKey("defaultValueString").ShouldBeTrue();
+        source.MutableNode["defaultValueString"]!.GetValue<string>().ShouldBe("'Unknown'");
     }
 
     [Fact]
@@ -214,8 +214,8 @@ public class StructureMapBuilderVersionTests
         // Assert - These should NOT throw
         structureMap.VersionAlgorithmString = "semver";
         structureMap.CopyrightLabel = "© 2025";
-        structureMap.VersionAlgorithmString.Should().Be("semver");
-        structureMap.CopyrightLabel.Should().Be("© 2025");
+        structureMap.VersionAlgorithmString.ShouldBe("semver");
+        structureMap.CopyrightLabel.ShouldBe("© 2025");
     }
 
     [Fact]
@@ -258,7 +258,7 @@ public class StructureMapBuilderVersionTests
 
         // Assert - TypeMode can be set to null in R5
         group.TypeMode = null;
-        group.TypeMode.Should().BeNull();
+        group.TypeMode.ShouldBeNull();
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public class StructureMapBuilderVersionTests
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.SupportsConstants().Should().BeTrue();
+        structureMap.SupportsConstants().ShouldBeTrue();
     }
 
     [Fact]
@@ -319,6 +319,6 @@ public class StructureMapBuilderVersionTests
         var structureMap = builder.Build(ast);
 
         // Assert
-        structureMap.SupportsConstants().Should().BeFalse();
+        structureMap.SupportsConstants().ShouldBeFalse();
     }
 }

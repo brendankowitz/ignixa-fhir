@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Specification.Generated;
 
 namespace Ignixa.FhirFakes.Tests;
@@ -30,8 +30,8 @@ public class WithTagFunctionalityTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        patient.MutableNode["meta"].Should().NotBeNull();
-        patient.MutableNode["meta"]!["tag"].Should().BeNull();
+        patient.MutableNode["meta"].ShouldNotBeNull();
+        patient.MutableNode["meta"]!["tag"].ShouldBeNull();
     }
 
     [Fact]
@@ -45,16 +45,16 @@ public class WithTagFunctionalityTests
         var patient = _faker.Generate("Patient");
 
         // Assert
-        patient.MutableNode["meta"].Should().NotBeNull();
+        patient.MutableNode["meta"].ShouldNotBeNull();
         var meta = patient.MutableNode["meta"]!.AsObject();
-        meta["tag"].Should().NotBeNull();
+        meta["tag"].ShouldNotBeNull();
 
         var tagArray = meta["tag"]!.AsArray();
-        tagArray.Should().HaveCount(1);
+        tagArray.Count.ShouldBe(1);
 
         var tag = tagArray[0]!.AsObject();
-        tag["code"].Should().NotBeNull();
-        tag["code"]!.GetValue<string>().Should().Be(tagCode);
+        tag["code"].ShouldNotBeNull();
+        tag["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public class WithTagFunctionalityTests
         var getTagCode = (JsonNode resource) =>
             resource["meta"]!["tag"]![0]!["code"]!.GetValue<string>();
 
-        getTagCode(patient1.MutableNode).Should().Be(tagCode);
-        getTagCode(patient2.MutableNode).Should().Be(tagCode);
-        getTagCode(observation.MutableNode).Should().Be(tagCode);
+        getTagCode(patient1.MutableNode).ShouldBe(tagCode);
+        getTagCode(patient2.MutableNode).ShouldBe(tagCode);
+        getTagCode(observation.MutableNode).ShouldBe(tagCode);
     }
 
     [Fact]
@@ -97,8 +97,8 @@ public class WithTagFunctionalityTests
         var getTagCode = (JsonNode resource) =>
             resource["meta"]!["tag"]![0]!["code"]!.GetValue<string>();
 
-        getTagCode(patient1.MutableNode).Should().Be(tagCode1);
-        getTagCode(patient2.MutableNode).Should().Be(tagCode2);
+        getTagCode(patient1.MutableNode).ShouldBe(tagCode1);
+        getTagCode(patient2.MutableNode).ShouldBe(tagCode2);
     }
 
     [Fact]
@@ -114,8 +114,8 @@ public class WithTagFunctionalityTests
         var patient2 = _faker.Generate("Patient");
 
         // Assert
-        patient1.MutableNode["meta"]!["tag"].Should().NotBeNull();
-        patient2.MutableNode["meta"]!["tag"].Should().BeNull();
+        patient1.MutableNode["meta"]!["tag"].ShouldNotBeNull();
+        patient2.MutableNode["meta"]!["tag"].ShouldBeNull();
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class WithTagFunctionalityTests
         var result = _faker.WithTag(tagCode);
 
         // Assert
-        result.Should().BeSameAs(_faker);
+        result.ShouldBeSameAs(_faker);
     }
 
     [Fact]
@@ -143,12 +143,12 @@ public class WithTagFunctionalityTests
 
         // Assert - Meta should have both the existing properties (versionId, lastUpdated) and the new tag
         var meta = patient.MutableNode["meta"]!.AsObject();
-        meta["versionId"].Should().NotBeNull();
-        meta["lastUpdated"].Should().NotBeNull();
-        meta["tag"].Should().NotBeNull();
+        meta["versionId"].ShouldNotBeNull();
+        meta["lastUpdated"].ShouldNotBeNull();
+        meta["tag"].ShouldNotBeNull();
 
         var tagArray = meta["tag"]!.AsArray();
-        tagArray.Should().HaveCount(1);
-        tagArray[0]!["code"]!.GetValue<string>().Should().Be(tagCode);
+        tagArray.Count.ShouldBe(1);
+        tagArray[0]!["code"]!.GetValue<string>().ShouldBe(tagCode);
     }
 }

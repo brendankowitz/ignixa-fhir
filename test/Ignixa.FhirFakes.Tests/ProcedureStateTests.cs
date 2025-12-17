@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios;
 using Ignixa.FhirFakes.Scenarios.Codes;
 using Ignixa.FhirFakes.Scenarios.States;
@@ -32,10 +32,10 @@ public class ProcedureStateTests
             .Build();
 
         // Assert
-        scenario.Procedures.Should().HaveCount(1);
+        scenario.Procedures.Count.ShouldBe(1);
         var procedure = scenario.Procedures[0];
-        procedure.ResourceType.Should().Be("Procedure");
-        procedure.Id.Should().NotBeNullOrEmpty();
+        procedure.ResourceType.ShouldBe("Procedure");
+        procedure.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var status = procedure.MutableNode["status"]?.GetValue<string>();
-        status.Should().Be("completed");
+        status.ShouldBe("completed");
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var code = procedure.MutableNode["code"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        code.Should().Be("80146002"); // SNOMED CT for appendectomy
+        code.ShouldBe("80146002"); // SNOMED CT for appendectomy
     }
 
     #endregion
@@ -87,7 +87,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var subjectRef = procedure.MutableNode["subject"]?["reference"]?.GetValue<string>();
-        subjectRef.Should().Be($"urn:uuid:{scenario.Patient!.Id}");
+        subjectRef.ShouldBe($"urn:uuid:{scenario.Patient!.Id}");
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var encounterRef = procedure.MutableNode["encounter"]?["reference"]?.GetValue<string>();
-        encounterRef.Should().Be($"urn:uuid:{scenario.Encounters[0].Id}");
+        encounterRef.ShouldBe($"urn:uuid:{scenario.Encounters[0].Id}");
     }
 
     #endregion
@@ -125,8 +125,8 @@ public class ProcedureStateTests
         var start = procedure.MutableNode["performedPeriod"]?["start"]?.GetValue<string>();
         var end = procedure.MutableNode["performedPeriod"]?["end"]?.GetValue<string>();
 
-        start.Should().NotBeNullOrEmpty();
-        end.Should().NotBeNullOrEmpty();
+        start.ShouldNotBeNullOrEmpty();
+        end.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class ProcedureStateTests
         var start = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["start"]!.GetValue<string>()!);
         var end = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["end"]!.GetValue<string>()!);
 
-        (end - start).TotalMinutes.Should().BeApproximately(90, 1);
+        (end - start).TotalMinutes.ShouldBe(90, 1);
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class ProcedureStateTests
         var start = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["start"]!.GetValue<string>()!);
         var end = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["end"]!.GetValue<string>()!);
 
-        (end - start).TotalMinutes.Should().BeApproximately(30, 1);
+        (end - start).TotalMinutes.ShouldBe(30, 1);
     }
 
     #endregion
@@ -182,7 +182,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var categoryCode = procedure.MutableNode["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("387713003"); // SNOMED CT for surgical procedure
+        categoryCode.ShouldBe("387713003"); // SNOMED CT for surgical procedure
     }
 
     [Fact]
@@ -198,7 +198,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var categoryCode = procedure.MutableNode["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("103693007"); // SNOMED CT for diagnostic procedure
+        categoryCode.ShouldBe("103693007"); // SNOMED CT for diagnostic procedure
     }
 
     #endregion
@@ -218,7 +218,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var bodySite = procedure.MutableNode["bodySite"]?[0]?["text"]?.GetValue<string>();
-        bodySite.Should().Be("Appendix");
+        bodySite.ShouldBe("Appendix");
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var bodySiteCode = procedure.MutableNode["bodySite"]?[0]?["coding"]?[0]?["code"]?.GetValue<string>();
-        bodySiteCode.Should().Be("66754008"); // SNOMED CT for appendix
+        bodySiteCode.ShouldBe("66754008"); // SNOMED CT for appendix
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var bodySite = procedure.MutableNode["bodySite"]?[0]?["text"]?.GetValue<string>();
-        bodySite.Should().Be("left arm");
+        bodySite.ShouldBe("left arm");
     }
 
     #endregion
@@ -270,7 +270,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var outcome = procedure.MutableNode["outcome"]?["text"]?.GetValue<string>();
-        outcome.Should().Contain("without complications");
+        outcome!.ShouldContain("without complications");
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var outcome = procedure.MutableNode["outcome"]?["text"]?.GetValue<string>();
-        outcome.Should().Be(customOutcome);
+        outcome.ShouldBe(customOutcome);
     }
 
     #endregion
@@ -307,7 +307,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var reason = procedure.MutableNode["reasonCode"]?[0]?["text"]?.GetValue<string>();
-        reason.Should().Be("Coronary artery disease");
+        reason.ShouldBe("Coronary artery disease");
     }
 
     #endregion
@@ -329,7 +329,7 @@ public class ProcedureStateTests
         var start = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["start"]!.GetValue<string>()!);
         var end = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["end"]!.GetValue<string>()!);
 
-        (end - start).TotalMinutes.Should().BeApproximately(45, 1);
+        (end - start).TotalMinutes.ShouldBe(45, 1);
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var followUp = procedure.MutableNode["followUp"]?[0]?["text"]?.GetValue<string>();
-        followUp.Should().Contain("Repeat colonoscopy");
+        followUp!.ShouldContain("Repeat colonoscopy");
     }
 
     [Fact]
@@ -362,7 +362,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var outcome = procedure.MutableNode["outcome"]?["text"]?.GetValue<string>();
-        outcome.Should().Be(customOutcome);
+        outcome.ShouldBe(customOutcome);
     }
 
     [Fact]
@@ -380,7 +380,7 @@ public class ProcedureStateTests
         var start = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["start"]!.GetValue<string>()!);
         var end = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["end"]!.GetValue<string>()!);
 
-        (end - start).TotalHours.Should().BeApproximately(4, 0.1);
+        (end - start).TotalHours.ShouldBe(4, 0.1);
     }
 
     #endregion
@@ -400,8 +400,8 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var performer = procedure.MutableNode["performer"]?[0]?["actor"]?["display"]?.GetValue<string>();
-        performer.Should().NotBeNullOrEmpty();
-        performer.Should().Contain("Dr.");
+        performer.ShouldNotBeNullOrEmpty();
+        performer.ShouldContain("Dr.");
     }
 
     [Fact]
@@ -417,8 +417,8 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var location = procedure.MutableNode["location"]?["display"]?.GetValue<string>();
-        location.Should().NotBeNullOrEmpty();
-        location.Should().Contain("Operating Room");
+        location.ShouldNotBeNullOrEmpty();
+        location.ShouldContain("Operating Room");
     }
 
     #endregion
@@ -439,7 +439,7 @@ public class ProcedureStateTests
             .Build();
 
         // Assert
-        scenario.Procedures.Should().HaveCount(2);
+        scenario.Procedures.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -454,7 +454,7 @@ public class ProcedureStateTests
 
         // Assert
         var procedureEvents = scenario.Timeline.Where(e => e.EventType == "Procedure").ToList();
-        procedureEvents.Should().HaveCount(1);
+        procedureEvents.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -468,7 +468,7 @@ public class ProcedureStateTests
             .Build();
 
         // Assert
-        scenario.AllResources.Should().Contain(scenario.Procedures[0]);
+        scenario.AllResources.ShouldContain(scenario.Procedures[0]);
     }
 
     #endregion
@@ -487,7 +487,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var encounterRef = procedure.MutableNode["encounter"];
-        encounterRef.Should().BeNull();
+        encounterRef.ShouldBeNull();
     }
 
     [Fact]
@@ -503,7 +503,7 @@ public class ProcedureStateTests
         // Assert
         var procedure = scenario.Procedures[0];
         var categoryCode = procedure.MutableNode["category"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        categoryCode.Should().Be("103693007"); // Diagnostic procedure
+        categoryCode.ShouldBe("103693007"); // Diagnostic procedure
     }
 
     [Fact]
@@ -521,7 +521,7 @@ public class ProcedureStateTests
         var start = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["start"]!.GetValue<string>()!);
         var end = DateTime.Parse(procedure.MutableNode["performedPeriod"]!["end"]!.GetValue<string>()!);
 
-        (end - start).TotalMinutes.Should().BeApproximately(45, 1);
+        (end - start).TotalMinutes.ShouldBe(45, 1);
     }
 
     #endregion

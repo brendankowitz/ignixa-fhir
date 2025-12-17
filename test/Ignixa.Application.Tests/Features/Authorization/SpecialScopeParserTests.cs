@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Smart;
 
 namespace Ignixa.Application.Tests.Features.Authorization;
@@ -28,9 +28,9 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScope(scopeString);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Name.Should().Be(expectedName);
-        result.Type.Should().Be(expectedType);
+        result.ShouldNotBeNull();
+        result!.Name.ShouldBe(expectedName);
+        result.Type.ShouldBe(expectedType);
     }
 
     [Fact]
@@ -40,9 +40,9 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScope("offline_access");
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Name.Should().Be("offline_access");
-        result.Type.Should().Be(SpecialScopeType.OfflineAccess);
+        result.ShouldNotBeNull();
+        result!.Name.ShouldBe("offline_access");
+        result.Type.ShouldBe(SpecialScopeType.OfflineAccess);
     }
 
     [Theory]
@@ -59,9 +59,9 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScope(scopeString);
 
         // Assert
-        result.Should().NotBeNull();
-        result!.Name.Should().Be(expectedName);
-        result.Type.Should().Be(expectedType);
+        result.ShouldNotBeNull();
+        result!.Name.ShouldBe(expectedName);
+        result.Type.ShouldBe(expectedType);
     }
 
     [Theory]
@@ -77,7 +77,7 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScope(scopeString);
 
         // Assert
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     #endregion
@@ -101,7 +101,7 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.IsSpecialScope(scope);
 
         // Assert
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     #endregion
@@ -118,19 +118,19 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScopes(scopeString);
 
         // Assert
-        result.Should().HaveCount(6);
-        result[0].Name.Should().Be("openid");
-        result[0].Type.Should().Be(SpecialScopeType.OpenIdConnect);
-        result[1].Name.Should().Be("profile");
-        result[1].Type.Should().Be(SpecialScopeType.OpenIdConnect);
-        result[2].Name.Should().Be("email");
-        result[2].Type.Should().Be(SpecialScopeType.OpenIdConnect);
-        result[3].Name.Should().Be("fhirUser");
-        result[3].Type.Should().Be(SpecialScopeType.OpenIdConnect);
-        result[4].Name.Should().Be("offline_access");
-        result[4].Type.Should().Be(SpecialScopeType.OfflineAccess);
-        result[5].Name.Should().Be("launch/patient");
-        result[5].Type.Should().Be(SpecialScopeType.Launch);
+        result.Count.ShouldBe(6);
+        result[0].Name.ShouldBe("openid");
+        result[0].Type.ShouldBe(SpecialScopeType.OpenIdConnect);
+        result[1].Name.ShouldBe("profile");
+        result[1].Type.ShouldBe(SpecialScopeType.OpenIdConnect);
+        result[2].Name.ShouldBe("email");
+        result[2].Type.ShouldBe(SpecialScopeType.OpenIdConnect);
+        result[3].Name.ShouldBe("fhirUser");
+        result[3].Type.ShouldBe(SpecialScopeType.OpenIdConnect);
+        result[4].Name.ShouldBe("offline_access");
+        result[4].Type.ShouldBe(SpecialScopeType.OfflineAccess);
+        result[5].Name.ShouldBe("launch/patient");
+        result[5].Type.ShouldBe(SpecialScopeType.Launch);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScopes(string.Empty);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScopes(null);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScopes(scopeString);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -176,13 +176,13 @@ public class SpecialScopeParserTests
         var result = SmartScopeParser.ParseSpecialScopes(scopeString);
 
         // Assert
-        result.Should().HaveCount(6);
-        result[0].Name.Should().Be("openid");
-        result[1].Name.Should().Be("profile");
-        result[2].Name.Should().Be("email");
-        result[3].Name.Should().Be("fhirUser");
-        result[4].Name.Should().Be("offline_access");
-        result[5].Name.Should().Be("launch/patient");
+        result.Count.ShouldBe(6);
+        result[0].Name.ShouldBe("openid");
+        result[1].Name.ShouldBe("profile");
+        result[2].Name.ShouldBe("email");
+        result[3].Name.ShouldBe("fhirUser");
+        result[4].Name.ShouldBe("offline_access");
+        result[5].Name.ShouldBe("launch/patient");
     }
 
     #endregion
@@ -200,16 +200,16 @@ public class SpecialScopeParserTests
         var specialScopes = SmartScopeParser.ParseSpecialScopes(scopeString);
 
         // Assert - FHIR resource scopes
-        smartScopes.Should().HaveCount(2);
-        smartScopes[0].ResourceType.Should().Be("Observation");
-        smartScopes[1].ResourceType.Should().Be("Patient");
+        smartScopes.Count.ShouldBe(2);
+        smartScopes[0].ResourceType.ShouldBe("Observation");
+        smartScopes[1].ResourceType.ShouldBe("Patient");
 
         // Assert - Special scopes
-        specialScopes.Should().HaveCount(4);
-        specialScopes[0].Name.Should().Be("openid");
-        specialScopes[1].Name.Should().Be("profile");
-        specialScopes[2].Name.Should().Be("offline_access");
-        specialScopes[3].Name.Should().Be("launch/patient");
+        specialScopes.Count.ShouldBe(4);
+        specialScopes[0].Name.ShouldBe("openid");
+        specialScopes[1].Name.ShouldBe("profile");
+        specialScopes[2].Name.ShouldBe("offline_access");
+        specialScopes[3].Name.ShouldBe("launch/patient");
     }
 
     [Fact]
@@ -221,8 +221,8 @@ public class SpecialScopeParserTests
         var scope3 = new SpecialScope("profile", SpecialScopeType.OpenIdConnect);
 
         // Assert
-        scope1.Should().Be(scope2);
-        scope1.Should().NotBe(scope3);
+        scope1.ShouldBe(scope2);
+        scope1.ShouldNotBe(scope3);
     }
 
     #endregion

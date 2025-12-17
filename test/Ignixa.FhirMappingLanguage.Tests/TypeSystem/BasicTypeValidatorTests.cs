@@ -4,7 +4,7 @@
  * Unit tests for basic type validator.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.TypeSystem;
 using Ignixa.Abstractions;
 using Ignixa.FhirMappingLanguage.Parser;
@@ -61,9 +61,9 @@ public class BasicTypeValidatorTests
         var typeInfo = validator.ResolveType(typeName);
 
         // Assert
-        typeInfo.Should().NotBeNull();
-        typeInfo!.Category.Should().Be(expected);
-        typeInfo.IsPrimitive.Should().BeTrue();
+        typeInfo.ShouldNotBeNull();
+        typeInfo!.Category.ShouldBe(expected);
+        typeInfo.IsPrimitive.ShouldBeTrue();
     }
 
     [Theory]
@@ -85,9 +85,9 @@ public class BasicTypeValidatorTests
         var typeInfo = validator.ResolveType(typeName);
 
         // Assert
-        typeInfo.Should().NotBeNull();
-        typeInfo!.Category.Should().Be(expected);
-        typeInfo.IsComplex.Should().BeTrue();
+        typeInfo.ShouldNotBeNull();
+        typeInfo!.Category.ShouldBe(expected);
+        typeInfo.IsComplex.ShouldBeTrue();
     }
 
     [Theory]
@@ -108,9 +108,9 @@ public class BasicTypeValidatorTests
         var typeInfo = validator.ResolveType(typeName);
 
         // Assert
-        typeInfo.Should().NotBeNull();
-        typeInfo!.Category.Should().Be(expected);
-        typeInfo.IsResource.Should().BeTrue();
+        typeInfo.ShouldNotBeNull();
+        typeInfo!.Category.ShouldBe(expected);
+        typeInfo.IsResource.ShouldBeTrue();
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class BasicTypeValidatorTests
         var typeInfo = validator.ResolveType("CustomProfile");
 
         // Assert
-        typeInfo.Should().NotBeNull();
-        typeInfo!.Category.Should().Be(TypeCategory.Unknown);
+        typeInfo.ShouldNotBeNull();
+        typeInfo!.Category.ShouldBe(TypeCategory.Unknown);
     }
 
     [Fact]
@@ -134,9 +134,9 @@ public class BasicTypeValidatorTests
         var validator = new BasicTypeValidator();
 
         // Act & Assert
-        validator.ResolveType(null!).Should().BeNull();
-        validator.ResolveType("").Should().BeNull();
-        validator.ResolveType("   ").Should().BeNull();
+        validator.ResolveType(null!).ShouldBeNull();
+        validator.ResolveType("").ShouldBeNull();
+        validator.ResolveType("   ").ShouldBeNull();
     }
 
     #endregion
@@ -157,7 +157,7 @@ public class BasicTypeValidatorTests
         var isCompatible = validator.IsTypeCompatible(sourceType, targetType);
 
         // Assert
-        isCompatible.Should().Be(expected);
+        isCompatible.ShouldBe(expected);
     }
 
     [Theory]
@@ -180,7 +180,7 @@ public class BasicTypeValidatorTests
         var isCompatible = validator.IsTypeCompatible(sourceType, targetType);
 
         // Assert
-        isCompatible.Should().Be(expected);
+        isCompatible.ShouldBe(expected);
     }
 
     [Theory]
@@ -197,7 +197,7 @@ public class BasicTypeValidatorTests
         var isCompatible = validator.IsTypeCompatible(sourceType, targetType);
 
         // Assert
-        isCompatible.Should().Be(expected);
+        isCompatible.ShouldBe(expected);
     }
 
     [Theory]
@@ -214,7 +214,7 @@ public class BasicTypeValidatorTests
         var isCompatible = validator.IsTypeCompatible(sourceType, targetType);
 
         // Assert
-        isCompatible.Should().Be(expected);
+        isCompatible.ShouldBe(expected);
     }
 
     #endregion
@@ -232,7 +232,7 @@ public class BasicTypeValidatorTests
         var error = validator.ValidateElement(element, "string");
 
         // Assert
-        error.Should().BeNull();
+        error.ShouldBeNull();
     }
 
     [Fact]
@@ -246,7 +246,7 @@ public class BasicTypeValidatorTests
         var error = validator.ValidateElement(element, "string");
 
         // Assert
-        error.Should().BeNull();
+        error.ShouldBeNull();
     }
 
     [Fact]
@@ -259,9 +259,9 @@ public class BasicTypeValidatorTests
         var error = validator.ValidateElement(null!, "string");
 
         // Assert
-        error.Should().NotBeNull();
-        error!.Message.Should().Contain("null");
-        error.Message.Should().Contain("string");
+        error.ShouldNotBeNull();
+        error!.Message.ShouldContain("null");
+        error.Message.ShouldContain("string");
     }
 
     [Fact]
@@ -275,8 +275,8 @@ public class BasicTypeValidatorTests
         var error = validator.ValidateElement(element, "string");
 
         // Assert
-        error.Should().NotBeNull();
-        error!.Message.Should().Contain("no type information");
+        error.ShouldNotBeNull();
+        error!.Message.ShouldContain("no type information");
     }
 
     #endregion
@@ -303,7 +303,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
         var errors = validator.ValidateMap(map).ToList();
 
         // Assert
-        errors.Should().BeEmpty();
+        errors.ShouldBeEmpty();
     }
 
     [Fact]
@@ -324,9 +324,9 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var errors = validator.ValidateMap(map).ToList();
 
         // Assert
-        errors.Should().NotBeEmpty();
-        errors.Should().Contain(e => e.Message.Contains("unknown type"));
-        errors.Should().Contain(e => e.Message.Contains("UnknownType"));
+        errors.ShouldNotBeEmpty();
+        errors.ShouldContain(e => e.Message.Contains("unknown type"));
+        errors.ShouldContain(e => e.Message.Contains("UnknownType"));
     }
 
     [Fact]
@@ -347,8 +347,8 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var errors = validator.ValidateMap(map).ToList();
 
         // Assert
-        errors.Should().NotBeEmpty();
-        errors.Should().Contain(e => e.Message.Contains("cannot create primitive type"));
+        errors.ShouldNotBeEmpty();
+        errors.ShouldContain(e => e.Message.Contains("cannot create primitive type"));
     }
 
     [Fact]
@@ -369,9 +369,9 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var errors = validator.ValidateMap(map).ToList();
 
         // Assert
-        errors.Should().NotBeEmpty();
-        errors.Should().Contain(e => e.Message.Contains("unknown type"));
-        errors.Should().Contain(e => e.Message.Contains("UnknownResource"));
+        errors.ShouldNotBeEmpty();
+        errors.ShouldContain(e => e.Message.Contains("unknown type"));
+        errors.ShouldContain(e => e.Message.Contains("UnknownResource"));
     }
 
     [Fact]
@@ -392,7 +392,7 @@ group Transform(source src : Patient, target tgt : Bundle) {
         var errors = validator.ValidateMap(map).ToList();
 
         // Assert
-        errors.Should().BeEmpty();
+        errors.ShouldBeEmpty();
     }
 
     #endregion
@@ -416,9 +416,9 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var act = () => compiler.Compile(mappingText, validateTypes: true);
 
         // Assert
-        act.Should().Throw<TypeValidationException>()
-            .WithMessage("*Type validation failed*")
-            .Which.Errors.Should().NotBeEmpty();
+        var ex = Should.Throw<TypeValidationException>(act);
+        ex.Message.ShouldContain("Type validation failed");
+        ex.Errors.ShouldNotBeEmpty();
     }
 
     [Fact]
@@ -437,7 +437,7 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var act = () => compiler.Compile(mappingText, validateTypes: true);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -457,7 +457,7 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var act = () => compiler.Compile(mappingText, validateTypes: false);
 
         // Assert
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -475,10 +475,10 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var exception = new TypeValidationException("Multiple errors", errors);
 
         // Assert
-        exception.Message.Should().Contain("Error 1");
-        exception.Message.Should().Contain("Error 2");
-        exception.Message.Should().Contain("Error 3");
-        exception.Errors.Should().HaveCount(3);
+        exception.Message.ShouldContain("Error 1");
+        exception.Message.ShouldContain("Error 2");
+        exception.Message.ShouldContain("Error 3");
+        exception.Errors.Count.ShouldBe(3);
     }
 
     #endregion
@@ -500,9 +500,9 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var typeInfo2 = validator.ResolveType(canonical);
 
         // Assert
-        typeInfo1.Should().NotBeNull();
-        typeInfo2.Should().NotBeNull();
-        typeInfo1!.Category.Should().Be(typeInfo2!.Category);
+        typeInfo1.ShouldNotBeNull();
+        typeInfo2.ShouldNotBeNull();
+        typeInfo1!.Category.ShouldBe(typeInfo2!.Category);
     }
 
     [Theory]
@@ -519,7 +519,7 @@ group Transform(source src : UnknownType, target tgt : Bundle) {
         var isCompatible = validator.IsTypeCompatible(sourceType, targetType);
 
         // Assert
-        isCompatible.Should().Be(expected);
+        isCompatible.ShouldBe(expected);
     }
 
     #endregion

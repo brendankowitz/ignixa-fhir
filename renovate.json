@@ -140,7 +140,7 @@
       "matchPackageNames": [
         "/^xunit/",
         "/^NSubstitute/",
-        "/^FluentAssertions/",
+        "/^Shouldly/",
         "/^Bogus/"
       ]
     },

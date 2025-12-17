@@ -4,7 +4,7 @@
  * Comprehensive unit tests for FHIR Mapping Language parser grammar.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
@@ -31,10 +31,10 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().BeOfType<MapExpression>();
-        result.Url.Should().Be("http://example.org/fhir/StructureMap/Example");
-        result.Identifier.Should().Be("ExampleMap");
+        result.ShouldNotBeNull();
+        result.ShouldBeOfType<MapExpression>();
+        result.Url.ShouldBe("http://example.org/fhir/StructureMap/Example");
+        result.Identifier.ShouldBe("ExampleMap");
     }
 
     [Fact]
@@ -50,7 +50,7 @@ map 'http://example.org/fhir/StructureMap/Empty' = 'EmptyMap'
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups.Should().BeEmpty();
+        result.Groups.ShouldBeEmpty();
     }
 
     #endregion
@@ -75,10 +75,10 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Uses.Should().HaveCount(1);
-        result.Uses[0].Url.Should().Be("http://hl7.org/fhir/StructureDefinition/Patient");
-        result.Uses[0].Alias.Should().Be("Patient");
-        result.Uses[0].Mode.Should().Be(ModelMode.Source);
+        result.Uses.Count.ShouldBe(1);
+        result.Uses[0].Url.ShouldBe("http://hl7.org/fhir/StructureDefinition/Patient");
+        result.Uses[0].Alias.ShouldBe("Patient");
+        result.Uses[0].Mode.ShouldBe(ModelMode.Source);
     }
 
     [Theory]
@@ -103,7 +103,7 @@ group Main(source src : Patient, target tgt : Bundle) {{
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Uses[0].Mode.Should().Be(expectedMode);
+        result.Uses[0].Mode.ShouldBe(expectedMode);
     }
 
     [Fact]
@@ -124,7 +124,7 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Uses[0].Alias.Should().BeNull();
+        result.Uses[0].Alias.ShouldBeNull();
     }
 
     [Fact]
@@ -147,10 +147,10 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Uses.Should().HaveCount(3);
-        result.Uses[0].Alias.Should().Be("Patient");
-        result.Uses[1].Alias.Should().Be("Bundle");
-        result.Uses[2].Alias.Should().Be("Obs");
+        result.Uses.Count.ShouldBe(3);
+        result.Uses[0].Alias.ShouldBe("Patient");
+        result.Uses[1].Alias.ShouldBe("Bundle");
+        result.Uses[2].Alias.ShouldBe("Obs");
     }
 
     #endregion
@@ -175,8 +175,8 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Imports.Should().HaveCount(1);
-        result.Imports[0].Url.Should().Be("http://example.org/fhir/StructureMap/Helpers");
+        result.Imports.Count.ShouldBe(1);
+        result.Imports[0].Url.ShouldBe("http://example.org/fhir/StructureMap/Helpers");
     }
 
     [Fact]
@@ -198,7 +198,7 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Imports.Should().HaveCount(2);
+        result.Imports.Count.ShouldBe(2);
     }
 
     #endregion
@@ -221,15 +221,15 @@ group PatientToBundle(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups.Should().HaveCount(1);
-        result.Groups[0].Name.Should().Be("PatientToBundle");
-        result.Groups[0].Parameters.Should().HaveCount(2);
-        result.Groups[0].Parameters[0].Mode.Should().Be(ParameterMode.Source);
-        result.Groups[0].Parameters[0].Name.Should().Be("src");
-        result.Groups[0].Parameters[0].Type.Should().Be("Patient");
-        result.Groups[0].Parameters[1].Mode.Should().Be(ParameterMode.Target);
-        result.Groups[0].Parameters[1].Name.Should().Be("tgt");
-        result.Groups[0].Parameters[1].Type.Should().Be("Bundle");
+        result.Groups.Count.ShouldBe(1);
+        result.Groups[0].Name.ShouldBe("PatientToBundle");
+        result.Groups[0].Parameters.Count.ShouldBe(2);
+        result.Groups[0].Parameters[0].Mode.ShouldBe(ParameterMode.Source);
+        result.Groups[0].Parameters[0].Name.ShouldBe("src");
+        result.Groups[0].Parameters[0].Type.ShouldBe("Patient");
+        result.Groups[0].Parameters[1].Mode.ShouldBe(ParameterMode.Target);
+        result.Groups[0].Parameters[1].Name.ShouldBe("tgt");
+        result.Groups[0].Parameters[1].Type.ShouldBe("Bundle");
     }
 
     [Fact]
@@ -251,8 +251,8 @@ group Derived(source src : Patient, target tgt : Bundle) extends Base {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups.Should().HaveCount(2);
-        result.Groups[1].Extends.Should().Be("Base");
+        result.Groups.Count.ShouldBe(2);
+        result.Groups[1].Extends.ShouldBe("Base");
     }
 
     [Fact]
@@ -271,7 +271,7 @@ group NoParams() {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Parameters.Should().BeEmpty();
+        result.Groups[0].Parameters.ShouldBeEmpty();
     }
 
     #endregion
@@ -295,10 +295,10 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules.Should().HaveCount(1);
+        result.Groups[0].Rules.Count.ShouldBe(1);
         var rule = result.Groups[0].Rules[0];
-        rule.Sources.Should().HaveCount(1);
-        rule.Targets.Should().HaveCount(1);
+        rule.Sources.Count.ShouldBe(1);
+        rule.Targets.Count.ShouldBe(1);
     }
 
     // NOTE: Named rule test removed - :: syntax is not part of FHIR Mapping Language spec
@@ -321,7 +321,7 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Sources.Should().HaveCount(2);
+        result.Groups[0].Rules[0].Sources.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -341,7 +341,7 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Targets.Should().HaveCount(2);
+        result.Groups[0].Rules[0].Targets.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -361,8 +361,8 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Sources.Should().HaveCount(1);
-        result.Groups[0].Rules[0].Targets.Should().BeEmpty();
+        result.Groups[0].Rules[0].Sources.Count.ShouldBe(1);
+        result.Groups[0].Rules[0].Targets.ShouldBeEmpty();
     }
 
     #endregion
@@ -387,7 +387,7 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = result.Groups[0].Rules[0].Sources[0];
-        source.Variable.Should().Be("vn");
+        source.Variable.ShouldBe("vn");
     }
 
     [Fact]
@@ -408,7 +408,7 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = result.Groups[0].Rules[0].Sources[0];
-        source.Type.Should().Be("HumanName");
+        source.Type.ShouldBe("HumanName");
     }
 
     [Fact]
@@ -429,8 +429,8 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = result.Groups[0].Rules[0].Sources[0];
-        source.Variable.Should().Be("vn");
-        source.Type.Should().Be("HumanName");
+        source.Variable.ShouldBe("vn");
+        source.Type.ShouldBe("HumanName");
     }
 
     [Fact]
@@ -451,9 +451,9 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var source = result.Groups[0].Rules[0].Sources[0];
-        source.Context.Should().BeOfType<QualifiedIdentifierExpression>();
+        source.Context.ShouldBeOfType<QualifiedIdentifierExpression>();
         var qualified = (QualifiedIdentifierExpression)source.Context;
-        qualified.Property.Should().Be("given");
+        qualified.Property.ShouldBe("given");
     }
 
     #endregion
@@ -478,7 +478,7 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var target = result.Groups[0].Rules[0].Targets[0];
-        target.Variable.Should().Be("entry");
+        target.Variable.ShouldBe("entry");
     }
 
     [Fact]
@@ -499,11 +499,11 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var target = result.Groups[0].Rules[0].Targets[0];
-        target.Transform.Should().NotBeNull();
-        target.Transform.Should().BeOfType<TransformExpression>();
+        target.Transform.ShouldNotBeNull();
+        target.Transform.ShouldBeOfType<TransformExpression>();
         var transform = (TransformExpression)target.Transform!;
-        transform.FunctionName.Should().Be("create");
-        transform.Arguments.Should().HaveCount(1);
+        transform.FunctionName.ShouldBe("create");
+        transform.Arguments.Count.ShouldBe(1);
     }
 
     [Theory]
@@ -531,7 +531,7 @@ group Main(source src : Patient, target tgt : Bundle) {{
 
         // Assert
         var target = result.Groups[0].Rules[0].Targets[0];
-        target.ListMode.Should().Be(expectedMode);
+        target.ListMode.ShouldBe(expectedMode);
     }
 
     #endregion
@@ -556,11 +556,11 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var transformExpr = result.Groups[0].Rules[0].Targets[0].Transform;
-        transformExpr.Should().NotBeNull();
-        transformExpr.Should().BeOfType<TransformExpression>();
+        transformExpr.ShouldNotBeNull();
+        transformExpr.ShouldBeOfType<TransformExpression>();
         var transform = (TransformExpression)transformExpr!;
-        transform.FunctionName.Should().Be("uuid");
-        transform.Arguments.Should().BeEmpty();
+        transform.FunctionName.ShouldBe("uuid");
+        transform.Arguments.ShouldBeEmpty();
     }
 
     [Fact]
@@ -581,11 +581,11 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var transformExpr = result.Groups[0].Rules[0].Targets[0].Transform;
-        transformExpr.Should().NotBeNull();
-        transformExpr.Should().BeOfType<TransformExpression>();
+        transformExpr.ShouldNotBeNull();
+        transformExpr.ShouldBeOfType<TransformExpression>();
         var transform = (TransformExpression)transformExpr!;
-        transform.FunctionName.Should().Be("translate");
-        transform.Arguments.Should().HaveCount(3);
+        transform.FunctionName.ShouldBe("translate");
+        transform.Arguments.Count.ShouldBe(3);
     }
 
     [Fact]
@@ -606,13 +606,13 @@ group Main(source src : Patient, target tgt : Bundle) {
 
         // Assert
         var transformExpr = result.Groups[0].Rules[0].Targets[0].Transform;
-        transformExpr.Should().NotBeNull();
-        transformExpr.Should().BeOfType<TransformExpression>();
+        transformExpr.ShouldNotBeNull();
+        transformExpr.ShouldBeOfType<TransformExpression>();
         var transform = (TransformExpression)transformExpr!;
-        transform.Arguments[0].Should().BeOfType<LiteralExpression>();
-        transform.Arguments[1].Should().BeOfType<LiteralExpression>();
-        transform.Arguments[2].Should().BeOfType<LiteralExpression>();
-        transform.Arguments[3].Should().BeOfType<LiteralExpression>();
+        transform.Arguments[0].ShouldBeOfType<LiteralExpression>();
+        transform.Arguments[1].ShouldBeOfType<LiteralExpression>();
+        transform.Arguments[2].ShouldBeOfType<LiteralExpression>();
+        transform.Arguments[3].ShouldBeOfType<LiteralExpression>();
     }
 
     #endregion
@@ -639,9 +639,9 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Dependent.Should().BeOfType<RuleSetExpression>();
+        result.Groups[0].Rules[0].Dependent.ShouldBeOfType<RuleSetExpression>();
         var ruleSet = (RuleSetExpression)result.Groups[0].Rules[0].Dependent!;
-        ruleSet.Rules.Should().HaveCount(2);
+        ruleSet.Rules.Count.ShouldBe(2);
     }
 
     [Fact]
@@ -665,13 +665,13 @@ group Main(source src : Patient, target tgt : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Groups[0].Rules[0].Dependent.Should().BeOfType<RuleSetExpression>();
+        result.Groups[0].Rules[0].Dependent.ShouldBeOfType<RuleSetExpression>();
         var outerRuleSet = (RuleSetExpression)result.Groups[0].Rules[0].Dependent!;
-        outerRuleSet.Rules.Should().HaveCount(1);
+        outerRuleSet.Rules.Count.ShouldBe(1);
 
-        outerRuleSet.Rules[0].Dependent.Should().BeOfType<RuleSetExpression>();
+        outerRuleSet.Rules[0].Dependent.ShouldBeOfType<RuleSetExpression>();
         var innerRuleSet = (RuleSetExpression)outerRuleSet.Rules[0].Dependent!;
-        innerRuleSet.Rules.Should().HaveCount(1);
+        innerRuleSet.Rules.Count.ShouldBe(1);
     }
 
     #endregion
@@ -711,13 +711,13 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Url.Should().Be("http://example.org/fhir/StructureMap/PatientToBundle");
-        result.Identifier.Should().Be("PatientToBundle");
-        result.Uses.Should().HaveCount(2);
-        result.Imports.Should().HaveCount(1);
-        result.Groups.Should().HaveCount(1);
-        result.Groups[0].Rules.Should().NotBeEmpty();
+        result.ShouldNotBeNull();
+        result.Url.ShouldBe("http://example.org/fhir/StructureMap/PatientToBundle");
+        result.Identifier.ShouldBe("PatientToBundle");
+        result.Uses.Count.ShouldBe(2);
+        result.Imports.Count.ShouldBe(1);
+        result.Groups.Count.ShouldBe(1);
+        result.Groups[0].Rules.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -733,7 +733,7 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);
-        act.Should().Throw<ParseException>();
+        Should.Throw<ParseException>(act);
     }
 
     [Fact]
@@ -749,7 +749,7 @@ group Main(source src : Patient, target tgt : Bundle)
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);
-        act.Should().Throw<ParseException>();
+        Should.Throw<ParseException>(act);
     }
 
     [Fact(Skip = "Parser is very permissive and accepts this syntax")]
@@ -765,7 +765,7 @@ group Main(source src : Patient, target tgt : Bundle
 
         // Act & Assert
         var act = () => compiler.Parse(mappingText);
-        act.Should().Throw<ParseException>();
+        Should.Throw<ParseException>(act);
     }
 
     #endregion

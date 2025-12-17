@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using NSubstitute;
@@ -88,9 +88,9 @@ public class RevIncludeProcessorTests : TestBase
         var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
 
         // Assert
-        result.Should().ContainSingle();
-        result.First().ResourceType.Should().Be("Observation");
-        result.First().ResourceId.Should().Be("obs-1");
+        result.ShouldHaveSingleItem();
+        result.First().ResourceType.ShouldBe("Observation");
+        result.First().ResourceId.ShouldBe("obs-1");
     }
 
     [Fact]
@@ -156,9 +156,9 @@ public class RevIncludeProcessorTests : TestBase
         var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
 
         // Assert
-        result.Should().HaveCount(2);
-        result.Should().Contain(r => r.ResourceId == "obs-1");
-        result.Should().Contain(r => r.ResourceId == "obs-2");
+        result.Count.ShouldBe(2);
+        result.ShouldContain(r => r.ResourceId == "obs-1");
+        result.ShouldContain(r => r.ResourceId == "obs-2");
     }
 
     [Fact]
@@ -195,6 +195,6 @@ public class RevIncludeProcessorTests : TestBase
         var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
 
         // Assert
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 }

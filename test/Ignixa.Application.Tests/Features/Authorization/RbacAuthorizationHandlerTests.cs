@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Smart;
@@ -64,7 +64,7 @@ public class RbacAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
         await _permissionStore.DidNotReceive().GetPermissionsAsync(
             Arg.Any<string>(),
             Arg.Any<IReadOnlyList<string>>(),
@@ -90,7 +90,7 @@ public class RbacAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class RbacAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeTrue();
+        result.Allowed.ShouldBeTrue();
     }
 
     [Fact]
@@ -142,15 +142,15 @@ public class RbacAuthorizationHandlerTests
         var result = await _handler.HandleAsync(context, CancellationToken.None);
 
         // Assert
-        result.Allowed.Should().BeFalse();
-        result.DenialReason.Should().Contain("No permission grants");
+        result.Allowed.ShouldBeFalse();
+        result.DenialReason.ShouldContain("No permission grants");
     }
 
     [Fact]
     public void Priority_Is30()
     {
         // Assert
-        _handler.Priority.Should().Be(30);
+        _handler.Priority.ShouldBe(30);
     }
 
     private static IFhirRequestContext CreateRequestContext(int tenantId = 1)

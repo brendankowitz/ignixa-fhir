@@ -5,7 +5,7 @@
  * Based on FHIR cross-version mapping specifications.
  */
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
 using Xunit;
@@ -44,10 +44,10 @@ group PatientContent(source src : Patient, target tgt : Patient) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups.Should().HaveCount(2);
-        result.Groups[0].Name.Should().Be("PatientToBundle");
-        result.Groups[1].Name.Should().Be("PatientContent");
+        result.ShouldNotBeNull();
+        result.Groups.Count.ShouldBe(2);
+        result.Groups[0].Name.ShouldBe("PatientToBundle");
+        result.Groups[1].Name.ShouldBe("PatientContent");
     }
 
     #endregion
@@ -77,8 +77,8 @@ group PatientToPatient(source src : Patient, target tgt : PatientR5) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups[0].Rules[0].Sources[0].Type.Should().Be("HumanName");
+        result.ShouldNotBeNull();
+        result.Groups[0].Rules[0].Sources[0].Type.ShouldBe("HumanName");
     }
 
     #endregion
@@ -108,8 +108,8 @@ group PatientToPatient(source src : Patient, target tgt : PatientR5) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups[0].Rules[0].Targets[0].ListMode.Should().NotBeNull();
+        result.ShouldNotBeNull();
+        result.Groups[0].Rules[0].Targets[0].ListMode.ShouldNotBeNull();
     }
 
     #endregion
@@ -148,10 +148,10 @@ group Patient(source src : PatientR4, target tgt : PatientR5) extends DomainReso
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Url.Should().Be("http://hl7.org/fhir/StructureMap/Patient4to5");
-        result.Groups[0].Extends.Should().Be("DomainResource");
-        result.Groups[0].Rules.Should().HaveCountGreaterThan(5);
+        result.ShouldNotBeNull();
+        result.Url.ShouldBe("http://hl7.org/fhir/StructureMap/Patient4to5");
+        result.Groups[0].Extends.ShouldBe("DomainResource");
+        result.Groups[0].Rules.Count.ShouldBeGreaterThan(5);
     }
 
     #endregion
@@ -206,15 +206,15 @@ group PatientToBundle(source patient : Patient, target bundle : Bundle) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups[0].Rules.Should().HaveCountGreaterThan(1);
+        result.ShouldNotBeNull();
+        result.Groups[0].Rules.Count.ShouldBeGreaterThan(1);
 
         // Verify nested structure
         var firstRule = result.Groups[0].Rules.First(r => r.Dependent != null);
-        firstRule.Dependent.Should().NotBeNull();
-        firstRule.Dependent.Should().BeOfType<RuleSetExpression>();
+        firstRule.Dependent.ShouldNotBeNull();
+        firstRule.Dependent.ShouldBeOfType<RuleSetExpression>();
         var ruleSet = (RuleSetExpression)firstRule.Dependent!;
-        ruleSet.Rules.Should().NotBeEmpty();
+        ruleSet.Rules.ShouldNotBeEmpty();
     }
 
     #endregion
@@ -245,13 +245,13 @@ group TransformExamples(source src : Patient, target tgt : PatientOut) {
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups[0].Rules.Should().HaveCountGreaterThan(3);
+        result.ShouldNotBeNull();
+        result.Groups[0].Rules.Count.ShouldBeGreaterThan(3);
 
         // Verify transform functions
         result.Groups[0].Rules
             .Where(r => r.Targets.Any(t => t.Transform != null))
-            .Should().HaveCountGreaterThan(3);
+            .Count().ShouldBeGreaterThan(3);
     }
 
     #endregion
@@ -288,11 +288,11 @@ group Patient(source src : Patient, target tgt : PatientOut) extends DomainResou
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups.Should().HaveCount(2);
-        result.Groups[0].Name.Should().Be("DomainResource");
-        result.Groups[1].Name.Should().Be("Patient");
-        result.Groups[1].Extends.Should().Be("DomainResource");
+        result.ShouldNotBeNull();
+        result.Groups.Count.ShouldBe(2);
+        result.Groups[0].Name.ShouldBe("DomainResource");
+        result.Groups[1].Name.ShouldBe("Patient");
+        result.Groups[1].Extends.ShouldBe("DomainResource");
     }
 
     #endregion
@@ -325,10 +325,10 @@ group MultiSource(source patient : Patient, source obs : Observation, target bun
         var result = compiler.Parse(mappingText);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Groups[0].Parameters.Should().HaveCount(3);
-        result.Groups[0].Rules[0].Sources.Should().HaveCount(2);
-        result.Groups[0].Rules[0].Targets.Should().HaveCount(2);
+        result.ShouldNotBeNull();
+        result.Groups[0].Parameters.Count.ShouldBe(3);
+        result.Groups[0].Rules[0].Sources.Count.ShouldBe(2);
+        result.Groups[0].Rules[0].Targets.Count.ShouldBe(2);
     }
 
     #endregion

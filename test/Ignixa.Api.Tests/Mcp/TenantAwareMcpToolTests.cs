@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Features.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
@@ -33,7 +33,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var result = await tool.TestResolveTenantIdAsync(explicitTenantId, CancellationToken.None);
 
         // Assert
-        result.Should().Be(explicitTenantId);
+        result.ShouldBe(explicitTenantId);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var result = await tool.TestResolveTenantIdAsync(null, CancellationToken.None);
 
         // Assert
-        result.Should().Be(routeTenantId);
+        result.ShouldBe(routeTenantId);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var result = await tool.TestResolveTenantIdAsync(null, CancellationToken.None);
 
         // Assert
-        result.Should().Be(1);
+        result.ShouldBe(1);
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public class TenantAwareMcpToolTests : McpTestBase
         var ex = await Assert.ThrowsAsync<BadRequestException>(
             async () => await tool.TestResolveTenantIdAsync(null, CancellationToken.None));
 
-        ex.Message.Should().Contain("Multi-tenant mode detected");
-        ex.Message.Should().Contain("Please specify tenantId parameter");
+        ex.Message.ShouldContain("Multi-tenant mode detected");
+        ex.Message.ShouldContain("Please specify tenantId parameter");
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var ex = await Assert.ThrowsAsync<BadRequestException>(
             async () => await tool.TestResolveTenantIdAsync(null, CancellationToken.None));
 
-        ex.Message.Should().Contain("No active tenants available");
+        ex.Message.ShouldContain("No active tenants available");
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var ex = await Assert.ThrowsAsync<BadRequestException>(
             async () => await tool.TestResolveTenantIdAsync(null, CancellationToken.None));
 
-        ex.Message.Should().Contain("No active tenants available");
+        ex.Message.ShouldContain("No active tenants available");
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var result = await tool.TestResolveTenantIdAsync(explicitTenantId, CancellationToken.None);
 
         // Assert - explicit parameter takes precedence over route context
-        result.Should().Be(explicitTenantId);
+        result.ShouldBe(explicitTenantId);
     }
 
     #endregion
@@ -143,10 +143,10 @@ public class TenantAwareMcpToolTests : McpTestBase
         var result = await tool.TestValidateTenantAccessAsync(1, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.TenantId.Should().Be(1);
-        result.DisplayName.Should().Be("Active Tenant");
-        result.IsActive.Should().BeTrue();
+        result.ShouldNotBeNull();
+        result.TenantId.ShouldBe(1);
+        result.DisplayName.ShouldBe("Active Tenant");
+        result.IsActive.ShouldBeTrue();
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var ex = await Assert.ThrowsAsync<BadRequestException>(
             async () => await tool.TestValidateTenantAccessAsync(999, CancellationToken.None));
 
-        ex.Message.Should().Contain("Tenant 999 does not exist");
+        ex.Message.ShouldContain("Tenant 999 does not exist");
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var ex = await Assert.ThrowsAsync<BadRequestException>(
             async () => await tool.TestValidateTenantAccessAsync(2, CancellationToken.None));
 
-        ex.Message.Should().Contain("Tenant 2 is not active");
+        ex.Message.ShouldContain("Tenant 2 is not active");
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class TenantAwareMcpToolTests : McpTestBase
         var ex = await Assert.ThrowsAsync<BadRequestException>(
             async () => await tool.TestValidateTenantAccessAsync(0, CancellationToken.None));
 
-        ex.Message.Should().Contain("Tenant 0 is a system partition and cannot be accessed via API");
+        ex.Message.ShouldContain("Tenant 0 is a system partition and cannot be accessed via API");
     }
 
     #endregion

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
@@ -36,8 +36,8 @@ public class ValidationCliTests
         var result = ValidateJson(schemaProvider, json);
 
         // Assert
-        result.IsValid.Should().BeTrue();
-        result.Issues.Should().BeEmpty();
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
     }
 
     [Fact]
@@ -55,9 +55,9 @@ public class ValidationCliTests
         var result = ValidateJson(schemaProvider, json);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Issues.Should().NotBeEmpty();
-        result.Issues.Should().Contain(i => i.Path.Contains("Patient.id"));
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues.ShouldContain(i => i.Path.Contains("Patient.id"));
     }
 
     [Fact]
@@ -74,9 +74,9 @@ public class ValidationCliTests
         var result = ValidateJson(schemaProvider, json);
 
         // Assert
-        result.IsValid.Should().BeFalse();
-        result.Issues.Should().NotBeEmpty();
-        result.HasErrors.Should().BeTrue();
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldNotBeEmpty();
+        result.HasErrors.ShouldBeTrue();
     }
 
     [Theory]
@@ -98,7 +98,7 @@ public class ValidationCliTests
 
         // Assert - we just verify that validation runs without crashing
         // The result may or may not be valid depending on required fields
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     [Fact]
@@ -116,10 +116,10 @@ public class ValidationCliTests
         var operationOutcome = result.ToOperationOutcome();
 
         // Assert
-        operationOutcome.Should().NotBeNull();
-        operationOutcome.MutableNode.Should().NotBeNull();
-        operationOutcome.MutableNode["resourceType"]?.ToString().Should().Be("OperationOutcome");
-        operationOutcome.MutableNode["issue"].Should().NotBeNull();
+        operationOutcome.ShouldNotBeNull();
+        operationOutcome.MutableNode.ShouldNotBeNull();
+        operationOutcome.MutableNode["resourceType"]?.ToString().ShouldBe("OperationOutcome");
+        operationOutcome.MutableNode["issue"].ShouldNotBeNull();
     }
 
     private static ValidationResult ValidateJson(IFhirSchemaProvider schemaProvider, string json)

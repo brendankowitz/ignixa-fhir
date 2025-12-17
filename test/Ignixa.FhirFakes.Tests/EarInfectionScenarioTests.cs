@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.FhirFakes.Scenarios.Predefined;
 using Ignixa.Specification.Generated;
 
@@ -26,9 +26,9 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Patient!.ResourceType.Should().Be("Patient");
-        scenario.Patient.Id.Should().NotBeNullOrEmpty();
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Patient!.ResourceType.ShouldBe("Patient");
+        scenario.Patient.Id.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -41,14 +41,14 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection(age: specificAge);
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
+        scenario.Patient.ShouldNotBeNull();
         var birthDate = scenario.Patient!.MutableNode["birthDate"]?.GetValue<string>();
-        birthDate.Should().NotBeNullOrEmpty("patient should have a birth date");
+        birthDate.ShouldNotBeNullOrEmpty("patient should have a birth date");
 
         // Verify the age is approximately correct (within 1 year tolerance)
         var birthDateTime = DateTime.Parse(birthDate!);
         var calculatedAge = (DateTime.UtcNow - birthDateTime).Days / 365;
-        calculatedAge.Should().BeInRange(specificAge - 1, specificAge + 1);
+        calculatedAge.ShouldBeInRange(specificAge - 1, specificAge + 1);
     }
 
     #endregion
@@ -62,7 +62,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Conditions.Should().HaveCountGreaterThanOrEqualTo(1);
+        scenario.Conditions.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         var otitisMediaCondition = scenario.Conditions.FirstOrDefault(c =>
         {
@@ -70,10 +70,10 @@ public class EarInfectionScenarioTests
             return code == "7091009"; // SNOMED CT code for Acute otitis media
         });
 
-        otitisMediaCondition.Should().NotBeNull("should have acute otitis media diagnosis");
+        otitisMediaCondition.ShouldNotBeNull("should have acute otitis media diagnosis");
 
         var display = otitisMediaCondition!.MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
-        display.Should().Be("Acute otitis media");
+        display.ShouldBe("Acute otitis media");
     }
 
     [Fact]
@@ -89,10 +89,10 @@ public class EarInfectionScenarioTests
             return code == "7091009";
         });
 
-        otitisMediaCondition.Should().NotBeNull();
+        otitisMediaCondition.ShouldNotBeNull();
 
         var clinicalStatus = otitisMediaCondition!.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("resolved", "condition should be resolved after follow-up");
+        clinicalStatus.ShouldBe("resolved", "condition should be resolved after follow-up");
     }
 
     [Fact]
@@ -108,10 +108,10 @@ public class EarInfectionScenarioTests
             return code == "7091009";
         });
 
-        otitisMediaCondition.Should().NotBeNull();
+        otitisMediaCondition.ShouldNotBeNull();
 
         var clinicalStatus = otitisMediaCondition!.MutableNode["clinicalStatus"]?["coding"]?[0]?["code"]?.GetValue<string>();
-        clinicalStatus.Should().Be("active", "condition should remain active without follow-up");
+        clinicalStatus.ShouldBe("active", "condition should remain active without follow-up");
     }
 
     #endregion
@@ -125,13 +125,13 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Encounters.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial visit and follow-up");
+        scenario.Encounters.Count.ShouldBeGreaterThanOrEqualTo(2, "should have initial visit and follow-up");
 
         // All encounters should reference the patient
         foreach (var encounter in scenario.Encounters)
         {
             var subjectRef = encounter.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Contain(scenario.Patient!.Id);
+            subjectRef!.ShouldContain(scenario.Patient!.Id);
         }
     }
 
@@ -142,7 +142,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection(includeFollowUp: false);
 
         // Assert
-        scenario.Encounters.Should().HaveCount(1, "should only have initial visit without follow-up");
+        scenario.Encounters.Count.ShouldBe(1, "should only have initial visit without follow-up");
     }
 
     #endregion
@@ -162,13 +162,13 @@ public class EarInfectionScenarioTests
             return code == "8310-5"; // LOINC code for Body temperature
         }).ToList();
 
-        temperatureObservations.Should().NotBeEmpty("should have temperature observations");
+        temperatureObservations.ShouldNotBeEmpty("should have temperature observations");
 
         // Initial visit should show elevated temperature (fever)
         var initialTemp = temperatureObservations.First();
         var value = initialTemp.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThanOrEqualTo(38.0m, "initial temperature should indicate fever");
-        value.Should().BeLessThanOrEqualTo(39.5m, "temperature should be in expected range");
+        value!.Value.ShouldBeGreaterThanOrEqualTo(38.0m, "initial temperature should indicate fever");
+        value!.Value.ShouldBeLessThanOrEqualTo(39.5m, "temperature should be in expected range");
     }
 
     [Fact]
@@ -184,12 +184,12 @@ public class EarInfectionScenarioTests
             return code == "8310-5";
         }).ToList();
 
-        temperatureObservations.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial and follow-up temperatures");
+        temperatureObservations.Count.ShouldBeGreaterThanOrEqualTo(2, "should have initial and follow-up temperatures");
 
         // Follow-up should show normal temperature
         var followUpTemp = temperatureObservations.Last();
         var value = followUpTemp.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeLessThanOrEqualTo(37.5m, "follow-up temperature should be normal or near-normal");
+        value!.Value.ShouldBeLessThanOrEqualTo(37.5m, "follow-up temperature should be normal or near-normal");
     }
 
     [Fact]
@@ -205,13 +205,13 @@ public class EarInfectionScenarioTests
             return code == "72514-3"; // LOINC code for Pain severity
         }).ToList();
 
-        painObservations.Should().NotBeEmpty("should have pain severity observations");
+        painObservations.ShouldNotBeEmpty("should have pain severity observations");
 
         // Initial visit should show moderate to severe pain
         var initialPain = painObservations.First();
         var value = initialPain.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeGreaterThanOrEqualTo(5m, "initial pain should be moderate to severe");
-        value.Should().BeLessThanOrEqualTo(8m, "pain should be in expected range");
+        value!.Value.ShouldBeGreaterThanOrEqualTo(5m, "initial pain should be moderate to severe");
+        value!.Value.ShouldBeLessThanOrEqualTo(8m, "pain should be in expected range");
     }
 
     [Fact]
@@ -227,12 +227,12 @@ public class EarInfectionScenarioTests
             return code == "72514-3";
         }).ToList();
 
-        painObservations.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial and follow-up pain assessments");
+        painObservations.Count.ShouldBeGreaterThanOrEqualTo(2, "should have initial and follow-up pain assessments");
 
         // Follow-up should show minimal or no pain
         var followUpPain = painObservations.Last();
         var value = followUpPain.MutableNode["valueQuantity"]?["value"]?.GetValue<decimal>();
-        value.Should().BeLessThanOrEqualTo(1m, "follow-up pain should be minimal or resolved");
+        value!.Value.ShouldBeLessThanOrEqualTo(1m, "follow-up pain should be minimal or resolved");
     }
 
     #endregion
@@ -252,11 +252,11 @@ public class EarInfectionScenarioTests
             return code == "16247007"; // SNOMED CT code for Otoscopy
         }).ToList();
 
-        otoscopyProcedures.Should().NotBeEmpty("should have otoscopy examination");
+        otoscopyProcedures.ShouldNotBeEmpty("should have otoscopy examination");
 
         var initialOtoscopy = otoscopyProcedures.First();
         var display = initialOtoscopy.MutableNode["code"]?["coding"]?[0]?["display"]?.GetValue<string>();
-        display.Should().Be("Otoscopy");
+        display.ShouldBe("Otoscopy");
     }
 
     [Fact]
@@ -272,12 +272,12 @@ public class EarInfectionScenarioTests
             return code == "16247007";
         }).ToList();
 
-        otoscopyProcedures.Should().HaveCountGreaterThanOrEqualTo(2, "should have initial and follow-up examinations");
+        otoscopyProcedures.Count.ShouldBeGreaterThanOrEqualTo(2, "should have initial and follow-up examinations");
 
         // Follow-up should indicate resolution
         var followUpOtoscopy = otoscopyProcedures.Last();
         var outcome = followUpOtoscopy.MutableNode["outcome"]?["text"]?.GetValue<string>();
-        outcome.Should().Contain("normal", "follow-up should show improvement");
+        outcome!.ShouldContain("normal", Case.Insensitive);
     }
 
     #endregion
@@ -291,7 +291,7 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection();
 
         // Assert
-        scenario.Medications.Should().HaveCountGreaterThanOrEqualTo(1);
+        scenario.Medications.Count.ShouldBeGreaterThanOrEqualTo(1);
 
         var amoxicillin = scenario.Medications.FirstOrDefault(m =>
         {
@@ -299,7 +299,7 @@ public class EarInfectionScenarioTests
             return code == "308192"; // RxNorm code for Amoxicillin 500mg
         });
 
-        amoxicillin.Should().NotBeNull("should have Amoxicillin prescription");
+        amoxicillin.ShouldNotBeNull("should have Amoxicillin prescription");
     }
 
     [Fact]
@@ -315,22 +315,22 @@ public class EarInfectionScenarioTests
             return code == "308192";
         });
 
-        amoxicillin.Should().NotBeNull();
+        amoxicillin.ShouldNotBeNull();
 
         // Check dosage instruction with text description
         // Note: timing.repeat structure is not included due to validation schema limitations
         // that don't properly expose backbone element children across all FHIR versions
         var dosageInstruction = amoxicillin!.MutableNode["dosageInstruction"]?[0];
-        dosageInstruction.Should().NotBeNull();
+        dosageInstruction.ShouldNotBeNull();
 
         var dosageText = dosageInstruction!["text"]?.GetValue<string>();
-        dosageText.Should().NotBeNullOrEmpty("should have dosage text description");
-        dosageText.Should().Contain("twice daily", "should indicate twice daily dosing");
+        dosageText.ShouldNotBeNullOrEmpty("should have dosage text description");
+        dosageText!.ShouldContain("twice daily", Case.Insensitive);
 
         // Check that it's not chronic (10-day course)
         var dispenseRequest = amoxicillin.MutableNode["dispenseRequest"];
         var numberOfRepeats = dispenseRequest?["numberOfRepeatsAllowed"]?.GetValue<int>();
-        numberOfRepeats.Should().Be(0, "should not have repeats for acute treatment");
+        numberOfRepeats.ShouldBe(0, "should not have repeats for acute treatment");
     }
 
     [Fact]
@@ -346,10 +346,10 @@ public class EarInfectionScenarioTests
             return code == "308192";
         });
 
-        amoxicillin.Should().NotBeNull();
+        amoxicillin.ShouldNotBeNull();
 
         var reasonReference = amoxicillin!.MutableNode["reasonReference"];
-        reasonReference.Should().NotBeNull("medication should reference the condition");
+        reasonReference.ShouldNotBeNull("medication should reference the condition");
     }
 
     #endregion
@@ -364,7 +364,7 @@ public class EarInfectionScenarioTests
 
         // Assert
         var timestamps = scenario.Timeline.Select(e => e.Timestamp).ToList();
-        timestamps.Should().BeInAscendingOrder("timeline events should be chronologically ordered");
+        timestamps.SequenceEqual(timestamps.OrderBy(t => t)).ShouldBeTrue("timeline events should be chronologically ordered");
     }
 
     [Fact]
@@ -378,25 +378,25 @@ public class EarInfectionScenarioTests
         foreach (var observation in scenario.Observations)
         {
             var subjectRef = observation.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "observation should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "observation should reference the patient");
         }
 
         foreach (var condition in scenario.Conditions)
         {
             var subjectRef = condition.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "condition should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "condition should reference the patient");
         }
 
         foreach (var medication in scenario.Medications)
         {
             var subjectRef = medication.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "medication should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "medication should reference the patient");
         }
 
         foreach (var procedure in scenario.Procedures)
         {
             var subjectRef = procedure.MutableNode["subject"]?["reference"]?.GetValue<string>();
-            subjectRef.Should().Be($"urn:uuid:{patientId}", "procedure should reference the patient");
+            subjectRef.ShouldBe($"urn:uuid:{patientId}", "procedure should reference the patient");
         }
     }
 
@@ -407,19 +407,19 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection(includeFollowUp: true);
 
         // Assert
-        scenario.Encounters.Should().HaveCount(2);
+        scenario.Encounters.Count.ShouldBe(2);
 
         var initialVisit = scenario.Encounters[0].MutableNode["period"]?["start"]?.GetValue<string>();
         var followUpVisit = scenario.Encounters[1].MutableNode["period"]?["start"]?.GetValue<string>();
 
-        initialVisit.Should().NotBeNullOrEmpty();
-        followUpVisit.Should().NotBeNullOrEmpty();
+        initialVisit.ShouldNotBeNullOrEmpty();
+        followUpVisit.ShouldNotBeNullOrEmpty();
 
         var date1 = DateTime.Parse(initialVisit!);
         var date2 = DateTime.Parse(followUpVisit!);
 
         var daysDifference = (date2 - date1).TotalDays;
-        daysDifference.Should().BeApproximately(10, 1, "follow-up should be approximately 10 days after initial visit");
+        daysDifference.ShouldBe(10, 1);
     }
 
     #endregion
@@ -437,11 +437,11 @@ public class EarInfectionScenarioTests
         var scenario = _schemaProvider.GetPediatricEarInfection(age: age);
 
         // Assert
-        scenario.Patient.Should().NotBeNull();
-        scenario.Conditions.Should().NotBeEmpty();
-        scenario.Observations.Should().NotBeEmpty();
-        scenario.Procedures.Should().NotBeEmpty();
-        scenario.Medications.Should().NotBeEmpty();
+        scenario.Patient.ShouldNotBeNull();
+        scenario.Conditions.ShouldNotBeEmpty();
+        scenario.Observations.ShouldNotBeEmpty();
+        scenario.Procedures.ShouldNotBeEmpty();
+        scenario.Medications.ShouldNotBeEmpty();
     }
 
     [Theory]
@@ -454,7 +454,7 @@ public class EarInfectionScenarioTests
 
         // Assert
         var patientGender = scenario.Patient!.MutableNode["gender"]?.GetValue<string>();
-        patientGender.Should().Be(gender);
+        patientGender.ShouldBe(gender);
     }
 
     #endregion

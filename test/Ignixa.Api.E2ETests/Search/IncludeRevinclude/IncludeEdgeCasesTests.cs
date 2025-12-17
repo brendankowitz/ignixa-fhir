@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 
@@ -51,9 +51,9 @@ public class IncludeSearchTests_EdgeCases : IncludeTestBase
             $"_id={updatedLocation.Id}&{includeType}=Location:partof");
 
         // Assert - the matched resource shouldn't be returned as a separate include
-        bundle.Entry.Should().HaveCount(1);
-        bundle.Entry[0].Resource!.Id.Should().Be(updatedLocation.Id);
-        bundle.Entry[0].Search?.Mode.Should().Be("match");
+        bundle.Entry.Count.ShouldBe(1);
+        bundle.Entry[0].Resource!.Id.ShouldBe(updatedLocation.Id);
+        bundle.Entry[0].Search?.Mode.ShouldBe("match");
     }
 
     #endregion
@@ -155,8 +155,8 @@ public class IncludeSearchTests_EdgeCases : IncludeTestBase
             .Distinct()
             .ToList();
 
-        resourceTypes.Should().Contain("DiagnosticReport");
-        resourceTypes.Should().Contain("Patient");
+        resourceTypes.ShouldContain("DiagnosticReport");
+        resourceTypes.ShouldContain("Patient");
     }
 
     #endregion

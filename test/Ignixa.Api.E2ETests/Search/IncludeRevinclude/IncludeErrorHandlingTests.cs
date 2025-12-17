@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 
@@ -33,7 +33,7 @@ public class IncludeSearchTests_ErrorHandling : IncludeTestBase
         var response = await Client.GetAsync($"/Patient?{include}=Observation:subject:NotAResourceType");
 
         // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest);
     }
 
     /// <summary>
@@ -49,7 +49,7 @@ public class IncludeSearchTests_ErrorHandling : IncludeTestBase
         var response = await Client.GetAsync($"/Patient?{include}=Observation:subject:{target}");
 
         // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest);
     }
 
     /// <summary>
@@ -69,6 +69,6 @@ public class IncludeSearchTests_ErrorHandling : IncludeTestBase
             "/MedicationDispense?_include=MedicationDispense:performer:Practitioner&_include=MedicationDispense:prescription&_include:iterate=MedicationRequest:requester:Practitioner&_revinclude:iterate=Patient:general-practitioner");
 
         // Assert - should succeed (not BadRequest) as we now support unspecified target types
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
     }
 }

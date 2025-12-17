@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
@@ -70,8 +70,8 @@ public class ChainedExpressionProcessorTests : TestBase
         var surrogateIds = await result.ToListAsync();
 
         // Assert
-        surrogateIds.Should().ContainSingle();
-        surrogateIds.First().Should().Be(patient.ResourceSurrogateId);
+        surrogateIds.ShouldHaveSingleItem();
+        surrogateIds.First().ShouldBe(patient.ResourceSurrogateId);
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class ChainedExpressionProcessorTests : TestBase
         var surrogateIds = await result.ToListAsync();
 
         // Assert
-        surrogateIds.Should().BeEmpty();
+        surrogateIds.ShouldBeEmpty();
     }
 
     #endregion
@@ -147,8 +147,8 @@ public class ChainedExpressionProcessorTests : TestBase
         var surrogateIds = await result.ToListAsync();
 
         // Assert
-        surrogateIds.Should().ContainSingle();
-        surrogateIds.First().Should().Be(patient.ResourceSurrogateId);
+        surrogateIds.ShouldHaveSingleItem();
+        surrogateIds.First().ShouldBe(patient.ResourceSurrogateId);
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class ChainedExpressionProcessorTests : TestBase
         var surrogateIds = await result.ToListAsync();
 
         // Assert
-        surrogateIds.Should().BeEmpty();
+        surrogateIds.ShouldBeEmpty();
     }
 
     #endregion

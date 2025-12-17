@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using FluentAssertions;
+using Shouldly;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.FhirPath.Parser;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,8 +28,8 @@ public class FhirPathExpressionCacheTests
         var compiled2 = cache.GetOrCompile(expression);
 
         // Assert
-        compiled1.Should().NotBeNull();
-        compiled2.Should().BeSameAs(compiled1, "second call should return cached instance");
+        compiled1.ShouldNotBeNull();
+        compiled2.ShouldBeSameAs(compiled1, "second call should return cached instance");
     }
 
     [Fact]
@@ -48,9 +48,9 @@ public class FhirPathExpressionCacheTests
         var result = cache.GetOrCompile(expression);
 
         // Assert
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var stats = cache.GetStatistics();
-        stats.CacheHits.Should().BeGreaterThan(0);
+        stats.CacheHits.ShouldBeGreaterThan(0);
     }
 
     [Fact]
@@ -71,11 +71,11 @@ public class FhirPathExpressionCacheTests
         var stats = cache.GetStatistics();
 
         // Assert
-        stats.TotalRequests.Should().Be(5);
-        stats.CacheHits.Should().Be(3);
-        stats.CacheMisses.Should().Be(2);
-        stats.HitRate.Should().Be(0.6); // 3/5 = 0.6
-        stats.CachedExpressionCount.Should().Be(2);
+        stats.TotalRequests.ShouldBe(5);
+        stats.CacheHits.ShouldBe(3);
+        stats.CacheMisses.ShouldBe(2);
+        stats.HitRate.ShouldBe(0.6); // 3/5 = 0.6
+        stats.CachedExpressionCount.ShouldBe(2);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class FhirPathExpressionCacheTests
 
         // Act & Assert
         var act = () => cache.GetOrCompile("Invalid((((");
-        act.Should().Throw<FormatException>();
+        Should.Throw<FormatException>(act);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class FhirPathExpressionCacheTests
 
         // Act & Assert
         var act = () => cache.GetOrCompile(null!);
-        act.Should().Throw<ArgumentException>();
+        Should.Throw<ArgumentException>(act);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class FhirPathExpressionCacheTests
 
         // Act & Assert
         var act = () => cache.GetOrCompile("   ");
-        act.Should().Throw<ArgumentException>();
+        Should.Throw<ArgumentException>(act);
     }
 
     #endregion
@@ -138,10 +138,10 @@ public class FhirPathExpressionCacheTests
         var stats = cache.GetStatistics();
 
         // Assert
-        stats.TotalRequests.Should().Be(0);
-        stats.CacheHits.Should().Be(0);
-        stats.CacheMisses.Should().Be(0);
-        stats.CachedExpressionCount.Should().Be(0);
+        stats.TotalRequests.ShouldBe(0);
+        stats.CacheHits.ShouldBe(0);
+        stats.CacheMisses.ShouldBe(0);
+        stats.CachedExpressionCount.ShouldBe(0);
     }
 
     [Fact]
@@ -160,8 +160,8 @@ public class FhirPathExpressionCacheTests
         var stats = cache.GetStatistics();
 
         // Assert
-        stats.TotalCompilationTimeMs.Should().BeGreaterThan(0, "compilation should take some time");
-        stats.CacheMisses.Should().Be(3, "all should be cache misses");
+        stats.TotalCompilationTimeMs.ShouldBeGreaterThan(0, "compilation should take some time");
+        stats.CacheMisses.ShouldBe(3, "all should be cache misses");
     }
 
     #endregion
@@ -187,10 +187,10 @@ public class FhirPathExpressionCacheTests
         // Assert - all should return same compiled instance
         var compiled = cache.GetOrCompile(expression);
         // All tasks complete successfully
-        tasks.Should().AllSatisfy(t => t.IsCompletedSuccessfully.Should().BeTrue());
+        tasks.ShouldAllBe(t => t.IsCompletedSuccessfully);
 
         var stats = cache.GetStatistics();
-        stats.CachedExpressionCount.Should().Be(1);
+        stats.CachedExpressionCount.ShouldBe(1);
     }
 
     #endregion
