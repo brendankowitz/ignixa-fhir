@@ -114,15 +114,22 @@ public static class DurableTaskConfiguration
         var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger("DurableTask.SqlServer");
 
-        // Get connection string from tenant configuration (uses same database as FHIR resources)
-        // Falls back to explicit DurableTask:SqlServer:ConnectionString if needed
-        var connectionString = configuration["DurableTask:SqlServer:ConnectionString"]
-            ?? configuration["Tenants:Configurations:1:Storage:ConnectionString"];
+        // Get connection string in order of preference:
+        // 1. Explicit DurableTask:SqlServer:ConnectionString (highest priority)
+        // 2. First active tenant with SQL storage (uses same database as FHIR resources)
+        var connectionString = configuration["DurableTask:SqlServer:ConnectionString"];
+
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            // Find the first active tenant with a SQL connection string
+            connectionString = GetFirstActiveTenantConnectionString(configuration);
+        }
 
         if (string.IsNullOrEmpty(connectionString))
         {
             throw new InvalidOperationException(
-                "DurableTask:SqlServer:ConnectionString or Tenants:Configurations:1:Storage:ConnectionString is required when using SqlServer provider");
+                "DurableTask SqlServer connection string not found. Configure either 'DurableTask:SqlServer:ConnectionString' " +
+                "or ensure at least one active tenant has a SQL Server storage connection string configured.");
         }
 
         var taskHubName = configuration["DurableTask:SqlServer:TaskHubName"] ?? "ignixa";
@@ -134,6 +141,42 @@ public static class DurableTaskConfiguration
         var settings = new SqlOrchestrationServiceSettings(connectionString, taskHubName);
 
         return new SqlOrchestrationService(settings);
+    }
+
+    /// <summary>
+    /// Gets the connection string from the first active tenant with SQL storage.
+    /// </summary>
+    private static string? GetFirstActiveTenantConnectionString(IConfiguration configuration)
+    {
+        var tenantsSection = configuration.GetSection("Tenants:Configurations");
+        if (!tenantsSection.Exists())
+        {
+            return null;
+        }
+
+        // Iterate through tenant configurations to find the first active non-system tenant with SQL storage
+        foreach (var tenantSection in tenantsSection.GetChildren())
+        {
+            var isActive = tenantSection.GetValue<bool>("IsActive", false);
+            var isSystemPartition = tenantSection.GetValue<bool>("IsSystemPartition", false);
+            var storageType = tenantSection["Storage:Type"];
+            var connectionString = tenantSection["Storage:ConnectionString"];
+
+            // Skip system partitions and inactive tenants
+            if (!isActive || isSystemPartition)
+            {
+                continue;
+            }
+
+            // Check if this tenant uses SQL storage with a valid connection string
+            if (storageType?.Equals("SqlEntityFramework", StringComparison.OrdinalIgnoreCase) == true
+                && !string.IsNullOrEmpty(connectionString))
+            {
+                return connectionString;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
