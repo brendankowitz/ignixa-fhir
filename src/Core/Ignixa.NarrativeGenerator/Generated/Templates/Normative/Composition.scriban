@@ -1,0 +1,91 @@
+﻿{{~ # Auto-generated Scriban narrative template for Composition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Composition ~}}
+
+<div class="fhir-narrative fhir-composition" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Composition.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Composition.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Composition.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Composition.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "Composition.Subject" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subject") }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "Composition.Encounter" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "encounter") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Author" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "author") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    <dt>{{ l10n.t "Composition.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Composition.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    {{~ if (fhir.exists resource "class") ~}}
+    <dt>{{ l10n.t "Composition.Class" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "class") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ if (fhir.exists resource "confidentiality") ~}}
+    <dt>{{ l10n.t "Composition.Confidentiality" }}</dt>
+    <dd>{{ fhir.path resource "confidentiality" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "attester") ~}}
+    <dt>{{ l10n.t "Composition.Attester" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "attester") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "custodian") ~}}
+    <dt>{{ l10n.t "Composition.Custodian" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "custodian") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "relatesTo") ~}}
+    <dt>{{ l10n.t "Composition.RelatesTo" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "relatesTo") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "event") ~}}
+    <dt>{{ l10n.t "Composition.Event" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "event") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

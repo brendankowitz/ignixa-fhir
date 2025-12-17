@@ -1,0 +1,81 @@
+﻿{{~ # Auto-generated Scriban narrative template for RelatedPerson ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/RelatedPerson ~}}
+
+<div class="fhir-narrative fhir-relatedperson" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "RelatedPerson.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "RelatedPerson.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Name" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "name") ~}}
+        <li>{{ fhir.format_human_name item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "RelatedPerson.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "active") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Active" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "active") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "relationship") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Relationship" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "relationship") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "telecom") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Telecom" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "telecom") ~}}
+        <li>{{ fhir.format_contact_point item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "gender") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Gender" }}</dt>
+    <dd>{{ fhir.path resource "gender" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "birthDate") ~}}
+    <dt>{{ l10n.t "RelatedPerson.BirthDate" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "birthDate") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "address") ~}}
+    <dt>{{ l10n.t "RelatedPerson.Address" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "address") ~}}
+        <li>{{ fhir.format_address item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

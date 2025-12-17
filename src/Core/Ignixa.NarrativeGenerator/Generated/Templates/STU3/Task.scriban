@@ -1,0 +1,129 @@
+﻿{{~ # Auto-generated Scriban narrative template for Task ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Task ~}}
+
+<div class="fhir-narrative fhir-task" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Task.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Task.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Task.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Task.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Task.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "Task.Code" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "code") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Task.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "Task.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "Task.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "note") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "definition[x]") ~}}
+    <dt>{{ l10n.t "Task.Definition" }}</dt>
+    <dd>{{ fhir.path resource "definition[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "Task.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "basedOn") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "groupIdentifier") ~}}
+    <dt>{{ l10n.t "Task.GroupIdentifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "groupIdentifier") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "partOf") ~}}
+    <dt>{{ l10n.t "Task.PartOf" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "partOf") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "statusReason") ~}}
+    <dt>{{ l10n.t "Task.StatusReason" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "statusReason") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "businessStatus") ~}}
+    <dt>{{ l10n.t "Task.BusinessStatus" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "businessStatus") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Task.Intent" }}</dt>
+    <dd>{{ fhir.path resource "intent" }}</dd>
+    {{~ if (fhir.exists resource "focus") ~}}
+    <dt>{{ l10n.t "Task.Focus" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "focus") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "for") ~}}
+    <dt>{{ l10n.t "Task.For" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "for") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "context") ~}}
+    <dt>{{ l10n.t "Task.Context" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "context") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "executionPeriod") ~}}
+    <dt>{{ l10n.t "Task.ExecutionPeriod" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "executionPeriod") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "lastModified") ~}}
+    <dt>{{ l10n.t "Task.LastModified" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "lastModified") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "requester") ~}}
+    <dt>{{ l10n.t "Task.Requester" }}</dt>
+    <dd>{{ fhir.path resource "requester" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "owner") ~}}
+    <dt>{{ l10n.t "Task.Owner" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "owner") }}</dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <section class="fhir-notes" aria-labelledby="notes-heading-{{ fhir.path resource "id" }}">
+    <h4 id="notes-heading-{{ fhir.path resource "id" }}">{{ l10n.t "Task.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </section>
+  {{~ end ~}}
+</div>

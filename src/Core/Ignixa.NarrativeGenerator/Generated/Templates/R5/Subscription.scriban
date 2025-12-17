@@ -1,0 +1,99 @@
+﻿{{~ # Auto-generated Scriban narrative template for Subscription ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Subscription ~}}
+
+<div class="fhir-narrative fhir-subscription" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Subscription.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Subscription.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Subscription.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Subscription.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Subscription.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "Subscription.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Subscription.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Subscription.Topic" }}</dt>
+    <dd>{{ fhir.path resource "topic" }}</dd>
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "Subscription.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "contact") ~}}
+        <li>{{ fhir.format_contact_point item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "end") ~}}
+    <dt>{{ l10n.t "Subscription.End" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "end") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "managingEntity") ~}}
+    <dt>{{ l10n.t "Subscription.ManagingEntity" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "managingEntity") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reason") ~}}
+    <dt>{{ l10n.t "Subscription.Reason" }}</dt>
+    <dd>{{ fhir.path resource "reason" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "filterBy") ~}}
+    <dt>{{ l10n.t "Subscription.FilterBy" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "filterBy") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Subscription.ChannelType" }}</dt>
+    <dd>{{ fhir.display_coding (fhir.path resource "channelType") }}</dd>
+    {{~ if (fhir.exists resource "endpoint") ~}}
+    <dt>{{ l10n.t "Subscription.Endpoint" }}</dt>
+    <dd>{{ fhir.path resource "endpoint" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "heartbeatPeriod") ~}}
+    <dt>{{ l10n.t "Subscription.HeartbeatPeriod" }}</dt>
+    <dd>{{ fhir.path resource "heartbeatPeriod" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "timeout") ~}}
+    <dt>{{ l10n.t "Subscription.Timeout" }}</dt>
+    <dd>{{ fhir.path resource "timeout" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contentType") ~}}
+    <dt>{{ l10n.t "Subscription.ContentType" }}</dt>
+    <dd>{{ fhir.path resource "contentType" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "content") ~}}
+    <dt>{{ l10n.t "Subscription.Content" }}</dt>
+    <dd>{{ fhir.path resource "content" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "maxCount") ~}}
+    <dt>{{ l10n.t "Subscription.MaxCount" }}</dt>
+    <dd>{{ fhir.path resource "maxCount" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

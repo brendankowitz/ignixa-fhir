@@ -1,0 +1,89 @@
+﻿{{~ # Auto-generated Scriban narrative template for ClinicalUseDefinition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/ClinicalUseDefinition ~}}
+
+<div class="fhir-narrative fhir-clinicalusedefinition" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "ClinicalUseDefinition.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "ClinicalUseDefinition.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "status") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Status" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "status") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Subject" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "subject") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "category") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Type" }}</dt>
+    <dd>{{ fhir.path resource "type" }}</dd>
+    {{~ if (fhir.exists resource "contraindication") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Contraindication" }}</dt>
+    <dd>{{ fhir.path resource "contraindication" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "indication") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Indication" }}</dt>
+    <dd>{{ fhir.path resource "indication" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "interaction") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Interaction" }}</dt>
+    <dd>{{ fhir.path resource "interaction" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "population") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Population" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "population") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "undesirableEffect") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.UndesirableEffect" }}</dt>
+    <dd>{{ fhir.path resource "undesirableEffect" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "warning") ~}}
+    <dt>{{ l10n.t "ClinicalUseDefinition.Warning" }}</dt>
+    <dd>{{ fhir.path resource "warning" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

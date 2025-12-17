@@ -1,0 +1,141 @@
+﻿{{~ # Auto-generated Scriban narrative template for AdverseEvent ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/AdverseEvent ~}}
+
+<div class="fhir-narrative fhir-adverseevent" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "AdverseEvent.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "AdverseEvent.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "AdverseEvent.Subject" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subject") }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Encounter" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "encounter") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "category") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "severity") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Severity" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "severity") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "AdverseEvent.Actuality" }}</dt>
+    <dd>{{ fhir.path resource "actuality" }}</dd>
+    {{~ if (fhir.exists resource "event") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Event" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "event") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "detected") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Detected" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "detected") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "recordedDate") ~}}
+    <dt>{{ l10n.t "AdverseEvent.RecordedDate" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "recordedDate") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "resultingCondition") ~}}
+    <dt>{{ l10n.t "AdverseEvent.ResultingCondition" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "resultingCondition") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "location") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Location" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "location") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "seriousness") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Seriousness" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "seriousness") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "outcome") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Outcome" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "outcome") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "recorder") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Recorder" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "recorder") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contributor") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Contributor" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "contributor") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "suspectEntity") ~}}
+    <dt>{{ l10n.t "AdverseEvent.SuspectEntity" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "suspectEntity") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subjectMedicalHistory") ~}}
+    <dt>{{ l10n.t "AdverseEvent.SubjectMedicalHistory" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "subjectMedicalHistory") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "referenceDocument") ~}}
+    <dt>{{ l10n.t "AdverseEvent.ReferenceDocument" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "referenceDocument") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "study") ~}}
+    <dt>{{ l10n.t "AdverseEvent.Study" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "study") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

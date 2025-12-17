@@ -1,0 +1,59 @@
+﻿{{~ # Auto-generated Scriban narrative template for DetectedIssue ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/DetectedIssue ~}}
+
+<div class="fhir-narrative fhir-detectedissue" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "DetectedIssue.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "DetectedIssue.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DetectedIssue.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "patient") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "author") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Author" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "author") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Category" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "category") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "severity") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Severity" }}</dt>
+    <dd>{{ fhir.path resource "severity" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "implicated") ~}}
+    <dt>{{ l10n.t "DetectedIssue.Implicated" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "implicated") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

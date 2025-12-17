@@ -1,0 +1,4804 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- Auto-generated localization file for FHIR narrative templates -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter</value></resheader>
+  <data name="Account.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Account.Coverage" xml:space="preserve">
+    <value>Coverage</value>
+  </data>
+  <data name="Account.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Account.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Account.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Account.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Account.Owner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="Account.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="Account.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Account.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Account.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Account.Title" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="Account.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="ActivityDefinition.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="ActivityDefinition.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="ActivityDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ActivityDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ActivityDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ActivityDefinition.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="ActivityDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="ActivityDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ActivityDefinition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ActivityDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ActivityDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ActivityDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="ActivityDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ActivityDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ActivityDefinition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ActivityDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="ActivityDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="ActivityDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="AdverseEvent.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="AdverseEvent.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="AdverseEvent.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="AdverseEvent.EventParticipant" xml:space="preserve">
+    <value>Event Participant</value>
+  </data>
+  <data name="AdverseEvent.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="AdverseEvent.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="AdverseEvent.Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="AdverseEvent.Outcome" xml:space="preserve">
+    <value>Outcome</value>
+  </data>
+  <data name="AdverseEvent.Reaction" xml:space="preserve">
+    <value>Reaction</value>
+  </data>
+  <data name="AdverseEvent.Recorder" xml:space="preserve">
+    <value>Recorder</value>
+  </data>
+  <data name="AdverseEvent.ReferenceDocument" xml:space="preserve">
+    <value>Reference Document</value>
+  </data>
+  <data name="AdverseEvent.Seriousness" xml:space="preserve">
+    <value>Seriousness</value>
+  </data>
+  <data name="AdverseEvent.Study" xml:space="preserve">
+    <value>Study</value>
+  </data>
+  <data name="AdverseEvent.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="AdverseEvent.SubjectMedicalHistory" xml:space="preserve">
+    <value>Subject Medical History</value>
+  </data>
+  <data name="AdverseEvent.SuspectEntity" xml:space="preserve">
+    <value>Suspect Entity</value>
+  </data>
+  <data name="AdverseEvent.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="AdverseEvent.Title" xml:space="preserve">
+    <value>AdverseEvent</value>
+  </data>
+  <data name="AdverseEvent.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="AllergyIntolerance.Asserter" xml:space="preserve">
+    <value>Asserter</value>
+  </data>
+  <data name="AllergyIntolerance.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="AllergyIntolerance.ClinicalStatus" xml:space="preserve">
+    <value>Clinical Status</value>
+  </data>
+  <data name="AllergyIntolerance.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="AllergyIntolerance.Criticality" xml:space="preserve">
+    <value>Criticality</value>
+  </data>
+  <data name="AllergyIntolerance.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="AllergyIntolerance.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="AllergyIntolerance.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="AllergyIntolerance.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="AllergyIntolerance.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="AllergyIntolerance.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="AllergyIntolerance.Title" xml:space="preserve">
+    <value>AllergyIntolerance</value>
+  </data>
+  <data name="AllergyIntolerance.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="AllergyIntolerance.VerificationStatus" xml:space="preserve">
+    <value>Verification Status</value>
+  </data>
+  <data name="Appointment.AppointmentType" xml:space="preserve">
+    <value>Appointment Type</value>
+  </data>
+  <data name="Appointment.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Appointment.End" xml:space="preserve">
+    <value>End</value>
+  </data>
+  <data name="Appointment.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Appointment.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Appointment.Participant" xml:space="preserve">
+    <value>Participant</value>
+  </data>
+  <data name="Appointment.Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="Appointment.ServiceCategory" xml:space="preserve">
+    <value>Service Category</value>
+  </data>
+  <data name="Appointment.ServiceType" xml:space="preserve">
+    <value>Service Type</value>
+  </data>
+  <data name="Appointment.Specialty" xml:space="preserve">
+    <value>Specialty</value>
+  </data>
+  <data name="Appointment.Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="Appointment.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Appointment.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Appointment.Title" xml:space="preserve">
+    <value>Appointment</value>
+  </data>
+  <data name="AppointmentResponse.Actor" xml:space="preserve">
+    <value>Actor</value>
+  </data>
+  <data name="AppointmentResponse.Appointment" xml:space="preserve">
+    <value>Appointment</value>
+  </data>
+  <data name="AppointmentResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="AppointmentResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="AppointmentResponse.ParticipantStatus" xml:space="preserve">
+    <value>Participant Status</value>
+  </data>
+  <data name="AppointmentResponse.ParticipantType" xml:space="preserve">
+    <value>Participant Type</value>
+  </data>
+  <data name="AppointmentResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="AppointmentResponse.Title" xml:space="preserve">
+    <value>AppointmentResponse</value>
+  </data>
+  <data name="AuditEvent.Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="AuditEvent.Agent" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="AuditEvent.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="AuditEvent.Outcome" xml:space="preserve">
+    <value>Outcome</value>
+  </data>
+  <data name="AuditEvent.OutcomeDesc" xml:space="preserve">
+    <value>Outcome Desc</value>
+  </data>
+  <data name="AuditEvent.PurposeOfEvent" xml:space="preserve">
+    <value>Purpose Of Event</value>
+  </data>
+  <data name="AuditEvent.Recorded" xml:space="preserve">
+    <value>Recorded</value>
+  </data>
+  <data name="AuditEvent.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="AuditEvent.Subtype" xml:space="preserve">
+    <value>Subtype</value>
+  </data>
+  <data name="AuditEvent.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="AuditEvent.Title" xml:space="preserve">
+    <value>AuditEvent</value>
+  </data>
+  <data name="AuditEvent.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Basic.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="Basic.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Basic.Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Basic.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Basic.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Basic.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Basic.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Basic.Title" xml:space="preserve">
+    <value>Basic</value>
+  </data>
+  <data name="Binary.Content" xml:space="preserve">
+    <value>Content</value>
+  </data>
+  <data name="Binary.ContentType" xml:space="preserve">
+    <value>Content Type</value>
+  </data>
+  <data name="Binary.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Binary.SecurityContext" xml:space="preserve">
+    <value>Security Context</value>
+  </data>
+  <data name="Binary.Title" xml:space="preserve">
+    <value>Binary</value>
+  </data>
+  <data name="BodySite.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="BodySite.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="BodySite.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="BodySite.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="BodySite.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="BodySite.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="BodySite.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="BodySite.Title" xml:space="preserve">
+    <value>BodySite</value>
+  </data>
+  <data name="Bundle.Entry" xml:space="preserve">
+    <value>Entry</value>
+  </data>
+  <data name="Bundle.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Bundle.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Bundle.Link" xml:space="preserve">
+    <value>Link</value>
+  </data>
+  <data name="Bundle.Signature" xml:space="preserve">
+    <value>Signature</value>
+  </data>
+  <data name="Bundle.Title" xml:space="preserve">
+    <value>Bundle</value>
+  </data>
+  <data name="Bundle.Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="Bundle.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="CapabilityStatement.AcceptUnknown" xml:space="preserve">
+    <value>Accept Unknown</value>
+  </data>
+  <data name="CapabilityStatement.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="CapabilityStatement.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="CapabilityStatement.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="CapabilityStatement.Document" xml:space="preserve">
+    <value>Document</value>
+  </data>
+  <data name="CapabilityStatement.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="CapabilityStatement.FhirVersion" xml:space="preserve">
+    <value>Fhir Version</value>
+  </data>
+  <data name="CapabilityStatement.Format" xml:space="preserve">
+    <value>Format</value>
+  </data>
+  <data name="CapabilityStatement.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="CapabilityStatement.Implementation" xml:space="preserve">
+    <value>Implementation</value>
+  </data>
+  <data name="CapabilityStatement.ImplementationGuide" xml:space="preserve">
+    <value>Implementation Guide</value>
+  </data>
+  <data name="CapabilityStatement.Instantiates" xml:space="preserve">
+    <value>Instantiates</value>
+  </data>
+  <data name="CapabilityStatement.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="CapabilityStatement.Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="CapabilityStatement.Messaging" xml:space="preserve">
+    <value>Messaging</value>
+  </data>
+  <data name="CapabilityStatement.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="CapabilityStatement.PatchFormat" xml:space="preserve">
+    <value>Patch Format</value>
+  </data>
+  <data name="CapabilityStatement.Profile" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="CapabilityStatement.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="CapabilityStatement.Rest" xml:space="preserve">
+    <value>Rest</value>
+  </data>
+  <data name="CapabilityStatement.Software" xml:space="preserve">
+    <value>Software</value>
+  </data>
+  <data name="CapabilityStatement.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="CapabilityStatement.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="CapabilityStatement.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="CapabilityStatement.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="CapabilityStatement.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="CapabilityStatement.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="CarePlan.Addresses" xml:space="preserve">
+    <value>Addresses</value>
+  </data>
+  <data name="CarePlan.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="CarePlan.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="CarePlan.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="CarePlan.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="CarePlan.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="CarePlan.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="CarePlan.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="CarePlan.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="CarePlan.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="CarePlan.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="CarePlan.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="CarePlan.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="CarePlan.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="CarePlan.Replaces" xml:space="preserve">
+    <value>Replaces</value>
+  </data>
+  <data name="CarePlan.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="CarePlan.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="CarePlan.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="CarePlan.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="CareTeam.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="CareTeam.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="CareTeam.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="CareTeam.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="CareTeam.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+  <data name="CareTeam.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="CareTeam.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="CareTeam.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="CareTeam.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="CareTeam.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="CareTeam.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="CareTeam.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="CareTeam.Title" xml:space="preserve">
+    <value>CareTeam</value>
+  </data>
+  <data name="ChargeItem.Account" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="ChargeItem.Bodysite" xml:space="preserve">
+    <value>Bodysite</value>
+  </data>
+  <data name="ChargeItem.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="ChargeItem.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="ChargeItem.EnteredDate" xml:space="preserve">
+    <value>Entered Date</value>
+  </data>
+  <data name="ChargeItem.Enterer" xml:space="preserve">
+    <value>Enterer</value>
+  </data>
+  <data name="ChargeItem.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ChargeItem.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ChargeItem.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ChargeItem.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="ChargeItem.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="ChargeItem.Quantity" xml:space="preserve">
+    <value>Quantity</value>
+  </data>
+  <data name="ChargeItem.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ChargeItem.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="ChargeItem.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ChargeItem.Title" xml:space="preserve">
+    <value>ChargeItem</value>
+  </data>
+  <data name="Claim.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Claim.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Claim.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="Claim.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Claim.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Claim.Title" xml:space="preserve">
+    <value>Claim</value>
+  </data>
+  <data name="ClaimResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ClaimResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ClaimResponse.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="ClaimResponse.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ClaimResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ClaimResponse.Title" xml:space="preserve">
+    <value>ClaimResponse</value>
+  </data>
+  <data name="ClinicalImpression.Assessor" xml:space="preserve">
+    <value>Assessor</value>
+  </data>
+  <data name="ClinicalImpression.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="ClinicalImpression.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="ClinicalImpression.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ClinicalImpression.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ClinicalImpression.Effective" xml:space="preserve">
+    <value>Effective</value>
+  </data>
+  <data name="ClinicalImpression.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ClinicalImpression.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ClinicalImpression.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ClinicalImpression.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="ClinicalImpression.Problem" xml:space="preserve">
+    <value>Problem</value>
+  </data>
+  <data name="ClinicalImpression.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ClinicalImpression.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="ClinicalImpression.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ClinicalImpression.Title" xml:space="preserve">
+    <value>ClinicalImpression</value>
+  </data>
+  <data name="CodeSystem.CaseSensitive" xml:space="preserve">
+    <value>Case Sensitive</value>
+  </data>
+  <data name="CodeSystem.Compositional" xml:space="preserve">
+    <value>Compositional</value>
+  </data>
+  <data name="CodeSystem.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="CodeSystem.Content" xml:space="preserve">
+    <value>Content</value>
+  </data>
+  <data name="CodeSystem.Count" xml:space="preserve">
+    <value>Count</value>
+  </data>
+  <data name="CodeSystem.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="CodeSystem.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="CodeSystem.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="CodeSystem.Filter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="CodeSystem.HierarchyMeaning" xml:space="preserve">
+    <value>Hierarchy Meaning</value>
+  </data>
+  <data name="CodeSystem.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="CodeSystem.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="CodeSystem.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="CodeSystem.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="CodeSystem.Property" xml:space="preserve">
+    <value>Property</value>
+  </data>
+  <data name="CodeSystem.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="CodeSystem.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="CodeSystem.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="CodeSystem.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="CodeSystem.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="CodeSystem.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="CodeSystem.ValueSet" xml:space="preserve">
+    <value>Value Set</value>
+  </data>
+  <data name="CodeSystem.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="CodeSystem.VersionNeeded" xml:space="preserve">
+    <value>Version Needed</value>
+  </data>
+  <data name="Communication.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="Communication.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Communication.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="Communication.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="Communication.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Communication.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Communication.NotDone" xml:space="preserve">
+    <value>Not Done</value>
+  </data>
+  <data name="Communication.NotDoneReason" xml:space="preserve">
+    <value>Not Done Reason</value>
+  </data>
+  <data name="Communication.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Communication.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Communication.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="Communication.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="Communication.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="Communication.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Communication.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Communication.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Communication.Title" xml:space="preserve">
+    <value>Communication</value>
+  </data>
+  <data name="CommunicationRequest.AuthoredOn" xml:space="preserve">
+    <value>Authored On</value>
+  </data>
+  <data name="CommunicationRequest.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="CommunicationRequest.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="CommunicationRequest.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="CommunicationRequest.GroupIdentifier" xml:space="preserve">
+    <value>Group Identifier</value>
+  </data>
+  <data name="CommunicationRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="CommunicationRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="CommunicationRequest.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="CommunicationRequest.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="CommunicationRequest.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="CommunicationRequest.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="CommunicationRequest.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="CommunicationRequest.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="CommunicationRequest.Replaces" xml:space="preserve">
+    <value>Replaces</value>
+  </data>
+  <data name="CommunicationRequest.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="CommunicationRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="CommunicationRequest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="CommunicationRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="CommunicationRequest.Title" xml:space="preserve">
+    <value>CommunicationRequest</value>
+  </data>
+  <data name="CompartmentDefinition.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="CompartmentDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="CompartmentDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="CompartmentDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="CompartmentDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="CompartmentDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="CompartmentDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="CompartmentDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="CompartmentDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="CompartmentDefinition.Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="CompartmentDefinition.Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="CompartmentDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="CompartmentDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="CompartmentDefinition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="CompartmentDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="CompartmentDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="Composition.Attester" xml:space="preserve">
+    <value>Attester</value>
+  </data>
+  <data name="Composition.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="Composition.Class" xml:space="preserve">
+    <value>Class</value>
+  </data>
+  <data name="Composition.Confidentiality" xml:space="preserve">
+    <value>Confidentiality</value>
+  </data>
+  <data name="Composition.Custodian" xml:space="preserve">
+    <value>Custodian</value>
+  </data>
+  <data name="Composition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Composition.Encounter" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="Composition.Event" xml:space="preserve">
+    <value>Event</value>
+  </data>
+  <data name="Composition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Composition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Composition.RelatesTo" xml:space="preserve">
+    <value>Relates To</value>
+  </data>
+  <data name="Composition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Composition.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Composition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Composition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Composition.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="ConceptMap.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ConceptMap.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ConceptMap.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ConceptMap.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="ConceptMap.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ConceptMap.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ConceptMap.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ConceptMap.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ConceptMap.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="ConceptMap.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="ConceptMap.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ConceptMap.Target" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="ConceptMap.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ConceptMap.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ConceptMap.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="ConceptMap.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="ConceptMap.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Condition.AssertedDate" xml:space="preserve">
+    <value>Asserted Date</value>
+  </data>
+  <data name="Condition.Asserter" xml:space="preserve">
+    <value>Asserter</value>
+  </data>
+  <data name="Condition.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="Condition.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Condition.ClinicalStatus" xml:space="preserve">
+    <value>Clinical Status</value>
+  </data>
+  <data name="Condition.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Condition.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="Condition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Condition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Condition.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Condition.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Condition.Onset" xml:space="preserve">
+    <value>Onset</value>
+  </data>
+  <data name="Condition.Severity" xml:space="preserve">
+    <value>Severity</value>
+  </data>
+  <data name="Condition.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Condition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Condition.Title" xml:space="preserve">
+    <value>Condition</value>
+  </data>
+  <data name="Condition.VerificationStatus" xml:space="preserve">
+    <value>Verification Status</value>
+  </data>
+  <data name="Consent.Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="Consent.Actor" xml:space="preserve">
+    <value>Actor</value>
+  </data>
+  <data name="Consent.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Consent.ConsentingParty" xml:space="preserve">
+    <value>Consenting Party</value>
+  </data>
+  <data name="Consent.Data" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="Consent.DataPeriod" xml:space="preserve">
+    <value>Data Period</value>
+  </data>
+  <data name="Consent.DateTime" xml:space="preserve">
+    <value>Date Time</value>
+  </data>
+  <data name="Consent.Except" xml:space="preserve">
+    <value>Except</value>
+  </data>
+  <data name="Consent.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Consent.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Consent.Organization" xml:space="preserve">
+    <value>Organization</value>
+  </data>
+  <data name="Consent.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="Consent.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="Consent.PolicyRule" xml:space="preserve">
+    <value>Policy Rule</value>
+  </data>
+  <data name="Consent.Purpose" xml:space="preserve">
+    <value>Purpose</value>
+  </data>
+  <data name="Consent.SecurityLabel" xml:space="preserve">
+    <value>Security Label</value>
+  </data>
+  <data name="Consent.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Consent.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Consent.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Consent.Title" xml:space="preserve">
+    <value>Consent</value>
+  </data>
+  <data name="Contract.Applies" xml:space="preserve">
+    <value>Applies</value>
+  </data>
+  <data name="Contract.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Contract.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Contract.Issued" xml:space="preserve">
+    <value>Issued</value>
+  </data>
+  <data name="Contract.SecurityLabel" xml:space="preserve">
+    <value>Security Label</value>
+  </data>
+  <data name="Contract.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Contract.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Contract.SubType" xml:space="preserve">
+    <value>Sub Type</value>
+  </data>
+  <data name="Contract.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Contract.Title" xml:space="preserve">
+    <value>Contract</value>
+  </data>
+  <data name="Contract.Topic" xml:space="preserve">
+    <value>Topic</value>
+  </data>
+  <data name="Contract.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Coverage.Beneficiary" xml:space="preserve">
+    <value>Beneficiary</value>
+  </data>
+  <data name="Coverage.Dependent" xml:space="preserve">
+    <value>Dependent</value>
+  </data>
+  <data name="Coverage.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Coverage.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Coverage.Network" xml:space="preserve">
+    <value>Network</value>
+  </data>
+  <data name="Coverage.Order" xml:space="preserve">
+    <value>Order</value>
+  </data>
+  <data name="Coverage.Payor" xml:space="preserve">
+    <value>Payor</value>
+  </data>
+  <data name="Coverage.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="Coverage.PolicyHolder" xml:space="preserve">
+    <value>Policy Holder</value>
+  </data>
+  <data name="Coverage.Sequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="Coverage.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Coverage.Subscriber" xml:space="preserve">
+    <value>Subscriber</value>
+  </data>
+  <data name="Coverage.SubscriberId" xml:space="preserve">
+    <value>Subscriber Id</value>
+  </data>
+  <data name="Coverage.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Coverage.Title" xml:space="preserve">
+    <value>Coverage</value>
+  </data>
+  <data name="Coverage.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="DataElement.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="DataElement.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="DataElement.Element" xml:space="preserve">
+    <value>Element</value>
+  </data>
+  <data name="DataElement.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="DataElement.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DataElement.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DataElement.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="DataElement.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="DataElement.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="DataElement.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DataElement.Stringency" xml:space="preserve">
+    <value>Stringency</value>
+  </data>
+  <data name="DataElement.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DataElement.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="DataElement.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="DataElement.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="DataElement.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="DetectedIssue.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="DetectedIssue.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="DetectedIssue.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="DetectedIssue.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DetectedIssue.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DetectedIssue.Implicated" xml:space="preserve">
+    <value>Implicated</value>
+  </data>
+  <data name="DetectedIssue.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="DetectedIssue.Severity" xml:space="preserve">
+    <value>Severity</value>
+  </data>
+  <data name="DetectedIssue.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DetectedIssue.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DetectedIssue.Title" xml:space="preserve">
+    <value>DetectedIssue</value>
+  </data>
+  <data name="Device.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Device.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Device.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Device.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Device.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="Device.Safety" xml:space="preserve">
+    <value>Safety</value>
+  </data>
+  <data name="Device.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Device.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Device.Title" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="Device.Udi" xml:space="preserve">
+    <value>Udi</value>
+  </data>
+  <data name="DeviceComponent.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DeviceComponent.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DeviceComponent.LanguageCode" xml:space="preserve">
+    <value>Language Code</value>
+  </data>
+  <data name="DeviceComponent.LastSystemChange" xml:space="preserve">
+    <value>Last System Change</value>
+  </data>
+  <data name="DeviceComponent.MeasurementPrinciple" xml:space="preserve">
+    <value>Measurement Principle</value>
+  </data>
+  <data name="DeviceComponent.OperationalStatus" xml:space="preserve">
+    <value>Operational Status</value>
+  </data>
+  <data name="DeviceComponent.ParameterGroup" xml:space="preserve">
+    <value>Parameter Group</value>
+  </data>
+  <data name="DeviceComponent.Parent" xml:space="preserve">
+    <value>Parent</value>
+  </data>
+  <data name="DeviceComponent.ProductionSpecification" xml:space="preserve">
+    <value>Production Specification</value>
+  </data>
+  <data name="DeviceComponent.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="DeviceComponent.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DeviceComponent.Title" xml:space="preserve">
+    <value>DeviceComponent</value>
+  </data>
+  <data name="DeviceComponent.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="DeviceMetric.Calibration" xml:space="preserve">
+    <value>Calibration</value>
+  </data>
+  <data name="DeviceMetric.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="DeviceMetric.Color" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="DeviceMetric.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DeviceMetric.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DeviceMetric.MeasurementPeriod" xml:space="preserve">
+    <value>Measurement Period</value>
+  </data>
+  <data name="DeviceMetric.OperationalStatus" xml:space="preserve">
+    <value>Operational Status</value>
+  </data>
+  <data name="DeviceMetric.Parent" xml:space="preserve">
+    <value>Parent</value>
+  </data>
+  <data name="DeviceMetric.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="DeviceMetric.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DeviceMetric.Title" xml:space="preserve">
+    <value>DeviceMetric</value>
+  </data>
+  <data name="DeviceMetric.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="DeviceMetric.Unit" xml:space="preserve">
+    <value>Unit</value>
+  </data>
+  <data name="DeviceRequest.AuthoredOn" xml:space="preserve">
+    <value>Authored On</value>
+  </data>
+  <data name="DeviceRequest.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="DeviceRequest.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="DeviceRequest.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="DeviceRequest.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="DeviceRequest.GroupIdentifier" xml:space="preserve">
+    <value>Group Identifier</value>
+  </data>
+  <data name="DeviceRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DeviceRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DeviceRequest.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="DeviceRequest.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="DeviceRequest.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="DeviceRequest.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="DeviceRequest.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="DeviceRequest.PerformerType" xml:space="preserve">
+    <value>Performer Type</value>
+  </data>
+  <data name="DeviceRequest.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="DeviceRequest.PriorRequest" xml:space="preserve">
+    <value>Prior Request</value>
+  </data>
+  <data name="DeviceRequest.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="DeviceRequest.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="DeviceRequest.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="DeviceRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DeviceRequest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="DeviceRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DeviceRequest.Title" xml:space="preserve">
+    <value>DeviceRequest</value>
+  </data>
+  <data name="DeviceUseStatement.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="DeviceUseStatement.Device" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="DeviceUseStatement.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DeviceUseStatement.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DeviceUseStatement.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="DeviceUseStatement.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="DeviceUseStatement.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DeviceUseStatement.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="DeviceUseStatement.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DeviceUseStatement.Title" xml:space="preserve">
+    <value>DeviceUseStatement</value>
+  </data>
+  <data name="DiagnosticReport.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="DiagnosticReport.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="DiagnosticReport.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="DiagnosticReport.Effective" xml:space="preserve">
+    <value>Effective</value>
+  </data>
+  <data name="DiagnosticReport.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DiagnosticReport.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DiagnosticReport.Image" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="DiagnosticReport.Issued" xml:space="preserve">
+    <value>Issued</value>
+  </data>
+  <data name="DiagnosticReport.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="DiagnosticReport.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DiagnosticReport.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="DiagnosticReport.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DiagnosticReport.Title" xml:space="preserve">
+    <value>DiagnosticReport</value>
+  </data>
+  <data name="DocumentManifest.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="DocumentManifest.Content" xml:space="preserve">
+    <value>Content</value>
+  </data>
+  <data name="DocumentManifest.Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="DocumentManifest.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="DocumentManifest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DocumentManifest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DocumentManifest.MasterIdentifier" xml:space="preserve">
+    <value>Master Identifier</value>
+  </data>
+  <data name="DocumentManifest.Recipient" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="DocumentManifest.Related" xml:space="preserve">
+    <value>Related</value>
+  </data>
+  <data name="DocumentManifest.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="DocumentManifest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DocumentManifest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="DocumentManifest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DocumentManifest.Title" xml:space="preserve">
+    <value>DocumentManifest</value>
+  </data>
+  <data name="DocumentManifest.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="DocumentReference.Authenticator" xml:space="preserve">
+    <value>Authenticator</value>
+  </data>
+  <data name="DocumentReference.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="DocumentReference.Class" xml:space="preserve">
+    <value>Class</value>
+  </data>
+  <data name="DocumentReference.Content" xml:space="preserve">
+    <value>Content</value>
+  </data>
+  <data name="DocumentReference.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="DocumentReference.Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="DocumentReference.Custodian" xml:space="preserve">
+    <value>Custodian</value>
+  </data>
+  <data name="DocumentReference.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="DocumentReference.DocStatus" xml:space="preserve">
+    <value>Doc Status</value>
+  </data>
+  <data name="DocumentReference.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="DocumentReference.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="DocumentReference.Indexed" xml:space="preserve">
+    <value>Indexed</value>
+  </data>
+  <data name="DocumentReference.MasterIdentifier" xml:space="preserve">
+    <value>Master Identifier</value>
+  </data>
+  <data name="DocumentReference.RelatesTo" xml:space="preserve">
+    <value>Relates To</value>
+  </data>
+  <data name="DocumentReference.SecurityLabel" xml:space="preserve">
+    <value>Security Label</value>
+  </data>
+  <data name="DocumentReference.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="DocumentReference.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="DocumentReference.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="DocumentReference.Title" xml:space="preserve">
+    <value>DocumentReference</value>
+  </data>
+  <data name="DocumentReference.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="EligibilityRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="EligibilityRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="EligibilityRequest.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="EligibilityRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="EligibilityRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="EligibilityRequest.Title" xml:space="preserve">
+    <value>EligibilityRequest</value>
+  </data>
+  <data name="EligibilityResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="EligibilityResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="EligibilityResponse.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="EligibilityResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="EligibilityResponse.Title" xml:space="preserve">
+    <value>EligibilityResponse</value>
+  </data>
+  <data name="Encounter.Appointment" xml:space="preserve">
+    <value>Appointment</value>
+  </data>
+  <data name="Encounter.Class" xml:space="preserve">
+    <value>Class</value>
+  </data>
+  <data name="Encounter.Diagnosis" xml:space="preserve">
+    <value>Diagnosis</value>
+  </data>
+  <data name="Encounter.EpisodeOfCare" xml:space="preserve">
+    <value>Episode Of Care</value>
+  </data>
+  <data name="Encounter.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Encounter.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Encounter.Participant" xml:space="preserve">
+    <value>Participant</value>
+  </data>
+  <data name="Encounter.Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="Encounter.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Encounter.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Encounter.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Encounter.Title" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="Encounter.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Endpoint.Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="Endpoint.ConnectionType" xml:space="preserve">
+    <value>Connection Type</value>
+  </data>
+  <data name="Endpoint.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Endpoint.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Endpoint.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+  <data name="Endpoint.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Endpoint.PayloadMimeType" xml:space="preserve">
+    <value>Payload Mime Type</value>
+  </data>
+  <data name="Endpoint.PayloadType" xml:space="preserve">
+    <value>Payload Type</value>
+  </data>
+  <data name="Endpoint.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="Endpoint.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Endpoint.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Endpoint.Title" xml:space="preserve">
+    <value>Endpoint</value>
+  </data>
+  <data name="EnrollmentRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="EnrollmentRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="EnrollmentRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="EnrollmentRequest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="EnrollmentRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="EnrollmentRequest.Title" xml:space="preserve">
+    <value>EnrollmentRequest</value>
+  </data>
+  <data name="EnrollmentResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="EnrollmentResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="EnrollmentResponse.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="EnrollmentResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="EnrollmentResponse.Title" xml:space="preserve">
+    <value>EnrollmentResponse</value>
+  </data>
+  <data name="EpisodeOfCare.Diagnosis" xml:space="preserve">
+    <value>Diagnosis</value>
+  </data>
+  <data name="EpisodeOfCare.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="EpisodeOfCare.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="EpisodeOfCare.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+  <data name="EpisodeOfCare.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="EpisodeOfCare.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="EpisodeOfCare.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="EpisodeOfCare.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="EpisodeOfCare.Title" xml:space="preserve">
+    <value>EpisodeOfCare</value>
+  </data>
+  <data name="EpisodeOfCare.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="ExpansionProfile.ActiveOnly" xml:space="preserve">
+    <value>Active Only</value>
+  </data>
+  <data name="ExpansionProfile.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ExpansionProfile.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ExpansionProfile.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ExpansionProfile.Designation" xml:space="preserve">
+    <value>Designation</value>
+  </data>
+  <data name="ExpansionProfile.DisplayLanguage" xml:space="preserve">
+    <value>Display Language</value>
+  </data>
+  <data name="ExpansionProfile.ExcludedSystem" xml:space="preserve">
+    <value>Excluded System</value>
+  </data>
+  <data name="ExpansionProfile.ExcludeNested" xml:space="preserve">
+    <value>Exclude Nested</value>
+  </data>
+  <data name="ExpansionProfile.ExcludeNotForUI" xml:space="preserve">
+    <value>Exclude Not For U I</value>
+  </data>
+  <data name="ExpansionProfile.ExcludePostCoordinated" xml:space="preserve">
+    <value>Exclude Post Coordinated</value>
+  </data>
+  <data name="ExpansionProfile.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="ExpansionProfile.FixedVersion" xml:space="preserve">
+    <value>Fixed Version</value>
+  </data>
+  <data name="ExpansionProfile.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ExpansionProfile.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ExpansionProfile.IncludeDefinition" xml:space="preserve">
+    <value>Include Definition</value>
+  </data>
+  <data name="ExpansionProfile.IncludeDesignations" xml:space="preserve">
+    <value>Include Designations</value>
+  </data>
+  <data name="ExpansionProfile.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ExpansionProfile.LimitedExpansion" xml:space="preserve">
+    <value>Limited Expansion</value>
+  </data>
+  <data name="ExpansionProfile.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ExpansionProfile.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="ExpansionProfile.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ExpansionProfile.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ExpansionProfile.Title" xml:space="preserve">
+    <value>ExpansionProfile</value>
+  </data>
+  <data name="ExpansionProfile.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="ExpansionProfile.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="ExpansionProfile.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="ExplanationOfBenefit.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ExplanationOfBenefit.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ExplanationOfBenefit.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="ExplanationOfBenefit.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ExplanationOfBenefit.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ExplanationOfBenefit.Title" xml:space="preserve">
+    <value>ExplanationOfBenefit</value>
+  </data>
+  <data name="FamilyMemberHistory.Age" xml:space="preserve">
+    <value>Age</value>
+  </data>
+  <data name="FamilyMemberHistory.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="FamilyMemberHistory.Deceased" xml:space="preserve">
+    <value>Deceased</value>
+  </data>
+  <data name="FamilyMemberHistory.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="FamilyMemberHistory.EstimatedAge" xml:space="preserve">
+    <value>Estimated Age</value>
+  </data>
+  <data name="FamilyMemberHistory.Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="FamilyMemberHistory.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="FamilyMemberHistory.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="FamilyMemberHistory.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="FamilyMemberHistory.NotDone" xml:space="preserve">
+    <value>Not Done</value>
+  </data>
+  <data name="FamilyMemberHistory.NotDoneReason" xml:space="preserve">
+    <value>Not Done Reason</value>
+  </data>
+  <data name="FamilyMemberHistory.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="FamilyMemberHistory.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="FamilyMemberHistory.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="FamilyMemberHistory.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="FamilyMemberHistory.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="FamilyMemberHistory.Relationship" xml:space="preserve">
+    <value>Relationship</value>
+  </data>
+  <data name="FamilyMemberHistory.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="FamilyMemberHistory.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="FamilyMemberHistory.Title" xml:space="preserve">
+    <value>FamilyMemberHistory</value>
+  </data>
+  <data name="Flag.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="Flag.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Flag.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Flag.Encounter" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="Flag.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Flag.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Flag.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="Flag.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Flag.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Flag.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Flag.Title" xml:space="preserve">
+    <value>Flag</value>
+  </data>
+  <data name="Goal.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Goal.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Goal.ExpressedBy" xml:space="preserve">
+    <value>Expressed By</value>
+  </data>
+  <data name="Goal.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Goal.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Goal.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Goal.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Goal.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="Goal.Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="Goal.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Goal.StatusDate" xml:space="preserve">
+    <value>Status Date</value>
+  </data>
+  <data name="Goal.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Goal.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Goal.Title" xml:space="preserve">
+    <value>Goal</value>
+  </data>
+  <data name="GraphDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="GraphDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="GraphDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="GraphDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="GraphDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="GraphDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="GraphDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="GraphDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="GraphDefinition.Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="GraphDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="GraphDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="GraphDefinition.Title" xml:space="preserve">
+    <value>GraphDefinition</value>
+  </data>
+  <data name="GraphDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="GraphDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="GraphDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Group.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Group.Actual" xml:space="preserve">
+    <value>Actual</value>
+  </data>
+  <data name="Group.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Group.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Group.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Group.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Group.Quantity" xml:space="preserve">
+    <value>Quantity</value>
+  </data>
+  <data name="Group.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Group.Title" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="Group.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="GuidanceResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="GuidanceResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="GuidanceResponse.Module" xml:space="preserve">
+    <value>Module</value>
+  </data>
+  <data name="GuidanceResponse.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="GuidanceResponse.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="GuidanceResponse.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="GuidanceResponse.RequestId" xml:space="preserve">
+    <value>Request Id</value>
+  </data>
+  <data name="GuidanceResponse.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="GuidanceResponse.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="GuidanceResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="GuidanceResponse.Title" xml:space="preserve">
+    <value>GuidanceResponse</value>
+  </data>
+  <data name="HealthcareService.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="HealthcareService.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="HealthcareService.Comment" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="HealthcareService.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="HealthcareService.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="HealthcareService.Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="HealthcareService.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="HealthcareService.Photo" xml:space="preserve">
+    <value>Photo</value>
+  </data>
+  <data name="HealthcareService.ProvidedBy" xml:space="preserve">
+    <value>Provided By</value>
+  </data>
+  <data name="HealthcareService.Specialty" xml:space="preserve">
+    <value>Specialty</value>
+  </data>
+  <data name="HealthcareService.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="HealthcareService.Title" xml:space="preserve">
+    <value>HealthcareService</value>
+  </data>
+  <data name="HealthcareService.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="ImagingManifest.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="ImagingManifest.AuthoringTime" xml:space="preserve">
+    <value>Authoring Time</value>
+  </data>
+  <data name="ImagingManifest.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ImagingManifest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ImagingManifest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ImagingManifest.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="ImagingManifest.Study" xml:space="preserve">
+    <value>Study</value>
+  </data>
+  <data name="ImagingManifest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ImagingManifest.Title" xml:space="preserve">
+    <value>ImagingManifest</value>
+  </data>
+  <data name="ImagingStudy.Accession" xml:space="preserve">
+    <value>Accession</value>
+  </data>
+  <data name="ImagingStudy.Availability" xml:space="preserve">
+    <value>Availability</value>
+  </data>
+  <data name="ImagingStudy.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="ImagingStudy.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="ImagingStudy.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ImagingStudy.Endpoint" xml:space="preserve">
+    <value>Endpoint</value>
+  </data>
+  <data name="ImagingStudy.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ImagingStudy.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ImagingStudy.Interpreter" xml:space="preserve">
+    <value>Interpreter</value>
+  </data>
+  <data name="ImagingStudy.ModalityList" xml:space="preserve">
+    <value>Modality List</value>
+  </data>
+  <data name="ImagingStudy.NumberOfInstances" xml:space="preserve">
+    <value>Number Of Instances</value>
+  </data>
+  <data name="ImagingStudy.NumberOfSeries" xml:space="preserve">
+    <value>Number Of Series</value>
+  </data>
+  <data name="ImagingStudy.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="ImagingStudy.ProcedureCode" xml:space="preserve">
+    <value>Procedure Code</value>
+  </data>
+  <data name="ImagingStudy.ProcedureReference" xml:space="preserve">
+    <value>Procedure Reference</value>
+  </data>
+  <data name="ImagingStudy.Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="ImagingStudy.Referrer" xml:space="preserve">
+    <value>Referrer</value>
+  </data>
+  <data name="ImagingStudy.Series" xml:space="preserve">
+    <value>Series</value>
+  </data>
+  <data name="ImagingStudy.Started" xml:space="preserve">
+    <value>Started</value>
+  </data>
+  <data name="ImagingStudy.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ImagingStudy.Title" xml:space="preserve">
+    <value>ImagingStudy</value>
+  </data>
+  <data name="ImagingStudy.Uid" xml:space="preserve">
+    <value>Uid</value>
+  </data>
+  <data name="Immunization.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Immunization.Encounter" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="Immunization.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Immunization.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Immunization.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Immunization.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Immunization.NotGiven" xml:space="preserve">
+    <value>Not Given</value>
+  </data>
+  <data name="Immunization.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="Immunization.Practitioner" xml:space="preserve">
+    <value>Practitioner</value>
+  </data>
+  <data name="Immunization.PrimarySource" xml:space="preserve">
+    <value>Primary Source</value>
+  </data>
+  <data name="Immunization.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Immunization.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Immunization.Title" xml:space="preserve">
+    <value>Immunization</value>
+  </data>
+  <data name="Immunization.VaccineCode" xml:space="preserve">
+    <value>Vaccine Code</value>
+  </data>
+  <data name="ImmunizationRecommendation.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ImmunizationRecommendation.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ImmunizationRecommendation.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="ImmunizationRecommendation.Recommendation" xml:space="preserve">
+    <value>Recommendation</value>
+  </data>
+  <data name="ImmunizationRecommendation.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ImmunizationRecommendation.Title" xml:space="preserve">
+    <value>ImmunizationRecommendation</value>
+  </data>
+  <data name="ImplementationGuide.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ImplementationGuide.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ImplementationGuide.Dependency" xml:space="preserve">
+    <value>Dependency</value>
+  </data>
+  <data name="ImplementationGuide.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ImplementationGuide.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="ImplementationGuide.FhirVersion" xml:space="preserve">
+    <value>Fhir Version</value>
+  </data>
+  <data name="ImplementationGuide.Global" xml:space="preserve">
+    <value>Global</value>
+  </data>
+  <data name="ImplementationGuide.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ImplementationGuide.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ImplementationGuide.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ImplementationGuide.Package" xml:space="preserve">
+    <value>Package</value>
+  </data>
+  <data name="ImplementationGuide.Page" xml:space="preserve">
+    <value>Page</value>
+  </data>
+  <data name="ImplementationGuide.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="ImplementationGuide.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ImplementationGuide.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ImplementationGuide.Title" xml:space="preserve">
+    <value>ImplementationGuide</value>
+  </data>
+  <data name="ImplementationGuide.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="ImplementationGuide.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="ImplementationGuide.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Library.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="Library.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Library.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Library.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="Library.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="Library.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Library.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Library.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="Library.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Library.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="Library.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Library.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Library.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Library.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Library.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="Library.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="Library.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Linkage.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Linkage.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="Linkage.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Linkage.Item" xml:space="preserve">
+    <value>Item</value>
+  </data>
+  <data name="Linkage.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Linkage.Title" xml:space="preserve">
+    <value>Linkage</value>
+  </data>
+  <data name="List.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="List.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="List.Encounter" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="List.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="List.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="List.Mode" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="List.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="List.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="List.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="List.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="List.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="List.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="List.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Location.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Location.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Location.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Location.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+  <data name="Location.Mode" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Location.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Location.OperationalStatus" xml:space="preserve">
+    <value>Operational Status</value>
+  </data>
+  <data name="Location.PhysicalType" xml:space="preserve">
+    <value>Physical Type</value>
+  </data>
+  <data name="Location.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Location.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Location.Title" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="Location.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Measure.ClinicalRecommendationStatement" xml:space="preserve">
+    <value>Clinical Recommendation Statement</value>
+  </data>
+  <data name="Measure.CompositeScoring" xml:space="preserve">
+    <value>Composite Scoring</value>
+  </data>
+  <data name="Measure.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="Measure.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Measure.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="Measure.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Measure.Disclaimer" xml:space="preserve">
+    <value>Disclaimer</value>
+  </data>
+  <data name="Measure.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="Measure.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="Measure.Guidance" xml:space="preserve">
+    <value>Guidance</value>
+  </data>
+  <data name="Measure.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Measure.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Measure.ImprovementNotation" xml:space="preserve">
+    <value>Improvement Notation</value>
+  </data>
+  <data name="Measure.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="Measure.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Measure.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="Measure.RateAggregation" xml:space="preserve">
+    <value>Rate Aggregation</value>
+  </data>
+  <data name="Measure.Rationale" xml:space="preserve">
+    <value>Rationale</value>
+  </data>
+  <data name="Measure.RiskAdjustment" xml:space="preserve">
+    <value>Risk Adjustment</value>
+  </data>
+  <data name="Measure.Scoring" xml:space="preserve">
+    <value>Scoring</value>
+  </data>
+  <data name="Measure.Set" xml:space="preserve">
+    <value>Set</value>
+  </data>
+  <data name="Measure.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Measure.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Measure.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Measure.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Measure.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="Measure.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="Measure.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="MeasureReport.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="MeasureReport.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MeasureReport.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="MeasureReport.Measure" xml:space="preserve">
+    <value>Measure</value>
+  </data>
+  <data name="MeasureReport.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="MeasureReport.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="MeasureReport.ReportingOrganization" xml:space="preserve">
+    <value>Reporting Organization</value>
+  </data>
+  <data name="MeasureReport.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MeasureReport.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MeasureReport.Title" xml:space="preserve">
+    <value>MeasureReport</value>
+  </data>
+  <data name="MeasureReport.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Media.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="Media.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="Media.Content" xml:space="preserve">
+    <value>Content</value>
+  </data>
+  <data name="Media.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="Media.Device" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="Media.Duration" xml:space="preserve">
+    <value>Duration</value>
+  </data>
+  <data name="Media.Frames" xml:space="preserve">
+    <value>Frames</value>
+  </data>
+  <data name="Media.Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Media.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Media.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Media.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Media.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Media.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="Media.Operator" xml:space="preserve">
+    <value>Operator</value>
+  </data>
+  <data name="Media.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="Media.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Media.Subtype" xml:space="preserve">
+    <value>Subtype</value>
+  </data>
+  <data name="Media.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Media.Title" xml:space="preserve">
+    <value>Media</value>
+  </data>
+  <data name="Media.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Media.View" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="Media.Width" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="Medication.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Medication.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Medication.IsBrand" xml:space="preserve">
+    <value>Is Brand</value>
+  </data>
+  <data name="Medication.IsOverTheCounter" xml:space="preserve">
+    <value>Is Over The Counter</value>
+  </data>
+  <data name="Medication.Manufacturer" xml:space="preserve">
+    <value>Manufacturer</value>
+  </data>
+  <data name="Medication.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Medication.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Medication.Title" xml:space="preserve">
+    <value>Medication</value>
+  </data>
+  <data name="MedicationAdministration.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="MedicationAdministration.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="MedicationAdministration.Effective" xml:space="preserve">
+    <value>Effective</value>
+  </data>
+  <data name="MedicationAdministration.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MedicationAdministration.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="MedicationAdministration.Medication" xml:space="preserve">
+    <value>Medication</value>
+  </data>
+  <data name="MedicationAdministration.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="MedicationAdministration.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="MedicationAdministration.NotGiven" xml:space="preserve">
+    <value>Not Given</value>
+  </data>
+  <data name="MedicationAdministration.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="MedicationAdministration.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="MedicationAdministration.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MedicationAdministration.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="MedicationAdministration.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MedicationAdministration.Title" xml:space="preserve">
+    <value>MedicationAdministration</value>
+  </data>
+  <data name="MedicationDispense.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="MedicationDispense.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MedicationDispense.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="MedicationDispense.Medication" xml:space="preserve">
+    <value>Medication</value>
+  </data>
+  <data name="MedicationDispense.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="MedicationDispense.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="MedicationDispense.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="MedicationDispense.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MedicationDispense.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="MedicationDispense.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MedicationDispense.Title" xml:space="preserve">
+    <value>MedicationDispense</value>
+  </data>
+  <data name="MedicationDispense.WhenPrepared" xml:space="preserve">
+    <value>When Prepared</value>
+  </data>
+  <data name="MedicationRequest.AuthoredOn" xml:space="preserve">
+    <value>Authored On</value>
+  </data>
+  <data name="MedicationRequest.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="MedicationRequest.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="MedicationRequest.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="MedicationRequest.GroupIdentifier" xml:space="preserve">
+    <value>Group Identifier</value>
+  </data>
+  <data name="MedicationRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MedicationRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="MedicationRequest.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="MedicationRequest.Medication" xml:space="preserve">
+    <value>Medication</value>
+  </data>
+  <data name="MedicationRequest.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="MedicationRequest.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="MedicationRequest.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="MedicationRequest.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="MedicationRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MedicationRequest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="MedicationRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MedicationRequest.Title" xml:space="preserve">
+    <value>MedicationRequest</value>
+  </data>
+  <data name="MedicationStatement.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="MedicationStatement.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="MedicationStatement.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="MedicationStatement.DateAsserted" xml:space="preserve">
+    <value>Date Asserted</value>
+  </data>
+  <data name="MedicationStatement.Effective" xml:space="preserve">
+    <value>Effective</value>
+  </data>
+  <data name="MedicationStatement.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MedicationStatement.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="MedicationStatement.Medication" xml:space="preserve">
+    <value>Medication</value>
+  </data>
+  <data name="MedicationStatement.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="MedicationStatement.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="MedicationStatement.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="MedicationStatement.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MedicationStatement.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="MedicationStatement.Taken" xml:space="preserve">
+    <value>Taken</value>
+  </data>
+  <data name="MedicationStatement.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MedicationStatement.Title" xml:space="preserve">
+    <value>MedicationStatement</value>
+  </data>
+  <data name="MessageDefinition.Base" xml:space="preserve">
+    <value>Base</value>
+  </data>
+  <data name="MessageDefinition.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="MessageDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="MessageDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="MessageDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="MessageDefinition.Event" xml:space="preserve">
+    <value>Event</value>
+  </data>
+  <data name="MessageDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="MessageDefinition.Focus" xml:space="preserve">
+    <value>Focus</value>
+  </data>
+  <data name="MessageDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MessageDefinition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="MessageDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="MessageDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="MessageDefinition.Parent" xml:space="preserve">
+    <value>Parent</value>
+  </data>
+  <data name="MessageDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="MessageDefinition.Purpose" xml:space="preserve">
+    <value>Purpose</value>
+  </data>
+  <data name="MessageDefinition.Replaces" xml:space="preserve">
+    <value>Replaces</value>
+  </data>
+  <data name="MessageDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MessageDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MessageDefinition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="MessageDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="MessageDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="MessageDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="MessageHeader.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="MessageHeader.Destination" xml:space="preserve">
+    <value>Destination</value>
+  </data>
+  <data name="MessageHeader.Enterer" xml:space="preserve">
+    <value>Enterer</value>
+  </data>
+  <data name="MessageHeader.Event" xml:space="preserve">
+    <value>Event</value>
+  </data>
+  <data name="MessageHeader.Focus" xml:space="preserve">
+    <value>Focus</value>
+  </data>
+  <data name="MessageHeader.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="MessageHeader.Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="MessageHeader.Receiver" xml:space="preserve">
+    <value>Receiver</value>
+  </data>
+  <data name="MessageHeader.Response" xml:space="preserve">
+    <value>Response</value>
+  </data>
+  <data name="MessageHeader.Responsible" xml:space="preserve">
+    <value>Responsible</value>
+  </data>
+  <data name="MessageHeader.Sender" xml:space="preserve">
+    <value>Sender</value>
+  </data>
+  <data name="MessageHeader.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="MessageHeader.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="MessageHeader.Timestamp" xml:space="preserve">
+    <value>Timestamp</value>
+  </data>
+  <data name="MessageHeader.Title" xml:space="preserve">
+    <value>MessageHeader</value>
+  </data>
+  <data name="NamingSystem.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="NamingSystem.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="NamingSystem.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="NamingSystem.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="NamingSystem.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="NamingSystem.Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="NamingSystem.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="NamingSystem.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="NamingSystem.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="NamingSystem.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="NamingSystem.Title" xml:space="preserve">
+    <value>NamingSystem</value>
+  </data>
+  <data name="NamingSystem.UniqueId" xml:space="preserve">
+    <value>Unique Id</value>
+  </data>
+  <data name="NamingSystem.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="NutritionOrder.DateTime" xml:space="preserve">
+    <value>Date Time</value>
+  </data>
+  <data name="NutritionOrder.Encounter" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="NutritionOrder.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="NutritionOrder.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="NutritionOrder.Orderer" xml:space="preserve">
+    <value>Orderer</value>
+  </data>
+  <data name="NutritionOrder.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="NutritionOrder.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="NutritionOrder.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="NutritionOrder.Title" xml:space="preserve">
+    <value>NutritionOrder</value>
+  </data>
+  <data name="Observation.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="Observation.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="Observation.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Observation.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Observation.Component" xml:space="preserve">
+    <value>Component</value>
+  </data>
+  <data name="Observation.Effective" xml:space="preserve">
+    <value>Effective</value>
+  </data>
+  <data name="Observation.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Observation.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Observation.Interpretation" xml:space="preserve">
+    <value>Interpretation</value>
+  </data>
+  <data name="Observation.Issued" xml:space="preserve">
+    <value>Issued</value>
+  </data>
+  <data name="Observation.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="Observation.ReferenceRange" xml:space="preserve">
+    <value>Reference Range</value>
+  </data>
+  <data name="Observation.Related" xml:space="preserve">
+    <value>Related</value>
+  </data>
+  <data name="Observation.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Observation.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Observation.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Observation.Title" xml:space="preserve">
+    <value>Observation</value>
+  </data>
+  <data name="Observation.Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="OperationDefinition.Base" xml:space="preserve">
+    <value>Base</value>
+  </data>
+  <data name="OperationDefinition.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="OperationDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="OperationDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="OperationDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="OperationDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="OperationDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="OperationDefinition.Idempotent" xml:space="preserve">
+    <value>Idempotent</value>
+  </data>
+  <data name="OperationDefinition.Instance" xml:space="preserve">
+    <value>Instance</value>
+  </data>
+  <data name="OperationDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="OperationDefinition.Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="OperationDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="OperationDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="OperationDefinition.Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="OperationDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="OperationDefinition.System" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="OperationDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="OperationDefinition.Title" xml:space="preserve">
+    <value>OperationDefinition</value>
+  </data>
+  <data name="OperationDefinition.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="OperationDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="OperationDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="OperationDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="OperationOutcome.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="OperationOutcome.Issue" xml:space="preserve">
+    <value>Issue</value>
+  </data>
+  <data name="OperationOutcome.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="OperationOutcome.Title" xml:space="preserve">
+    <value>OperationOutcome</value>
+  </data>
+  <data name="Organization.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Organization.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Organization.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Organization.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Organization.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="Organization.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Organization.Title" xml:space="preserve">
+    <value>Organization</value>
+  </data>
+  <data name="Organization.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Parameters.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Parameters.Parameter" xml:space="preserve">
+    <value>Parameter</value>
+  </data>
+  <data name="Parameters.Title" xml:space="preserve">
+    <value>Parameters</value>
+  </data>
+  <data name="Patient.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Patient.Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="Patient.Animal" xml:space="preserve">
+    <value>Animal</value>
+  </data>
+  <data name="Patient.BirthDate" xml:space="preserve">
+    <value>Birth Date</value>
+  </data>
+  <data name="Patient.Deceased" xml:space="preserve">
+    <value>Deceased</value>
+  </data>
+  <data name="Patient.Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="Patient.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Patient.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Patient.Link" xml:space="preserve">
+    <value>Link</value>
+  </data>
+  <data name="Patient.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+  <data name="Patient.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Patient.Telecom" xml:space="preserve">
+    <value>Telecom</value>
+  </data>
+  <data name="Patient.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Patient.Title" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="PaymentNotice.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="PaymentNotice.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="PaymentNotice.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="PaymentNotice.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="PaymentNotice.Title" xml:space="preserve">
+    <value>PaymentNotice</value>
+  </data>
+  <data name="PaymentReconciliation.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="PaymentReconciliation.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="PaymentReconciliation.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="PaymentReconciliation.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="PaymentReconciliation.Title" xml:space="preserve">
+    <value>PaymentReconciliation</value>
+  </data>
+  <data name="Person.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Person.BirthDate" xml:space="preserve">
+    <value>Birth Date</value>
+  </data>
+  <data name="Person.Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="Person.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Person.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Person.ManagingOrganization" xml:space="preserve">
+    <value>Managing Organization</value>
+  </data>
+  <data name="Person.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Person.Telecom" xml:space="preserve">
+    <value>Telecom</value>
+  </data>
+  <data name="Person.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Person.Title" xml:space="preserve">
+    <value>Person</value>
+  </data>
+  <data name="PlanDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="PlanDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="PlanDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="PlanDefinition.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="PlanDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="PlanDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="PlanDefinition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="PlanDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="PlanDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="PlanDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="PlanDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="PlanDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="PlanDefinition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="PlanDefinition.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="PlanDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="PlanDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="PlanDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Practitioner.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Practitioner.Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="Practitioner.BirthDate" xml:space="preserve">
+    <value>Birth Date</value>
+  </data>
+  <data name="Practitioner.Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="Practitioner.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Practitioner.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Practitioner.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Practitioner.Telecom" xml:space="preserve">
+    <value>Telecom</value>
+  </data>
+  <data name="Practitioner.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Practitioner.Title" xml:space="preserve">
+    <value>Practitioner</value>
+  </data>
+  <data name="PractitionerRole.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="PractitionerRole.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="PractitionerRole.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="PractitionerRole.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="PractitionerRole.Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="PractitionerRole.Organization" xml:space="preserve">
+    <value>Organization</value>
+  </data>
+  <data name="PractitionerRole.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="PractitionerRole.Practitioner" xml:space="preserve">
+    <value>Practitioner</value>
+  </data>
+  <data name="PractitionerRole.Specialty" xml:space="preserve">
+    <value>Specialty</value>
+  </data>
+  <data name="PractitionerRole.Telecom" xml:space="preserve">
+    <value>Telecom</value>
+  </data>
+  <data name="PractitionerRole.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="PractitionerRole.Title" xml:space="preserve">
+    <value>PractitionerRole</value>
+  </data>
+  <data name="Procedure.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="Procedure.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="Procedure.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Procedure.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Procedure.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="Procedure.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="Procedure.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Procedure.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Procedure.Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="Procedure.NotDone" xml:space="preserve">
+    <value>Not Done</value>
+  </data>
+  <data name="Procedure.NotDoneReason" xml:space="preserve">
+    <value>Not Done Reason</value>
+  </data>
+  <data name="Procedure.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Procedure.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Procedure.Outcome" xml:space="preserve">
+    <value>Outcome</value>
+  </data>
+  <data name="Procedure.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="Procedure.Performed" xml:space="preserve">
+    <value>Performed</value>
+  </data>
+  <data name="Procedure.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="Procedure.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="Procedure.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="Procedure.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Procedure.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Procedure.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Procedure.Title" xml:space="preserve">
+    <value>Procedure</value>
+  </data>
+  <data name="ProcedureRequest.AsNeeded" xml:space="preserve">
+    <value>As Needed</value>
+  </data>
+  <data name="ProcedureRequest.AuthoredOn" xml:space="preserve">
+    <value>Authored On</value>
+  </data>
+  <data name="ProcedureRequest.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="ProcedureRequest.BodySite" xml:space="preserve">
+    <value>Body Site</value>
+  </data>
+  <data name="ProcedureRequest.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="ProcedureRequest.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="ProcedureRequest.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="ProcedureRequest.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="ProcedureRequest.DoNotPerform" xml:space="preserve">
+    <value>Do Not Perform</value>
+  </data>
+  <data name="ProcedureRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ProcedureRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ProcedureRequest.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="ProcedureRequest.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ProcedureRequest.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="ProcedureRequest.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="ProcedureRequest.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="ProcedureRequest.PerformerType" xml:space="preserve">
+    <value>Performer Type</value>
+  </data>
+  <data name="ProcedureRequest.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="ProcedureRequest.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="ProcedureRequest.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="ProcedureRequest.Replaces" xml:space="preserve">
+    <value>Replaces</value>
+  </data>
+  <data name="ProcedureRequest.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="ProcedureRequest.Requisition" xml:space="preserve">
+    <value>Requisition</value>
+  </data>
+  <data name="ProcedureRequest.Specimen" xml:space="preserve">
+    <value>Specimen</value>
+  </data>
+  <data name="ProcedureRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ProcedureRequest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="ProcedureRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ProcedureRequest.Title" xml:space="preserve">
+    <value>ProcedureRequest</value>
+  </data>
+  <data name="ProcessRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ProcessRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ProcessRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ProcessRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ProcessRequest.Title" xml:space="preserve">
+    <value>ProcessRequest</value>
+  </data>
+  <data name="ProcessResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ProcessResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ProcessResponse.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ProcessResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ProcessResponse.Title" xml:space="preserve">
+    <value>ProcessResponse</value>
+  </data>
+  <data name="Provenance.Agent" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="Provenance.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Provenance.Recorded" xml:space="preserve">
+    <value>Recorded</value>
+  </data>
+  <data name="Provenance.Target" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="Provenance.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Provenance.Title" xml:space="preserve">
+    <value>Provenance</value>
+  </data>
+  <data name="Questionnaire.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Questionnaire.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="Questionnaire.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Questionnaire.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Questionnaire.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="Questionnaire.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="Questionnaire.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Questionnaire.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Questionnaire.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="Questionnaire.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Questionnaire.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="Questionnaire.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Questionnaire.SubjectType" xml:space="preserve">
+    <value>Subject Type</value>
+  </data>
+  <data name="Questionnaire.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Questionnaire.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Questionnaire.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="Questionnaire.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="Questionnaire.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="QuestionnaireResponse.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="QuestionnaireResponse.Authored" xml:space="preserve">
+    <value>Authored</value>
+  </data>
+  <data name="QuestionnaireResponse.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="QuestionnaireResponse.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="QuestionnaireResponse.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="QuestionnaireResponse.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="QuestionnaireResponse.Parent" xml:space="preserve">
+    <value>Parent</value>
+  </data>
+  <data name="QuestionnaireResponse.Questionnaire" xml:space="preserve">
+    <value>Questionnaire</value>
+  </data>
+  <data name="QuestionnaireResponse.Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="QuestionnaireResponse.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="QuestionnaireResponse.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="QuestionnaireResponse.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="QuestionnaireResponse.Title" xml:space="preserve">
+    <value>QuestionnaireResponse</value>
+  </data>
+  <data name="ReferralRequest.AuthoredOn" xml:space="preserve">
+    <value>Authored On</value>
+  </data>
+  <data name="ReferralRequest.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="ReferralRequest.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="ReferralRequest.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="ReferralRequest.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ReferralRequest.GroupIdentifier" xml:space="preserve">
+    <value>Group Identifier</value>
+  </data>
+  <data name="ReferralRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ReferralRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ReferralRequest.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="ReferralRequest.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ReferralRequest.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="ReferralRequest.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="ReferralRequest.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="ReferralRequest.ReasonCode" xml:space="preserve">
+    <value>Reason Code</value>
+  </data>
+  <data name="ReferralRequest.ReasonReference" xml:space="preserve">
+    <value>Reason Reference</value>
+  </data>
+  <data name="ReferralRequest.Recipient" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="ReferralRequest.Replaces" xml:space="preserve">
+    <value>Replaces</value>
+  </data>
+  <data name="ReferralRequest.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="ReferralRequest.ServiceRequested" xml:space="preserve">
+    <value>Service Requested</value>
+  </data>
+  <data name="ReferralRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ReferralRequest.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="ReferralRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ReferralRequest.Title" xml:space="preserve">
+    <value>ReferralRequest</value>
+  </data>
+  <data name="ReferralRequest.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="RelatedPerson.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="RelatedPerson.Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="RelatedPerson.BirthDate" xml:space="preserve">
+    <value>Birth Date</value>
+  </data>
+  <data name="RelatedPerson.Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="RelatedPerson.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="RelatedPerson.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="RelatedPerson.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="RelatedPerson.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="RelatedPerson.Relationship" xml:space="preserve">
+    <value>Relationship</value>
+  </data>
+  <data name="RelatedPerson.Telecom" xml:space="preserve">
+    <value>Telecom</value>
+  </data>
+  <data name="RelatedPerson.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="RelatedPerson.Title" xml:space="preserve">
+    <value>RelatedPerson</value>
+  </data>
+  <data name="RequestGroup.Author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="RequestGroup.GroupIdentifier" xml:space="preserve">
+    <value>Group Identifier</value>
+  </data>
+  <data name="RequestGroup.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="RequestGroup.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="RequestGroup.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="RequestGroup.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="RequestGroup.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="RequestGroup.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="RequestGroup.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="RequestGroup.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="RequestGroup.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="RequestGroup.Title" xml:space="preserve">
+    <value>RequestGroup</value>
+  </data>
+  <data name="ResearchStudy.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="ResearchStudy.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ResearchStudy.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ResearchStudy.Enrollment" xml:space="preserve">
+    <value>Enrollment</value>
+  </data>
+  <data name="ResearchStudy.Focus" xml:space="preserve">
+    <value>Focus</value>
+  </data>
+  <data name="ResearchStudy.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ResearchStudy.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ResearchStudy.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ResearchStudy.Keyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="ResearchStudy.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ResearchStudy.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="ResearchStudy.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="ResearchStudy.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="ResearchStudy.PrincipalInvestigator" xml:space="preserve">
+    <value>Principal Investigator</value>
+  </data>
+  <data name="ResearchStudy.Protocol" xml:space="preserve">
+    <value>Protocol</value>
+  </data>
+  <data name="ResearchStudy.ReasonStopped" xml:space="preserve">
+    <value>Reason Stopped</value>
+  </data>
+  <data name="ResearchStudy.Site" xml:space="preserve">
+    <value>Site</value>
+  </data>
+  <data name="ResearchStudy.Sponsor" xml:space="preserve">
+    <value>Sponsor</value>
+  </data>
+  <data name="ResearchStudy.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ResearchStudy.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ResearchStudy.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ResearchSubject.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ResearchSubject.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ResearchSubject.Individual" xml:space="preserve">
+    <value>Individual</value>
+  </data>
+  <data name="ResearchSubject.Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="ResearchSubject.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ResearchSubject.Study" xml:space="preserve">
+    <value>Study</value>
+  </data>
+  <data name="ResearchSubject.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ResearchSubject.Title" xml:space="preserve">
+    <value>ResearchSubject</value>
+  </data>
+  <data name="RiskAssessment.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="RiskAssessment.Condition" xml:space="preserve">
+    <value>Condition</value>
+  </data>
+  <data name="RiskAssessment.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="RiskAssessment.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="RiskAssessment.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="RiskAssessment.Method" xml:space="preserve">
+    <value>Method</value>
+  </data>
+  <data name="RiskAssessment.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="RiskAssessment.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="RiskAssessment.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="RiskAssessment.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="RiskAssessment.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="RiskAssessment.Title" xml:space="preserve">
+    <value>RiskAssessment</value>
+  </data>
+  <data name="Schedule.Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Schedule.Actor" xml:space="preserve">
+    <value>Actor</value>
+  </data>
+  <data name="Schedule.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Schedule.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Schedule.PlanningHorizon" xml:space="preserve">
+    <value>Planning Horizon</value>
+  </data>
+  <data name="Schedule.ServiceCategory" xml:space="preserve">
+    <value>Service Category</value>
+  </data>
+  <data name="Schedule.ServiceType" xml:space="preserve">
+    <value>Service Type</value>
+  </data>
+  <data name="Schedule.Specialty" xml:space="preserve">
+    <value>Specialty</value>
+  </data>
+  <data name="Schedule.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Schedule.Title" xml:space="preserve">
+    <value>Schedule</value>
+  </data>
+  <data name="SearchParameter.Base" xml:space="preserve">
+    <value>Base</value>
+  </data>
+  <data name="SearchParameter.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="SearchParameter.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="SearchParameter.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="SearchParameter.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="SearchParameter.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="SearchParameter.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="SearchParameter.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="SearchParameter.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="SearchParameter.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="SearchParameter.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="SearchParameter.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="SearchParameter.Title" xml:space="preserve">
+    <value>SearchParameter</value>
+  </data>
+  <data name="SearchParameter.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="SearchParameter.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="SearchParameter.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="SearchParameter.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Sequence.CoordinateSystem" xml:space="preserve">
+    <value>Coordinate System</value>
+  </data>
+  <data name="Sequence.Device" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="Sequence.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Sequence.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Sequence.ObservedSeq" xml:space="preserve">
+    <value>Observed Seq</value>
+  </data>
+  <data name="Sequence.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="Sequence.Performer" xml:space="preserve">
+    <value>Performer</value>
+  </data>
+  <data name="Sequence.Pointer" xml:space="preserve">
+    <value>Pointer</value>
+  </data>
+  <data name="Sequence.Quality" xml:space="preserve">
+    <value>Quality</value>
+  </data>
+  <data name="Sequence.Quantity" xml:space="preserve">
+    <value>Quantity</value>
+  </data>
+  <data name="Sequence.ReadCoverage" xml:space="preserve">
+    <value>Read Coverage</value>
+  </data>
+  <data name="Sequence.ReferenceSeq" xml:space="preserve">
+    <value>Reference Seq</value>
+  </data>
+  <data name="Sequence.Repository" xml:space="preserve">
+    <value>Repository</value>
+  </data>
+  <data name="Sequence.Specimen" xml:space="preserve">
+    <value>Specimen</value>
+  </data>
+  <data name="Sequence.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Sequence.Title" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="Sequence.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Sequence.Variant" xml:space="preserve">
+    <value>Variant</value>
+  </data>
+  <data name="ServiceDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ServiceDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ServiceDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ServiceDefinition.EffectivePeriod" xml:space="preserve">
+    <value>Effective Period</value>
+  </data>
+  <data name="ServiceDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="ServiceDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ServiceDefinition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ServiceDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ServiceDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ServiceDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="ServiceDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ServiceDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ServiceDefinition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ServiceDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="ServiceDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="ServiceDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Slot.AppointmentType" xml:space="preserve">
+    <value>Appointment Type</value>
+  </data>
+  <data name="Slot.End" xml:space="preserve">
+    <value>End</value>
+  </data>
+  <data name="Slot.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Slot.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Slot.Schedule" xml:space="preserve">
+    <value>Schedule</value>
+  </data>
+  <data name="Slot.ServiceCategory" xml:space="preserve">
+    <value>Service Category</value>
+  </data>
+  <data name="Slot.ServiceType" xml:space="preserve">
+    <value>Service Type</value>
+  </data>
+  <data name="Slot.Specialty" xml:space="preserve">
+    <value>Specialty</value>
+  </data>
+  <data name="Slot.Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="Slot.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Slot.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Slot.Title" xml:space="preserve">
+    <value>Slot</value>
+  </data>
+  <data name="Specimen.AccessionIdentifier" xml:space="preserve">
+    <value>Accession Identifier</value>
+  </data>
+  <data name="Specimen.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Specimen.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Specimen.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Specimen.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Specimen.ReceivedTime" xml:space="preserve">
+    <value>Received Time</value>
+  </data>
+  <data name="Specimen.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Specimen.Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Specimen.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Specimen.Title" xml:space="preserve">
+    <value>Specimen</value>
+  </data>
+  <data name="Specimen.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="StructureDefinition.Abstract" xml:space="preserve">
+    <value>Abstract</value>
+  </data>
+  <data name="StructureDefinition.BaseDefinition" xml:space="preserve">
+    <value>Base Definition</value>
+  </data>
+  <data name="StructureDefinition.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="StructureDefinition.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="StructureDefinition.ContextInvariant" xml:space="preserve">
+    <value>Context Invariant</value>
+  </data>
+  <data name="StructureDefinition.ContextType" xml:space="preserve">
+    <value>Context Type</value>
+  </data>
+  <data name="StructureDefinition.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="StructureDefinition.Derivation" xml:space="preserve">
+    <value>Derivation</value>
+  </data>
+  <data name="StructureDefinition.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="StructureDefinition.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="StructureDefinition.FhirVersion" xml:space="preserve">
+    <value>Fhir Version</value>
+  </data>
+  <data name="StructureDefinition.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="StructureDefinition.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="StructureDefinition.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="StructureDefinition.Keyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="StructureDefinition.Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="StructureDefinition.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="StructureDefinition.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="StructureDefinition.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="StructureDefinition.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="StructureDefinition.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="StructureDefinition.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="StructureDefinition.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="StructureDefinition.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="StructureDefinition.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="StructureMap.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="StructureMap.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="StructureMap.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="StructureMap.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="StructureMap.Group" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="StructureMap.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="StructureMap.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="StructureMap.Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="StructureMap.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="StructureMap.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="StructureMap.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="StructureMap.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="StructureMap.Structure" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="StructureMap.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="StructureMap.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="StructureMap.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="StructureMap.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="StructureMap.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Subscription.Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Subscription.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="Subscription.Criteria" xml:space="preserve">
+    <value>Criteria</value>
+  </data>
+  <data name="Subscription.End" xml:space="preserve">
+    <value>End</value>
+  </data>
+  <data name="Subscription.Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Subscription.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Subscription.Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="Subscription.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Subscription.Tag" xml:space="preserve">
+    <value>Tag</value>
+  </data>
+  <data name="Subscription.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Subscription.Title" xml:space="preserve">
+    <value>Subscription</value>
+  </data>
+  <data name="Substance.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Substance.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Substance.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Substance.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Substance.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Substance.Ingredient" xml:space="preserve">
+    <value>Ingredient</value>
+  </data>
+  <data name="Substance.Instance" xml:space="preserve">
+    <value>Instance</value>
+  </data>
+  <data name="Substance.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Substance.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Substance.Title" xml:space="preserve">
+    <value>Substance</value>
+  </data>
+  <data name="SupplyDelivery.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="SupplyDelivery.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="SupplyDelivery.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="SupplyDelivery.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="SupplyDelivery.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="SupplyDelivery.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="SupplyDelivery.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="SupplyDelivery.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="SupplyDelivery.Title" xml:space="preserve">
+    <value>SupplyDelivery</value>
+  </data>
+  <data name="SupplyRequest.AuthoredOn" xml:space="preserve">
+    <value>Authored On</value>
+  </data>
+  <data name="SupplyRequest.Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="SupplyRequest.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="SupplyRequest.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="SupplyRequest.Occurrence" xml:space="preserve">
+    <value>Occurrence</value>
+  </data>
+  <data name="SupplyRequest.OrderedItem" xml:space="preserve">
+    <value>Ordered Item</value>
+  </data>
+  <data name="SupplyRequest.Priority" xml:space="preserve">
+    <value>Priority</value>
+  </data>
+  <data name="SupplyRequest.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="SupplyRequest.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="SupplyRequest.Supplier" xml:space="preserve">
+    <value>Supplier</value>
+  </data>
+  <data name="SupplyRequest.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="SupplyRequest.Title" xml:space="preserve">
+    <value>SupplyRequest</value>
+  </data>
+  <data name="Task.BasedOn" xml:space="preserve">
+    <value>Based On</value>
+  </data>
+  <data name="Task.BusinessStatus" xml:space="preserve">
+    <value>Business Status</value>
+  </data>
+  <data name="Task.Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Task.Context" xml:space="preserve">
+    <value>Context</value>
+  </data>
+  <data name="Task.Definition" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="Task.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Task.ExecutionPeriod" xml:space="preserve">
+    <value>Execution Period</value>
+  </data>
+  <data name="Task.Focus" xml:space="preserve">
+    <value>Focus</value>
+  </data>
+  <data name="Task.For" xml:space="preserve">
+    <value>For</value>
+  </data>
+  <data name="Task.GroupIdentifier" xml:space="preserve">
+    <value>Group Identifier</value>
+  </data>
+  <data name="Task.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="Task.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Task.Intent" xml:space="preserve">
+    <value>Intent</value>
+  </data>
+  <data name="Task.LastModified" xml:space="preserve">
+    <value>Last Modified</value>
+  </data>
+  <data name="Task.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Task.Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Task.Owner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="Task.PartOf" xml:space="preserve">
+    <value>Part Of</value>
+  </data>
+  <data name="Task.Requester" xml:space="preserve">
+    <value>Requester</value>
+  </data>
+  <data name="Task.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Task.StatusReason" xml:space="preserve">
+    <value>Status Reason</value>
+  </data>
+  <data name="Task.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Task.Title" xml:space="preserve">
+    <value>Task</value>
+  </data>
+  <data name="TestReport.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="TestReport.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="TestReport.Issued" xml:space="preserve">
+    <value>Issued</value>
+  </data>
+  <data name="TestReport.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="TestReport.Result" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="TestReport.Score" xml:space="preserve">
+    <value>Score</value>
+  </data>
+  <data name="TestReport.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="TestReport.Tester" xml:space="preserve">
+    <value>Tester</value>
+  </data>
+  <data name="TestReport.TestScript" xml:space="preserve">
+    <value>Test Script</value>
+  </data>
+  <data name="TestReport.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="TestReport.Title" xml:space="preserve">
+    <value>TestReport</value>
+  </data>
+  <data name="TestScript.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="TestScript.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="TestScript.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="TestScript.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="TestScript.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="TestScript.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="TestScript.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="TestScript.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="TestScript.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="TestScript.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="TestScript.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="TestScript.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="TestScript.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="TestScript.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="TestScript.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="ValueSet.Contact" xml:space="preserve">
+    <value>Contact</value>
+  </data>
+  <data name="ValueSet.Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="ValueSet.Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="ValueSet.Experimental" xml:space="preserve">
+    <value>Experimental</value>
+  </data>
+  <data name="ValueSet.Extensible" xml:space="preserve">
+    <value>Extensible</value>
+  </data>
+  <data name="ValueSet.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="ValueSet.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="ValueSet.Immutable" xml:space="preserve">
+    <value>Immutable</value>
+  </data>
+  <data name="ValueSet.Jurisdiction" xml:space="preserve">
+    <value>Jurisdiction</value>
+  </data>
+  <data name="ValueSet.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ValueSet.Publisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="ValueSet.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ValueSet.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ValueSet.Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ValueSet.Url" xml:space="preserve">
+    <value>Url</value>
+  </data>
+  <data name="ValueSet.UseContext" xml:space="preserve">
+    <value>Use Context</value>
+  </data>
+  <data name="ValueSet.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="VisionPrescription.Encounter" xml:space="preserve">
+    <value>Encounter</value>
+  </data>
+  <data name="VisionPrescription.Id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="VisionPrescription.Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="VisionPrescription.Patient" xml:space="preserve">
+    <value>Patient</value>
+  </data>
+  <data name="VisionPrescription.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="VisionPrescription.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="VisionPrescription.Title" xml:space="preserve">
+    <value>VisionPrescription</value>
+  </data>
+</root>

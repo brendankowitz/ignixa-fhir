@@ -1,0 +1,49 @@
+﻿{{~ # Auto-generated Scriban narrative template for Subscription ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Subscription ~}}
+
+<div class="fhir-narrative fhir-subscription" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Subscription.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Subscription.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Subscription.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Subscription.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Subscription.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "Subscription.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "contact") ~}}
+        <li>{{ fhir.format_contact_point item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "end") ~}}
+    <dt>{{ l10n.t "Subscription.End" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "end") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Subscription.Reason" }}</dt>
+    <dd>{{ fhir.path resource "reason" }}</dd>
+    <dt>{{ l10n.t "Subscription.Criteria" }}</dt>
+    <dd>{{ fhir.path resource "criteria" }}</dd>
+    {{~ if (fhir.exists resource "error") ~}}
+    <dt>{{ l10n.t "Subscription.Error" }}</dt>
+    <dd>{{ fhir.path resource "error" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Subscription.Channel" }}</dt>
+    <dd>{{ fhir.path resource "channel" }}</dd>
+  </dl>
+
+</div>

@@ -1,0 +1,121 @@
+﻿{{~ # Auto-generated Scriban narrative template for Observation ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Observation ~}}
+
+<div class="fhir-narrative fhir-observation" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Observation.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Observation.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Observation.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Observation.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Observation.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "Observation.Code" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "code") }}</dd>
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "Observation.Subject" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subject") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performer") ~}}
+    <dt>{{ l10n.t "Observation.Performer" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "performer") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "issued") ~}}
+    <dt>{{ l10n.t "Observation.Issued" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "issued") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "Observation.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "category") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "bodySite") ~}}
+    <dt>{{ l10n.t "Observation.BodySite" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "bodySite") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "interpretation") ~}}
+    <dt>{{ l10n.t "Observation.Interpretation" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "interpretation") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "referenceRange") ~}}
+    <dt>{{ l10n.t "Observation.ReferenceRange" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "referenceRange") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Observation.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "Observation.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "basedOn") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "effective[x]") ~}}
+    <dt>{{ l10n.t "Observation.Effective" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "effective[x]") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "value[x]") ~}}
+    <dt>{{ l10n.t "Observation.Value" }}</dt>
+    <dd>{{ fhir.format_quantity (fhir.path resource "value[x]") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "related") ~}}
+    <dt>{{ l10n.t "Observation.Related" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "related") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "component") ~}}
+    <dt>{{ l10n.t "Observation.Component" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "component") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

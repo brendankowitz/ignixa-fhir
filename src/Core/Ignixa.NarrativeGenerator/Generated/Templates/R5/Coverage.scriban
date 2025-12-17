@@ -1,0 +1,81 @@
+﻿{{~ # Auto-generated Scriban narrative template for Coverage ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Coverage ~}}
+
+<div class="fhir-narrative fhir-coverage" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Coverage.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Coverage.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Coverage.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Coverage.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Coverage.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Coverage.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Coverage.Kind" }}</dt>
+    <dd>{{ fhir.path resource "kind" }}</dd>
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "Coverage.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "policyHolder") ~}}
+    <dt>{{ l10n.t "Coverage.PolicyHolder" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "policyHolder") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subscriber") ~}}
+    <dt>{{ l10n.t "Coverage.Subscriber" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subscriber") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subscriberId") ~}}
+    <dt>{{ l10n.t "Coverage.SubscriberId" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "subscriberId") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Coverage.Beneficiary" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "beneficiary") }}</dd>
+    {{~ if (fhir.exists resource "dependent") ~}}
+    <dt>{{ l10n.t "Coverage.Dependent" }}</dt>
+    <dd>{{ fhir.path resource "dependent" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "period") ~}}
+    <dt>{{ l10n.t "Coverage.Period" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "period") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "insurer") ~}}
+    <dt>{{ l10n.t "Coverage.Insurer" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "insurer") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "order") ~}}
+    <dt>{{ l10n.t "Coverage.Order" }}</dt>
+    <dd>{{ fhir.path resource "order" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "network") ~}}
+    <dt>{{ l10n.t "Coverage.Network" }}</dt>
+    <dd>{{ fhir.path resource "network" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

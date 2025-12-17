@@ -1,0 +1,99 @@
+﻿{{~ # Auto-generated Scriban narrative template for OrganizationAffiliation ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/OrganizationAffiliation ~}}
+
+<div class="fhir-narrative fhir-organizationaffiliation" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "OrganizationAffiliation.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "OrganizationAffiliation.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Code" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "code") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "active") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Active" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "active") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "period") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Period" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "period") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "organization") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Organization" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "organization") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "participatingOrganization") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.ParticipatingOrganization" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "participatingOrganization") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "network") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Network" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "network") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "specialty") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Specialty" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "specialty") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "location") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Location" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "location") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "telecom") ~}}
+    <dt>{{ l10n.t "OrganizationAffiliation.Telecom" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "telecom") ~}}
+        <li>{{ fhir.format_contact_point item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -1,0 +1,49 @@
+﻿{{~ # Auto-generated Scriban narrative template for Medication ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Medication ~}}
+
+<div class="fhir-narrative fhir-medication" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Medication.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Medication.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Medication.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Medication.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "status") ~}}
+    <dt>{{ l10n.t "Medication.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "Medication.Code" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "code") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Medication.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "marketingAuthorizationHolder") ~}}
+    <dt>{{ l10n.t "Medication.MarketingAuthorizationHolder" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "marketingAuthorizationHolder") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "totalVolume") ~}}
+    <dt>{{ l10n.t "Medication.TotalVolume" }}</dt>
+    <dd>{{ fhir.format_quantity (fhir.path resource "totalVolume") }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

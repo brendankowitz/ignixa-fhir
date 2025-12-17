@@ -1,0 +1,91 @@
+﻿{{~ # Auto-generated Scriban narrative template for ExplanationOfBenefit ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/ExplanationOfBenefit ~}}
+
+<div class="fhir-narrative fhir-explanationofbenefit" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "ExplanationOfBenefit.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "ExplanationOfBenefit.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "ExplanationOfBenefit.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Encounter" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "encounter") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    <dt>{{ l10n.t "ExplanationOfBenefit.Use" }}</dt>
+    <dd>{{ fhir.path resource "use" }}</dd>
+    {{~ if (fhir.exists resource "billablePeriod") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.BillablePeriod" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "billablePeriod") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Created" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "created") }}</dd>
+    {{~ if (fhir.exists resource "insurer") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Insurer" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "insurer") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "provider") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Provider" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "provider") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Outcome" }}</dt>
+    <dd>{{ fhir.path resource "outcome" }}</dd>
+    {{~ if (fhir.exists resource "decision") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Decision" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "decision") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "insurance") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Insurance" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "insurance") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "total") ~}}
+    <dt>{{ l10n.t "ExplanationOfBenefit.Total" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "total") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

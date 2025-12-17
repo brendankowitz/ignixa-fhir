@@ -1,0 +1,67 @@
+﻿{{~ # Auto-generated Scriban narrative template for MeasureReport ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/MeasureReport ~}}
+
+<div class="fhir-narrative fhir-measurereport" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "MeasureReport.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "MeasureReport.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "MeasureReport.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "MeasureReport.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MeasureReport.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "MeasureReport.Subject" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subject") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "MeasureReport.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "MeasureReport.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MeasureReport.Type" }}</dt>
+    <dd>{{ fhir.path resource "type" }}</dd>
+    {{~ if (fhir.exists resource "dataUpdateType") ~}}
+    <dt>{{ l10n.t "MeasureReport.DataUpdateType" }}</dt>
+    <dd>{{ fhir.path resource "dataUpdateType" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "measure") ~}}
+    <dt>{{ l10n.t "MeasureReport.Measure" }}</dt>
+    <dd>{{ fhir.path resource "measure" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reporter") ~}}
+    <dt>{{ l10n.t "MeasureReport.Reporter" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "reporter") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MeasureReport.Period" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "period") }}</dd>
+    {{~ if (fhir.exists resource "scoring") ~}}
+    <dt>{{ l10n.t "MeasureReport.Scoring" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "scoring") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "improvementNotation") ~}}
+    <dt>{{ l10n.t "MeasureReport.ImprovementNotation" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "improvementNotation") }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

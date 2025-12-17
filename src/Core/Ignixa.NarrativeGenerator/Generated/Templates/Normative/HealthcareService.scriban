@@ -1,0 +1,87 @@
+﻿{{~ # Auto-generated Scriban narrative template for HealthcareService ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/HealthcareService ~}}
+
+<div class="fhir-narrative fhir-healthcareservice" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "HealthcareService.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "HealthcareService.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "HealthcareService.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "HealthcareService.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "HealthcareService.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "HealthcareService.Category" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "category") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "HealthcareService.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "active") ~}}
+    <dt>{{ l10n.t "HealthcareService.Active" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "active") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "providedBy") ~}}
+    <dt>{{ l10n.t "HealthcareService.ProvidedBy" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "providedBy") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "HealthcareService.Type" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "type") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "specialty") ~}}
+    <dt>{{ l10n.t "HealthcareService.Specialty" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "specialty") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "location") ~}}
+    <dt>{{ l10n.t "HealthcareService.Location" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "location") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "comment") ~}}
+    <dt>{{ l10n.t "HealthcareService.Comment" }}</dt>
+    <dd>{{ fhir.path resource "comment" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "photo") ~}}
+    <dt>{{ l10n.t "HealthcareService.Photo" }}</dt>
+    <dd>{{ fhir.path resource "photo" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -1,0 +1,63 @@
+﻿{{~ # Auto-generated Scriban narrative template for DeviceMetric ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/DeviceMetric ~}}
+
+<div class="fhir-narrative fhir-devicemetric" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "DeviceMetric.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "DeviceMetric.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DeviceMetric.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    <dt>{{ l10n.t "DeviceMetric.Category" }}</dt>
+    <dd>{{ fhir.path resource "category" }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DeviceMetric.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    {{~ if (fhir.exists resource "unit") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Unit" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "unit") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "source") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Source" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "source") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "parent") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Parent" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "parent") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "operationalStatus") ~}}
+    <dt>{{ l10n.t "DeviceMetric.OperationalStatus" }}</dt>
+    <dd>{{ fhir.path resource "operationalStatus" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "color") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Color" }}</dt>
+    <dd>{{ fhir.path resource "color" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "measurementPeriod") ~}}
+    <dt>{{ l10n.t "DeviceMetric.MeasurementPeriod" }}</dt>
+    <dd>{{ fhir.path resource "measurementPeriod" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "calibration") ~}}
+    <dt>{{ l10n.t "DeviceMetric.Calibration" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "calibration") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

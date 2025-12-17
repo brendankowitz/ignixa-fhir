@@ -1,0 +1,63 @@
+﻿{{~ # Auto-generated Scriban narrative template for MedicinalProductInteraction ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/MedicinalProductInteraction ~}}
+
+<div class="fhir-narrative fhir-medicinalproductinteraction" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "MedicinalProductInteraction.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "MedicinalProductInteraction.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Subject" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "subject") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "interactant") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Interactant" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "interactant") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "effect") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Effect" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "effect") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "incidence") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Incidence" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "incidence") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "management") ~}}
+    <dt>{{ l10n.t "MedicinalProductInteraction.Management" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "management") }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

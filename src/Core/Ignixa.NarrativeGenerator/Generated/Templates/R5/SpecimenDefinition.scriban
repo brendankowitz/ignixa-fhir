@@ -1,0 +1,141 @@
+﻿{{~ # Auto-generated Scriban narrative template for SpecimenDefinition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/SpecimenDefinition ~}}
+
+<div class="fhir-narrative fhir-specimendefinition" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "SpecimenDefinition.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "SpecimenDefinition.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "effectivePeriod") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.EffectivePeriod" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "effectivePeriod") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "url") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionAlgorithm[x]") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.VersionAlgorithm" }}</dt>
+    <dd>{{ fhir.path resource "versionAlgorithm[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "title") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "derivedFromCanonical") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.DerivedFromCanonical" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "derivedFromCanonical") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "derivedFromUri") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.DerivedFromUri" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "derivedFromUri") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Experimental" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "experimental") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subject[x]") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Subject" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "subject[x]") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "contact") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "jurisdiction") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "typeCollected") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.TypeCollected" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "typeCollected") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "patientPreparation") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.PatientPreparation" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "patientPreparation") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "timeAspect") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.TimeAspect" }}</dt>
+    <dd>{{ fhir.path resource "timeAspect" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "collection") ~}}
+    <dt>{{ l10n.t "SpecimenDefinition.Collection" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "collection") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

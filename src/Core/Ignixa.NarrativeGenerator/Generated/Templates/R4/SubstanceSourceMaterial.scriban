@@ -1,0 +1,111 @@
+﻿{{~ # Auto-generated Scriban narrative template for SubstanceSourceMaterial ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/SubstanceSourceMaterial ~}}
+
+<div class="fhir-narrative fhir-substancesourcematerial" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "SubstanceSourceMaterial.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "SubstanceSourceMaterial.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "sourceMaterialClass") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.SourceMaterialClass" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "sourceMaterialClass") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "sourceMaterialType") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.SourceMaterialType" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "sourceMaterialType") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "sourceMaterialState") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.SourceMaterialState" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "sourceMaterialState") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "organismId") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.OrganismId" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "organismId") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "organismName") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.OrganismName" }}</dt>
+    <dd>{{ fhir.path resource "organismName" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "parentSubstanceId") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.ParentSubstanceId" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "parentSubstanceId") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "parentSubstanceName") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.ParentSubstanceName" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "parentSubstanceName") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "countryOfOrigin") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.CountryOfOrigin" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "countryOfOrigin") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "geographicalLocation") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.GeographicalLocation" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "geographicalLocation") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "developmentStage") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.DevelopmentStage" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "developmentStage") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "fractionDescription") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.FractionDescription" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "fractionDescription") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "organism") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.Organism" }}</dt>
+    <dd>{{ fhir.path resource "organism" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "partDescription") ~}}
+    <dt>{{ l10n.t "SubstanceSourceMaterial.PartDescription" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "partDescription") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

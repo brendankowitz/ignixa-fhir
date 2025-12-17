@@ -1,0 +1,69 @@
+﻿{{~ # Auto-generated Scriban narrative template for Permission ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Permission ~}}
+
+<div class="fhir-narrative fhir-permission" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Permission.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Permission.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Permission.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Permission.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Permission.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "Permission.Date" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "date") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Permission.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "asserter") ~}}
+    <dt>{{ l10n.t "Permission.Asserter" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "asserter") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "validity") ~}}
+    <dt>{{ l10n.t "Permission.Validity" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "validity") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "justification") ~}}
+    <dt>{{ l10n.t "Permission.Justification" }}</dt>
+    <dd>{{ fhir.path resource "justification" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Permission.Combining" }}</dt>
+    <dd>{{ fhir.path resource "combining" }}</dd>
+    {{~ if (fhir.exists resource "rule") ~}}
+    <dt>{{ l10n.t "Permission.Rule" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "rule") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

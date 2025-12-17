@@ -1,0 +1,61 @@
+﻿{{~ # Auto-generated Scriban narrative template for ClaimResponse ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/ClaimResponse ~}}
+
+<div class="fhir-narrative fhir-claimresponse" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "ClaimResponse.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "ClaimResponse.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "ClaimResponse.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "ClaimResponse.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ClaimResponse.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "ClaimResponse.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "ClaimResponse.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ClaimResponse.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    <dt>{{ l10n.t "ClaimResponse.Use" }}</dt>
+    <dd>{{ fhir.path resource "use" }}</dd>
+    <dt>{{ l10n.t "ClaimResponse.Created" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "created") }}</dd>
+    <dt>{{ l10n.t "ClaimResponse.Insurer" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "insurer") }}</dd>
+    {{~ if (fhir.exists resource "request") ~}}
+    <dt>{{ l10n.t "ClaimResponse.Request" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "request") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ClaimResponse.Outcome" }}</dt>
+    <dd>{{ fhir.path resource "outcome" }}</dd>
+    {{~ if (fhir.exists resource "total") ~}}
+    <dt>{{ l10n.t "ClaimResponse.Total" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "total") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -1,0 +1,119 @@
+﻿{{~ # Auto-generated Scriban narrative template for RegulatedAuthorization ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/RegulatedAuthorization ~}}
+
+<div class="fhir-narrative fhir-regulatedauthorization" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "RegulatedAuthorization.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "RegulatedAuthorization.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "status") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Status" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "status") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Subject" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "subject") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Type" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "type") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "region") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Region" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "region") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "statusDate") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.StatusDate" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "statusDate") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "validityPeriod") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.ValidityPeriod" }}</dt>
+    <dd>{{ fhir.format_period (fhir.path resource "validityPeriod") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "indication") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Indication" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "indication") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "intendedUse") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.IntendedUse" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "intendedUse") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basis") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Basis" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "basis") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "holder") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Holder" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "holder") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "regulator") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Regulator" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "regulator") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "attachedDocument") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.AttachedDocument" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "attachedDocument") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "case") ~}}
+    <dt>{{ l10n.t "RegulatedAuthorization.Case" }}</dt>
+    <dd>{{ fhir.path resource "case" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

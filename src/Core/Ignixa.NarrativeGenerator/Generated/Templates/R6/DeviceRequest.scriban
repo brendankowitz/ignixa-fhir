@@ -1,0 +1,145 @@
+﻿{{~ # Auto-generated Scriban narrative template for DeviceRequest ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/DeviceRequest ~}}
+
+<div class="fhir-narrative fhir-devicerequest" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "DeviceRequest.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "DeviceRequest.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "status") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DeviceRequest.Code" }}</dt>
+    <dd>{{ fhir.path resource "code" }}</dd>
+    <dt>{{ l10n.t "DeviceRequest.Subject" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subject") }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Encounter" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "encounter") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performer") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Performer" }}</dt>
+    <dd>{{ fhir.path resource "performer" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "note") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "instantiatesCanonical") ~}}
+    <dt>{{ l10n.t "DeviceRequest.InstantiatesCanonical" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "instantiatesCanonical") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "instantiatesUri") ~}}
+    <dt>{{ l10n.t "DeviceRequest.InstantiatesUri" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "instantiatesUri") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "DeviceRequest.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "basedOn") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "replaces") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Replaces" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "replaces") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "groupIdentifier") ~}}
+    <dt>{{ l10n.t "DeviceRequest.GroupIdentifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "groupIdentifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DeviceRequest.Intent" }}</dt>
+    <dd>{{ fhir.path resource "intent" }}</dd>
+    {{~ if (fhir.exists resource "priority") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Priority" }}</dt>
+    <dd>{{ fhir.path resource "priority" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "doNotPerform") ~}}
+    <dt>{{ l10n.t "DeviceRequest.DoNotPerform" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "doNotPerform") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "occurrence[x]") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Occurrence" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "occurrence[x]") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "authoredOn") ~}}
+    <dt>{{ l10n.t "DeviceRequest.AuthoredOn" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "authoredOn") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "requester") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Requester" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "requester") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reason") ~}}
+    <dt>{{ l10n.t "DeviceRequest.Reason" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "reason") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <section class="fhir-notes" aria-labelledby="notes-heading-{{ fhir.path resource "id" }}">
+    <h4 id="notes-heading-{{ fhir.path resource "id" }}">{{ l10n.t "DeviceRequest.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </section>
+  {{~ end ~}}
+</div>

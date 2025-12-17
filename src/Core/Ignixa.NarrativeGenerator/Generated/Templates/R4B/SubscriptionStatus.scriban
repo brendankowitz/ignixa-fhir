@@ -1,0 +1,49 @@
+﻿{{~ # Auto-generated Scriban narrative template for SubscriptionStatus ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/SubscriptionStatus ~}}
+
+<div class="fhir-narrative fhir-subscriptionstatus" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "SubscriptionStatus.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "SubscriptionStatus.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "status") ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Type" }}</dt>
+    <dd>{{ fhir.path resource "type" }}</dd>
+    {{~ if (fhir.exists resource "eventsSinceSubscriptionStart") ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.EventsSinceSubscriptionStart" }}</dt>
+    <dd>{{ fhir.path resource "eventsSinceSubscriptionStart" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Subscription" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subscription") }}</dd>
+    {{~ if (fhir.exists resource "topic") ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Topic" }}</dt>
+    <dd>{{ fhir.path resource "topic" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "error") ~}}
+    <dt>{{ l10n.t "SubscriptionStatus.Error" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "error") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -1,0 +1,49 @@
+﻿{{~ # Auto-generated Scriban narrative template for TestReport ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/TestReport ~}}
+
+<div class="fhir-narrative fhir-testreport" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "TestReport.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "TestReport.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "TestReport.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "TestReport.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "TestReport.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "TestReport.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "issued") ~}}
+    <dt>{{ l10n.t "TestReport.Issued" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "issued") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "TestReport.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "TestReport.TestScript" }}</dt>
+    <dd>{{ fhir.path resource "testScript" }}</dd>
+    <dt>{{ l10n.t "TestReport.Result" }}</dt>
+    <dd>{{ fhir.path resource "result" }}</dd>
+    {{~ if (fhir.exists resource "score") ~}}
+    <dt>{{ l10n.t "TestReport.Score" }}</dt>
+    <dd>{{ fhir.path resource "score" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "tester") ~}}
+    <dt>{{ l10n.t "TestReport.Tester" }}</dt>
+    <dd>{{ fhir.path resource "tester" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

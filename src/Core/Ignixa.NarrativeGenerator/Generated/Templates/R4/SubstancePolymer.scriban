@@ -1,0 +1,71 @@
+﻿{{~ # Auto-generated Scriban narrative template for SubstancePolymer ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/SubstancePolymer ~}}
+
+<div class="fhir-narrative fhir-substancepolymer" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "SubstancePolymer.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "SubstancePolymer.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "class") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.Class" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "class") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "geometry") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.Geometry" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "geometry") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "copolymerConnectivity") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.CopolymerConnectivity" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "copolymerConnectivity") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "modification") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.Modification" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "modification") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "monomerSet") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.MonomerSet" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "monomerSet") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "repeat") ~}}
+    <dt>{{ l10n.t "SubstancePolymer.Repeat" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "repeat") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -1,0 +1,137 @@
+﻿{{~ # Auto-generated Scriban narrative template for ExpansionProfile ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/ExpansionProfile ~}}
+
+<div class="fhir-narrative fhir-expansionprofile" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "ExpansionProfile.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "ExpansionProfile.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Identifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "identifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "url") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Experimental" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "experimental") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "contact") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "useContext") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "jurisdiction") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "fixedVersion") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.FixedVersion" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "fixedVersion") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "excludedSystem") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.ExcludedSystem" }}</dt>
+    <dd>{{ fhir.path resource "excludedSystem" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "includeDesignations") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.IncludeDesignations" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "includeDesignations") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "designation") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.Designation" }}</dt>
+    <dd>{{ fhir.path resource "designation" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "includeDefinition") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.IncludeDefinition" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "includeDefinition") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "activeOnly") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.ActiveOnly" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "activeOnly") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "excludeNested") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.ExcludeNested" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "excludeNested") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "excludeNotForUI") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.ExcludeNotForUI" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "excludeNotForUI") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "excludePostCoordinated") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.ExcludePostCoordinated" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "excludePostCoordinated") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "displayLanguage") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.DisplayLanguage" }}</dt>
+    <dd>{{ fhir.path resource "displayLanguage" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "limitedExpansion") ~}}
+    <dt>{{ l10n.t "ExpansionProfile.LimitedExpansion" }}</dt>
+    <dd>{{ fhir.format_boolean (fhir.path resource "limitedExpansion") }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

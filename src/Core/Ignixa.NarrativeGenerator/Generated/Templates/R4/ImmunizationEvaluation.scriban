@@ -1,0 +1,51 @@
+﻿{{~ # Auto-generated Scriban narrative template for ImmunizationEvaluation ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/ImmunizationEvaluation ~}}
+
+<div class="fhir-narrative fhir-immunizationevaluation" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "ImmunizationEvaluation.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "ImmunizationEvaluation.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "ImmunizationEvaluation.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.Date" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ImmunizationEvaluation.TargetDisease" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "targetDisease") }}</dd>
+    <dt>{{ l10n.t "ImmunizationEvaluation.ImmunizationEvent" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "immunizationEvent") }}</dd>
+    <dt>{{ l10n.t "ImmunizationEvaluation.DoseStatus" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "doseStatus") }}</dd>
+  </dl>
+
+</div>

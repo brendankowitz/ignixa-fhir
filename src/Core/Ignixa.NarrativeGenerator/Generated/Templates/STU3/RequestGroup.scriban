@@ -1,0 +1,73 @@
+﻿{{~ # Auto-generated Scriban narrative template for RequestGroup ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/RequestGroup ~}}
+
+<div class="fhir-narrative fhir-requestgroup" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "RequestGroup.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "RequestGroup.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "RequestGroup.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "RequestGroup.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "RequestGroup.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "RequestGroup.Subject" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "subject") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "author") ~}}
+    <dt>{{ l10n.t "RequestGroup.Author" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "author") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "RequestGroup.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "RequestGroup.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "note") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "groupIdentifier") ~}}
+    <dt>{{ l10n.t "RequestGroup.GroupIdentifier" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "groupIdentifier") }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "RequestGroup.Intent" }}</dt>
+    <dd>{{ fhir.path resource "intent" }}</dd>
+    {{~ if (fhir.exists resource "priority") ~}}
+    <dt>{{ l10n.t "RequestGroup.Priority" }}</dt>
+    <dd>{{ fhir.path resource "priority" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <section class="fhir-notes" aria-labelledby="notes-heading-{{ fhir.path resource "id" }}">
+    <h4 id="notes-heading-{{ fhir.path resource "id" }}">{{ l10n.t "RequestGroup.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </section>
+  {{~ end ~}}
+</div>

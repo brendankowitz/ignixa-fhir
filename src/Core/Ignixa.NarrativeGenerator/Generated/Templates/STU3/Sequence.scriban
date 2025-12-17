@@ -1,0 +1,111 @@
+﻿{{~ # Auto-generated Scriban narrative template for Sequence ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Sequence ~}}
+
+<div class="fhir-narrative fhir-sequence" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Sequence.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "Sequence.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Sequence.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Sequence.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "patient") ~}}
+    <dt>{{ l10n.t "Sequence.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performer") ~}}
+    <dt>{{ l10n.t "Sequence.Performer" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "performer") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Sequence.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "Sequence.Type" }}</dt>
+    <dd>{{ fhir.path resource "type" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Sequence.CoordinateSystem" }}</dt>
+    <dd>{{ fhir.path resource "coordinateSystem" }}</dd>
+    {{~ if (fhir.exists resource "specimen") ~}}
+    <dt>{{ l10n.t "Sequence.Specimen" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "specimen") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "device") ~}}
+    <dt>{{ l10n.t "Sequence.Device" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "device") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "quantity") ~}}
+    <dt>{{ l10n.t "Sequence.Quantity" }}</dt>
+    <dd>{{ fhir.format_quantity (fhir.path resource "quantity") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "referenceSeq") ~}}
+    <dt>{{ l10n.t "Sequence.ReferenceSeq" }}</dt>
+    <dd>{{ fhir.path resource "referenceSeq" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "variant") ~}}
+    <dt>{{ l10n.t "Sequence.Variant" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "variant") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "observedSeq") ~}}
+    <dt>{{ l10n.t "Sequence.ObservedSeq" }}</dt>
+    <dd>{{ fhir.path resource "observedSeq" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "quality") ~}}
+    <dt>{{ l10n.t "Sequence.Quality" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "quality") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "readCoverage") ~}}
+    <dt>{{ l10n.t "Sequence.ReadCoverage" }}</dt>
+    <dd>{{ fhir.path resource "readCoverage" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "repository") ~}}
+    <dt>{{ l10n.t "Sequence.Repository" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "repository") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "pointer") ~}}
+    <dt>{{ l10n.t "Sequence.Pointer" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "pointer") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

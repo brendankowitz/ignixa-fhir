@@ -1,0 +1,143 @@
+﻿{{~ # Auto-generated Scriban narrative template for ImagingStudy ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/ImagingStudy ~}}
+
+<div class="fhir-narrative fhir-imagingstudy" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "ImagingStudy.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "ImagingStudy.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "identifier") ~}}
+        <li>{{ fhir.format_identifier item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ImagingStudy.Patient" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "patient") }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "ImagingStudy.Uid" }}</dt>
+    <dd>{{ fhir.path resource "uid" }}</dd>
+    {{~ if (fhir.exists resource "accession") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Accession" }}</dt>
+    <dd>{{ fhir.format_identifier (fhir.path resource "accession") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "availability") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Availability" }}</dt>
+    <dd>{{ fhir.path resource "availability" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "modalityList") ~}}
+    <dt>{{ l10n.t "ImagingStudy.ModalityList" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "modalityList") ~}}
+        <li>{{ fhir.display_coding item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "context") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Context" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "context") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "started") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Started" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "started") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "ImagingStudy.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "basedOn") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "referrer") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Referrer" }}</dt>
+    <dd>{{ fhir.display_reference (fhir.path resource "referrer") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "interpreter") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Interpreter" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "interpreter") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "endpoint") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Endpoint" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "endpoint") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "numberOfSeries") ~}}
+    <dt>{{ l10n.t "ImagingStudy.NumberOfSeries" }}</dt>
+    <dd>{{ fhir.path resource "numberOfSeries" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "numberOfInstances") ~}}
+    <dt>{{ l10n.t "ImagingStudy.NumberOfInstances" }}</dt>
+    <dd>{{ fhir.path resource "numberOfInstances" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "procedureReference") ~}}
+    <dt>{{ l10n.t "ImagingStudy.ProcedureReference" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "procedureReference") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "procedureCode") ~}}
+    <dt>{{ l10n.t "ImagingStudy.ProcedureCode" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "procedureCode") ~}}
+        <li>{{ fhir.display_codeable_concept item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reason") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Reason" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "reason") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "series") ~}}
+    <dt>{{ l10n.t "ImagingStudy.Series" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "series") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

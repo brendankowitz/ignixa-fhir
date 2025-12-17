@@ -1,0 +1,59 @@
+﻿{{~ # Auto-generated Scriban narrative template for MessageHeader ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/MessageHeader ~}}
+
+<div class="fhir-narrative fhir-messageheader" lang="{{ l10n.lang }}">
+  <header class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "MessageHeader.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id" aria-label="{{ l10n.t "MessageHeader.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </header>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "MessageHeader.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "MessageHeader.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MessageHeader.Event" }}</dt>
+    <dd>{{ fhir.display_coding (fhir.path resource "event[x]") }}</dd>
+    {{~ if (fhir.exists resource "destination") ~}}
+    <dt>{{ l10n.t "MessageHeader.Destination" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "destination") ~}}
+        <li>{{ item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MessageHeader.Source" }}</dt>
+    <dd>{{ fhir.path resource "source" }}</dd>
+    {{~ if (fhir.exists resource "reason") ~}}
+    <dt>{{ l10n.t "MessageHeader.Reason" }}</dt>
+    <dd>{{ fhir.display_codeable_concept (fhir.path resource "reason") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "response") ~}}
+    <dt>{{ l10n.t "MessageHeader.Response" }}</dt>
+    <dd>{{ fhir.path resource "response" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "focus") ~}}
+    <dt>{{ l10n.t "MessageHeader.Focus" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ for item in (fhir.path resource "focus") ~}}
+        <li>{{ fhir.display_reference item }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "definition") ~}}
+    <dt>{{ l10n.t "MessageHeader.Definition" }}</dt>
+    <dd>{{ fhir.path resource "definition" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>
