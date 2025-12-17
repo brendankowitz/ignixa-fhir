@@ -1,0 +1,55 @@
+{{~ ## Datatype: CodeableConcept - Parameters: dt_resource, dt_path, dt_label_key (or dt_label for backward compatibility) ~}}
+{{~ ## Resolve label: use dt_label_key with l10n.t, or fall back to dt_label if provided ~}}
+{{~ if dt_label_key && dt_label_key != "" ~}}
+  {{~ dt_resolved_label = l10n.t dt_label_key ~}}
+{{~ else if dt_label && dt_label != "" ~}}
+  {{~ dt_resolved_label = dt_label ~}}
+{{~ else ~}}
+  {{~ dt_resolved_label = "Code" ~}}
+{{~ end ~}}
+{{~ if (fhir.exists dt_resource dt_path) ~}}
+{{~ cc_count = fhir.count dt_resource dt_path ~}}
+{{~ if cc_count == 1 ~}}
+{{~ cc_text = fhir.path dt_resource (dt_path + ".text") ~}}
+{{~ cc_display = fhir.path dt_resource (dt_path + ".coding.first().display") ~}}
+{{~ cc_code = fhir.path dt_resource (dt_path + ".coding.first().code") ~}}
+{{~ cc_system = fhir.path dt_resource (dt_path + ".coding.first().system") ~}}
+<div class="fhir-field">
+  <dt>{{ dt_resolved_label }}</dt>
+  <dd>
+    {{~ if cc_text && cc_text != "" ~}}
+    {{ cc_text }}
+    {{~ else if cc_display && cc_display != "" ~}}
+    {{ cc_display }}
+    {{~ else if cc_code && cc_code != "" ~}}
+    <code>{{ cc_code }}</code>
+    {{~ end ~}}
+    {{~ if cc_system && cc_system != "" && cc_code && cc_code != "" && !cc_display ~}}
+    <span class="fhir-code-system">({{ cc_system }})</span>
+    {{~ end ~}}
+  </dd>
+</div>
+{{~ else ~}}
+<div class="fhir-field">
+  <dt>{{ dt_resolved_label }}</dt>
+  <dd>
+    <ul class="fhir-list">
+    {{~ for i in 0..(cc_count - 1) ~}}
+    {{~ cc_text = fhir.path dt_resource (dt_path + "[" + i + "].text") ~}}
+    {{~ cc_display = fhir.path dt_resource (dt_path + "[" + i + "].coding.first().display") ~}}
+    {{~ cc_code = fhir.path dt_resource (dt_path + "[" + i + "].coding.first().code") ~}}
+      <li>
+        {{~ if cc_text && cc_text != "" ~}}
+        {{ cc_text }}
+        {{~ else if cc_display && cc_display != "" ~}}
+        {{ cc_display }}
+        {{~ else if cc_code && cc_code != "" ~}}
+        <code>{{ cc_code }}</code>
+        {{~ end ~}}
+      </li>
+    {{~ end ~}}
+    </ul>
+  </dd>
+</div>
+{{~ end ~}}
+{{~ end ~}}

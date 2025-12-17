@@ -1,0 +1,34 @@
+{{~ ## Datatype: ContactPoint - Parameters: dt_resource, dt_path, dt_label_key (or dt_label for backward compatibility, optional) ~}}
+{{~ ## Resolve label: use dt_label_key with l10n.t, or fall back to dt_label if provided ~}}
+{{~ if dt_label_key && dt_label_key != "" ~}}
+  {{~ dt_resolved_label = l10n.t dt_label_key ~}}
+{{~ else if dt_label && dt_label != "" ~}}
+  {{~ dt_resolved_label = dt_label ~}}
+{{~ else ~}}
+  {{~ dt_resolved_label = l10n.t "Common.Telecom" ~}}
+{{~ end ~}}
+{{~ if (fhir.exists dt_resource dt_path) ~}}
+{{~ telecom_count = fhir.count dt_resource dt_path ~}}
+{{~ for i in 0..(telecom_count - 1) ~}}
+{{~ cp_system = fhir.path dt_resource (dt_path + "[" + i + "].system") ~}}
+{{~ cp_value = fhir.path dt_resource (dt_path + "[" + i + "].value") ~}}
+{{~ cp_use = fhir.path dt_resource (dt_path + "[" + i + "].use") ~}}
+<div class="fhir-field">
+  <dt>
+    {{~ if cp_system && cp_system != "" ~}}{{ fhir.code_display "http://hl7.org/fhir/contact-point-system" cp_system }}{{~ else ~}}{{ dt_resolved_label }}{{~ end ~}}
+    {{~ if cp_use && cp_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/contact-point-use" cp_use }})</span>{{~ end ~}}
+  </dt>
+  <dd>
+    {{~ if cp_system == "phone" || cp_system == "fax" ~}}
+    <a href="tel:{{ cp_value }}">{{ cp_value }}</a>
+    {{~ else if cp_system == "email" ~}}
+    <a href="mailto:{{ cp_value }}">{{ cp_value }}</a>
+    {{~ else if cp_system == "url" ~}}
+    <a href="{{ cp_value }}">{{ cp_value }}</a>
+    {{~ else ~}}
+    {{ cp_value }}
+    {{~ end ~}}
+  </dd>
+</div>
+{{~ end ~}}
+{{~ end ~}}

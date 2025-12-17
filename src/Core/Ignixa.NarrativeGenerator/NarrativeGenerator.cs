@@ -102,11 +102,15 @@ public class FhirNarrativeGenerator : INarrativeGenerator
         // Create template resolver
         var templateResolver = new TemplateResolver();
 
-        // Create FHIRPath functions
-        var fhirPathFunctions = new FhirPathScriptFunctions(schema);
+        // Create template engine first (without render_resource support initially)
+        var fhirPathFunctionsInitial = new FhirPathScriptFunctions(schema);
+        var templateEngine = new NarrativeTemplateEngine(fhirPathFunctionsInitial, localizer, templateResolver);
 
-        // Create template engine with script functions
-        var templateEngine = new NarrativeTemplateEngine(fhirPathFunctions, localizer);
+        // Create FHIRPath functions with full support (including render_resource)
+        var fhirPathFunctions = new FhirPathScriptFunctions(schema, templateResolver, templateEngine);
+
+        // Recreate template engine with full FHIRPath functions and template composition support
+        templateEngine = new NarrativeTemplateEngine(fhirPathFunctions, localizer, templateResolver);
 
         // Create sanitizer
         var sanitizer = new XhtmlSanitizer();

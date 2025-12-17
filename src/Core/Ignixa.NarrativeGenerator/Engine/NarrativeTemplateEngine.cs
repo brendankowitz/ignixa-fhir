@@ -27,6 +27,7 @@ namespace Ignixa.NarrativeGenerator.Engine;
 ///   <item>HTML auto-escaping for XSS protection</item>
 ///   <item>Custom FHIRPath helper functions</item>
 ///   <item>Localization support via IStringLocalizer</item>
+///   <item>Template composition via includes (using ITemplateLoader)</item>
 /// </list>
 /// <para>
 /// Thread-safety: This class is thread-safe and can be shared across multiple requests.
@@ -38,6 +39,7 @@ internal class NarrativeTemplateEngine
     private readonly ConcurrentDictionary<string, Template> _compiledTemplateCache = new();
     private readonly FhirPathScriptFunctions _fhirPathFunctions;
     private readonly LocalizationScriptFunctions? _localizationFunctions;
+    private readonly ScribanTemplateLoader? _templateLoader;
 
     /// <summary>
     /// Creates a new NarrativeTemplateEngine with the specified FHIRPath functions and optional localization.
@@ -47,12 +49,36 @@ internal class NarrativeTemplateEngine
     public NarrativeTemplateEngine(
         FhirPathScriptFunctions fhirPathFunctions,
         IStringLocalizer? stringLocalizer = null)
+        : this(fhirPathFunctions, stringLocalizer, templateResolver: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new NarrativeTemplateEngine with template composition support.
+    /// </summary>
+    /// <param name="fhirPathFunctions">FHIRPath script functions for template evaluation.</param>
+    /// <param name="stringLocalizer">Optional string localizer for narrative text localization.</param>
+    /// <param name="templateResolver">Optional template resolver for include directive support.</param>
+    /// <remarks>
+    /// When a templateResolver is provided, templates can use the include directive to compose
+    /// from datatype sub-templates:
+    /// <code>
+    /// {{~ include "Html/Datatypes/Identifier" ~}}
+    /// </code>
+    /// </remarks>
+    public NarrativeTemplateEngine(
+        FhirPathScriptFunctions fhirPathFunctions,
+        IStringLocalizer? stringLocalizer,
+        ITemplateResolver? templateResolver)
     {
         ArgumentNullException.ThrowIfNull(fhirPathFunctions);
 
         _fhirPathFunctions = fhirPathFunctions;
         _localizationFunctions = stringLocalizer is not null
             ? new LocalizationScriptFunctions(stringLocalizer)
+            : null;
+        _templateLoader = templateResolver is not null
+            ? new ScribanTemplateLoader(templateResolver)
             : null;
     }
 
@@ -165,7 +191,9 @@ internal class NarrativeTemplateEngine
         {
             // Enable HTML auto-escaping for XSS protection
             AutoIndent = false,
-            MemberRenamer = member => member.Name
+            MemberRenamer = member => member.Name,
+            // Configure template loader for include directive support
+            TemplateLoader = _templateLoader
         };
 
         // CRITICAL: Set the culture for the entire template context using PushCulture
@@ -192,6 +220,7 @@ internal class NarrativeTemplateEngine
         scriptObject.Import("path", new Func<object, object, string?>((resource, expression) => _fhirPathFunctions.Path(resource, expression)));
         scriptObject.Import("path_first", new Func<object, object, string?>((resource, expression) => _fhirPathFunctions.PathFirst(resource, expression)));
         scriptObject.Import("path_all", new Func<object, object, IEnumerable<string>>((resource, expression) => _fhirPathFunctions.PathAll(resource, expression)));
+        scriptObject.Import("path_element", new Func<object, object, IElement?>((resource, expression) => _fhirPathFunctions.PathElement(resource, expression)));
         scriptObject.Import("exists", new Func<object, object, bool>((resource, expression) => _fhirPathFunctions.Exists(resource, expression)));
         scriptObject.Import("count", new Func<object, object, int>((resource, expression) => _fhirPathFunctions.Count(resource, expression)));
 
@@ -209,10 +238,16 @@ internal class NarrativeTemplateEngine
         // Metadata helpers for Generic template
         scriptObject.Import("get_structure_elements", new Func<string, object, IEnumerable<ElementMetadata>>((resourceType, fhirVersion) => _fhirPathFunctions.GetStructureElements(resourceType, fhirVersion)));
         scriptObject.Import("format_by_type", new Func<string?, string, string>((value, type) => _fhirPathFunctions.FormatByType(value, type, culture)));
+        scriptObject.Import("get_element_name", (Func<object?, string>)FhirPathScriptFunctions.GetElementName);
+
+        // Register render_resource for nested rendering (if available)
+        scriptObject.Import("render_resource", new Func<IElement, string, object, string, string, string>(
+            (res, resType, ver, fmt, cult) => _fhirPathFunctions.RenderResource(res, resType, ver, fmt, cult)));
 
         // Also expose under 'fhir' namespace for template compatibility
         var fhirObject = new ScriptObject();
         fhirObject.Import("path", new Func<object, object, string?>((resource, expression) => _fhirPathFunctions.Path(resource, expression)));
+        fhirObject.Import("path_element", new Func<object, object, IElement?>((resource, expression) => _fhirPathFunctions.PathElement(resource, expression)));
         fhirObject.Import("exists", new Func<object, object, bool>((resource, expression) => _fhirPathFunctions.Exists(resource, expression)));
         fhirObject.Import("count", new Func<object, object, int>((resource, expression) => _fhirPathFunctions.Count(resource, expression)));
         fhirObject.Import("format_date", (Func<string?, string>)(date => _fhirPathFunctions.FormatDate(date, culture)));
@@ -222,6 +257,9 @@ internal class NarrativeTemplateEngine
         fhirObject.Import("code_display", new Func<string?, string?, string>((system, code) => _fhirPathFunctions.CodeDisplay(system, code)));
         fhirObject.Import("get_structure_elements", new Func<string, object, IEnumerable<ElementMetadata>>((resourceType, fhirVersion) => _fhirPathFunctions.GetStructureElements(resourceType, fhirVersion)));
         fhirObject.Import("format_by_type", new Func<string?, string, string>((value, type) => _fhirPathFunctions.FormatByType(value, type, culture)));
+        fhirObject.Import("get_element_name", (Func<object?, string>)FhirPathScriptFunctions.GetElementName);
+        fhirObject.Import("render_resource", new Func<IElement, string, object, string, string, string>(
+            (res, resType, ver, fmt, cult) => _fhirPathFunctions.RenderResource(res, resType, ver, fmt, cult)));
         scriptObject.SetValue("fhir", fhirObject, readOnly: true);
 
         // Register localization functions if available

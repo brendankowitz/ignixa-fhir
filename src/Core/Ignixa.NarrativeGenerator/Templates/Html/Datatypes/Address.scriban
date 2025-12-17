@@ -1,0 +1,35 @@
+{{~ ## Datatype: Address - Parameters: dt_resource, dt_path, dt_label_key (or dt_label for backward compatibility) ~}}
+{{~ ## Resolve label: use dt_label_key with l10n.t, or fall back to dt_label if provided ~}}
+{{~ if dt_label_key && dt_label_key != "" ~}}
+  {{~ dt_resolved_label = l10n.t dt_label_key ~}}
+{{~ else if dt_label && dt_label != "" ~}}
+  {{~ dt_resolved_label = dt_label ~}}
+{{~ else ~}}
+  {{~ dt_resolved_label = "Address" ~}}
+{{~ end ~}}
+{{~ if (fhir.exists dt_resource dt_path) ~}}
+{{~ addr_count = fhir.count dt_resource dt_path ~}}
+{{~ for i in 0..(addr_count - 1) ~}}
+{{~ addr_use = fhir.path dt_resource (dt_path + "[" + i + "].use") ~}}
+{{~ addr_line = fhir.path dt_resource (dt_path + "[" + i + "].line") ~}}
+{{~ addr_city = fhir.path dt_resource (dt_path + "[" + i + "].city") ~}}
+{{~ addr_state = fhir.path dt_resource (dt_path + "[" + i + "].state") ~}}
+{{~ addr_postal = fhir.path dt_resource (dt_path + "[" + i + "].postalCode") ~}}
+{{~ addr_country = fhir.path dt_resource (dt_path + "[" + i + "].country") ~}}
+<div class="fhir-field fhir-address">
+  <dt>
+    {{ dt_resolved_label }}
+    {{~ if addr_use && addr_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/address-use" addr_use }})</span>{{~ end ~}}
+  </dt>
+  <dd>
+    <address>
+      {{~ if addr_line && addr_line != "" ~}}{{ addr_line | array.join ", " }}<br>{{~ end ~}}
+      {{~ if addr_city && addr_city != "" ~}}{{ addr_city }}{{~ end ~}}
+      {{~ if addr_state && addr_state != "" ~}}{{~ if addr_city && addr_city != "" ~}}, {{~ end ~}}{{ addr_state }}{{~ end ~}}
+      {{~ if addr_postal && addr_postal != "" ~}} {{ addr_postal }}{{~ end ~}}
+      {{~ if addr_country && addr_country != "" ~}}<br>{{ addr_country }}{{~ end ~}}
+    </address>
+  </dd>
+</div>
+{{~ end ~}}
+{{~ end ~}}

@@ -283,6 +283,15 @@
   <data name="Bundle.Entry" xml:space="preserve">
     <value>Entry</value>
   </data>
+  <data name="Bundle.FullUrl" xml:space="preserve">
+    <value>Full URL</value>
+  </data>
+  <data name="Bundle.ResourceId" xml:space="preserve">
+    <value>Resource ID</value>
+  </data>
+  <data name="Bundle.ResourceDetails" xml:space="preserve">
+    <value>Resource details unavailable</value>
+  </data>
   <data name="Bundle.Signature" xml:space="preserve">
     <value>Signature</value>
   </data>

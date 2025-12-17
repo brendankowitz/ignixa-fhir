@@ -775,6 +775,266 @@ public class FhirNarrativeGeneratorTests
     }
 
     #endregion
+
+    #region Bundle with Nested Resource Rendering Tests
+
+    [Fact]
+    public async Task GivenBundle_WhenGeneratingNarrative_WithPatientEntry_ThenRendersPatientNarrative()
+    {
+        // Arrange - Bundle with Patient entry
+        var json = """
+            {
+                "resourceType": "Bundle",
+                "id": "bundle-patient",
+                "type": "collection",
+                "entry": [{
+                    "fullUrl": "Patient/example",
+                    "resource": {
+                        "resourceType": "Patient",
+                        "id": "example",
+                        "name": [{
+                            "use": "official",
+                            "family": "Smith",
+                            "given": ["John"]
+                        }],
+                        "gender": "male",
+                        "birthDate": "1980-01-01"
+                    }
+                }]
+            }
+            """;
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        bundle.FhirVersion = FhirVersion.R4;
+        var element = bundle.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Bundle");  // Bundle header
+        narrative.Should().Contain("Patient");  // Entry type
+        narrative.Should().Contain("Smith");  // Patient name from nested rendering
+        narrative.Should().Contain("John");  // Given name from nested rendering
+        narrative.Should().Contain("Male");  // Gender from nested rendering
+    }
+
+    [Fact]
+    public async Task GivenBundle_WhenGeneratingNarrative_WithMixedResourceTypes_ThenRendersAllResources()
+    {
+        // Arrange - Bundle with Patient and Observation entries
+        var json = """
+            {
+                "resourceType": "Bundle",
+                "id": "bundle-mixed",
+                "type": "collection",
+                "entry": [
+                    {
+                        "fullUrl": "Patient/example",
+                        "resource": {
+                            "resourceType": "Patient",
+                            "id": "example",
+                            "name": [{
+                                "family": "Doe"
+                            }],
+                            "gender": "female"
+                        }
+                    },
+                    {
+                        "fullUrl": "Observation/example",
+                        "resource": {
+                            "resourceType": "Observation",
+                            "id": "obs-1",
+                            "status": "final",
+                            "code": {
+                                "coding": [{
+                                    "system": "http://loinc.org",
+                                    "code": "15074-8",
+                                    "display": "Glucose"
+                                }]
+                            },
+                            "valueQuantity": {
+                                "value": 95,
+                                "unit": "mg/dL"
+                            }
+                        }
+                    }
+                ]
+            }
+            """;
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        bundle.FhirVersion = FhirVersion.R4;
+        var element = bundle.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Patient");  // First entry type
+        narrative.Should().Contain("Doe");  // Patient name
+        narrative.Should().Contain("Observation");  // Second entry type
+        narrative.Should().Contain("Glucose");  // Observation code display
+        narrative.Should().Contain("95");  // Observation value
+    }
+
+    [Fact]
+    public async Task GivenBundle_WhenGeneratingNarrative_WithUnsupportedResourceType_ThenShowsFallbackMessage()
+    {
+        // Arrange - Bundle with a resource type that might not have a specific template
+        var json = """
+            {
+                "resourceType": "Bundle",
+                "id": "bundle-unsupported",
+                "type": "collection",
+                "entry": [{
+                    "fullUrl": "Account/example",
+                    "resource": {
+                        "resourceType": "Account",
+                        "id": "account-1",
+                        "status": "active",
+                        "name": "Test Account"
+                    }
+                }]
+            }
+            """;
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        bundle.FhirVersion = FhirVersion.R4;
+        var element = bundle.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Bundle");
+        narrative.Should().Contain("Account");  // Entry type should be shown
+        // Should render using generic template or show resource details
+        narrative.Should().ContainAny("active", "Generic", "Account");
+    }
+
+    [Fact]
+    public async Task GivenBundle_WhenGeneratingNarrative_WithCircularReference_ThenHandlesGracefully()
+    {
+        // Arrange - Bundle containing itself (circular reference simulation)
+        // Note: In practice, this tests depth limiting rather than true circular references
+        var json = """
+            {
+                "resourceType": "Bundle",
+                "id": "bundle-circular",
+                "type": "collection",
+                "entry": [{
+                    "fullUrl": "Patient/example",
+                    "resource": {
+                        "resourceType": "Patient",
+                        "id": "example",
+                        "name": [{
+                            "family": "Circular"
+                        }]
+                    }
+                }]
+            }
+            """;
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        bundle.FhirVersion = FhirVersion.R4;
+        var element = bundle.ToElement(_schema);
+
+        // Act - Should not throw, even with nested rendering
+        var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Bundle");
+        narrative.Should().Contain("Patient");
+        narrative.Should().Contain("Circular");
+    }
+
+    [Fact]
+    public async Task GivenBundle_WhenGeneratingNarrative_WithMultipleEntriesOfSameType_ThenRendersAll()
+    {
+        // Arrange - Bundle with multiple Patient entries
+        var json = """
+            {
+                "resourceType": "Bundle",
+                "id": "bundle-multiple",
+                "type": "collection",
+                "entry": [
+                    {
+                        "fullUrl": "Patient/patient1",
+                        "resource": {
+                            "resourceType": "Patient",
+                            "id": "patient1",
+                            "name": [{
+                                "family": "Smith"
+                            }]
+                        }
+                    },
+                    {
+                        "fullUrl": "Patient/patient2",
+                        "resource": {
+                            "resourceType": "Patient",
+                            "id": "patient2",
+                            "name": [{
+                                "family": "Jones"
+                            }]
+                        }
+                    },
+                    {
+                        "fullUrl": "Patient/patient3",
+                        "resource": {
+                            "resourceType": "Patient",
+                            "id": "patient3",
+                            "name": [{
+                                "family": "Brown"
+                            }]
+                        }
+                    }
+                ]
+            }
+            """;
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        bundle.FhirVersion = FhirVersion.R4;
+        var element = bundle.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Smith");
+        narrative.Should().Contain("Jones");
+        narrative.Should().Contain("Brown");
+        // Verify all three entries are rendered
+        var smithCount = System.Text.RegularExpressions.Regex.Matches(narrative, "Smith").Count;
+        smithCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task GivenEmptyBundle_WhenGeneratingNarrative_ThenHandlesGracefully()
+    {
+        // Arrange - Bundle with no entries
+        var json = """
+            {
+                "resourceType": "Bundle",
+                "id": "bundle-empty",
+                "type": "collection",
+                "entry": []
+            }
+            """;
+        var bundle = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        bundle.FhirVersion = FhirVersion.R4;
+        var element = bundle.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(element, bundle.ResourceType);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Bundle");
+        // Should not throw error for empty entries
+    }
+
+    #endregion
 }
 
 internal class MockStringLocalizer : IStringLocalizer

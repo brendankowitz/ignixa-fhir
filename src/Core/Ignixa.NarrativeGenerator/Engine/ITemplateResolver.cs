@@ -51,6 +51,39 @@ internal interface ITemplateResolver
     /// <param name="format">The output format.</param>
     /// <returns>True if a template exists (including fallback templates), false otherwise.</returns>
     bool HasTemplate(string resourceType, FhirVersion fhirVersion, TemplateFormat format);
+
+    /// <summary>
+    /// Resolves a datatype sub-template for template composition (includes).
+    /// </summary>
+    /// <param name="datatypeName">The FHIR datatype name (e.g., "Identifier", "HumanName").</param>
+    /// <param name="format">The output format (Html, Markdown, or Compact).</param>
+    /// <param name="cancellationToken">Cancellation token for async operations.</param>
+    /// <returns>
+    /// The template content as a string, or null if the datatype template is not found.
+    /// </returns>
+    /// <remarks>
+    /// Datatype templates are located in the Datatypes subfolder of each format folder:
+    /// Templates/{Format}/Datatypes/{DatatypeName}.scriban
+    /// </remarks>
+    Task<string?> ResolveDatatypeTemplateAsync(
+        string datatypeName,
+        TemplateFormat format,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Resolves any template by path for Scriban include support.
+    /// </summary>
+    /// <param name="templatePath">The template path (e.g., "Html/Datatypes/Identifier").</param>
+    /// <param name="cancellationToken">Cancellation token for async operations.</param>
+    /// <returns>
+    /// The template content as a string, or null if not found.
+    /// </returns>
+    /// <remarks>
+    /// Supports paths like:
+    /// - "Html/Datatypes/Identifier" -> Templates/Html/Datatypes/Identifier.scriban
+    /// - "Md/Datatypes/HumanName" -> Templates/Md/Datatypes/HumanName.scriban
+    /// </remarks>
+    Task<string?> ResolveByPathAsync(string templatePath, CancellationToken cancellationToken);
 }
 
 /// <summary>

@@ -1,0 +1,57 @@
+{{~ ## Datatype: Reference - Parameters: dt_resource, dt_path, dt_label_key (or dt_label for backward compatibility) ~}}
+{{~ ## Resolve label: use dt_label_key with l10n.t, or fall back to dt_label if provided ~}}
+{{~ if dt_label_key && dt_label_key != "" ~}}
+  {{~ dt_resolved_label = l10n.t dt_label_key ~}}
+{{~ else if dt_label && dt_label != "" ~}}
+  {{~ dt_resolved_label = dt_label ~}}
+{{~ else ~}}
+  {{~ dt_resolved_label = "Reference" ~}}
+{{~ end ~}}
+{{~ if (fhir.exists dt_resource dt_path) ~}}
+{{~ ref_count = fhir.count dt_resource dt_path ~}}
+{{~ if ref_count == 1 ~}}
+{{~ ref_display = fhir.path dt_resource (dt_path + ".display") ~}}
+{{~ ref_reference = fhir.path dt_resource (dt_path + ".reference") ~}}
+{{~ ref_type = fhir.path dt_resource (dt_path + ".type") ~}}
+{{~ ref_identifier = fhir.path dt_resource (dt_path + ".identifier.value") ~}}
+<div class="fhir-field">
+  <dt>{{ dt_resolved_label }}</dt>
+  <dd>
+    {{~ if ref_display && ref_display != "" ~}}
+    {{ ref_display }}
+    {{~ else if ref_reference && ref_reference != "" ~}}
+    <span class="fhir-reference">{{ ref_reference }}</span>
+    {{~ else if ref_identifier && ref_identifier != "" ~}}
+    {{~ if ref_type && ref_type != "" ~}}<span class="fhir-reference-type">{{ ref_type }}:</span> {{~ end ~}}
+    <code>{{ ref_identifier }}</code>
+    {{~ else ~}}
+    <span class="fhir-unknown">(unknown)</span>
+    {{~ end ~}}
+  </dd>
+</div>
+{{~ else ~}}
+<div class="fhir-field">
+  <dt>{{ dt_resolved_label }}</dt>
+  <dd>
+    <ul class="fhir-list">
+    {{~ for i in 0..(ref_count - 1) ~}}
+    {{~ ref_display = fhir.path dt_resource (dt_path + "[" + i + "].display") ~}}
+    {{~ ref_reference = fhir.path dt_resource (dt_path + "[" + i + "].reference") ~}}
+    {{~ ref_type = fhir.path dt_resource (dt_path + "[" + i + "].type") ~}}
+    {{~ ref_identifier = fhir.path dt_resource (dt_path + "[" + i + "].identifier.value") ~}}
+      <li>
+        {{~ if ref_display && ref_display != "" ~}}
+        {{ ref_display }}
+        {{~ else if ref_reference && ref_reference != "" ~}}
+        <span class="fhir-reference">{{ ref_reference }}</span>
+        {{~ else if ref_identifier && ref_identifier != "" ~}}
+        {{~ if ref_type && ref_type != "" ~}}<span class="fhir-reference-type">{{ ref_type }}:</span> {{~ end ~}}
+        <code>{{ ref_identifier }}</code>
+        {{~ end ~}}
+      </li>
+    {{~ end ~}}
+    </ul>
+  </dd>
+</div>
+{{~ end ~}}
+{{~ end ~}}

@@ -199,6 +199,53 @@ internal class TemplateResolver : ITemplateResolver
         };
     }
 
+    /// <inheritdoc />
+    public async Task<string?> ResolveDatatypeTemplateAsync(
+        string datatypeName,
+        TemplateFormat format,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(datatypeName);
+
+        var formatFolder = GetFormatFolder(format);
+        var resourceName = GetDatatypeResourceName(formatFolder, datatypeName);
+
+        return await LoadTemplateContentAsync(resourceName, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> ResolveByPathAsync(string templatePath, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(templatePath);
+
+        // Convert path format (e.g., "Html/Datatypes/Identifier") to embedded resource name
+        // Path uses forward slashes, embedded resources use dots
+        var normalizedPath = templatePath
+            .Replace('/', '.')
+            .Replace('\\', '.');
+
+        // Ensure .scriban extension
+        if (!normalizedPath.EndsWith(TemplateExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedPath += TemplateExtension;
+        }
+
+        var resourceName = $"{TemplatesNamespacePrefix}.{normalizedPath}";
+
+        return await LoadTemplateContentAsync(resourceName, cancellationToken);
+    }
+
+    /// <summary>
+    /// Constructs the embedded resource name for a datatype template.
+    /// </summary>
+    /// <param name="formatFolder">The format folder (e.g., "Html", "Md", "Compact").</param>
+    /// <param name="datatypeName">The datatype name (e.g., "Identifier", "HumanName").</param>
+    /// <returns>The fully qualified embedded resource name.</returns>
+    private static string GetDatatypeResourceName(string formatFolder, string datatypeName)
+    {
+        return $"{TemplatesNamespacePrefix}.{formatFolder}.Datatypes.{datatypeName}{TemplateExtension}";
+    }
+
     /// <summary>
     /// Loads template content from an embedded resource, using cache when available.
     /// </summary>

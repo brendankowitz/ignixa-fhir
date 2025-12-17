@@ -1,0 +1,66 @@
+{{~ ## Datatype: HumanName - Parameters: dt_resource, dt_path, dt_label_key (or dt_label for backward compatibility) ~}}
+{{~ ## Resolve label: use dt_label_key with l10n.t, or fall back to dt_label if provided ~}}
+{{~ if dt_label_key && dt_label_key != "" ~}}
+  {{~ dt_resolved_label = l10n.t dt_label_key ~}}
+{{~ else if dt_label && dt_label != "" ~}}
+  {{~ dt_resolved_label = dt_label ~}}
+{{~ else ~}}
+  {{~ dt_resolved_label = "Name" ~}}
+{{~ end ~}}
+{{~ if (fhir.exists dt_resource dt_path) ~}}
+{{~ name_count = fhir.count dt_resource dt_path ~}}
+{{~ if dt_section == false ~}}
+{{~ ## Render as individual fields (no section wrapper) ~}}
+{{~ for i in 0..(name_count - 1) ~}}
+{{~ name_use = fhir.path dt_resource (dt_path + "[" + i + "].use") ~}}
+{{~ name_prefix = fhir.path dt_resource (dt_path + "[" + i + "].prefix.first()") ~}}
+{{~ name_given = fhir.path dt_resource (dt_path + "[" + i + "].given") ~}}
+{{~ name_family = fhir.path dt_resource (dt_path + "[" + i + "].family") ~}}
+{{~ name_suffix = fhir.path dt_resource (dt_path + "[" + i + "].suffix.first()") ~}}
+<div class="fhir-field">
+  <dt>
+    {{~ if name_use && name_use != "" ~}}
+    {{ fhir.code_display "http://hl7.org/fhir/name-use" name_use }}
+    {{~ else ~}}
+    {{ dt_resolved_label }}
+    {{~ end ~}}
+  </dt>
+  <dd>
+    {{~ if name_prefix && name_prefix != "" ~}}{{ name_prefix }} {{~ end ~}}
+    {{~ if name_given && name_given != "" ~}}{{ name_given | array.join " " }} {{~ end ~}}
+    {{~ if name_family && name_family != "" ~}}{{ name_family }}{{~ end ~}}
+    {{~ if name_suffix && name_suffix != "" ~}}, {{ name_suffix }}{{~ end ~}}
+  </dd>
+</div>
+{{~ end ~}}
+{{~ else ~}}
+{{~ ## Render as section (default) ~}}
+<div class="fhir-section fhir-names">
+  <h4>{{ dt_resolved_label }}</h4>
+  <dl class="fhir-details">
+    {{~ for i in 0..(name_count - 1) ~}}
+    {{~ name_use = fhir.path dt_resource (dt_path + "[" + i + "].use") ~}}
+    {{~ name_prefix = fhir.path dt_resource (dt_path + "[" + i + "].prefix.first()") ~}}
+    {{~ name_given = fhir.path dt_resource (dt_path + "[" + i + "].given") ~}}
+    {{~ name_family = fhir.path dt_resource (dt_path + "[" + i + "].family") ~}}
+    {{~ name_suffix = fhir.path dt_resource (dt_path + "[" + i + "].suffix.first()") ~}}
+    <div class="fhir-field">
+      <dt>
+        {{~ if name_use && name_use != "" ~}}
+        {{ fhir.code_display "http://hl7.org/fhir/name-use" name_use }}
+        {{~ else ~}}
+        {{ dt_resolved_label }}
+        {{~ end ~}}
+      </dt>
+      <dd>
+        {{~ if name_prefix && name_prefix != "" ~}}{{ name_prefix }} {{~ end ~}}
+        {{~ if name_given && name_given != "" ~}}{{ name_given | array.join " " }} {{~ end ~}}
+        {{~ if name_family && name_family != "" ~}}{{ name_family }}{{~ end ~}}
+        {{~ if name_suffix && name_suffix != "" ~}}, {{ name_suffix }}{{~ end ~}}
+      </dd>
+    </div>
+    {{~ end ~}}
+  </dl>
+</div>
+{{~ end ~}}
+{{~ end ~}}

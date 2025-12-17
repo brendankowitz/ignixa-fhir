@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 
@@ -32,6 +33,14 @@ internal class FhirPathScriptFunctions
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
     private readonly ISchema _schema;
+    private readonly ITemplateResolver? _templateResolver;
+    private readonly NarrativeTemplateEngine? _templateEngine;
+
+    // Thread-local storage for circular reference tracking
+    [ThreadStatic]
+    private static Stack<string>? _renderingStack;
+
+    private const int MaxRenderingDepth = 3;
 
     /// <summary>
     /// Creates a new FhirPathScriptFunctions instance.
@@ -47,6 +56,22 @@ internal class FhirPathScriptFunctions
 
         // Public methods will be auto-discovered when this object is imported
         // via scriptObject.Import(this) in NarrativeTemplateEngine
+    }
+
+    /// <summary>
+    /// Creates a new FhirPathScriptFunctions instance with template rendering support.
+    /// </summary>
+    /// <param name="schema">The FHIR schema for type information during evaluation.</param>
+    /// <param name="templateResolver">The template resolver for nested resource rendering.</param>
+    /// <param name="templateEngine">The template engine for nested resource rendering.</param>
+    internal FhirPathScriptFunctions(ISchema schema, ITemplateResolver templateResolver, NarrativeTemplateEngine templateEngine)
+        : this(schema)
+    {
+        ArgumentNullException.ThrowIfNull(templateResolver);
+        ArgumentNullException.ThrowIfNull(templateEngine);
+
+        _templateResolver = templateResolver;
+        _templateEngine = templateEngine;
     }
 
     /// <summary>
@@ -136,6 +161,38 @@ internal class FhirPathScriptFunctions
     }
 
     /// <summary>
+    /// Evaluates a FHIRPath expression and returns the first result as an IElement.
+    /// This allows extracting child elements for nested rendering.
+    /// </summary>
+    /// <param name="resource">The FHIR resource to evaluate against.</param>
+    /// <param name="expression">The FHIRPath expression to evaluate.</param>
+    /// <returns>The first result as an IElement, or null if no results.</returns>
+    /// <example>
+    /// {{ entry_resource = fhir.path_element resource "entry[0].resource" }}
+    /// {{ fhir.render_resource entry_resource "Patient" fhirVersion "Html" culture }}
+    /// </example>
+    public IElement? PathElement(object resource, object expression)
+    {
+        if (resource is not IElement element || expression is not string exprString || string.IsNullOrEmpty(exprString))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsedExpression = _parser.Parse(exprString);
+            var results = _evaluator.Evaluate(element, parsedExpression);
+
+            // Return the first result if it's an IElement
+            return results.FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Checks if a FHIRPath expression returns any results.
     /// </summary>
     /// <param name="resource">The FHIR resource to evaluate against.</param>
@@ -190,6 +247,150 @@ internal class FhirPathScriptFunctions
         {
             return 0;
         }
+    }
+
+    /// <summary>
+    /// Renders a nested FHIR resource using the appropriate template for the resource type.
+    /// </summary>
+    /// <param name="resource">The FHIR resource to render (as IElement).</param>
+    /// <param name="resourceType">The resource type (e.g., "Patient", "Observation").</param>
+    /// <param name="fhirVersion">The FHIR version of the resource.</param>
+    /// <param name="format">The output format (Html, Markdown, Compact).</param>
+    /// <param name="culture">The culture for localization.</param>
+    /// <returns>The rendered narrative content, or a fallback message if no template is available.</returns>
+    /// <remarks>
+    /// This method tracks rendering depth to prevent circular references. If a resource is already
+    /// being rendered in the call stack (depth > 3), returns a placeholder message.
+    /// </remarks>
+    /// <example>
+    /// {{ fhir.render_resource entry_resource "Patient" fhirVersion "Html" culture }}
+    /// </example>
+    public string RenderResource(IElement resource, string resourceType, object fhirVersion, string format, string culture)
+    {
+        // Validate inputs
+        if (resource is null || string.IsNullOrEmpty(resourceType))
+        {
+            return string.Empty;
+        }
+
+        // Return fallback message if template resolver or engine not available
+        if (_templateResolver is null || _templateEngine is null)
+        {
+            return $"[{resourceType} - rendering not available]";
+        }
+
+        // Initialize rendering stack if needed
+        _renderingStack ??= new Stack<string>();
+
+        // Check for circular references or max depth
+        if (_renderingStack.Count >= MaxRenderingDepth)
+        {
+            return $"[{resourceType} - max depth reached]";
+        }
+
+        // Create a unique key for this resource to detect circular references
+        var resourceId = GetResourceIdentifier(resource, resourceType);
+        if (_renderingStack.Contains(resourceId))
+        {
+            return $"[{resourceType} - circular reference detected]";
+        }
+
+        try
+        {
+            // Push onto stack to track rendering depth
+            _renderingStack.Push(resourceId);
+
+            // Parse FHIR version
+            var parsedVersion = fhirVersion switch
+            {
+                FhirVersion v => v,
+                string s when Enum.TryParse<FhirVersion>(s, ignoreCase: true, out var v) => v,
+                int i when Enum.IsDefined(typeof(FhirVersion), i) => (FhirVersion)i,
+                _ => _schema.Version // Fallback to schema version
+            };
+
+            // Parse template format
+            var parsedFormat = format switch
+            {
+                "Html" => TemplateFormat.Html,
+                "Markdown" or "Md" => TemplateFormat.Markdown,
+                "Compact" => TemplateFormat.Compact,
+                _ => TemplateFormat.Html // Default to Html
+            };
+
+            // Parse culture
+            var cultureInfo = CultureInfo.GetCultureInfo(culture);
+
+            // Resolve template (synchronous call - templates are cached)
+            var resolution = _templateResolver.ResolveTemplateAsync(
+                resourceType,
+                parsedVersion,
+                parsedFormat,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            if (resolution is null)
+            {
+                return $"[{resourceType} - no template available]";
+            }
+
+            // Render template (synchronous call)
+            var rendered = _templateEngine.RenderAsync(
+                resolution.Content,
+                resource,
+                resourceType,
+                parsedVersion,
+                cultureInfo,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            return rendered;
+        }
+        catch (Exception)
+        {
+            // Return fallback on any error to avoid breaking the parent template
+            return $"[{resourceType} - rendering error]";
+        }
+        finally
+        {
+            // Always pop from stack
+            if (_renderingStack.Count > 0)
+            {
+                _renderingStack.Pop();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets a unique identifier for a resource to track circular references.
+    /// </summary>
+    private static string GetResourceIdentifier(IElement resource, string resourceType)
+    {
+        // Try to extract the resource ID using the IElement interface
+        // First, check children for an "id" element (most efficient)
+        var idChildren = resource.Children("id");
+        if (idChildren.Count > 0)
+        {
+            var idValue = idChildren[0].Value?.ToString();
+            if (!string.IsNullOrEmpty(idValue))
+            {
+                return $"{resourceType}/{idValue}";
+            }
+        }
+
+        // Try to access JsonNode metadata for direct JSON access
+        var jsonNode = resource.Meta<JsonNode>();
+        if (jsonNode is JsonObject jsonObject &&
+            jsonObject.TryGetPropertyValue("id", out var idNode) &&
+            idNode is JsonValue idJsonValue)
+        {
+            var id = idJsonValue.GetValue<string>();
+            if (!string.IsNullOrEmpty(id))
+            {
+                return $"{resourceType}/{id}";
+            }
+        }
+
+        // Fallback to resource type + hash code
+        return $"{resourceType}#{resource.GetHashCode()}";
     }
 
     /// <summary>
@@ -683,6 +884,30 @@ internal class FhirPathScriptFunctions
         {
             return value;
         }
+    }
+
+    /// <summary>
+    /// Gets the instance type of an IElement, which for FHIR resources is the resourceType.
+    /// </summary>
+    /// <param name="element">The element to get the instance type from.</param>
+    /// <returns>The element instance type (resourceType for resources), or empty string if not available.</returns>
+    /// <example>
+    /// {{~ entry_resource = fhir.path_element resource ("entry[" + i + "].resource") ~}}
+    /// {{~ entry_type = fhir.get_element_name entry_resource ~}}
+    /// </example>
+    /// <remarks>
+    /// This is useful for extracting the resourceType from bundle entry resources,
+    /// where FHIRPath queries like "resourceType" don't work on extracted IElement instances.
+    /// The IElement.InstanceType property contains the runtime type (e.g., "Patient", "Observation").
+    /// </remarks>
+    public static string GetElementName(object? element)
+    {
+        if (element is IElement typedElement)
+        {
+            return typedElement.InstanceType ?? string.Empty;
+        }
+
+        return string.Empty;
     }
 
     /// <summary>

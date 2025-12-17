@@ -91,36 +91,10 @@
   </div>
 
   {{~ # --- Names Section (if multiple) --- ~}}
-  {{~ if (fhir.exists resource "name") ~}}
-  {{~ name_count = fhir.count resource "name" ~}}
-  <div class="fhir-section fhir-names">
-    <h4>{{ l10n.t "Patient.Section.Names" }}</h4>
-    <dl class="fhir-details">
-      {{~ for i in 0..(name_count - 1) ~}}
-      {{~ name_use = fhir.path resource ("name[" + i + "].use") ~}}
-      {{~ name_prefix = fhir.path resource ("name[" + i + "].prefix.first()") ~}}
-      {{~ name_given = fhir.path resource ("name[" + i + "].given") ~}}
-      {{~ name_family = fhir.path resource ("name[" + i + "].family") ~}}
-      {{~ name_suffix = fhir.path resource ("name[" + i + "].suffix.first()") ~}}
-      <div class="fhir-field">
-        <dt>
-          {{~ if name_use && name_use != "" ~}}
-          {{ fhir.code_display "http://hl7.org/fhir/name-use" name_use }}
-          {{~ else ~}}
-          {{ l10n.t "Patient.Name" }}
-          {{~ end ~}}
-        </dt>
-        <dd>
-          {{~ if name_prefix && name_prefix != "" ~}}{{ name_prefix }} {{~ end ~}}
-          {{~ if name_given && name_given != "" ~}}{{ name_given | array.join " " }} {{~ end ~}}
-          {{~ if name_family && name_family != "" ~}}{{ name_family }}{{~ end ~}}
-          {{~ if name_suffix && name_suffix != "" ~}}, {{ name_suffix }}{{~ end ~}}
-        </dd>
-      </div>
-      {{~ end ~}}
-    </dl>
-  </div>
-  {{~ end ~}}
+  {{~ dt_resource = resource ~}}
+  {{~ dt_path = "name" ~}}
+  {{~ dt_label_key = "Patient.Section.Names" ~}}
+  {{~ include "Html/Datatypes/HumanName" ~}}
 
   {{~ # --- Contact Section --- ~}}
   {{~ has_contact = (fhir.exists resource "telecom") || (fhir.exists resource "address") ~}}
@@ -129,96 +103,24 @@
     <h4>{{ l10n.t "Patient.Section.Contact" }}</h4>
     <dl class="fhir-details">
       {{~ # Telecom ~}}
-      {{~ if (fhir.exists resource "telecom") ~}}
-      {{~ telecom_count = fhir.count resource "telecom" ~}}
-      {{~ for i in 0..(telecom_count - 1) ~}}
-      {{~ cp_system = fhir.path resource ("telecom[" + i + "].system") ~}}
-      {{~ cp_value = fhir.path resource ("telecom[" + i + "].value") ~}}
-      {{~ cp_use = fhir.path resource ("telecom[" + i + "].use") ~}}
-      <div class="fhir-field">
-        <dt>
-          {{~ if cp_system && cp_system != "" ~}}{{ fhir.code_display "http://hl7.org/fhir/contact-point-system" cp_system }}{{~ else ~}}{{ l10n.t "Patient.Telecom" }}{{~ end ~}}
-          {{~ if cp_use && cp_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/contact-point-use" cp_use }})</span>{{~ end ~}}
-        </dt>
-        <dd>
-          {{~ if cp_system == "phone" || cp_system == "fax" ~}}
-          <a href="tel:{{ cp_value }}">{{ cp_value }}</a>
-          {{~ else if cp_system == "email" ~}}
-          <a href="mailto:{{ cp_value }}">{{ cp_value }}</a>
-          {{~ else if cp_system == "url" ~}}
-          <a href="{{ cp_value }}">{{ cp_value }}</a>
-          {{~ else ~}}
-          {{ cp_value }}
-          {{~ end ~}}
-        </dd>
-      </div>
-      {{~ end ~}}
-      {{~ end ~}}
+      {{~ dt_resource = resource ~}}
+      {{~ dt_path = "telecom" ~}}
+      {{~ dt_label_key = "Patient.Telecom" ~}}
+      {{~ include "Html/Datatypes/ContactPoint" ~}}
       {{~ # Address ~}}
-      {{~ if (fhir.exists resource "address") ~}}
-      {{~ addr_count = fhir.count resource "address" ~}}
-      {{~ for i in 0..(addr_count - 1) ~}}
-      {{~ addr_use = fhir.path resource ("address[" + i + "].use") ~}}
-      {{~ addr_line = fhir.path resource ("address[" + i + "].line") ~}}
-      {{~ addr_city = fhir.path resource ("address[" + i + "].city") ~}}
-      {{~ addr_state = fhir.path resource ("address[" + i + "].state") ~}}
-      {{~ addr_postal = fhir.path resource ("address[" + i + "].postalCode") ~}}
-      {{~ addr_country = fhir.path resource ("address[" + i + "].country") ~}}
-      <div class="fhir-field fhir-address">
-        <dt>
-          {{ l10n.t "Patient.Address" }}
-          {{~ if addr_use && addr_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/address-use" addr_use }})</span>{{~ end ~}}
-        </dt>
-        <dd>
-          <address>
-            {{~ if addr_line && addr_line != "" ~}}{{ addr_line | array.join ", " }}<br>{{~ end ~}}
-            {{~ if addr_city && addr_city != "" ~}}{{ addr_city }}{{~ end ~}}
-            {{~ if addr_state && addr_state != "" ~}}{{~ if addr_city && addr_city != "" ~}}, {{~ end ~}}{{ addr_state }}{{~ end ~}}
-            {{~ if addr_postal && addr_postal != "" ~}} {{ addr_postal }}{{~ end ~}}
-            {{~ if addr_country && addr_country != "" ~}}<br>{{ addr_country }}{{~ end ~}}
-          </address>
-        </dd>
-      </div>
-      {{~ end ~}}
-      {{~ end ~}}
+      {{~ dt_resource = resource ~}}
+      {{~ dt_path = "address" ~}}
+      {{~ dt_label_key = "Patient.Address" ~}}
+      {{~ include "Html/Datatypes/Address" ~}}
     </dl>
   </div>
   {{~ end ~}}
 
   {{~ # --- Identifiers Section --- ~}}
-  {{~ if (fhir.exists resource "identifier") ~}}
-  <div class="fhir-section fhir-identifiers">
-    <h4>{{ l10n.t "Patient.Section.Identifiers" }}</h4>
-    <dl class="fhir-details">
-      {{~ id_count = fhir.count resource "identifier" ~}}
-      {{~ for i in 0..(id_count - 1) ~}}
-      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
-      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
-      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
-      {{~ id_type_code = fhir.path resource ("identifier[" + i + "].type.coding.first().code") ~}}
-      {{~ id_use = fhir.path resource ("identifier[" + i + "].use") ~}}
-      <div class="fhir-field">
-        <dt>
-          {{~ if id_type && id_type != "" ~}}
-          {{ id_type }}
-          {{~ else if id_type_code && id_type_code != "" ~}}
-          {{ fhir.display id_type_coding }}
-          {{~ else ~}}
-          {{ l10n.t "Patient.Identifier" }}
-          {{~ end ~}}
-          {{~ if id_use && id_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/identifier-use" id_use }})</span>{{~ end ~}}
-        </dt>
-        <dd>
-          <code class="fhir-identifier-value">{{ id_value }}</code>
-          {{~ if id_system && id_system != "" ~}}
-          <span class="fhir-identifier-system">({{ id_system }})</span>
-          {{~ end ~}}
-        </dd>
-      </div>
-      {{~ end ~}}
-    </dl>
-  </div>
-  {{~ end ~}}
+  {{~ dt_resource = resource ~}}
+  {{~ dt_path = "identifier" ~}}
+  {{~ dt_label_key = "Patient.Section.Identifiers" ~}}
+  {{~ include "Html/Datatypes/Identifier" ~}}
 
   {{~ # --- Care Team Section --- ~}}
   {{~ has_care_team = (fhir.exists resource "generalPractitioner") || (fhir.exists resource "managingOrganization") ~}}

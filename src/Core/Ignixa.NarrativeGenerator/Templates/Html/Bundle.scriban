@@ -5,7 +5,7 @@
   <div class="fhir-header">
     <h3 class="fhir-resource-type">{{ l10n.t "Bundle.Title" }}</h3>
     {{~ if (fhir.exists resource "id") ~}}
-    <span class="fhir-id"Bundle.Id" }}">{{ fhir.path resource "id" }}</span>
+    <span class="fhir-id">{{ l10n.t "Bundle.Id" }}: {{ fhir.path resource "id" }}</span>
     {{~ end ~}}
   </div>
 
@@ -50,13 +50,25 @@
     {{~ if (fhir.exists resource "entry") ~}}
     <dt>{{ l10n.t "Bundle.Entry" }}</dt>
     <dd>
-      <ul class="fhir-list">
-      {{~ item_count = fhir.count resource "entry" ~}}
-      {{~ for i in 0..(item_count - 1) ~}}
-      {{~ item_value = fhir.path resource ("entry[" + i + "]") ~}}
-        <li>{{ item_value }}</li>
+      {{~ entry_count = fhir.count resource "entry" ~}}
+      {{~ for i in 0..(entry_count - 1) ~}}
+        {{~ entry_resource_path = "entry[" + i + "].resource" ~}}
+        {{~ entry_resource = fhir.path_element resource entry_resource_path ~}}
+        {{~ if entry_resource ~}}
+          {{~ # Get resourceType from the extracted resource element using IElement.Name ~}}
+          {{~ entry_type = fhir.get_element_name entry_resource ~}}
+          {{~ full_url = fhir.path resource ("entry[" + i + "].fullUrl") ~}}
+          <div class="fhir-bundle-entry">
+            <h4 class="fhir-entry-type">{{ entry_type }}</h4>
+            {{~ if full_url && full_url != "" ~}}
+            <div class="fhir-entry-url"><strong>{{ l10n.t "Bundle.FullUrl" }}:</strong> {{ full_url }}</div>
+            {{~ end ~}}
+            <div class="fhir-entry-resource">
+              {{ fhir.render_resource entry_resource entry_type fhirVersion "Html" culture }}
+            </div>
+          </div>
+        {{~ end ~}}
       {{~ end ~}}
-      </ul>
     </dd>
     {{~ end ~}}
     {{~ if (fhir.exists resource "signature") ~}}

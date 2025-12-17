@@ -1,0 +1,72 @@
+{{~ ## Datatype: Identifier - Parameters: dt_resource, dt_path, dt_label_key (or dt_label for backward compatibility) ~}}
+{{~ ## Resolve label: use dt_label_key with l10n.t, or fall back to dt_label if provided ~}}
+{{~ if dt_label_key && dt_label_key != "" ~}}
+  {{~ dt_resolved_label = l10n.t dt_label_key ~}}
+{{~ else if dt_label && dt_label != "" ~}}
+  {{~ dt_resolved_label = dt_label ~}}
+{{~ else ~}}
+  {{~ dt_resolved_label = "Identifier" ~}}
+{{~ end ~}}
+{{~ if (fhir.exists dt_resource dt_path) ~}}
+{{~ id_count = fhir.count dt_resource dt_path ~}}
+{{~ if dt_section == false ~}}
+{{~ ## Render as individual fields (no section wrapper) ~}}
+{{~ for i in 0..(id_count - 1) ~}}
+{{~ id_value = fhir.path dt_resource (dt_path + "[" + i + "].value") ~}}
+{{~ id_system = fhir.path dt_resource (dt_path + "[" + i + "].system") ~}}
+{{~ id_type = fhir.path dt_resource (dt_path + "[" + i + "].type.coding.first().display") ~}}
+{{~ id_type_code = fhir.path dt_resource (dt_path + "[" + i + "].type.coding.first().code") ~}}
+{{~ id_use = fhir.path dt_resource (dt_path + "[" + i + "].use") ~}}
+<div class="fhir-field">
+  <dt>
+    {{~ if id_type && id_type != "" ~}}
+    {{ id_type }}
+    {{~ else if id_type_code && id_type_code != "" ~}}
+    {{ id_type_code }}
+    {{~ else ~}}
+    {{ dt_resolved_label }}
+    {{~ end ~}}
+    {{~ if id_use && id_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/identifier-use" id_use }})</span>{{~ end ~}}
+  </dt>
+  <dd>
+    <code class="fhir-identifier-value">{{ id_value }}</code>
+    {{~ if id_system && id_system != "" ~}}
+    <span class="fhir-identifier-system">({{ id_system }})</span>
+    {{~ end ~}}
+  </dd>
+</div>
+{{~ end ~}}
+{{~ else ~}}
+{{~ ## Render as section (default) ~}}
+<div class="fhir-section fhir-identifiers">
+  <h4>{{ dt_resolved_label }}</h4>
+  <dl class="fhir-details">
+    {{~ for i in 0..(id_count - 1) ~}}
+    {{~ id_value = fhir.path dt_resource (dt_path + "[" + i + "].value") ~}}
+    {{~ id_system = fhir.path dt_resource (dt_path + "[" + i + "].system") ~}}
+    {{~ id_type = fhir.path dt_resource (dt_path + "[" + i + "].type.coding.first().display") ~}}
+    {{~ id_type_code = fhir.path dt_resource (dt_path + "[" + i + "].type.coding.first().code") ~}}
+    {{~ id_use = fhir.path dt_resource (dt_path + "[" + i + "].use") ~}}
+    <div class="fhir-field">
+      <dt>
+        {{~ if id_type && id_type != "" ~}}
+        {{ id_type }}
+        {{~ else if id_type_code && id_type_code != "" ~}}
+        {{ id_type_code }}
+        {{~ else ~}}
+        {{ dt_resolved_label }}
+        {{~ end ~}}
+        {{~ if id_use && id_use != "" ~}} <span class="fhir-use-tag">({{ fhir.code_display "http://hl7.org/fhir/identifier-use" id_use }})</span>{{~ end ~}}
+      </dt>
+      <dd>
+        <code class="fhir-identifier-value">{{ id_value }}</code>
+        {{~ if id_system && id_system != "" ~}}
+        <span class="fhir-identifier-system">({{ id_system }})</span>
+        {{~ end ~}}
+      </dd>
+    </div>
+    {{~ end ~}}
+  </dl>
+</div>
+{{~ end ~}}
+{{~ end ~}}
