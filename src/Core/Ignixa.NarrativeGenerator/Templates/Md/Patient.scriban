@@ -1,0 +1,198 @@
+{{~ # Markdown narrative template for Patient ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Patient ~}}
+{{~ # Generates human-readable Markdown for documentation and display ~}}
+
+{{~ # --- Header with Patient Name --- ~}}
+{{~ patient_name = "" ~}}
+{{~ if (fhir.exists resource "name") ~}}
+{{~ official_given = fhir.path resource "name.where(use='official').given.first()" ~}}
+{{~ official_family = fhir.path resource "name.where(use='official').family" ~}}
+{{~ first_given = fhir.path resource "name.first().given.first()" ~}}
+{{~ first_family = fhir.path resource "name.first().family" ~}}
+{{~ given = (official_given && official_given != "") ? official_given : first_given ~}}
+{{~ family = (official_family && official_family != "") ? official_family : first_family ~}}
+{{~ if given && given != "" && family && family != "" ~}}
+{{~ patient_name = given + " " + family ~}}
+{{~ else if family && family != "" ~}}
+{{~ patient_name = family ~}}
+{{~ else if given && given != "" ~}}
+{{~ patient_name = given ~}}
+{{~ end ~}}
+{{~ end ~}}
+# {{ patient_name != "" ? patient_name : (l10n.t "Patient.Title") }}
+
+{{~ # --- Status Badge --- ~}}
+{{~ if (fhir.exists resource "active") ~}}
+{{~ active_value = fhir.path resource "active" ~}}
+**{{ l10n.t "Patient.Status" }}**: {{ (active_value == "true") ? "Active" : "Inactive" }}
+
+{{~ end ~}}
+## {{ l10n.t "Patient.Section.Demographics" }}
+
+{{~ # Gender ~}}
+{{~ if (fhir.exists resource "gender") ~}}
+- **{{ l10n.t "Patient.Gender" }}**: {{ fhir.path resource "gender" | string.capitalize }}
+{{~ end ~}}
+{{~ # Birth Date with Age ~}}
+{{~ if (fhir.exists resource "birthDate") ~}}
+{{~ birth_date = fhir.path resource "birthDate" ~}}
+{{~ age = fhir.calculate_age birth_date ~}}
+- **{{ l10n.t "Patient.BirthDate" }}**: {{ fhir.format_date birth_date }}{{~ if age && age != "" ~}} ({{ age }}){{~ end ~}}
+{{~ end ~}}
+{{~ # Deceased ~}}
+{{~ if (fhir.exists resource "deceasedBoolean") ~}}
+{{~ deceased_bool = fhir.path resource "deceasedBoolean" ~}}
+{{~ if deceased_bool == "true" ~}}
+- **{{ l10n.t "Patient.Deceased" }}**: Yes
+{{~ end ~}}
+{{~ else if (fhir.exists resource "deceasedDateTime") ~}}
+{{~ deceased_date = fhir.path resource "deceasedDateTime" ~}}
+- **{{ l10n.t "Patient.Deceased" }}**: {{ fhir.format_datetime deceased_date }}
+{{~ end ~}}
+{{~ # Marital Status ~}}
+{{~ if (fhir.exists resource "maritalStatus") ~}}
+{{~ ms_display = fhir.path resource "maritalStatus.coding.first().display" ~}}
+{{~ ms_code = fhir.path resource "maritalStatus.coding.first().code" ~}}
+- **{{ l10n.t "Patient.MaritalStatus" }}**: {{ (ms_display && ms_display != "") ? ms_display : ms_code }}
+{{~ end ~}}
+
+{{~ # --- Names Section --- ~}}
+{{~ if (fhir.exists resource "name") ~}}
+{{~ name_count = fhir.count resource "name" ~}}
+## {{ l10n.t "Patient.Section.Names" }}
+
+{{~ for i in 0..(name_count - 1) ~}}
+{{~ name_use = fhir.path resource ("name[" + i + "].use") ~}}
+{{~ name_prefix = fhir.path resource ("name[" + i + "].prefix.first()") ~}}
+{{~ name_given = fhir.path resource ("name[" + i + "].given") ~}}
+{{~ name_family = fhir.path resource ("name[" + i + "].family") ~}}
+{{~ name_suffix = fhir.path resource ("name[" + i + "].suffix.first()") ~}}
+- **{{ (name_use && name_use != "") ? (name_use | string.capitalize) : "Name" }}**: {{~ if name_prefix && name_prefix != "" ~}}{{ name_prefix }} {{~ end ~}}{{~ if name_given && name_given != "" ~}}{{ name_given | array.join " " }} {{~ end ~}}{{~ if name_family && name_family != "" ~}}{{ name_family }}{{~ end ~}}{{~ if name_suffix && name_suffix != "" ~}}, {{ name_suffix }}{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # --- Contact Section --- ~}}
+{{~ has_contact = (fhir.exists resource "telecom") || (fhir.exists resource "address") ~}}
+{{~ if has_contact ~}}
+## {{ l10n.t "Patient.Section.Contact" }}
+
+{{~ # Telecom ~}}
+{{~ if (fhir.exists resource "telecom") ~}}
+{{~ telecom_count = fhir.count resource "telecom" ~}}
+{{~ for i in 0..(telecom_count - 1) ~}}
+{{~ cp_system = fhir.path resource ("telecom[" + i + "].system") ~}}
+{{~ cp_value = fhir.path resource ("telecom[" + i + "].value") ~}}
+{{~ cp_use = fhir.path resource ("telecom[" + i + "].use") ~}}
+- **{{ (cp_system && cp_system != "") ? (cp_system | string.capitalize) : "Contact" }}**{{~ if cp_use && cp_use != "" ~}} ({{ cp_use }}){{~ end ~}}: {{ cp_value }}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # Address ~}}
+{{~ if (fhir.exists resource "address") ~}}
+{{~ addr_count = fhir.count resource "address" ~}}
+{{~ for i in 0..(addr_count - 1) ~}}
+{{~ addr_use = fhir.path resource ("address[" + i + "].use") ~}}
+{{~ addr_line = fhir.path resource ("address[" + i + "].line") ~}}
+{{~ addr_city = fhir.path resource ("address[" + i + "].city") ~}}
+{{~ addr_state = fhir.path resource ("address[" + i + "].state") ~}}
+{{~ addr_postal = fhir.path resource ("address[" + i + "].postalCode") ~}}
+{{~ addr_country = fhir.path resource ("address[" + i + "].country") ~}}
+- **{{ l10n.t "Patient.Address" }}**{{~ if addr_use && addr_use != "" ~}} ({{ addr_use }}){{~ end ~}}:
+{{~ if addr_line && addr_line != "" ~}}  {{ addr_line | array.join ", " }}{{~ end ~}}
+{{~ if addr_city && addr_city != "" ~}}  {{ addr_city }}{{~ end ~}}{{~ if addr_state && addr_state != "" ~}}, {{ addr_state }}{{~ end ~}}{{~ if addr_postal && addr_postal != "" ~}} {{ addr_postal }}{{~ end ~}}
+{{~ if addr_country && addr_country != "" ~}}  {{ addr_country }}{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # --- Identifiers Section --- ~}}
+{{~ if (fhir.exists resource "identifier") ~}}
+## {{ l10n.t "Patient.Section.Identifiers" }}
+
+{{~ id_count = fhir.count resource "identifier" ~}}
+{{~ for i in 0..(id_count - 1) ~}}
+{{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+{{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+{{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+{{~ id_type_code = fhir.path resource ("identifier[" + i + "].type.coding.first().code") ~}}
+{{~ id_use = fhir.path resource ("identifier[" + i + "].use") ~}}
+- **{{ (id_type && id_type != "") ? id_type : ((id_type_code && id_type_code != "") ? id_type_code : "Identifier") }}**{{~ if id_use && id_use != "" ~}} ({{ id_use }}){{~ end ~}}: `{{ id_value }}`{{~ if id_system && id_system != "" ~}} ({{ id_system }}){{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # --- Care Team Section --- ~}}
+{{~ has_care_team = (fhir.exists resource "generalPractitioner") || (fhir.exists resource "managingOrganization") ~}}
+{{~ if has_care_team ~}}
+## {{ l10n.t "Patient.Section.CareTeam" }}
+
+{{~ # General Practitioners ~}}
+{{~ if (fhir.exists resource "generalPractitioner") ~}}
+{{~ gp_count = fhir.count resource "generalPractitioner" ~}}
+{{~ for i in 0..(gp_count - 1) ~}}
+{{~ gp_display = fhir.path resource ("generalPractitioner[" + i + "].display") ~}}
+{{~ gp_reference = fhir.path resource ("generalPractitioner[" + i + "].reference") ~}}
+- **{{ l10n.t "Patient.GeneralPractitioner" }}**: {{ (gp_display && gp_display != "") ? gp_display : gp_reference }}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # Managing Organization ~}}
+{{~ if (fhir.exists resource "managingOrganization") ~}}
+{{~ org_display = fhir.path resource "managingOrganization.display" ~}}
+{{~ org_reference = fhir.path resource "managingOrganization.reference" ~}}
+- **{{ l10n.t "Patient.ManagingOrganization" }}**: {{ (org_display && org_display != "") ? org_display : org_reference }}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # --- Communication Section --- ~}}
+{{~ if (fhir.exists resource "communication") ~}}
+## {{ l10n.t "Patient.Section.Communication" }}
+
+{{~ comm_count = fhir.count resource "communication" ~}}
+{{~ for i in 0..(comm_count - 1) ~}}
+{{~ lang_display = fhir.path resource ("communication[" + i + "].language.coding.first().display") ~}}
+{{~ lang_code = fhir.path resource ("communication[" + i + "].language.coding.first().code") ~}}
+{{~ is_preferred = fhir.path resource ("communication[" + i + "].preferred") ~}}
+- **{{ l10n.t "Patient.Language" }}**: {{ (lang_display && lang_display != "") ? lang_display : lang_code }}{{~ if is_preferred == "true" ~}} *({{ l10n.t "Patient.PreferredLanguage" }})*{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # --- Emergency Contacts Section --- ~}}
+{{~ if (fhir.exists resource "contact") ~}}
+## {{ l10n.t "Patient.Section.EmergencyContacts" }}
+
+{{~ contact_count = fhir.count resource "contact" ~}}
+{{~ for i in 0..(contact_count - 1) ~}}
+{{~ contact_name_family = fhir.path resource ("contact[" + i + "].name.family") ~}}
+{{~ contact_name_given = fhir.path resource ("contact[" + i + "].name.given.first()") ~}}
+{{~ contact_relationship = fhir.path resource ("contact[" + i + "].relationship.first().coding.first().display") ~}}
+{{~ contact_relationship_code = fhir.path resource ("contact[" + i + "].relationship.first().coding.first().code") ~}}
+
+### {{ contact_name_given }}{{~ if contact_name_given && contact_name_family ~}} {{~ end ~}}{{ contact_name_family }}
+{{~ if contact_relationship || contact_relationship_code ~}}
+- **{{ l10n.t "Patient.Contact.Relationship" }}**: {{ (contact_relationship && contact_relationship != "") ? contact_relationship : contact_relationship_code }}
+{{~ end ~}}
+{{~ # Contact telecom ~}}
+{{~ if (fhir.exists resource ("contact[" + i + "].telecom")) ~}}
+{{~ ct_count = fhir.count resource ("contact[" + i + "].telecom") ~}}
+{{~ for j in 0..(ct_count - 1) ~}}
+{{~ ct_system = fhir.path resource ("contact[" + i + "].telecom[" + j + "].system") ~}}
+{{~ ct_value = fhir.path resource ("contact[" + i + "].telecom[" + j + "].value") ~}}
+- **{{ ct_system | string.capitalize }}**: {{ ct_value }}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # --- Technical Details --- ~}}
+{{~ if (fhir.exists resource "id") ~}}
+---
+
+### {{ l10n.t "Common.TechnicalDetails" }}
+
+- **{{ l10n.t "Common.ResourceId" }}**: `{{ fhir.path resource "id" }}`
+{{~ if (fhir.exists resource "meta.versionId") ~}}
+- **{{ l10n.t "Common.VersionId" }}**: `{{ fhir.path resource "meta.versionId" }}`
+{{~ end ~}}
+{{~ if (fhir.exists resource "meta.lastUpdated") ~}}
+{{~ last_updated = fhir.path resource "meta.lastUpdated" ~}}
+- **{{ l10n.t "Common.LastUpdated" }}**: {{ fhir.format_datetime last_updated }}
+{{~ end ~}}
+{{~ end ~}}

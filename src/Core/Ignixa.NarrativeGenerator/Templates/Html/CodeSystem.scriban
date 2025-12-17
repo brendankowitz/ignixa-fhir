@@ -1,0 +1,220 @@
+﻿{{~ # Auto-generated Scriban narrative template for CodeSystem ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/CodeSystem ~}}
+
+<div class="fhir-narrative fhir-codesystem" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "CodeSystem.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"CodeSystem.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "CodeSystem.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "CodeSystem.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "CodeSystem.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "CodeSystem.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "author") ~}}
+    <dt>{{ l10n.t "CodeSystem.Author" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "author" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("author[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "CodeSystem.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "effectivePeriod") ~}}
+    <dt>{{ l10n.t "CodeSystem.EffectivePeriod" }}</dt>
+    {{~ period_start = fhir.path resource "effectivePeriod.start" ~}}
+    {{~ period_end = fhir.path resource "effectivePeriod.end" ~}}
+    <dd>
+      {{~ if period_start && period_start != "" ~}}{{ fhir.format_date period_start }}{{~ end ~}}
+      {{~ if (period_start && period_start != "") && (period_end && period_end != "") ~}} - {{~ end ~}}
+      {{~ if period_end && period_end != "" ~}}{{ fhir.format_date period_end }}{{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "CodeSystem.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "CodeSystem.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "url") ~}}
+    <dt>{{ l10n.t "CodeSystem.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "CodeSystem.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionAlgorithm[x]") ~}}
+    <dt>{{ l10n.t "CodeSystem.VersionAlgorithm" }}</dt>
+    <dd>{{ fhir.path resource "versionAlgorithm[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "title") ~}}
+    <dt>{{ l10n.t "CodeSystem.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "CodeSystem.Experimental" }}</dt>
+    {{~ bool_value = fhir.path resource "experimental" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "CodeSystem.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "CodeSystem.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "contact" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("contact[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "CodeSystem.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "useContext" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("useContext[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "CodeSystem.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "jurisdiction" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("jurisdiction[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("jurisdiction[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "caseSensitive") ~}}
+    <dt>{{ l10n.t "CodeSystem.CaseSensitive" }}</dt>
+    {{~ bool_value = fhir.path resource "caseSensitive" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "valueSet") ~}}
+    <dt>{{ l10n.t "CodeSystem.ValueSet" }}</dt>
+    <dd>{{ fhir.path resource "valueSet" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "hierarchyMeaning") ~}}
+    <dt>{{ l10n.t "CodeSystem.HierarchyMeaning" }}</dt>
+    <dd>{{ fhir.path resource "hierarchyMeaning" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "compositional") ~}}
+    <dt>{{ l10n.t "CodeSystem.Compositional" }}</dt>
+    {{~ bool_value = fhir.path resource "compositional" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionNeeded") ~}}
+    <dt>{{ l10n.t "CodeSystem.VersionNeeded" }}</dt>
+    {{~ bool_value = fhir.path resource "versionNeeded" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "CodeSystem.Content" }}</dt>
+    <dd>{{ fhir.path resource "content" }}</dd>
+    {{~ if (fhir.exists resource "supplements") ~}}
+    <dt>{{ l10n.t "CodeSystem.Supplements" }}</dt>
+    <dd>{{ fhir.path resource "supplements" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "count") ~}}
+    <dt>{{ l10n.t "CodeSystem.Count" }}</dt>
+    <dd>{{ fhir.path resource "count" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "filter") ~}}
+    <dt>{{ l10n.t "CodeSystem.Filter" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "filter" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("filter[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "property") ~}}
+    <dt>{{ l10n.t "CodeSystem.Property" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "property" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("property[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

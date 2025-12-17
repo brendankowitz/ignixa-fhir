@@ -1,0 +1,42 @@
+{{~ # Single-line compact template for Patient ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Patient ~}}
+{{~ # Generates dense, token-efficient text for AI/ML embedding models ~}}
+{{~ # Format: "[Name], [Age]yo [Gender], [Location]. [Identifiers]. [Contact]. [CareTeam]." ~}}
+{{~ # --- Extract name --- ~}}
+{{~ name_given = fhirpath resource "name.where(use='official').given.first()" ~}}
+{{~ name_family = fhirpath resource "name.where(use='official').family" ~}}
+{{~ if !(name_given && name_given != "") ~}}
+{{~ name_given = fhirpath resource "name.first().given.first()" ~}}
+{{~ end ~}}
+{{~ if !(name_family && name_family != "") ~}}
+{{~ name_family = fhirpath resource "name.first().family" ~}}
+{{~ end ~}}
+{{~ # --- Extract demographics --- ~}}
+{{~ birth_date = fhirpath resource "birthDate" ~}}
+{{~ age = fhir.calculate_age birth_date ~}}
+{{~ gender = fhirpath resource "gender" ~}}
+{{~ # --- Extract location --- ~}}
+{{~ city = fhirpath resource "address.first().city" ~}}
+{{~ state = fhirpath resource "address.first().state" ~}}
+{{~ country = fhirpath resource "address.first().country" ~}}
+{{~ # --- Extract care info --- ~}}
+{{~ org_display = fhirpath resource "managingOrganization.display" ~}}
+{{~ gp_display = fhirpath resource "generalPractitioner.first().display" ~}}
+{{~ # --- Extract identifier --- ~}}
+{{~ mrn = fhirpath resource "identifier.where(type.coding.code='MR').value" ~}}
+{{~ if !(mrn && mrn != "") ~}}
+{{~ mrn = fhirpath resource "identifier.first().value" ~}}
+{{~ end ~}}
+{{~ # --- Check deceased --- ~}}
+{{~ deceased_bool = fhirpath resource "deceasedBoolean" ~}}
+{{~ deceased_date = fhirpath resource "deceasedDateTime" ~}}
+{{~ is_deceased = (deceased_bool == "true") || (deceased_date && deceased_date != "") ~}}
+{{~ # --- Extract active status --- ~}}
+{{~ active = fhirpath resource "active" ~}}
+{{~ # --- Extract preferred language --- ~}}
+{{~ pref_lang = fhirpath resource "communication.where(preferred=true).language.coding.first().display" ~}}
+{{~ if !(pref_lang && pref_lang != "") ~}}
+{{~ pref_lang = fhirpath resource "communication.first().language.coding.first().display" ~}}
+{{~ end ~}}
+{{~ # --- Build output --- ~}}
+{{ name_given }} {{ name_family }}{{~ if age && age != "" ~}}, {{ age }}{{~ end ~}}{{~ if gender && gender != "" ~}} {{ gender }}{{~ end ~}}{{~ if city && city != "" ~}}, {{ city }}{{~ if state && state != "" ~}} {{ state }}{{~ end ~}}{{~ else if country && country != "" ~}}, {{ country }}{{~ end ~}}.{{~ if mrn && mrn != "" ~}} MRN: {{ mrn }}.{{~ end ~}}{{~ if is_deceased ~}} DECEASED.{{~ end ~}}{{~ if active == "false" ~}} INACTIVE.{{~ end ~}}{{~ if org_display && org_display != "" ~}} Org: {{ org_display }}.{{~ end ~}}{{~ if gp_display && gp_display != "" ~}} PCP: {{ gp_display }}.{{~ end ~}}{{~ if pref_lang && pref_lang != "" ~}} Lang: {{ pref_lang }}.{{~ end ~}}

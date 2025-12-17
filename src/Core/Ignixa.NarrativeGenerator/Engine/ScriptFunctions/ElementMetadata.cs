@@ -8,7 +8,7 @@ namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 /// <summary>
 /// Metadata about a FHIR element for template rendering.
 /// </summary>
-public sealed class ElementMetadata
+internal sealed class ElementMetadata
 {
     /// <summary>Element name (e.g., "name", "birthDate").</summary>
     public required string Name { get; init; }

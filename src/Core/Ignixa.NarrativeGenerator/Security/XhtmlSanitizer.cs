@@ -8,40 +8,69 @@ namespace Ignixa.NarrativeGenerator.Security;
 /// Sanitizes HTML to ensure it only contains FHIR-compliant XHTML elements and no XSS vectors.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This sanitizer enforces the FHIR narrative XHTML specification by:
-/// - Allowing only FHIR-approved HTML elements (div, p, span, tables, lists, etc.)
+/// - Allowing only FHIR-approved HTML elements per HTML 4.0 chapters 7-11 (except section 4 of chapter 9) and 15
 /// - Allowing only safe attributes (style, class, id, title, lang, href, src, alt)
 /// - Removing all JavaScript vectors (javascript:, data:, vbscript:, on* handlers)
 /// - Ensuring href/src attributes only use http/https schemes
+/// - Adding xmlns="http://www.w3.org/1999/xhtml" to the root div element (FHIR requirement)
+/// </para>
+/// <para>
+/// Per FHIR specification, the following are NOT allowed:
+/// - HTML5 semantic elements (header, footer, section, article, aside, nav, details, summary)
+/// - ARIA attributes (aria-label, aria-labelledby, aria-describedby, role)
+/// - Event handlers (onclick, onload, etc.)
+/// - Scripts, forms, frames, iframes, objects
+/// </para>
 /// </remarks>
-public partial class XhtmlSanitizer
+internal partial class XhtmlSanitizer
 {
     /// <summary>
     /// FHIR-allowed HTML elements per the FHIR narrative specification.
+    /// Based on HTML 4.0 chapters 7-11 (except section 4 of chapter 9) and chapter 15.
     /// </summary>
+    /// <remarks>
+    /// HTML5 semantic elements (header, footer, section, article, aside, nav, details, summary)
+    /// are explicitly NOT allowed.
+    /// </remarks>
     private static readonly FrozenSet<string> AllowedElements = FrozenSet.ToFrozenSet([
-        // Text elements
+        // Text elements (HTML 4.0 chapter 9)
         "div", "p", "span", "br", "hr",
-        // Headers
+        // Headers (HTML 4.0 chapter 7)
         "h1", "h2", "h3", "h4", "h5", "h6",
-        // Lists
+        // Lists (HTML 4.0 chapter 10)
         "ul", "ol", "li", "dl", "dt", "dd",
-        // Tables
-        "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
-        // Formatting
-        "b", "i", "u", "strong", "em", "small", "big", "sub", "sup",
-        // Links and images
-        "a", "img"
+        // Tables (HTML 4.0 chapter 11)
+        "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+        // Formatting (HTML 4.0 chapter 9)
+        "b", "i", "u", "s", "strike", "strong", "em", "small", "big", "sub", "sup",
+        // Phrase elements (HTML 4.0 chapter 9)
+        "code", "samp", "kbd", "var", "cite", "abbr", "acronym", "dfn",
+        // Quotations (HTML 4.0 chapter 9)
+        "blockquote", "q", "pre",
+        // Links and images (HTML 4.0 chapter 13 and 15)
+        "a", "img",
+        // Address (HTML 4.0 chapter 7)
+        "address"
     ]);
 
     /// <summary>
     /// FHIR-allowed attributes for narrative XHTML.
     /// </summary>
+    /// <remarks>
+    /// ARIA attributes (aria-*, role) are NOT allowed per FHIR specification.
+    /// Only standard HTML 4.0 attributes are permitted.
+    /// </remarks>
     private static readonly FrozenSet<string> AllowedAttributes = FrozenSet.ToFrozenSet([
-        // Common attributes
-        "style", "class", "id", "title", "lang", "xml:lang", "dir",
+        // Common attributes (per FHIR spec)
+        "style", "class", "id", "title", "lang", "xml:lang", "dir", "name",
         // Link/image attributes
-        "href", "src", "alt"
+        "href", "src", "alt",
+        // Table attributes (HTML 4.0)
+        "colspan", "rowspan", "abbr", "headers", "scope",
+        // Other standard attributes
+        "datetime", "cite", "width", "height"
     ]);
 
     /// <summary>
@@ -58,12 +87,22 @@ public partial class XhtmlSanitizer
     private static partial Regex DisallowedPatterns();
 
     /// <summary>
+    /// Regex to match the first div element for adding xmlns attribute.
+    /// </summary>
+    [GeneratedRegex(@"^(\s*<div)(\s|>)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex FirstDivTagRegex();
+
+    /// <summary>
     /// Sanitizes XHTML content to remove XSS vectors while preserving FHIR-compliant markup.
     /// </summary>
     /// <param name="xhtml">The XHTML content to sanitize.</param>
     /// <returns>Sanitized XHTML safe for rendering in FHIR narratives.</returns>
     /// <exception cref="ArgumentNullException">Thrown when xhtml is null.</exception>
     /// <exception cref="System.Xml.XmlException">Thrown when xhtml is not well-formed XML.</exception>
+    /// <remarks>
+    /// This method also adds the required XHTML namespace (xmlns="http://www.w3.org/1999/xhtml")
+    /// to the root div element as required by the FHIR narrative specification.
+    /// </remarks>
     public string Sanitize(string xhtml)
     {
         ArgumentNullException.ThrowIfNull(xhtml);
@@ -80,8 +119,18 @@ public partial class XhtmlSanitizer
         // Note: XDocument.Parse always creates a non-null Root element
         SanitizeNode(doc.Root!);
 
-        // Return inner content only (unwrap root)
-        return string.Join("", doc.Root!.Nodes().Select(n => n.ToString()));
+        // Get sanitized content (unwrap root)
+        var result = string.Join("", doc.Root!.Nodes().Select(n => n.ToString()));
+
+        // Add XHTML namespace to the first div element (FHIR requirement)
+        // The narrative div MUST have xmlns="http://www.w3.org/1999/xhtml"
+        // We use string replacement to avoid XLinq namespace propagation to child elements
+        if (!result.Contains("xmlns=\"http://www.w3.org/1999/xhtml\"", StringComparison.OrdinalIgnoreCase))
+        {
+            result = FirstDivTagRegex().Replace(result, "$1 xmlns=\"http://www.w3.org/1999/xhtml\"$2", 1);
+        }
+
+        return result;
     }
 
     /// <summary>

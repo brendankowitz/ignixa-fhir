@@ -1,0 +1,236 @@
+﻿{{~ # Auto-generated Scriban narrative template for Procedure ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Procedure ~}}
+
+<div class="fhir-narrative fhir-procedure" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Procedure.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Procedure.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Procedure.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Procedure.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Procedure.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "Procedure.Code" }}</dt>
+    {{~ cc_display = fhir.path resource "code.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "code.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Procedure.Subject" }}</dt>
+    {{~ ref_display = fhir.path resource "subject.display" ~}}
+    {{~ ref_reference = fhir.path resource "subject.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "Procedure.Encounter" }}</dt>
+    {{~ ref_display = fhir.path resource "encounter.display" ~}}
+    {{~ ref_reference = fhir.path resource "encounter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performer") ~}}
+    <dt>{{ l10n.t "Procedure.Performer" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "performer" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("performer[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "recorded") ~}}
+    <dt>{{ l10n.t "Procedure.Recorded" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "recorded") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "Procedure.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "category" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "bodySite") ~}}
+    <dt>{{ l10n.t "Procedure.BodySite" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "bodySite" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("bodySite[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("bodySite[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Procedure.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "Procedure.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("note[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "instantiatesCanonical") ~}}
+    <dt>{{ l10n.t "Procedure.InstantiatesCanonical" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "instantiatesCanonical" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("instantiatesCanonical[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "instantiatesUri") ~}}
+    <dt>{{ l10n.t "Procedure.InstantiatesUri" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "instantiatesUri" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("instantiatesUri[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "Procedure.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "basedOn" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("basedOn[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("basedOn[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "partOf") ~}}
+    <dt>{{ l10n.t "Procedure.PartOf" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "partOf" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("partOf[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("partOf[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "statusReason") ~}}
+    <dt>{{ l10n.t "Procedure.StatusReason" }}</dt>
+    {{~ cc_display = fhir.path resource "statusReason.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "statusReason.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "focus") ~}}
+    <dt>{{ l10n.t "Procedure.Focus" }}</dt>
+    {{~ ref_display = fhir.path resource "focus.display" ~}}
+    {{~ ref_reference = fhir.path resource "focus.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "occurrence[x]") ~}}
+    <dt>{{ l10n.t "Procedure.Occurrence" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "occurrence[x]") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "recorder") ~}}
+    <dt>{{ l10n.t "Procedure.Recorder" }}</dt>
+    {{~ ref_display = fhir.path resource "recorder.display" ~}}
+    {{~ ref_reference = fhir.path resource "recorder.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reported[x]") ~}}
+    <dt>{{ l10n.t "Procedure.Reported" }}</dt>
+    {{~ bool_value = fhir.path resource "reported[x]" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "location") ~}}
+    <dt>{{ l10n.t "Procedure.Location" }}</dt>
+    {{~ ref_display = fhir.path resource "location.display" ~}}
+    {{~ ref_reference = fhir.path resource "location.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reason") ~}}
+    <dt>{{ l10n.t "Procedure.Reason" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "reason" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("reason[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "outcome") ~}}
+    <dt>{{ l10n.t "Procedure.Outcome" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "outcome" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("outcome[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-notes"id" }}">
+    <h4id" }}">{{ l10n.t "Procedure.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+</div>

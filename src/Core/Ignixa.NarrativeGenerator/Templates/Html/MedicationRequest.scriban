@@ -1,0 +1,171 @@
+﻿{{~ # Auto-generated Scriban narrative template for MedicationRequest ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/MedicationRequest ~}}
+
+<div class="fhir-narrative fhir-medicationrequest" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "MedicationRequest.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"MedicationRequest.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MedicationRequest.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "MedicationRequest.Subject" }}</dt>
+    {{~ ref_display = fhir.path resource "subject.display" ~}}
+    {{~ ref_reference = fhir.path resource "subject.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Encounter" }}</dt>
+    {{~ ref_display = fhir.path resource "encounter.display" ~}}
+    {{~ ref_reference = fhir.path resource "encounter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performer") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Performer" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "performer" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("performer[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("performer[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "category" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("note[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "MedicationRequest.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "basedOn" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("basedOn[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("basedOn[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "groupIdentifier") ~}}
+    <dt>{{ l10n.t "MedicationRequest.GroupIdentifier" }}</dt>
+    {{~ id_value = fhir.path resource "groupIdentifier.value" ~}}
+    {{~ id_system = fhir.path resource "groupIdentifier.system" ~}}
+    {{~ id_type = fhir.path resource "groupIdentifier.type.coding.first().display" ~}}
+    <dd>
+      {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+      <span class="identifier-value">{{ id_value }}</span>
+      {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MedicationRequest.Intent" }}</dt>
+    <dd>{{ fhir.path resource "intent" }}</dd>
+    {{~ if (fhir.exists resource "priority") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Priority" }}</dt>
+    <dd>{{ fhir.path resource "priority" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "doNotPerform") ~}}
+    <dt>{{ l10n.t "MedicationRequest.DoNotPerform" }}</dt>
+    {{~ bool_value = fhir.path resource "doNotPerform" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "MedicationRequest.Medication" }}</dt>
+    <dd>{{ fhir.path resource "medication" }}</dd>
+    {{~ if (fhir.exists resource "authoredOn") ~}}
+    <dt>{{ l10n.t "MedicationRequest.AuthoredOn" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "authoredOn") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "requester") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Requester" }}</dt>
+    {{~ ref_display = fhir.path resource "requester.display" ~}}
+    {{~ ref_reference = fhir.path resource "requester.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "reported") ~}}
+    <dt>{{ l10n.t "MedicationRequest.Reported" }}</dt>
+    {{~ bool_value = fhir.path resource "reported" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performerType") ~}}
+    <dt>{{ l10n.t "MedicationRequest.PerformerType" }}</dt>
+    {{~ cc_display = fhir.path resource "performerType.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "performerType.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-notes"id" }}">
+    <h4id" }}">{{ l10n.t "MedicationRequest.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+</div>

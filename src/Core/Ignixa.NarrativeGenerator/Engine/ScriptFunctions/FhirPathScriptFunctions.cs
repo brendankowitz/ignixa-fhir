@@ -26,7 +26,7 @@ namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 /// {{ fhir.display resource.code }}
 /// </code>
 /// </remarks>
-public class FhirPathScriptFunctions
+internal class FhirPathScriptFunctions
 {
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
@@ -189,6 +189,75 @@ public class FhirPathScriptFunctions
         {
             return 0;
         }
+    }
+
+    /// <summary>
+    /// Calculates the age from a birth date.
+    /// </summary>
+    /// <param name="birthDate">The birth date string (e.g., "1990-01-15").</param>
+    /// <returns>A formatted age string (e.g., "35 years") or empty string if unable to calculate.</returns>
+    /// <example>
+    /// {{ fhir.calculate_age (fhir.path resource "birthDate") }}
+    /// </example>
+    public static string CalculateAge(string? birthDate)
+    {
+        if (string.IsNullOrEmpty(birthDate))
+        {
+            return string.Empty;
+        }
+
+        // Parse the birth date - handle partial dates
+        if (!DateTime.TryParse(birthDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var birth))
+        {
+            // Try YYYY-MM format
+            if (birthDate.Length == 7 && DateTime.TryParseExact(birthDate, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out birth))
+            {
+                // Use first day of the month
+            }
+            else if (birthDate.Length == 4 && int.TryParse(birthDate, out var year))
+            {
+                // Use January 1st of the year
+                birth = new DateTime(year, 1, 1);
+            }
+            else
+            {
+                return string.Empty;
+            }
+        }
+
+        var today = DateTime.Today;
+        var age = today.Year - birth.Year;
+
+        // Adjust if birthday hasn't occurred yet this year
+        if (birth.Date > today.AddYears(-age))
+        {
+            age--;
+        }
+
+        if (age < 0)
+        {
+            return string.Empty;
+        }
+
+        if (age == 0)
+        {
+            // Calculate months for infants
+            var months = (today.Year - birth.Year) * 12 + today.Month - birth.Month;
+            if (today.Day < birth.Day)
+            {
+                months--;
+            }
+
+            if (months <= 0)
+            {
+                var days = (today - birth).Days;
+                return days == 1 ? "1 day" : $"{days} days";
+            }
+
+            return months == 1 ? "1 month" : $"{months} months";
+        }
+
+        return age == 1 ? "1 year" : $"{age} years";
     }
 
     /// <summary>

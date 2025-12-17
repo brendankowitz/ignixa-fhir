@@ -1,0 +1,120 @@
+﻿{{~ # Auto-generated Scriban narrative template for Practitioner ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Practitioner ~}}
+
+<div class="fhir-narrative fhir-practitioner" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Practitioner.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Practitioner.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Practitioner.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Practitioner.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "Practitioner.Name" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "name" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ name_given = fhir.path resource ("name[" + i + "].given.first()") ~}}
+      {{~ name_family = fhir.path resource ("name[" + i + "].family") ~}}
+        <li>{{ name_given }}{{~ if name_given && name_given != "" && name_family && name_family != "" ~}} {{~ end ~}}{{ name_family }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Practitioner.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "active") ~}}
+    <dt>{{ l10n.t "Practitioner.Active" }}</dt>
+    {{~ bool_value = fhir.path resource "active" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "telecom") ~}}
+    <dt>{{ l10n.t "Practitioner.Telecom" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "telecom" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cp_system = fhir.path resource ("telecom[" + i + "].system") ~}}
+      {{~ cp_value = fhir.path resource ("telecom[" + i + "].value") ~}}
+      {{~ cp_use = fhir.path resource ("telecom[" + i + "].use") ~}}
+        <li>
+          {{~ if cp_system && cp_system != "" ~}}{{ l10n.t ("Telecom.System." + cp_system) }}: {{~ end ~}}
+          {{ cp_value }}
+          {{~ if cp_use && cp_use != "" ~}} ({{ l10n.t ("Telecom.Use." + cp_use) }}){{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "gender") ~}}
+    <dt>{{ l10n.t "Practitioner.Gender" }}</dt>
+    <dd>{{ fhir.path resource "gender" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "birthDate") ~}}
+    <dt>{{ l10n.t "Practitioner.BirthDate" }}</dt>
+    <dd>{{ fhir.format_date (fhir.path resource "birthDate") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "deceased[x]") ~}}
+    <dt>{{ l10n.t "Practitioner.Deceased" }}</dt>
+    {{~ bool_value = fhir.path resource "deceased[x]" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "address") ~}}
+    <dt>{{ l10n.t "Practitioner.Address" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "address" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ addr_city = fhir.path resource ("address[" + i + "].city") ~}}
+      {{~ addr_state = fhir.path resource ("address[" + i + "].state") ~}}
+      {{~ addr_postal = fhir.path resource ("address[" + i + "].postalCode") ~}}
+        <li>
+          {{~ if addr_city && addr_city != "" ~}}{{ addr_city }}{{~ end ~}}
+          {{~ if addr_state && addr_state != "" ~}}{{~ if addr_city && addr_city != "" ~}}, {{~ end ~}}{{ addr_state }}{{~ end ~}}
+          {{~ if addr_postal && addr_postal != "" ~}} {{ addr_postal }}{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

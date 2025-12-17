@@ -1,0 +1,181 @@
+﻿{{~ # Auto-generated Scriban narrative template for StructureDefinition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/StructureDefinition ~}}
+
+<div class="fhir-narrative fhir-structuredefinition" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "StructureDefinition.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"StructureDefinition.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "StructureDefinition.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "StructureDefinition.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "StructureDefinition.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionAlgorithm[x]") ~}}
+    <dt>{{ l10n.t "StructureDefinition.VersionAlgorithm" }}</dt>
+    <dd>{{ fhir.path resource "versionAlgorithm[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "title") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Experimental" }}</dt>
+    {{~ bool_value = fhir.path resource "experimental" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "contact" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("contact[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "StructureDefinition.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "useContext" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("useContext[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "jurisdiction" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("jurisdiction[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("jurisdiction[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "keyword") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Keyword" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "keyword" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ coding_display = fhir.path resource ("keyword[" + i + "].display") ~}}
+      {{~ coding_code = fhir.path resource ("keyword[" + i + "].code") ~}}
+        <li>{{ (coding_display && coding_display != "") ? coding_display : coding_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "fhirVersion") ~}}
+    <dt>{{ l10n.t "StructureDefinition.FhirVersion" }}</dt>
+    <dd>{{ fhir.path resource "fhirVersion" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "StructureDefinition.Kind" }}</dt>
+    <dd>{{ fhir.path resource "kind" }}</dd>
+    <dt>{{ l10n.t "StructureDefinition.Abstract" }}</dt>
+    {{~ bool_value = fhir.path resource "abstract" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ if (fhir.exists resource "context") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Context" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "context" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("context[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contextInvariant") ~}}
+    <dt>{{ l10n.t "StructureDefinition.ContextInvariant" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "contextInvariant" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("contextInvariant[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "StructureDefinition.Type" }}</dt>
+    <dd>{{ fhir.path resource "type" }}</dd>
+    {{~ if (fhir.exists resource "baseDefinition") ~}}
+    <dt>{{ l10n.t "StructureDefinition.BaseDefinition" }}</dt>
+    <dd>{{ fhir.path resource "baseDefinition" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "derivation") ~}}
+    <dt>{{ l10n.t "StructureDefinition.Derivation" }}</dt>
+    <dd>{{ fhir.path resource "derivation" }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -17,26 +17,34 @@ namespace Ignixa.NarrativeGenerator.Engine;
 /// Templates are loaded from embedded resources in the assembly with the following folder structure:
 /// </para>
 /// <list type="bullet">
-///   <item>Templates/Normative/*.scriban - Cross-version templates for normative resources</item>
-///   <item>Templates/R4/*.scriban - R4-specific templates</item>
-///   <item>Templates/R5/*.scriban - R5-specific templates</item>
+///   <item>Templates/Html/*.scriban - Cross-version HTML templates for normative resources</item>
+///   <item>Templates/Html/R4/*.scriban - R4-specific HTML templates</item>
+///   <item>Templates/Html/R5/*.scriban - R5-specific HTML templates</item>
+///   <item>Templates/Md/*.scriban - Cross-version Markdown templates</item>
+///   <item>Templates/Md/R4/*.scriban - R4-specific Markdown templates</item>
+///   <item>Templates/Compact/*.scriban - Cross-version Compact templates</item>
+///   <item>Templates/Compact/R4/*.scriban - R4-specific Compact templates</item>
 /// </list>
 /// <para>
-/// Resolution order:
+/// Resolution order for each format:
 /// </para>
 /// <list type="number">
-///   <item>Version-specific resource template (e.g., Templates/R4/Patient.scriban)</item>
-///   <item>Normative resource template (e.g., Templates/Normative/Patient.scriban)</item>
-///   <item>Version-specific generic template (e.g., Templates/R4/Generic.scriban)</item>
-///   <item>Normative generic template (Templates/Normative/Generic.scriban)</item>
+///   <item>Format-specific version resource template (e.g., Templates/Html/R4/Patient.scriban)</item>
+///   <item>Format-specific normative resource template (e.g., Templates/Html/Patient.scriban)</item>
+///   <item>Format-specific version generic template (e.g., Templates/Html/R4/Generic.scriban)</item>
+///   <item>Format-specific normative generic template (e.g., Templates/Html/Generic.scriban)</item>
 /// </list>
 /// </remarks>
-public class TemplateResolver : ITemplateResolver
+internal class TemplateResolver : ITemplateResolver
 {
     private const string TemplatesNamespacePrefix = "Ignixa.NarrativeGenerator.Templates";
     private const string TemplateExtension = ".scriban";
     private const string GenericTemplateName = "Generic";
-    private const string NormativeFolder = "Normative";
+
+    // Format folder names
+    private const string HtmlFolder = "Html";
+    private const string MarkdownFolder = "Md";
+    private const string CompactFolder = "Compact";
 
     private readonly Assembly _resourceAssembly;
     private readonly ConcurrentDictionary<string, string> _templateCache = new();
@@ -67,12 +75,13 @@ public class TemplateResolver : ITemplateResolver
     public async Task<TemplateResolution?> ResolveTemplateAsync(
         string resourceType,
         FhirVersion fhirVersion,
+        TemplateFormat format,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
 
         // Try resolution in priority order
-        var candidates = GetResolutionCandidates(resourceType, fhirVersion);
+        var candidates = GetResolutionCandidates(resourceType, fhirVersion, format);
 
         foreach (var (resourceName, templatePath, isGeneric, resolvedVersion) in candidates)
         {
@@ -87,6 +96,7 @@ public class TemplateResolver : ITemplateResolver
                     templatePath,
                     isGeneric ? GenericTemplateName : resourceType,
                     resolvedVersion,
+                    format,
                     isGeneric);
             }
         }
@@ -95,48 +105,50 @@ public class TemplateResolver : ITemplateResolver
     }
 
     /// <inheritdoc />
-    public bool HasTemplate(string resourceType, FhirVersion fhirVersion)
+    public bool HasTemplate(string resourceType, FhirVersion fhirVersion, TemplateFormat format)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
 
-        var candidates = GetResolutionCandidates(resourceType, fhirVersion);
+        var candidates = GetResolutionCandidates(resourceType, fhirVersion, format);
         return candidates.Any(c => _availableResources.Contains(c.ResourceName));
     }
 
     /// <summary>
-    /// Gets the list of candidate resource names in priority order.
+    /// Gets the list of candidate resource names in priority order for a specific format.
     /// </summary>
     private IEnumerable<(string ResourceName, string TemplatePath, bool IsGeneric, FhirVersion? Version)> GetResolutionCandidates(
         string resourceType,
-        FhirVersion fhirVersion)
+        FhirVersion fhirVersion,
+        TemplateFormat format)
     {
+        var formatFolder = GetFormatFolder(format);
         var versionFolder = GetVersionFolder(fhirVersion);
 
-        // 1. Version-specific resource template (e.g., R4/Patient.scriban)
+        // 1. Format-specific version resource template (e.g., Html/R4/Patient.scriban)
         yield return (
-            GetResourceName(versionFolder, resourceType),
-            $"{versionFolder}/{resourceType}{TemplateExtension}",
+            GetResourceName(formatFolder, versionFolder, resourceType),
+            $"{formatFolder}/{versionFolder}/{resourceType}{TemplateExtension}",
             false,
             fhirVersion);
 
-        // 2. Normative resource template (e.g., Normative/Patient.scriban)
+        // 2. Format-specific normative resource template (e.g., Html/Patient.scriban)
         yield return (
-            GetResourceName(NormativeFolder, resourceType),
-            $"{NormativeFolder}/{resourceType}{TemplateExtension}",
+            GetResourceName(formatFolder, null, resourceType),
+            $"{formatFolder}/{resourceType}{TemplateExtension}",
             false,
             null);
 
-        // 3. Version-specific generic template (e.g., R4/Generic.scriban)
+        // 3. Format-specific version generic template (e.g., Html/R4/Generic.scriban)
         yield return (
-            GetResourceName(versionFolder, GenericTemplateName),
-            $"{versionFolder}/{GenericTemplateName}{TemplateExtension}",
+            GetResourceName(formatFolder, versionFolder, GenericTemplateName),
+            $"{formatFolder}/{versionFolder}/{GenericTemplateName}{TemplateExtension}",
             true,
             fhirVersion);
 
-        // 4. Normative generic template (Normative/Generic.scriban)
+        // 4. Format-specific normative generic template (e.g., Html/Generic.scriban)
         yield return (
-            GetResourceName(NormativeFolder, GenericTemplateName),
-            $"{NormativeFolder}/{GenericTemplateName}{TemplateExtension}",
+            GetResourceName(formatFolder, null, GenericTemplateName),
+            $"{formatFolder}/{GenericTemplateName}{TemplateExtension}",
             true,
             null);
     }
@@ -144,13 +156,32 @@ public class TemplateResolver : ITemplateResolver
     /// <summary>
     /// Constructs the embedded resource name for a template.
     /// </summary>
-    /// <param name="folder">The template folder (e.g., "R4", "Normative").</param>
+    /// <param name="formatFolder">The format folder (e.g., "Html", "Md", "Compact").</param>
+    /// <param name="versionFolder">The version folder (e.g., "R4", "R5"), or null for normative.</param>
     /// <param name="templateName">The template name without extension (e.g., "Patient").</param>
     /// <returns>The fully qualified embedded resource name.</returns>
-    private static string GetResourceName(string folder, string templateName)
+    private static string GetResourceName(string formatFolder, string? versionFolder, string templateName)
     {
         // Embedded resource names use dots as path separators
-        return $"{TemplatesNamespacePrefix}.{folder}.{templateName}{TemplateExtension}";
+        if (versionFolder is not null)
+        {
+            return $"{TemplatesNamespacePrefix}.{formatFolder}.{versionFolder}.{templateName}{TemplateExtension}";
+        }
+        return $"{TemplatesNamespacePrefix}.{formatFolder}.{templateName}{TemplateExtension}";
+    }
+
+    /// <summary>
+    /// Maps a template format to its folder name.
+    /// </summary>
+    private static string GetFormatFolder(TemplateFormat format)
+    {
+        return format switch
+        {
+            TemplateFormat.Html => HtmlFolder,
+            TemplateFormat.Markdown => MarkdownFolder,
+            TemplateFormat.Compact => CompactFolder,
+            _ => HtmlFolder // Default to Html
+        };
     }
 
     /// <summary>

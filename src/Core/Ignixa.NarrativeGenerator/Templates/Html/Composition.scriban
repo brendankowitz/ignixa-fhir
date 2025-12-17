@@ -1,0 +1,158 @@
+﻿{{~ # Auto-generated Scriban narrative template for Composition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Composition ~}}
+
+<div class="fhir-narrative fhir-composition" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Composition.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Composition.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Composition.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Composition.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "Composition.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "Composition.Subject" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "subject" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("subject[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("subject[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "Composition.Encounter" }}</dt>
+    {{~ ref_display = fhir.path resource "encounter.display" ~}}
+    {{~ ref_reference = fhir.path resource "encounter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Author" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "author" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("author[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("author[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    <dt>{{ l10n.t "Composition.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "Composition.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "category" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Composition.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "Composition.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("note[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "url") ~}}
+    <dt>{{ l10n.t "Composition.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "Composition.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Type" }}</dt>
+    {{~ cc_display = fhir.path resource "type.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "type.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "Composition.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "useContext" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("useContext[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Composition.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ if (fhir.exists resource "custodian") ~}}
+    <dt>{{ l10n.t "Composition.Custodian" }}</dt>
+    {{~ ref_display = fhir.path resource "custodian.display" ~}}
+    {{~ ref_reference = fhir.path resource "custodian.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "event") ~}}
+    <dt>{{ l10n.t "Composition.Event" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "event" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("event[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-notes"id" }}">
+    <h4id" }}">{{ l10n.t "Composition.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+</div>

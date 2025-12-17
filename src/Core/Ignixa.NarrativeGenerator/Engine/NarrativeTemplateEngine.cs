@@ -33,7 +33,7 @@ namespace Ignixa.NarrativeGenerator.Engine;
 /// The template cache uses ConcurrentDictionary for safe concurrent access.
 /// </para>
 /// </remarks>
-public class NarrativeTemplateEngine
+internal class NarrativeTemplateEngine
 {
     private readonly ConcurrentDictionary<string, Template> _compiledTemplateCache = new();
     private readonly FhirPathScriptFunctions _fhirPathFunctions;
@@ -217,6 +217,7 @@ public class NarrativeTemplateEngine
         fhirObject.Import("count", new Func<object, object, int>((resource, expression) => _fhirPathFunctions.Count(resource, expression)));
         fhirObject.Import("format_date", (Func<string?, string>)(date => _fhirPathFunctions.FormatDate(date, culture)));
         fhirObject.Import("format_datetime", (Func<string?, string>)(datetime => _fhirPathFunctions.FormatDateTime(datetime, culture)));
+        fhirObject.Import("calculate_age", (Func<string?, string>)FhirPathScriptFunctions.CalculateAge);
         fhirObject.Import("display", (Func<JsonNode?, string>)FhirPathScriptFunctions.Display);
         fhirObject.Import("get_structure_elements", new Func<string, object, IEnumerable<ElementMetadata>>((resourceType, fhirVersion) => _fhirPathFunctions.GetStructureElements(resourceType, fhirVersion)));
         fhirObject.Import("format_by_type", new Func<string?, string, string>((value, type) => _fhirPathFunctions.FormatByType(value, type, culture)));

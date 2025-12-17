@@ -21,7 +21,7 @@ namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 /// {{ l10n.lang }}
 /// </code>
 /// </remarks>
-public class LocalizationScriptFunctions
+internal class LocalizationScriptFunctions
 {
     private readonly IStringLocalizer _localizer;
 
@@ -117,5 +117,18 @@ public class LocalizationScriptFunctions
     public static string Culture()
     {
         return CultureInfo.CurrentCulture.Name;
+    }
+
+    /// <summary>
+    /// Determines if the current culture uses right-to-left text direction.
+    /// </summary>
+    /// <returns>True if the current culture is RTL (Arabic, Hebrew, Persian, Urdu).</returns>
+    /// <example>
+    /// {{ l10n.is_rtl ? "rtl" : "ltr" }}
+    /// </example>
+    public static bool IsRtl()
+    {
+        var lang = CultureInfo.CurrentCulture.TwoLetterISOLanguageName;
+        return lang is "ar" or "he" or "fa" or "ur";
     }
 }

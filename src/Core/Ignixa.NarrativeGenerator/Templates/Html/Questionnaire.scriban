@@ -1,0 +1,170 @@
+﻿{{~ # Auto-generated Scriban narrative template for Questionnaire ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Questionnaire ~}}
+
+<div class="fhir-narrative fhir-questionnaire" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Questionnaire.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Questionnaire.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Questionnaire.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Questionnaire.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Questionnaire.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "Questionnaire.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "Questionnaire.Code" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "code" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ coding_display = fhir.path resource ("code[" + i + "].display") ~}}
+      {{~ coding_code = fhir.path resource ("code[" + i + "].code") ~}}
+        <li>{{ (coding_display && coding_display != "") ? coding_display : coding_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "Questionnaire.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "effectivePeriod") ~}}
+    <dt>{{ l10n.t "Questionnaire.EffectivePeriod" }}</dt>
+    {{~ period_start = fhir.path resource "effectivePeriod.start" ~}}
+    {{~ period_end = fhir.path resource "effectivePeriod.end" ~}}
+    <dd>
+      {{~ if period_start && period_start != "" ~}}{{ fhir.format_date period_start }}{{~ end ~}}
+      {{~ if (period_start && period_start != "") && (period_end && period_end != "") ~}} - {{~ end ~}}
+      {{~ if period_end && period_end != "" ~}}{{ fhir.format_date period_end }}{{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Questionnaire.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "Questionnaire.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "url") ~}}
+    <dt>{{ l10n.t "Questionnaire.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "Questionnaire.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionAlgorithm[x]") ~}}
+    <dt>{{ l10n.t "Questionnaire.VersionAlgorithm" }}</dt>
+    <dd>{{ fhir.path resource "versionAlgorithm[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "title") ~}}
+    <dt>{{ l10n.t "Questionnaire.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "derivedFrom") ~}}
+    <dt>{{ l10n.t "Questionnaire.DerivedFrom" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "derivedFrom" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("derivedFrom[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "Questionnaire.Experimental" }}</dt>
+    {{~ bool_value = fhir.path resource "experimental" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "subjectType") ~}}
+    <dt>{{ l10n.t "Questionnaire.SubjectType" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "subjectType" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("subjectType[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "Questionnaire.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "Questionnaire.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "contact" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("contact[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "Questionnaire.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "useContext" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("useContext[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "Questionnaire.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "jurisdiction" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("jurisdiction[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("jurisdiction[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

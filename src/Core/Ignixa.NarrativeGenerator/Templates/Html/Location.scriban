@@ -1,0 +1,88 @@
+﻿{{~ # Auto-generated Scriban narrative template for Location ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Location ~}}
+
+<div class="fhir-narrative fhir-location" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Location.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Location.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Location.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Location.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "status") ~}}
+    <dt>{{ l10n.t "Location.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "Location.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Location.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "Location.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "operationalStatus") ~}}
+    <dt>{{ l10n.t "Location.OperationalStatus" }}</dt>
+    {{~ coding_display = fhir.path resource "operationalStatus.display" ~}}
+    {{~ coding_code = fhir.path resource "operationalStatus.code" ~}}
+    <dd>{{ (coding_display && coding_display != "") ? coding_display : coding_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "mode") ~}}
+    <dt>{{ l10n.t "Location.Mode" }}</dt>
+    <dd>{{ fhir.path resource "mode" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "Location.Type" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "type" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("type[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("type[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "form") ~}}
+    <dt>{{ l10n.t "Location.Form" }}</dt>
+    {{~ cc_display = fhir.path resource "form.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "form.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "managingOrganization") ~}}
+    <dt>{{ l10n.t "Location.ManagingOrganization" }}</dt>
+    {{~ ref_display = fhir.path resource "managingOrganization.display" ~}}
+    {{~ ref_reference = fhir.path resource "managingOrganization.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

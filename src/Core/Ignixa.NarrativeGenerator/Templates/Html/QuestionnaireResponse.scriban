@@ -1,0 +1,99 @@
+﻿{{~ # Auto-generated Scriban narrative template for QuestionnaireResponse ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse ~}}
+
+<div class="fhir-narrative fhir-questionnaireresponse" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "QuestionnaireResponse.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"QuestionnaireResponse.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Subject" }}</dt>
+    {{~ ref_display = fhir.path resource "subject.display" ~}}
+    {{~ ref_reference = fhir.path resource "subject.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Encounter" }}</dt>
+    {{~ ref_display = fhir.path resource "encounter.display" ~}}
+    {{~ ref_reference = fhir.path resource "encounter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "author") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Author" }}</dt>
+    {{~ ref_display = fhir.path resource "author.display" ~}}
+    {{~ ref_reference = fhir.path resource "author.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "basedOn" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("basedOn[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("basedOn[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "partOf") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.PartOf" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "partOf" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("partOf[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("partOf[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Questionnaire" }}</dt>
+    <dd>{{ fhir.path resource "questionnaire" }}</dd>
+    {{~ if (fhir.exists resource "authored") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Authored" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "authored") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "source") ~}}
+    <dt>{{ l10n.t "QuestionnaireResponse.Source" }}</dt>
+    {{~ ref_display = fhir.path resource "source.display" ~}}
+    {{~ ref_reference = fhir.path resource "source.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

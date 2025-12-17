@@ -1,0 +1,27 @@
+﻿{{~ # Auto-generated Scriban narrative template for Binary ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Binary ~}}
+
+<div class="fhir-narrative fhir-binary" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Binary.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Binary.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Binary.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Binary.ContentType" }}</dt>
+    <dd>{{ fhir.path resource "contentType" }}</dd>
+    {{~ if (fhir.exists resource "securityContext") ~}}
+    <dt>{{ l10n.t "Binary.SecurityContext" }}</dt>
+    {{~ ref_display = fhir.path resource "securityContext.display" ~}}
+    {{~ ref_reference = fhir.path resource "securityContext.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

@@ -1,0 +1,131 @@
+﻿{{~ # Auto-generated Scriban narrative template for SearchParameter ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/SearchParameter ~}}
+
+<div class="fhir-narrative fhir-searchparameter" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "SearchParameter.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"SearchParameter.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "SearchParameter.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "SearchParameter.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "SearchParameter.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "SearchParameter.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    <dt>{{ l10n.t "SearchParameter.Code" }}</dt>
+    <dd>{{ fhir.path resource "code" }}</dd>
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "SearchParameter.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "SearchParameter.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "SearchParameter.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    <dt>{{ l10n.t "SearchParameter.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "SearchParameter.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionAlgorithm[x]") ~}}
+    <dt>{{ l10n.t "SearchParameter.VersionAlgorithm" }}</dt>
+    <dd>{{ fhir.path resource "versionAlgorithm[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "title") ~}}
+    <dt>{{ l10n.t "SearchParameter.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "SearchParameter.Experimental" }}</dt>
+    {{~ bool_value = fhir.path resource "experimental" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "SearchParameter.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "SearchParameter.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "contact" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("contact[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "SearchParameter.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "useContext" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("useContext[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "SearchParameter.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "jurisdiction" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("jurisdiction[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("jurisdiction[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "SearchParameter.Base" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "base" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("base[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    <dt>{{ l10n.t "SearchParameter.Type" }}</dt>
+    <dd>{{ fhir.path resource "type" }}</dd>
+  </dl>
+
+</div>

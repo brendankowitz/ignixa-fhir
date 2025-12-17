@@ -1,0 +1,408 @@
+{{~ # Enhanced Scriban narrative template for Condition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Condition ~}}
+{{~ # FHIR-compliant XHTML (HTML 4.0 chapters 7-11, 15) ~}}
+
+<div class="fhir-narrative fhir-condition" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  {{~ # --- Header Section --- ~}}
+  <div class="fhir-header">
+    {{~ code_display = fhir.path resource "code.coding.first().display" ~}}
+    {{~ code_text = fhir.path resource "code.text" ~}}
+    {{~ code_code = fhir.path resource "code.coding.first().code" ~}}
+    {{~ condition_title = code_display ?? code_text ?? code_code ~}}
+    <h3 class="fhir-resource-title">
+      {{~ if condition_title && condition_title != "" ~}}
+      {{ condition_title }}
+      <span class="fhir-resource-type-badge">({{ l10n.t "Condition.Title" }})</span>
+      {{~ else ~}}
+      {{ l10n.t "Condition.Title" }}
+      {{~ end ~}}
+    </h3>
+    {{~ # Status Badges ~}}
+    <div class="fhir-status-badges">
+      {{~ # Clinical Status ~}}
+      {{~ clinical_display = fhir.path resource "clinicalStatus.coding.first().display" ~}}
+      {{~ clinical_code = fhir.path resource "clinicalStatus.coding.first().code" ~}}
+      {{~ clinical_status = clinical_display ?? clinical_code ~}}
+      {{~ if clinical_status && clinical_status != "" ~}}
+      <span class="fhir-status-badge fhir-clinical-status fhir-status-{{ clinical_code | string.downcase }}" title="{{ l10n.t "Condition.ClinicalStatus" }}">
+        {{ clinical_status }}
+      </span>
+      {{~ end ~}}
+      {{~ # Verification Status ~}}
+      {{~ if (fhir.exists resource "verificationStatus") ~}}
+      {{~ verif_display = fhir.path resource "verificationStatus.coding.first().display" ~}}
+      {{~ verif_code = fhir.path resource "verificationStatus.coding.first().code" ~}}
+      <span class="fhir-status-badge fhir-verification-status fhir-status-{{ verif_code | string.downcase }}" title="{{ l10n.t "Condition.VerificationStatus" }}">
+        {{ verif_display ?? verif_code }}
+      </span>
+      {{~ end ~}}
+      {{~ # Severity (highlighted if present) ~}}
+      {{~ if (fhir.exists resource "severity") ~}}
+      {{~ sev_display = fhir.path resource "severity.coding.first().display" ~}}
+      {{~ sev_code = fhir.path resource "severity.coding.first().code" ~}}
+      <span class="fhir-severity-badge fhir-severity-{{ sev_code | string.downcase }}" title="{{ l10n.t "Condition.Severity" }}">
+        {{ sev_display ?? sev_code }}
+      </span>
+      {{~ end ~}}
+    </div>
+  </div>
+
+  {{~ # --- Clinical Summary Section --- ~}}
+  <div class="fhir-section fhir-clinical-summary">
+    <h4>{{ l10n.t "Condition.Section.ClinicalSummary" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Category ~}}
+      {{~ if (fhir.exists resource "category") ~}}
+      {{~ cat_count = fhir.count resource "category" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Category" }}</dt>
+        <dd>
+          {{~ for i in 0..(cat_count - 1) ~}}
+            {{~ cat_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+            {{~ cat_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+            <span class="fhir-category-tag">{{ cat_display ?? cat_code }}</span>
+            {{~ if i < (cat_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Code (full display with system) ~}}
+      {{~ if (fhir.exists resource "code") ~}}
+      {{~ code_system = fhir.path resource "code.coding.first().system" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Code" }}</dt>
+        <dd>
+          {{ condition_title }}
+          {{~ if code_code && code_code != "" ~}}
+          <code class="fhir-code">({{ code_code }})</code>
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Body Site ~}}
+      {{~ if (fhir.exists resource "bodySite") ~}}
+      {{~ bs_count = fhir.count resource "bodySite" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.BodySite" }}</dt>
+        <dd>
+          {{~ for i in 0..(bs_count - 1) ~}}
+            {{~ bs_display = fhir.path resource ("bodySite[" + i + "].coding.first().display") ~}}
+            {{~ bs_text = fhir.path resource ("bodySite[" + i + "].text") ~}}
+            {{~ bs_code = fhir.path resource ("bodySite[" + i + "].coding.first().code") ~}}
+            {{ bs_display ?? bs_text ?? bs_code }}{{~ if i < (bs_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+
+  {{~ # --- Timeline Section --- ~}}
+  {{~ has_timeline = (fhir.exists resource "onsetDateTime") || (fhir.exists resource "onsetAge") || (fhir.exists resource "onsetPeriod") || (fhir.exists resource "onsetRange") || (fhir.exists resource "onsetString") || (fhir.exists resource "abatementDateTime") || (fhir.exists resource "abatementAge") || (fhir.exists resource "abatementPeriod") || (fhir.exists resource "abatementRange") || (fhir.exists resource "abatementString") || (fhir.exists resource "recordedDate") ~}}
+  {{~ if has_timeline ~}}
+  <div class="fhir-section fhir-timeline">
+    <h4>{{ l10n.t "Condition.Section.Timeline" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Onset ~}}
+      {{~ if (fhir.exists resource "onsetDateTime") ~}}
+      {{~ onset_dt = fhir.path resource "onsetDateTime" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Onset" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ onset_dt }}">{{ fhir.format_datetime onset_dt }}</span></dd>
+      </div>
+      {{~ else if (fhir.exists resource "onsetAge") ~}}
+      {{~ onset_age_value = fhir.path resource "onsetAge.value" ~}}
+      {{~ onset_age_unit = fhir.path resource "onsetAge.unit" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Onset" }}</dt>
+        <dd>{{ onset_age_value }} {{ onset_age_unit }}</dd>
+      </div>
+      {{~ else if (fhir.exists resource "onsetPeriod") ~}}
+      {{~ onset_start = fhir.path resource "onsetPeriod.start" ~}}
+      {{~ onset_end = fhir.path resource "onsetPeriod.end" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Onset" }}</dt>
+        <dd>
+          {{~ if onset_start ~}}<span class="fhir-datetime" title="{{ onset_start }}">{{ fhir.format_datetime onset_start }}</span>{{~ end ~}}
+          {{~ if onset_start && onset_end ~}} - {{~ end ~}}
+          {{~ if onset_end ~}}<span class="fhir-datetime" title="{{ onset_end }}">{{ fhir.format_datetime onset_end }}</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ else if (fhir.exists resource "onsetRange") ~}}
+      {{~ onset_low = fhir.path resource "onsetRange.low.value" ~}}
+      {{~ onset_high = fhir.path resource "onsetRange.high.value" ~}}
+      {{~ onset_unit = fhir.path resource "onsetRange.low.unit" ?? fhir.path resource "onsetRange.high.unit" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Onset" }}</dt>
+        <dd>
+          {{~ if onset_low ~}}{{ onset_low }}{{~ end ~}}
+          {{~ if onset_low && onset_high ~}} - {{~ end ~}}
+          {{~ if onset_high ~}}{{ onset_high }}{{~ end ~}}
+          {{~ if onset_unit ~}} {{ onset_unit }}{{~ end ~}}
+        </dd>
+      </div>
+      {{~ else if (fhir.exists resource "onsetString") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Onset" }}</dt>
+        <dd>{{ fhir.path resource "onsetString" }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Abatement ~}}
+      {{~ if (fhir.exists resource "abatementDateTime") ~}}
+      {{~ abate_dt = fhir.path resource "abatementDateTime" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Abatement" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ abate_dt }}">{{ fhir.format_datetime abate_dt }}</span></dd>
+      </div>
+      {{~ else if (fhir.exists resource "abatementAge") ~}}
+      {{~ abate_age_value = fhir.path resource "abatementAge.value" ~}}
+      {{~ abate_age_unit = fhir.path resource "abatementAge.unit" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Abatement" }}</dt>
+        <dd>{{ abate_age_value }} {{ abate_age_unit }}</dd>
+      </div>
+      {{~ else if (fhir.exists resource "abatementPeriod") ~}}
+      {{~ abate_start = fhir.path resource "abatementPeriod.start" ~}}
+      {{~ abate_end = fhir.path resource "abatementPeriod.end" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Abatement" }}</dt>
+        <dd>
+          {{~ if abate_start ~}}<span class="fhir-datetime" title="{{ abate_start }}">{{ fhir.format_datetime abate_start }}</span>{{~ end ~}}
+          {{~ if abate_start && abate_end ~}} - {{~ end ~}}
+          {{~ if abate_end ~}}<span class="fhir-datetime" title="{{ abate_end }}">{{ fhir.format_datetime abate_end }}</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ else if (fhir.exists resource "abatementString") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Abatement" }}</dt>
+        <dd>{{ fhir.path resource "abatementString" }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Recorded Date ~}}
+      {{~ if (fhir.exists resource "recordedDate") ~}}
+      {{~ recorded_dt = fhir.path resource "recordedDate" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.RecordedDate" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ recorded_dt }}">{{ fhir.format_datetime recorded_dt }}</span></dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Subject and Context Section --- ~}}
+  <div class="fhir-section fhir-context">
+    <h4>{{ l10n.t "Condition.Section.Context" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Subject ~}}
+      {{~ subj_display = fhir.path resource "subject.display" ~}}
+      {{~ subj_reference = fhir.path resource "subject.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Subject" }}</dt>
+        <dd>{{ subj_display ?? subj_reference }}</dd>
+      </div>
+      {{~ # Encounter ~}}
+      {{~ if (fhir.exists resource "encounter") ~}}
+      {{~ enc_display = fhir.path resource "encounter.display" ~}}
+      {{~ enc_reference = fhir.path resource "encounter.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Encounter" }}</dt>
+        <dd>{{ enc_display ?? enc_reference }}</dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+
+  {{~ # --- Participants Section --- ~}}
+  {{~ has_participants = (fhir.exists resource "recorder") || (fhir.exists resource "asserter") || (fhir.exists resource "participant") ~}}
+  {{~ if has_participants ~}}
+  <div class="fhir-section fhir-participants">
+    <h4>{{ l10n.t "Condition.Section.Participants" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Recorder ~}}
+      {{~ if (fhir.exists resource "recorder") ~}}
+      {{~ rec_display = fhir.path resource "recorder.display" ~}}
+      {{~ rec_reference = fhir.path resource "recorder.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Recorder" }}</dt>
+        <dd>{{ rec_display ?? rec_reference }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Asserter ~}}
+      {{~ if (fhir.exists resource "asserter") ~}}
+      {{~ assert_display = fhir.path resource "asserter.display" ~}}
+      {{~ assert_reference = fhir.path resource "asserter.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Asserter" }}</dt>
+        <dd>{{ assert_display ?? assert_reference }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Participant (R5+) ~}}
+      {{~ if (fhir.exists resource "participant") ~}}
+      {{~ part_count = fhir.count resource "participant" ~}}
+      {{~ for i in 0..(part_count - 1) ~}}
+        {{~ part_function = fhir.path resource ("participant[" + i + "].function.coding.first().display") ~}}
+        {{~ part_actor_display = fhir.path resource ("participant[" + i + "].actor.display") ~}}
+        {{~ part_actor_ref = fhir.path resource ("participant[" + i + "].actor.reference") ~}}
+      <div class="fhir-field">
+        <dt>{{ part_function ?? (l10n.t "Condition.Participant") }}</dt>
+        <dd>{{ part_actor_display ?? part_actor_ref }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Stage Section --- ~}}
+  {{~ if (fhir.exists resource "stage") ~}}
+  <div class="fhir-section fhir-stage">
+    <h4>{{ l10n.t "Condition.Section.Stage" }}</h4>
+    {{~ stage_count = fhir.count resource "stage" ~}}
+    {{~ for i in 0..(stage_count - 1) ~}}
+    <dl class="fhir-details fhir-stage-entry">
+      {{~ # Summary ~}}
+      {{~ stage_summary_display = fhir.path resource ("stage[" + i + "].summary.coding.first().display") ~}}
+      {{~ stage_summary_code = fhir.path resource ("stage[" + i + "].summary.coding.first().code") ~}}
+      {{~ if stage_summary_display || stage_summary_code ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Stage.Summary" }}</dt>
+        <dd>{{ stage_summary_display ?? stage_summary_code }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Type ~}}
+      {{~ stage_type_display = fhir.path resource ("stage[" + i + "].type.coding.first().display") ~}}
+      {{~ stage_type_code = fhir.path resource ("stage[" + i + "].type.coding.first().code") ~}}
+      {{~ if stage_type_display || stage_type_code ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Stage.Type" }}</dt>
+        <dd>{{ stage_type_display ?? stage_type_code }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Assessment ~}}
+      {{~ if (fhir.exists resource ("stage[" + i + "].assessment")) ~}}
+      {{~ assess_count = fhir.count resource ("stage[" + i + "].assessment") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Stage.Assessment" }}</dt>
+        <dd>
+          <ul class="fhir-reference-list">
+            {{~ for j in 0..(assess_count - 1) ~}}
+              {{~ assess_display = fhir.path resource ("stage[" + i + "].assessment[" + j + "].display") ~}}
+              {{~ assess_ref = fhir.path resource ("stage[" + i + "].assessment[" + j + "].reference") ~}}
+              <li>{{ assess_display ?? assess_ref }}</li>
+            {{~ end ~}}
+          </ul>
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+    {{~ end ~}}
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Evidence Section --- ~}}
+  {{~ if (fhir.exists resource "evidence") ~}}
+  <div class="fhir-section fhir-evidence">
+    <h4>{{ l10n.t "Condition.Section.Evidence" }}</h4>
+    {{~ ev_count = fhir.count resource "evidence" ~}}
+    {{~ for i in 0..(ev_count - 1) ~}}
+    <dl class="fhir-details fhir-evidence-entry">
+      {{~ # Code ~}}
+      {{~ ev_code_display = fhir.path resource ("evidence[" + i + "].code.first().coding.first().display") ~}}
+      {{~ ev_code_code = fhir.path resource ("evidence[" + i + "].code.first().coding.first().code") ~}}
+      {{~ if ev_code_display || ev_code_code ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Evidence.Code" }}</dt>
+        <dd>{{ ev_code_display ?? ev_code_code }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Detail ~}}
+      {{~ if (fhir.exists resource ("evidence[" + i + "].detail")) ~}}
+      {{~ detail_count = fhir.count resource ("evidence[" + i + "].detail") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Evidence.Detail" }}</dt>
+        <dd>
+          <ul class="fhir-reference-list">
+            {{~ for j in 0..(detail_count - 1) ~}}
+              {{~ detail_display = fhir.path resource ("evidence[" + i + "].detail[" + j + "].display") ~}}
+              {{~ detail_ref = fhir.path resource ("evidence[" + i + "].detail[" + j + "].reference") ~}}
+              <li>{{ detail_display ?? detail_ref }}</li>
+            {{~ end ~}}
+          </ul>
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+    {{~ end ~}}
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Notes Section --- ~}}
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-section fhir-notes">
+    <h4>{{ l10n.t "Condition.Section.Notes" }}</h4>
+    <ul class="fhir-notes-list">
+      {{~ note_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(note_count - 1) ~}}
+        {{~ note_text = fhir.path resource ("note[" + i + "].text") ~}}
+        {{~ note_time = fhir.path resource ("note[" + i + "].time") ~}}
+        {{~ note_author = fhir.path resource ("note[" + i + "].authorReference.display") ~}}
+        <li>
+          <p>{{ note_text }}</p>
+          {{~ if note_author || note_time ~}}
+          <p class="fhir-note-metadata">
+            {{~ if note_author ~}}<span class="fhir-note-author">{{ note_author }}</span>{{~ end ~}}
+            {{~ if note_time ~}}
+              {{~ if note_author ~}} - {{~ end ~}}
+              <span class="fhir-datetime" title="{{ note_time }}">{{ fhir.format_datetime note_time }}</span>
+            {{~ end ~}}
+          </p>
+          {{~ end ~}}
+        </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Technical Details --- ~}}
+  {{~ if (fhir.exists resource "id") ~}}
+  <div class="fhir-technical-details">
+    <h5>{{ l10n.t "Common.TechnicalDetails" }}</h5>
+    <dl class="fhir-details">
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.ResourceId" }}</dt>
+        <dd><code>{{ fhir.path resource "id" }}</code></dd>
+      </div>
+      {{~ # Identifiers ~}}
+      {{~ if (fhir.exists resource "identifier") ~}}
+      {{~ id_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(id_count - 1) ~}}
+        {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+        {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Condition.Identifier" }}</dt>
+        <dd>
+          <code>{{ id_value }}</code>
+          {{~ if id_system && id_system != "" ~}} <span class="fhir-identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "meta.versionId") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.VersionId" }}</dt>
+        <dd><code>{{ fhir.path resource "meta.versionId" }}</code></dd>
+      </div>
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "meta.lastUpdated") ~}}
+      {{~ last_updated = fhir.path resource "meta.lastUpdated" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.LastUpdated" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ last_updated }}">{{ fhir.format_datetime last_updated }}</span></dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+</div>

@@ -41,6 +41,10 @@ public static class NarrativeGeneratorServiceCollectionExtensions
     /// in the service collection before calling this method, as it is required by
     /// <see cref="FhirPathScriptFunctions"/>.
     /// </para>
+    /// <para>
+    /// <strong>Alternative Usage:</strong> For scenarios without dependency injection,
+    /// use the static factory method <see cref="FhirNarrativeGenerator.Create(ISchema, IStringLocalizer?)"/>.
+    /// </para>
     /// </remarks>
     /// <example>
     /// <code>
@@ -76,8 +80,16 @@ public static class NarrativeGeneratorServiceCollectionExtensions
         // Register XHTML sanitizer
         services.AddSingleton<XhtmlSanitizer>();
 
-        // Register main narrative generator
-        services.AddSingleton<INarrativeGenerator, FhirNarrativeGenerator>();
+        // Register main narrative generator (requires ISchema, ITemplateResolver, NarrativeTemplateEngine, XhtmlSanitizer)
+        services.AddSingleton<INarrativeGenerator>(sp =>
+        {
+            var templateResolver = sp.GetRequiredService<ITemplateResolver>();
+            var templateEngine = sp.GetRequiredService<NarrativeTemplateEngine>();
+            var sanitizer = sp.GetRequiredService<XhtmlSanitizer>();
+            var schema = sp.GetRequiredService<ISchema>();
+
+            return new FhirNarrativeGenerator(templateResolver, templateEngine, sanitizer, schema);
+        });
 
         return services;
     }

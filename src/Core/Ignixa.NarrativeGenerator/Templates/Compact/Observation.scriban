@@ -1,0 +1,142 @@
+{{~ # Single-line compact template for Observation ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Observation ~}}
+{{~ # Generates dense, token-efficient text for AI/ML embedding models ~}}
+{{~ # Format: "CODE: VALUE UNIT (INTERP) [Category] @ DATE. Subject: NAME." ~}}
+{{~ # --- Extract code (observation type) --- ~}}
+{{~ code_display = fhirpath resource "code.coding.first().display" ~}}
+{{~ code_text = fhirpath resource "code.text" ~}}
+{{~ code_code = fhirpath resource "code.coding.first().code" ~}}
+{{~ obs_code = code_display ?? code_text ?? code_code ~}}
+{{~ # --- Extract value (all possible value[x] types) --- ~}}
+{{~ value_str = "" ~}}
+{{~ if (fhir.exists resource "valueQuantity") ~}}
+{{~ qty_value = fhirpath resource "valueQuantity.value" ~}}
+{{~ qty_unit_prim = fhirpath resource "valueQuantity.unit" ~}}
+{{~ qty_code_prim = fhirpath resource "valueQuantity.code" ~}}
+{{~ qty_unit = qty_unit_prim ?? qty_code_prim ~}}
+{{~ qty_comparator = fhirpath resource "valueQuantity.comparator" ~}}
+{{~ if qty_comparator && qty_comparator != "" ~}}
+{{~ value_str = qty_comparator + " " + qty_value ~}}
+{{~ else ~}}
+{{~ value_str = qty_value ~}}
+{{~ end ~}}
+{{~ if qty_unit && qty_unit != "" ~}}
+{{~ value_str = value_str + " " + qty_unit ~}}
+{{~ end ~}}
+{{~ else if (fhir.exists resource "valueCodeableConcept") ~}}
+{{~ cc_display = fhirpath resource "valueCodeableConcept.coding.first().display" ~}}
+{{~ cc_text = fhirpath resource "valueCodeableConcept.text" ~}}
+{{~ cc_code = fhirpath resource "valueCodeableConcept.coding.first().code" ~}}
+{{~ value_str = cc_display ?? cc_text ?? cc_code ~}}
+{{~ else if (fhir.exists resource "valueString") ~}}
+{{~ value_str = fhirpath resource "valueString" ~}}
+{{~ else if (fhir.exists resource "valueBoolean") ~}}
+{{~ bool_val = fhirpath resource "valueBoolean" ~}}
+{{~ value_str = bool_val == "true" ? "Yes" : "No" ~}}
+{{~ else if (fhir.exists resource "valueInteger") ~}}
+{{~ value_str = fhirpath resource "valueInteger" ~}}
+{{~ else if (fhir.exists resource "valueRange") ~}}
+{{~ range_low = fhirpath resource "valueRange.low.value" ~}}
+{{~ range_high = fhirpath resource "valueRange.high.value" ~}}
+{{~ range_unit_low = fhirpath resource "valueRange.low.unit" ~}}
+{{~ range_unit_high = fhirpath resource "valueRange.high.unit" ~}}
+{{~ range_unit = range_unit_low ?? range_unit_high ~}}
+{{~ if range_low && range_low != "" ~}}
+{{~ value_str = range_low ~}}
+{{~ end ~}}
+{{~ if range_low && range_high ~}}
+{{~ value_str = value_str + "-" + range_high ~}}
+{{~ else if range_high && range_high != "" ~}}
+{{~ value_str = range_high ~}}
+{{~ end ~}}
+{{~ if range_unit && range_unit != "" ~}}
+{{~ value_str = value_str + " " + range_unit ~}}
+{{~ end ~}}
+{{~ else if (fhir.exists resource "valueRatio") ~}}
+{{~ ratio_num = fhirpath resource "valueRatio.numerator.value" ~}}
+{{~ ratio_num_unit = fhirpath resource "valueRatio.numerator.unit" ~}}
+{{~ ratio_denom = fhirpath resource "valueRatio.denominator.value" ~}}
+{{~ ratio_denom_unit = fhirpath resource "valueRatio.denominator.unit" ~}}
+{{~ value_str = ratio_num ~}}
+{{~ if ratio_num_unit && ratio_num_unit != "" ~}}
+{{~ value_str = value_str + " " + ratio_num_unit ~}}
+{{~ end ~}}
+{{~ value_str = value_str + " : " + ratio_denom ~}}
+{{~ if ratio_denom_unit && ratio_denom_unit != "" ~}}
+{{~ value_str = value_str + " " + ratio_denom_unit ~}}
+{{~ end ~}}
+{{~ else if (fhir.exists resource "valueDateTime") ~}}
+{{~ value_str = fhirpath resource "valueDateTime" ~}}
+{{~ else if (fhir.exists resource "valueTime") ~}}
+{{~ value_str = fhirpath resource "valueTime" ~}}
+{{~ else if (fhir.exists resource "valuePeriod") ~}}
+{{~ period_start = fhirpath resource "valuePeriod.start" ~}}
+{{~ period_end = fhirpath resource "valuePeriod.end" ~}}
+{{~ if period_start && period_start != "" ~}}
+{{~ value_str = period_start ~}}
+{{~ end ~}}
+{{~ if period_start && period_end ~}}
+{{~ value_str = value_str + " to " + period_end ~}}
+{{~ else if period_end && period_end != "" ~}}
+{{~ value_str = "to " + period_end ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Handle components (e.g., Blood Pressure) --- ~}}
+{{~ has_components = fhir.exists resource "component" ~}}
+{{~ if has_components ~}}
+{{~ comp_count = fhir.count resource "component" ~}}
+{{~ for i in 0..(comp_count - 1) ~}}
+{{~ comp_code_display = fhirpath resource ("component[" + i + "].code.coding.first().display") ~}}
+{{~ comp_code_text = fhirpath resource ("component[" + i + "].code.text") ~}}
+{{~ comp_code_code = fhirpath resource ("component[" + i + "].code.coding.first().code") ~}}
+{{~ comp_code = comp_code_display ?? comp_code_text ?? comp_code_code ~}}
+{{~ comp_qty_value = fhirpath resource ("component[" + i + "].valueQuantity.value") ~}}
+{{~ comp_qty_unit = fhirpath resource ("component[" + i + "].valueQuantity.unit") ~}}
+{{~ comp_cc_display = fhirpath resource ("component[" + i + "].valueCodeableConcept.coding.first().display") ~}}
+{{~ comp_string = fhirpath resource ("component[" + i + "].valueString") ~}}
+{{~ if i > 0 ~}}
+{{~ value_str = value_str + ", " ~}}
+{{~ end ~}}
+{{~ if value_str == "" ~}}
+{{~ value_str = comp_code + " " + comp_qty_value ~}}
+{{~ else ~}}
+{{~ value_str = value_str + comp_code + " " + comp_qty_value ~}}
+{{~ end ~}}
+{{~ if comp_qty_unit && comp_qty_unit != "" ~}}
+{{~ value_str = value_str + " " + comp_qty_unit ~}}
+{{~ else if comp_cc_display && comp_cc_display != "" ~}}
+{{~ value_str = value_str + comp_cc_display ~}}
+{{~ else if comp_string && comp_string != "" ~}}
+{{~ value_str = value_str + comp_string ~}}
+{{~ end ~}}
+{{~ comp_interp_code = fhirpath resource ("component[" + i + "].interpretation.first().coding.first().code") ~}}
+{{~ if comp_interp_code && comp_interp_code != "" ~}}
+{{~ value_str = value_str + " (" + comp_interp_code + ")" ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Extract interpretation --- ~}}
+{{~ interp_display = fhirpath resource "interpretation.first().coding.first().display" ~}}
+{{~ interp_code = fhirpath resource "interpretation.first().coding.first().code" ~}}
+{{~ interp = interp_display ?? interp_code ~}}
+{{~ # --- Extract category --- ~}}
+{{~ cat_display = fhirpath resource "category.first().coding.first().display" ~}}
+{{~ cat_code = fhirpath resource "category.first().coding.first().code" ~}}
+{{~ category = cat_display ?? cat_code ~}}
+{{~ # --- Extract effective date/time --- ~}}
+{{~ eff_dt = fhirpath resource "effectiveDateTime" ~}}
+{{~ eff_inst = fhirpath resource "effectiveInstant" ~}}
+{{~ eff_period_start = fhirpath resource "effectivePeriod.start" ~}}
+{{~ effective = eff_dt ?? eff_inst ?? eff_period_start ~}}
+{{~ # --- Extract subject --- ~}}
+{{~ subj_display = fhirpath resource "subject.display" ~}}
+{{~ subj_reference = fhirpath resource "subject.reference" ~}}
+{{~ subject = subj_display ?? subj_reference ~}}
+{{~ # --- Extract status --- ~}}
+{{~ status = fhirpath resource "status" ~}}
+{{~ # --- Extract data absent reason --- ~}}
+{{~ dar_display = fhirpath resource "dataAbsentReason.coding.first().display" ~}}
+{{~ dar_code = fhirpath resource "dataAbsentReason.coding.first().code" ~}}
+{{~ data_absent = dar_display ?? dar_code ~}}
+{{~ # --- Build output --- ~}}
+{{ obs_code }}:{{~ if value_str && value_str != "" ~}} {{ value_str }}{{~ end ~}}{{~ if data_absent && data_absent != "" ~}} [{{ data_absent }}]{{~ end ~}}{{~ if interp && interp != "" ~}} ({{ interp }}){{~ end ~}}{{~ if category && category != "" ~}} [{{ category }}]{{~ end ~}}{{~ if effective && effective != "" ~}} @ {{ effective }}{{~ end ~}}.{{~ if subject && subject != "" ~}} Subject: {{ subject }}.{{~ end ~}}{{~ if status && status != "" && status != "final" && status != "registered" ~}} Status: {{ status }}.{{~ end ~}}

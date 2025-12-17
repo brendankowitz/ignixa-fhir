@@ -1,0 +1,56 @@
+{{~ # Generic Compact Template (Fallback) ~}}
+{{~ # Generates single-line condensed format for AI/ML embedding models ~}}
+{{~ # Works with all FHIR versions (STU3, R4, R4B, R5, R6) ~}}
+{{~ # Format: "[DisplayValue]. [Key fields]. [Identifiers]. [Status]." ~}}
+{{~ # Extract common resource fields ~}}
+{{~ res_type = resourceType ~}}
+{{~ res_id = fhirpath resource "id" ~}}
+{{~ # Try to extract a human-readable display value using common patterns ~}}
+{{~ display_title = fhirpath resource "title" ~}}
+{{~ display_name = fhirpath resource "name" ~}}
+{{~ display_code = fhirpath resource "code.coding.first().display" ~}}
+{{~ display_code_text = fhirpath resource "code.text" ~}}
+{{~ display_description = fhirpath resource "description" ~}}
+{{~ # Select best display value - use conditionals instead of ?? operator ~}}
+{{~ display_val = "" ~}}
+{{~ if display_title && display_title != "" ~}}
+{{~ display_val = display_title ~}}
+{{~ else if display_name && display_name != "" ~}}
+{{~ display_val = display_name ~}}
+{{~ else if display_code && display_code != "" ~}}
+{{~ display_val = display_code ~}}
+{{~ else if display_code_text && display_code_text != "" ~}}
+{{~ display_val = display_code_text ~}}
+{{~ else if display_description && display_description != "" ~}}
+{{~ display_val = display_description ~}}
+{{~ end ~}}
+{{~ # Extract common status-related fields ~}}
+{{~ res_status = fhirpath resource "status" ~}}
+{{~ # Extract subject/patient reference if present ~}}
+{{~ subject_display = fhirpath resource "subject.display" ~}}
+{{~ patient_display = fhirpath resource "patient.display" ~}}
+{{~ subj = "" ~}}
+{{~ if subject_display && subject_display != "" ~}}
+{{~ subj = subject_display ~}}
+{{~ else if patient_display && patient_display != "" ~}}
+{{~ subj = patient_display ~}}
+{{~ end ~}}
+{{~ # Extract date information ~}}
+{{~ effective_date = fhirpath resource "effectiveDateTime" ~}}
+{{~ recorded_date = fhirpath resource "recordedDate" ~}}
+{{~ authored = fhirpath resource "authored" ~}}
+{{~ created = fhirpath resource "created" ~}}
+{{~ date_val = "" ~}}
+{{~ if effective_date && effective_date != "" ~}}
+{{~ date_val = effective_date ~}}
+{{~ else if recorded_date && recorded_date != "" ~}}
+{{~ date_val = recorded_date ~}}
+{{~ else if authored && authored != "" ~}}
+{{~ date_val = authored ~}}
+{{~ else if created && created != "" ~}}
+{{~ date_val = created ~}}
+{{~ end ~}}
+{{~ # Extract first identifier ~}}
+{{~ first_identifier = fhirpath resource "identifier.first().value" ~}}
+{{~ # Build output ~}}
+{{~ if display_val && display_val != "" ~}}{{ display_val }}{{~ end ~}}.{{~ if subj && subj != "" ~}} Subject: {{ subj }}.{{~ end ~}}{{~ if res_status && res_status != "" ~}} Status: {{ res_status }}.{{~ end ~}}{{~ if date_val && date_val != "" ~}} Date: {{ date_val }}.{{~ end ~}}{{~ if first_identifier && first_identifier != "" ~}} ID: {{ first_identifier }}.{{~ end ~}}{{~ if res_id && res_id != "" ~}} ResID: {{ res_id }}.{{~ end ~}}

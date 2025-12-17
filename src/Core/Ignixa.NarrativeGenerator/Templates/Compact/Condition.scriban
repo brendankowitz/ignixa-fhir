@@ -1,0 +1,120 @@
+{{~ # Single-line compact template for Condition ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Condition ~}}
+{{~ # Generates dense, token-efficient text for AI/ML embedding models ~}}
+{{~ # Format: "CODE (CLINICAL_STATUS, VERIFICATION, SEVERITY). Onset: DATE. Subject: NAME." ~}}
+{{~ # --- Extract code (condition name) --- ~}}
+{{~ code_display = fhirpath resource "code.coding.first().display" ~}}
+{{~ code_text = fhirpath resource "code.text" ~}}
+{{~ code_code = fhirpath resource "code.coding.first().code" ~}}
+{{~ condition_code = code_display ?? code_text ?? code_code ~}}
+{{~ # --- Extract clinical status --- ~}}
+{{~ clinical_display = fhirpath resource "clinicalStatus.coding.first().display" ~}}
+{{~ clinical_code = fhirpath resource "clinicalStatus.coding.first().code" ~}}
+{{~ clinical_status = clinical_display ?? clinical_code ~}}
+{{~ # --- Extract verification status --- ~}}
+{{~ verif_display = fhirpath resource "verificationStatus.coding.first().display" ~}}
+{{~ verif_code = fhirpath resource "verificationStatus.coding.first().code" ~}}
+{{~ verif_status = verif_display ?? verif_code ~}}
+{{~ # --- Extract severity --- ~}}
+{{~ sev_display = fhirpath resource "severity.coding.first().display" ~}}
+{{~ sev_code = fhirpath resource "severity.coding.first().code" ~}}
+{{~ severity = sev_display ?? sev_code ~}}
+{{~ # --- Extract onset --- ~}}
+{{~ onset_str = "" ~}}
+{{~ if (fhir.exists resource "onsetDateTime") ~}}
+{{~ onset_dt = fhirpath resource "onsetDateTime" ~}}
+{{~ age_years = fhir.calculate_age onset_dt ~}}
+{{~ if age_years && age_years != "" && age_years != "0" ~}}
+{{~ # Extract just the numeric part for compactness ~}}
+{{~ age_num = age_years | string.split " " | array.first ~}}
+{{~ onset_str = onset_dt + " (" + age_num + "y ago)" ~}}
+{{~ else ~}}
+{{~ onset_str = onset_dt ~}}
+{{~ end ~}}
+{{~ else if (fhir.exists resource "onsetAge") ~}}
+{{~ onset_age_value = fhirpath resource "onsetAge.value" ~}}
+{{~ onset_age_unit = fhirpath resource "onsetAge.unit" ~}}
+{{~ onset_str = onset_age_value + " " + onset_age_unit ~}}
+{{~ else if (fhir.exists resource "onsetPeriod") ~}}
+{{~ onset_period_start = fhirpath resource "onsetPeriod.start" ~}}
+{{~ onset_period_end = fhirpath resource "onsetPeriod.end" ~}}
+{{~ if onset_period_start && onset_period_start != "" ~}}
+{{~ onset_str = onset_period_start ~}}
+{{~ end ~}}
+{{~ if onset_period_start && onset_period_end ~}}
+{{~ onset_str = onset_str + " to " + onset_period_end ~}}
+{{~ else if onset_period_end && onset_period_end != "" ~}}
+{{~ onset_str = "to " + onset_period_end ~}}
+{{~ end ~}}
+{{~ else if (fhir.exists resource "onsetRange") ~}}
+{{~ onset_low = fhirpath resource "onsetRange.low.value" ~}}
+{{~ onset_high = fhirpath resource "onsetRange.high.value" ~}}
+{{~ onset_unit_low = fhirpath resource "onsetRange.low.unit" ~}}
+{{~ onset_unit_high = fhirpath resource "onsetRange.high.unit" ~}}
+{{~ onset_unit = onset_unit_low ?? onset_unit_high ~}}
+{{~ if onset_low && onset_low != "" ~}}
+{{~ onset_str = onset_low ~}}
+{{~ end ~}}
+{{~ if onset_low && onset_high ~}}
+{{~ onset_str = onset_str + "-" + onset_high ~}}
+{{~ else if onset_high && onset_high != "" ~}}
+{{~ onset_str = onset_high ~}}
+{{~ end ~}}
+{{~ if onset_unit && onset_unit != "" ~}}
+{{~ onset_str = onset_str + " " + onset_unit ~}}
+{{~ end ~}}
+{{~ else if (fhir.exists resource "onsetString") ~}}
+{{~ onset_str = fhirpath resource "onsetString" ~}}
+{{~ end ~}}
+{{~ # --- Extract abatement --- ~}}
+{{~ abate_str = "" ~}}
+{{~ if (fhir.exists resource "abatementDateTime") ~}}
+{{~ abate_str = fhirpath resource "abatementDateTime" ~}}
+{{~ else if (fhir.exists resource "abatementAge") ~}}
+{{~ abate_age_value = fhirpath resource "abatementAge.value" ~}}
+{{~ abate_age_unit = fhirpath resource "abatementAge.unit" ~}}
+{{~ abate_str = abate_age_value + " " + abate_age_unit ~}}
+{{~ else if (fhir.exists resource "abatementString") ~}}
+{{~ abate_str = fhirpath resource "abatementString" ~}}
+{{~ else if (fhir.exists resource "abatementBoolean") ~}}
+{{~ abate_bool = fhirpath resource "abatementBoolean" ~}}
+{{~ if abate_bool == "true" ~}}
+{{~ abate_str = "Resolved" ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Extract category --- ~}}
+{{~ cat_display = fhirpath resource "category.first().coding.first().display" ~}}
+{{~ cat_code = fhirpath resource "category.first().coding.first().code" ~}}
+{{~ category = cat_display ?? cat_code ~}}
+{{~ # --- Extract body site --- ~}}
+{{~ bs_display = fhirpath resource "bodySite.first().coding.first().display" ~}}
+{{~ bs_text = fhirpath resource "bodySite.first().text" ~}}
+{{~ bs_code = fhirpath resource "bodySite.first().coding.first().code" ~}}
+{{~ body_site = bs_display ?? bs_text ?? bs_code ~}}
+{{~ # --- Extract subject --- ~}}
+{{~ subj_display = fhirpath resource "subject.display" ~}}
+{{~ subj_reference = fhirpath resource "subject.reference" ~}}
+{{~ subject = subj_display ?? subj_reference ~}}
+{{~ # --- Extract recorded date --- ~}}
+{{~ recorded_dt = fhirpath resource "recordedDate" ~}}
+{{~ # --- Build status parentheses --- ~}}
+{{~ status_parts = "" ~}}
+{{~ if clinical_status && clinical_status != "" ~}}
+{{~ status_parts = clinical_status ~}}
+{{~ end ~}}
+{{~ if verif_status && verif_status != "" ~}}
+{{~ if status_parts != "" ~}}
+{{~ status_parts = status_parts + ", " + verif_status ~}}
+{{~ else ~}}
+{{~ status_parts = verif_status ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ if severity && severity != "" ~}}
+{{~ if status_parts != "" ~}}
+{{~ status_parts = status_parts + ", " + severity ~}}
+{{~ else ~}}
+{{~ status_parts = severity ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Build output --- ~}}
+{{~ if condition_code && condition_code != "" ~}}{{ condition_code }}{{~ end ~}}{{~ if status_parts && status_parts != "" ~}} ({{ status_parts }}){{~ end ~}}.{{~ if onset_str && onset_str != "" ~}} Onset: {{ onset_str }}.{{~ end ~}}{{~ if abate_str && abate_str != "" ~}} Abated: {{ abate_str }}.{{~ end ~}}{{~ if body_site && body_site != "" ~}} Body Site: {{ body_site }}.{{~ end ~}}{{~ if category && category != "" ~}} [{{ category }}].{{~ end ~}}{{~ if recorded_dt && recorded_dt != "" ~}} Recorded: {{ recorded_dt }}.{{~ end ~}}{{~ if subject && subject != "" ~}} Subject: {{ subject }}.{{~ end ~}}

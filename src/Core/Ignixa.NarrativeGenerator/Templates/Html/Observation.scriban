@@ -1,0 +1,430 @@
+{{~ # Enhanced Scriban narrative template for Observation ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Observation ~}}
+{{~ # FHIR-compliant XHTML (HTML 4.0 chapters 7-11, 15) ~}}
+
+<div class="fhir-narrative fhir-observation" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  {{~ # --- Header Section --- ~}}
+  <div class="fhir-header">
+    {{~ code_display = fhir.path resource "code.coding.first().display" ~}}
+    {{~ code_text = fhir.path resource "code.text" ~}}
+    {{~ code_code = fhir.path resource "code.coding.first().code" ~}}
+    {{~ obs_title = code_display ?? code_text ?? code_code ~}}
+    <h3 class="fhir-resource-title">
+      {{~ if obs_title && obs_title != "" ~}}
+      {{ obs_title }}
+      <span class="fhir-resource-type-badge">({{ l10n.t "Observation.Title" }})</span>
+      {{~ else ~}}
+      {{ l10n.t "Observation.Title" }}
+      {{~ end ~}}
+    </h3>
+    {{~ # Status Badge ~}}
+    {{~ status = fhir.path resource "status" ~}}
+    <span class="fhir-status-badge fhir-status-{{ status }}" title="{{ l10n.t "Observation.Status" }}">
+      {{ l10n.t ("Observation.Status." + status) }}
+    </span>
+  </div>
+
+  {{~ # --- Primary Value Section (Most Important) --- ~}}
+  {{~ has_value = (fhir.exists resource "valueQuantity") || (fhir.exists resource "valueCodeableConcept") || (fhir.exists resource "valueString") || (fhir.exists resource "valueBoolean") || (fhir.exists resource "valueInteger") || (fhir.exists resource "valueRange") || (fhir.exists resource "valueRatio") || (fhir.exists resource "valueTime") || (fhir.exists resource "valueDateTime") || (fhir.exists resource "valuePeriod") ~}}
+  {{~ if has_value || (fhir.exists resource "dataAbsentReason") ~}}
+  {{~ has_ref_range = (fhir.exists resource "referenceRange") ~}}
+  <div class="fhir-section fhir-value-section fhir-primary">
+    <h4 class="visually-hidden">{{ l10n.t "Observation.Section.Value" }}</h4>
+    <div class="fhir-observation-value">
+      {{~ # Quantity Value ~}}
+      {{~ if (fhir.exists resource "valueQuantity") ~}}
+        {{~ qty_value = fhir.path resource "valueQuantity.value" ~}}
+        {{~ qty_unit = fhir.path resource "valueQuantity.unit" ~}}
+        {{~ qty_code = fhir.path resource "valueQuantity.code" ~}}
+        {{~ qty_comparator = fhir.path resource "valueQuantity.comparator" ~}}
+        <span class="fhir-value-quantity">
+          {{~ if qty_comparator && qty_comparator != "" ~}}<span class="fhir-comparator">{{ qty_comparator }}</span>{{~ end ~}}
+          <span class="fhir-value-number">{{ qty_value }}</span>
+          <span class="fhir-value-unit">{{ qty_unit ?? qty_code }}</span>
+        </span>
+      {{~ # CodeableConcept Value ~}}
+      {{~ else if (fhir.exists resource "valueCodeableConcept") ~}}
+        {{~ cc_display = fhir.path resource "valueCodeableConcept.coding.first().display" ~}}
+        {{~ cc_text = fhir.path resource "valueCodeableConcept.text" ~}}
+        {{~ cc_code = fhir.path resource "valueCodeableConcept.coding.first().code" ~}}
+        <span class="fhir-value-codeable">{{ cc_display ?? cc_text ?? cc_code }}</span>
+      {{~ # String Value ~}}
+      {{~ else if (fhir.exists resource "valueString") ~}}
+        <span class="fhir-value-string">{{ fhir.path resource "valueString" }}</span>
+      {{~ # Boolean Value ~}}
+      {{~ else if (fhir.exists resource "valueBoolean") ~}}
+        {{~ bool_val = fhir.path resource "valueBoolean" ~}}
+        <span class="fhir-value-boolean fhir-value-{{ bool_val }}">{{ (bool_val == "true") ? (l10n.t "Common.Yes") : (l10n.t "Common.No") }}</span>
+      {{~ # Integer Value ~}}
+      {{~ else if (fhir.exists resource "valueInteger") ~}}
+        <span class="fhir-value-integer">{{ fhir.path resource "valueInteger" }}</span>
+      {{~ # Range Value ~}}
+      {{~ else if (fhir.exists resource "valueRange") ~}}
+        {{~ range_low = fhir.path resource "valueRange.low.value" ~}}
+        {{~ range_high = fhir.path resource "valueRange.high.value" ~}}
+        {{~ range_unit = fhir.path resource "valueRange.low.unit" ?? fhir.path resource "valueRange.high.unit" ~}}
+        <span class="fhir-value-range">
+          {{~ if range_low && range_low != "" ~}}{{ range_low }}{{~ end ~}}
+          {{~ if range_low && range_high ~}} - {{~ end ~}}
+          {{~ if range_high && range_high != "" ~}}{{ range_high }}{{~ end ~}}
+          {{~ if range_unit && range_unit != "" ~}} {{ range_unit }}{{~ end ~}}
+        </span>
+      {{~ # Ratio Value ~}}
+      {{~ else if (fhir.exists resource "valueRatio") ~}}
+        {{~ ratio_num = fhir.path resource "valueRatio.numerator.value" ~}}
+        {{~ ratio_num_unit = fhir.path resource "valueRatio.numerator.unit" ~}}
+        {{~ ratio_denom = fhir.path resource "valueRatio.denominator.value" ~}}
+        {{~ ratio_denom_unit = fhir.path resource "valueRatio.denominator.unit" ~}}
+        <span class="fhir-value-ratio">
+          {{ ratio_num }}{{~ if ratio_num_unit ~}} {{ ratio_num_unit }}{{~ end ~}} : {{ ratio_denom }}{{~ if ratio_denom_unit ~}} {{ ratio_denom_unit }}{{~ end ~}}
+        </span>
+      {{~ # DateTime Value ~}}
+      {{~ else if (fhir.exists resource "valueDateTime") ~}}
+        {{~ dt_val = fhir.path resource "valueDateTime" ~}}
+        <span class="fhir-value-datetime fhir-datetime" title="{{ dt_val }}">{{ fhir.format_datetime dt_val }}</span>
+      {{~ # Time Value ~}}
+      {{~ else if (fhir.exists resource "valueTime") ~}}
+        <span class="fhir-value-time">{{ fhir.path resource "valueTime" }}</span>
+      {{~ # Period Value ~}}
+      {{~ else if (fhir.exists resource "valuePeriod") ~}}
+        {{~ period_start = fhir.path resource "valuePeriod.start" ~}}
+        {{~ period_end = fhir.path resource "valuePeriod.end" ~}}
+        <span class="fhir-value-period">
+          {{~ if period_start ~}}<span class="fhir-datetime" title="{{ period_start }}">{{ fhir.format_datetime period_start }}</span>{{~ end ~}}
+          {{~ if period_start && period_end ~}} - {{~ end ~}}
+          {{~ if period_end ~}}<span class="fhir-datetime" title="{{ period_end }}">{{ fhir.format_datetime period_end }}</span>{{~ end ~}}
+        </span>
+      {{~ end ~}}
+
+      {{~ # Interpretation Badge ~}}
+      {{~ if (fhir.exists resource "interpretation") ~}}
+        {{~ interp_display = fhir.path resource "interpretation.first().coding.first().display" ~}}
+        {{~ interp_code = fhir.path resource "interpretation.first().coding.first().code" ~}}
+        {{~ interp_text = interp_display ?? interp_code ~}}
+        <span class="fhir-interpretation-badge fhir-interpretation-{{ interp_code | string.downcase }}" title="{{ l10n.t "Observation.Interpretation" }}">
+          {{ interp_text }}
+        </span>
+      {{~ end ~}}
+    </div>
+
+    {{~ # Reference Range ~}}
+    {{~ if (fhir.exists resource "referenceRange") ~}}
+    <div class="fhir-reference-range">
+      <span class="fhir-label">{{ l10n.t "Observation.ReferenceRange" }}:</span>
+      {{~ rr_count = fhir.count resource "referenceRange" ~}}
+      {{~ for i in 0..(rr_count - 1) ~}}
+        {{~ rr_low = fhir.path resource ("referenceRange[" + i + "].low.value") ~}}
+        {{~ rr_low_unit = fhir.path resource ("referenceRange[" + i + "].low.unit") ~}}
+        {{~ rr_high = fhir.path resource ("referenceRange[" + i + "].high.value") ~}}
+        {{~ rr_high_unit = fhir.path resource ("referenceRange[" + i + "].high.unit") ~}}
+        {{~ rr_text = fhir.path resource ("referenceRange[" + i + "].text") ~}}
+        {{~ rr_type = fhir.path resource ("referenceRange[" + i + "].type.coding.first().display") ~}}
+        <span class="fhir-range">
+          {{~ if rr_text && rr_text != "" ~}}
+            {{ rr_text }}
+          {{~ else ~}}
+            {{~ if rr_low && rr_low != "" ~}}{{ rr_low }}{{~ end ~}}
+            {{~ if rr_low && rr_high ~}} - {{~ end ~}}
+            {{~ if rr_high && rr_high != "" ~}}{{ rr_high }}{{~ end ~}}
+            {{~ if rr_low_unit || rr_high_unit ~}} {{ rr_low_unit ?? rr_high_unit }}{{~ end ~}}
+          {{~ end ~}}
+          {{~ if rr_type && rr_type != "" ~}} <span class="fhir-range-type">({{ rr_type }})</span>{{~ end ~}}
+        </span>
+        {{~ if i < (rr_count - 1) ~}}; {{~ end ~}}
+      {{~ end ~}}
+    </div>
+    {{~ end ~}}
+
+    {{~ # Data Absent Reason ~}}
+    {{~ if (fhir.exists resource "dataAbsentReason") && !has_value ~}}
+      {{~ dar_display = fhir.path resource "dataAbsentReason.coding.first().display" ~}}
+      {{~ dar_code = fhir.path resource "dataAbsentReason.coding.first().code" ~}}
+      <div class="fhir-data-absent">
+        <span class="fhir-data-absent-badge">{{ l10n.t "Observation.DataAbsent" }}: {{ dar_display ?? dar_code }}</span>
+      </div>
+    {{~ end ~}}
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Clinical Context Section --- ~}}
+  <div class="fhir-section fhir-clinical-context">
+    <h4>{{ l10n.t "Observation.Section.ClinicalContext" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Category ~}}
+      {{~ if (fhir.exists resource "category") ~}}
+      {{~ cat_count = fhir.count resource "category" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Category" }}</dt>
+        <dd>
+          {{~ for i in 0..(cat_count - 1) ~}}
+            {{~ cat_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+            {{~ cat_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+            <span class="fhir-category-tag">{{ cat_display ?? cat_code }}</span>
+            {{~ if i < (cat_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Effective Date/Time ~}}
+      {{~ if (fhir.exists resource "effectiveDateTime") ~}}
+      {{~ eff_dt = fhir.path resource "effectiveDateTime" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Effective" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ eff_dt }}">{{ fhir.format_datetime eff_dt }}</span></dd>
+      </div>
+      {{~ else if (fhir.exists resource "effectivePeriod") ~}}
+      {{~ eff_start = fhir.path resource "effectivePeriod.start" ~}}
+      {{~ eff_end = fhir.path resource "effectivePeriod.end" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Effective" }}</dt>
+        <dd>
+          {{~ if eff_start ~}}<span class="fhir-datetime" title="{{ eff_start }}">{{ fhir.format_datetime eff_start }}</span>{{~ end ~}}
+          {{~ if eff_start && eff_end ~}} - {{~ end ~}}
+          {{~ if eff_end ~}}<span class="fhir-datetime" title="{{ eff_end }}">{{ fhir.format_datetime eff_end }}</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ else if (fhir.exists resource "effectiveInstant") ~}}
+      {{~ eff_inst = fhir.path resource "effectiveInstant" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Effective" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ eff_inst }}">{{ fhir.format_datetime eff_inst }}</span></dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Issued ~}}
+      {{~ if (fhir.exists resource "issued") ~}}
+      {{~ issued_dt = fhir.path resource "issued" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Issued" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ issued_dt }}">{{ fhir.format_datetime issued_dt }}</span></dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Body Site ~}}
+      {{~ if (fhir.exists resource "bodySite") ~}}
+      {{~ bs_display = fhir.path resource "bodySite.coding.first().display" ~}}
+      {{~ bs_code = fhir.path resource "bodySite.coding.first().code" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.BodySite" }}</dt>
+        <dd>{{ bs_display ?? bs_code }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Method ~}}
+      {{~ if (fhir.exists resource "method") ~}}
+      {{~ method_display = fhir.path resource "method.coding.first().display" ~}}
+      {{~ method_code = fhir.path resource "method.coding.first().code" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Method" }}</dt>
+        <dd>{{ method_display ?? method_code }}</dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+
+  {{~ # --- Subject and Context Section --- ~}}
+  {{~ has_context = (fhir.exists resource "subject") || (fhir.exists resource "encounter") || (fhir.exists resource "performer") ~}}
+  {{~ if has_context ~}}
+  <div class="fhir-section fhir-context">
+    <h4>{{ l10n.t "Observation.Section.Context" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Subject ~}}
+      {{~ if (fhir.exists resource "subject") ~}}
+      {{~ subj_display = fhir.path resource "subject.display" ~}}
+      {{~ subj_reference = fhir.path resource "subject.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Subject" }}</dt>
+        <dd>{{ subj_display ?? subj_reference }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Encounter ~}}
+      {{~ if (fhir.exists resource "encounter") ~}}
+      {{~ enc_display = fhir.path resource "encounter.display" ~}}
+      {{~ enc_reference = fhir.path resource "encounter.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Encounter" }}</dt>
+        <dd>{{ enc_display ?? enc_reference }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Performer ~}}
+      {{~ if (fhir.exists resource "performer") ~}}
+      {{~ perf_count = fhir.count resource "performer" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Performer" }}</dt>
+        <dd>
+          {{~ for i in 0..(perf_count - 1) ~}}
+            {{~ perf_display = fhir.path resource ("performer[" + i + "].display") ~}}
+            {{~ perf_reference = fhir.path resource ("performer[" + i + "].reference") ~}}
+            {{ perf_display ?? perf_reference }}{{~ if i < (perf_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Components Section (for multi-value observations like BP) --- ~}}
+  {{~ if (fhir.exists resource "component") ~}}
+  <div class="fhir-section fhir-components">
+    <h4>{{ l10n.t "Observation.Section.Components" }}</h4>
+    <dl class="fhir-details fhir-components-list">
+      {{~ comp_count = fhir.count resource "component" ~}}
+      {{~ for i in 0..(comp_count - 1) ~}}
+        {{~ comp_code_display = fhir.path resource ("component[" + i + "].code.coding.first().display") ~}}
+        {{~ comp_code_text = fhir.path resource ("component[" + i + "].code.text") ~}}
+        {{~ comp_code_code = fhir.path resource ("component[" + i + "].code.coding.first().code") ~}}
+        {{~ comp_qty_value = fhir.path resource ("component[" + i + "].valueQuantity.value") ~}}
+        {{~ comp_qty_unit = fhir.path resource ("component[" + i + "].valueQuantity.unit") ~}}
+        {{~ comp_cc_display = fhir.path resource ("component[" + i + "].valueCodeableConcept.coding.first().display") ~}}
+        {{~ comp_string = fhir.path resource ("component[" + i + "].valueString") ~}}
+        <div class="fhir-field fhir-component">
+          <dt>{{ comp_code_display ?? comp_code_text ?? comp_code_code }}</dt>
+          <dd>
+            {{~ if comp_qty_value && comp_qty_value != "" ~}}
+              <span class="fhir-value-quantity">
+                <span class="fhir-value-number">{{ comp_qty_value }}</span>
+                {{~ if comp_qty_unit ~}} <span class="fhir-value-unit">{{ comp_qty_unit }}</span>{{~ end ~}}
+              </span>
+            {{~ else if comp_cc_display && comp_cc_display != "" ~}}
+              {{ comp_cc_display }}
+            {{~ else if comp_string && comp_string != "" ~}}
+              {{ comp_string }}
+            {{~ end ~}}
+            {{~ # Component interpretation ~}}
+            {{~ comp_interp = fhir.path resource ("component[" + i + "].interpretation.first().coding.first().display") ~}}
+            {{~ comp_interp_code = fhir.path resource ("component[" + i + "].interpretation.first().coding.first().code") ~}}
+            {{~ if comp_interp || comp_interp_code ~}}
+              <span class="fhir-interpretation-badge fhir-interpretation-{{ comp_interp_code | string.downcase }}">
+                {{ comp_interp ?? comp_interp_code }}
+              </span>
+            {{~ end ~}}
+          </dd>
+        </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Related Observations Section --- ~}}
+  {{~ has_related = (fhir.exists resource "hasMember") || (fhir.exists resource "derivedFrom") ~}}
+  {{~ if has_related ~}}
+  <div class="fhir-section fhir-related">
+    <h4>{{ l10n.t "Observation.Section.Related" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Has Member ~}}
+      {{~ if (fhir.exists resource "hasMember") ~}}
+      {{~ member_count = fhir.count resource "hasMember" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.HasMember" }}</dt>
+        <dd>
+          <ul class="fhir-reference-list">
+            {{~ for i in 0..(member_count - 1) ~}}
+              {{~ mem_display = fhir.path resource ("hasMember[" + i + "].display") ~}}
+              {{~ mem_reference = fhir.path resource ("hasMember[" + i + "].reference") ~}}
+              <li>{{ mem_display ?? mem_reference }}</li>
+            {{~ end ~}}
+          </ul>
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Derived From ~}}
+      {{~ if (fhir.exists resource "derivedFrom") ~}}
+      {{~ derived_count = fhir.count resource "derivedFrom" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.DerivedFrom" }}</dt>
+        <dd>
+          <ul class="fhir-reference-list">
+            {{~ for i in 0..(derived_count - 1) ~}}
+              {{~ der_display = fhir.path resource ("derivedFrom[" + i + "].display") ~}}
+              {{~ der_reference = fhir.path resource ("derivedFrom[" + i + "].reference") ~}}
+              <li>{{ der_display ?? der_reference }}</li>
+            {{~ end ~}}
+          </ul>
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Notes Section --- ~}}
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-section fhir-notes">
+    <h4>{{ l10n.t "Observation.Section.Notes" }}</h4>
+    <ul class="fhir-notes-list">
+      {{~ note_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(note_count - 1) ~}}
+        {{~ note_text = fhir.path resource ("note[" + i + "].text") ~}}
+        {{~ note_time = fhir.path resource ("note[" + i + "].time") ~}}
+        {{~ note_author = fhir.path resource ("note[" + i + "].authorReference.display") ~}}
+        <li>
+          <p>{{ note_text }}</p>
+          {{~ if note_author || note_time ~}}
+          <p class="fhir-note-metadata">
+            {{~ if note_author ~}}<span class="fhir-note-author">{{ note_author }}</span>{{~ end ~}}
+            {{~ if note_time ~}}
+              {{~ if note_author ~}} - {{~ end ~}}
+              <span class="fhir-datetime" title="{{ note_time }}">{{ fhir.format_datetime note_time }}</span>
+            {{~ end ~}}
+          </p>
+          {{~ end ~}}
+        </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Technical Details --- ~}}
+  {{~ if (fhir.exists resource "id") ~}}
+  <div class="fhir-technical-details">
+    <h5>{{ l10n.t "Common.TechnicalDetails" }}</h5>
+    <dl class="fhir-details">
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.ResourceId" }}</dt>
+        <dd><code>{{ fhir.path resource "id" }}</code></dd>
+      </div>
+      {{~ # Identifiers ~}}
+      {{~ if (fhir.exists resource "identifier") ~}}
+      {{~ id_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(id_count - 1) ~}}
+        {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+        {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.Identifier" }}</dt>
+        <dd>
+          <code>{{ id_value }}</code>
+          {{~ if id_system && id_system != "" ~}} <span class="fhir-identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ end ~}}
+      {{~ # Based On ~}}
+      {{~ if (fhir.exists resource "basedOn") ~}}
+      {{~ based_count = fhir.count resource "basedOn" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Observation.BasedOn" }}</dt>
+        <dd>
+          {{~ for i in 0..(based_count - 1) ~}}
+            {{~ bo_display = fhir.path resource ("basedOn[" + i + "].display") ~}}
+            {{~ bo_reference = fhir.path resource ("basedOn[" + i + "].reference") ~}}
+            {{ bo_display ?? bo_reference }}{{~ if i < (based_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "meta.versionId") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.VersionId" }}</dt>
+        <dd><code>{{ fhir.path resource "meta.versionId" }}</code></dd>
+      </div>
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "meta.lastUpdated") ~}}
+      {{~ last_updated = fhir.path resource "meta.lastUpdated" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.LastUpdated" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ last_updated }}">{{ fhir.format_datetime last_updated }}</span></dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+</div>

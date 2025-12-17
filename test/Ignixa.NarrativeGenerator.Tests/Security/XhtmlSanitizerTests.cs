@@ -207,6 +207,108 @@ public class XhtmlSanitizerTests
 
     #endregion
 
+    #region FHIR Compliance Tests
+
+    [Fact]
+    public void GivenXhtmlWithoutXmlns_WhenSanitizing_ThenAddsXhtmlNamespaceToRootDiv()
+    {
+        // Arrange
+        var xhtml = "<div class=\"fhir-narrative\"><p>Content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.Should().Contain("xmlns=\"http://www.w3.org/1999/xhtml\"");
+        result.Should().StartWith("<div xmlns=\"http://www.w3.org/1999/xhtml\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithExistingXmlns_WhenSanitizing_ThenDoesNotDuplicateNamespace()
+    {
+        // Arrange
+        var xhtml = "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        // Should only have one xmlns declaration
+        var namespaceCount = result.Split("xmlns=\"http://www.w3.org/1999/xhtml\"").Length - 1;
+        namespaceCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void GivenXhtmlWithChildElements_WhenAddingXmlns_ThenChildrenDoNotInheritEmptyNamespace()
+    {
+        // Arrange
+        var xhtml = "<div><p>Para</p><span>Span</span></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        // Child elements should NOT have xmlns="" (empty namespace)
+        result.Should().NotContain("xmlns=\"\"");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithForbiddenHeader_WhenSanitizing_ThenRemovesHeader()
+    {
+        // Arrange - <header> is an HTML5 semantic element, not allowed in FHIR
+        var xhtml = "<div><header>Header content</header><p>Safe</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.Should().NotContain("<header");
+        result.Should().Contain("<p>Safe</p>");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithForbiddenSection_WhenSanitizing_ThenRemovesSection()
+    {
+        // Arrange - <section> is an HTML5 semantic element, not allowed in FHIR
+        var xhtml = "<div><section>Section content</section><p>Safe</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.Should().NotContain("<section");
+        result.Should().Contain("<p>Safe</p>");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithAriaAttributes_WhenSanitizing_ThenRemovesAriaAttributes()
+    {
+        // Arrange - ARIA attributes are not in FHIR's allowed attribute list
+        var xhtml = "<div aria-label=\"Test\" aria-labelledby=\"heading\"><p>Content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.Should().NotContain("aria-label");
+        result.Should().NotContain("aria-labelledby");
+    }
+
+    [Fact]
+    public void GivenXhtmlWithRoleAttribute_WhenSanitizing_ThenRemovesRole()
+    {
+        // Arrange - role attribute is not in FHIR's allowed attribute list
+        var xhtml = "<div role=\"region\"><p>Content</p></div>";
+
+        // Act
+        var result = _sanitizer.Sanitize(xhtml);
+
+        // Assert
+        result.Should().NotContain("role=");
+    }
+
+    #endregion
+
     #region Allowed Elements Preservation Tests
 
     [Fact]
@@ -219,7 +321,9 @@ public class XhtmlSanitizerTests
         var result = _sanitizer.Sanitize(xhtml);
 
         // Assert
-        result.Should().Contain("<div>");
+        // The sanitizer adds xmlns="http://www.w3.org/1999/xhtml" to the root div per FHIR spec
+        result.Should().Contain("<div");
+        result.Should().Contain("xmlns=\"http://www.w3.org/1999/xhtml\"");
         result.Should().Contain("<p>Paragraph</p>");
         result.Should().Contain("<span>Span</span>");
         result.Should().Contain("<br");

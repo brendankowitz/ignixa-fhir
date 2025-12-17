@@ -1,0 +1,180 @@
+{{~##
+  Generic Narrative Template (Fallback)
+
+  This template generates FHIR-compliant XHTML narrative for any FHIR resource
+  that doesn't have a specific template. It provides metadata-driven information display
+  using structure definitions to dynamically render all resource fields.
+
+  Works with all FHIR versions (STU3, R4, R4B, R5, R6).
+  FHIR-compliant XHTML (HTML 4.0 chapters 7-11, 15)
+
+  Required helpers:
+  - fhirpath(resource, expression) - Evaluates FHIRPath expression
+  - exists(resource, path) - Checks if field exists
+  - t(key) - Localization helper
+  - format_date(date) - Formats FHIR date for display
+  - format_datetime(datetime) - Formats FHIR dateTime for display
+  - format_by_type(value, type) - Formats value by FHIR type
+  - display(codeableConcept) - Formats CodeableConcept for display
+  - display_reference(reference) - Formats Reference for display
+  - display_quantity(quantity) - Formats Quantity for display
+  - get_structure_elements(resourceType, fhirVersion) - Gets element metadata
+  - lang - Current language code (e.g., "en")
+##~}}
+{{~
+  # Extract common resource fields
+  resource_type = resourceType
+  resource_id = fhirpath resource "id"
+  meta_last_updated = fhirpath resource "meta.lastUpdated"
+  meta_version_id = fhirpath resource "meta.versionId"
+
+  # Try to extract a human-readable display value using common patterns
+  display_title = fhirpath resource "title"
+  display_name = fhirpath resource "name"
+  display_code = fhirpath resource "code.coding.first().display"
+  display_code_text = fhirpath resource "code.text"
+  display_description = fhirpath resource "description"
+
+  # Select best display value
+  display_value = display_title ?? display_name ?? display_code ?? display_code_text ?? display_description
+
+  # Get structure elements for dynamic rendering
+  elements = get_structure_elements resourceType fhirVersion
+~}}
+<div class="fhir-resource fhir-{{ resource_type | string.downcase }}" lang="{{ lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  {{~## Resource Type Header ##~}}
+  <h3>
+    {{~ if display_value ~}}
+    {{ display_value }}
+    <span class="resource-type-badge">({{ resource_type }})</span>
+    {{~ else ~}}
+    {{ resource_type }}
+    {{~ end ~}}
+  </h3>
+
+  {{~## Core Metadata Section ##~}}
+  <div class="fhir-section fhir-metadata-section">
+    <h4 class="visually-hidden">{{ t "Common.Metadata" }}</h4>
+    <dl class="fhir-metadata">
+      {{~## Resource ID ##~}}
+      {{~ if resource_id ~}}
+      <div class="fhir-field">
+        <dt>{{ t "Common.ResourceId" }}</dt>
+        <dd><code>{{ resource_id }}</code></dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Version ID ##~}}
+      {{~ if meta_version_id ~}}
+      <div class="fhir-field">
+        <dt>{{ t "Common.VersionId" }}</dt>
+        <dd><code>{{ meta_version_id }}</code></dd>
+      </div>
+      {{~ end ~}}
+
+      {{~## Last Updated ##~}}
+      {{~ if meta_last_updated ~}}
+      <div class="fhir-field">
+        <dt>{{ t "Common.LastUpdated" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ meta_last_updated }}">{{ format_datetime meta_last_updated }}</span></dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+
+  {{~## Dynamic Fields Section (Metadata-Driven) ##~}}
+  {{~ if elements && (elements | array.size) > 0 ~}}
+  <div class="fhir-section fhir-fields-section">
+    <h4 class="visually-hidden">{{ t "Common.Fields" }}</h4>
+    <dl class="fhir-details">
+      {{~ for element in elements ~}}
+        {{~ # Check if field exists using FHIRPath ~}}
+        {{~ if (exists resource element.path) ~}}
+          <div class="fhir-field">
+            <dt>{{ t (resource_type + "." + element.name) }}</dt>
+            <dd>
+              {{~ if element.is_primitive ~}}
+                {{~ value = fhirpath resource element.path ~}}
+                {{ format_by_type value element.type }}
+              {{~ else if element.is_codeable_concept ~}}
+                {{ display (fhirpath resource element.path) }}
+              {{~ else if element.is_reference ~}}
+                {{ display_reference (fhirpath resource element.path) }}
+              {{~ else if element.is_quantity ~}}
+                {{ display_quantity (fhirpath resource element.path) }}
+              {{~ else ~}}
+                {{~ # Complex type - try FHIRPath display ~}}
+                {{ fhirpath resource element.path }}
+              {{~ end ~}}
+            </dd>
+          </div>
+        {{~ end ~}}
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~## Note/Comment Section (if exists) ##~}}
+  {{~ notes = fhirpath resource "note" ~}}
+  {{~ if notes ~}}
+  <div class="fhir-section fhir-notes-section">
+    <h4>{{ t "Common.Notes" }}</h4>
+    <ul class="fhir-notes">
+      {{~ for note in notes ~}}
+      {{~ note_text = fhirpath note "text" ~}}
+      {{~ note_time = fhirpath note "time" ~}}
+      {{~ note_author = fhirpath note "authorReference.display" ~}}
+      <li>
+        {{~ if note_text ~}}
+        <p>{{ note_text }}</p>
+        {{~ end ~}}
+        {{~ if note_author || note_time ~}}
+        <p class="note-metadata">
+          {{~ if note_author ~}}<span class="note-author">{{ note_author }}</span>{{~ end ~}}
+          {{~ if note_time ~}}
+          {{~ if note_author ~}} - {{~ end ~}}
+          <span class="fhir-datetime" title="{{ note_time }}">{{ format_datetime note_time }}</span>
+          {{~ end ~}}
+        </p>
+        {{~ end ~}}
+      </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~## Identifier Section (if exists) ##~}}
+  {{~ identifiers = fhirpath resource "identifier" ~}}
+  {{~ if identifiers ~}}
+  <div class="fhir-section fhir-identifiers-section">
+    <h4>{{ t "Common.Identifiers" }}</h4>
+    <ul class="fhir-identifiers">
+      {{~ for identifier in identifiers ~}}
+      {{~ id_value = fhirpath identifier "value" ~}}
+      {{~ id_system = fhirpath identifier "system" ~}}
+      {{~ id_type = fhirpath identifier "type.coding.first().display" ~}}
+      {{~ id_use = fhirpath identifier "use" ~}}
+      <li>
+        {{~ if id_type ~}}<strong>{{ id_type }}:</strong> {{~ end ~}}
+        <code>{{ id_value }}</code>
+        {{~ if id_system ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        {{~ if id_use ~}} <span class="identifier-use">[{{ id_use }}]</span>{{~ end ~}}
+      </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~## Text Section (if narrative already exists) ##~}}
+  {{~ text_div = fhirpath resource "text.div" ~}}
+  {{~ text_status = fhirpath resource "text.status" ~}}
+  {{~ if text_div && text_status != "empty" ~}}
+  <div class="fhir-section fhir-existing-narrative-section">
+    <h4>{{ t "Common.ExistingNarrative" }}</h4>
+    <div class="fhir-existing-narrative">
+      {{ text_div }}
+    </div>
+  </div>
+  {{~ end ~}}
+
+</div>

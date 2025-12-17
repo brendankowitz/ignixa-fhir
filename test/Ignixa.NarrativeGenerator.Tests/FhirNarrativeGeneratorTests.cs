@@ -34,7 +34,7 @@ public class FhirNarrativeGeneratorTests
         var templateEngine = new NarrativeTemplateEngine(fhirPathFunctions, new MockStringLocalizer());
         var sanitizer = new XhtmlSanitizer();
 
-        _generator = new FhirNarrativeGenerator(templateResolver, templateEngine, sanitizer);
+        _generator = new FhirNarrativeGenerator(templateResolver, templateEngine, sanitizer, _schema);
     }
 
     #region Patient Narrative Tests
@@ -61,7 +61,7 @@ public class FhirNarrativeGeneratorTests
         var element = patient.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4);
+        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -88,7 +88,7 @@ public class FhirNarrativeGeneratorTests
         var culture = new CultureInfo("en-US");
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4, culture);
+        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, culture);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -115,7 +115,7 @@ public class FhirNarrativeGeneratorTests
         var element = observation.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, observation.ResourceType, observation.FhirVersion ?? FhirVersion.R4);
+        var narrative = await _generator.GenerateNarrativeAsync(element, observation.ResourceType);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -133,7 +133,7 @@ public class FhirNarrativeGeneratorTests
         IElement? element = null;
 
         // Act
-        var act = async () => await _generator.GenerateNarrativeAsync(element!, "Patient", FhirVersion.R4);
+        var act = async () => await _generator.GenerateNarrativeAsync(element!, "Patient");
 
         // Assert
         await act.Should().ThrowAsync<ArgumentNullException>()
@@ -155,7 +155,7 @@ public class FhirNarrativeGeneratorTests
         var element = patient.ToElement(_schema);
 
         // Act
-        var act = async () => await _generator.GenerateNarrativeAsync(element, string.Empty, FhirVersion.R4);
+        var act = async () => await _generator.GenerateNarrativeAsync(element, string.Empty);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentException>()
@@ -184,13 +184,106 @@ public class FhirNarrativeGeneratorTests
         var element = patient.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4);
+        var narrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType);
 
         // Assert
         narrative.Should().NotContain("<script");
         narrative.Should().NotContain("javascript:");
         narrative.Should().NotContain("onerror=");
         narrative.Should().NotContain("onclick=");
+    }
+
+    #endregion
+
+    #region Factory Method Tests
+
+    [Fact]
+    public async Task GivenSchema_WhenUsingFactoryMethod_ThenCreatesWorkingGenerator()
+    {
+        // Arrange
+        var schema = _schema;
+
+        // Act
+        var generator = FhirNarrativeGenerator.Create(schema);
+
+        // Assert
+        generator.Should().NotBeNull();
+        generator.Should().BeAssignableTo<INarrativeGenerator>();
+
+        // Verify it actually works with a real resource
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "factory-test",
+                "name": [{
+                    "use": "official",
+                    "family": "FactoryTest",
+                    "given": ["John"]
+                }],
+                "gender": "male",
+                "birthDate": "1990-01-15"
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        var narrative = await generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType);
+
+        narrative.Should().NotBeNullOrWhiteSpace();
+        narrative.Should().Contain("FactoryTest");
+        narrative.Should().Contain("John");
+    }
+
+    [Fact]
+    public async Task GivenSchemaWithCustomLocalizer_WhenUsingFactoryMethod_ThenUsesCustomLocalizer()
+    {
+        // Arrange
+        var schema = _schema;
+        var customLocalizer = new MockStringLocalizer();
+
+        // Act
+        var generator = FhirNarrativeGenerator.Create(schema, customLocalizer);
+
+        // Assert
+        generator.Should().NotBeNull();
+
+        // Verify it works
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "custom-localizer-test",
+                "name": [{
+                    "family": "LocalizedPatient"
+                }]
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        var narrative = await generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType);
+
+        narrative.Should().NotBeNullOrWhiteSpace();
+        narrative.Should().Contain("LocalizedPatient");
+    }
+
+    [Fact]
+    public void GivenNullSchema_WhenUsingFactoryMethod_ThenThrowsArgumentNullException()
+    {
+        // Arrange
+        ISchema? schema = null;
+
+        // Act
+        var act = () => FhirNarrativeGenerator.Create(schema!);
+
+        // Assert
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("schema");
     }
 
     #endregion
@@ -215,7 +308,7 @@ public class FhirNarrativeGeneratorTests
         await cts.CancelAsync();
 
         // Act
-        var act = async () => await _generator.GenerateNarrativeAsync(element, patient.ResourceType, patient.FhirVersion ?? FhirVersion.R4, cancellationToken: cts.Token);
+        var act = async () => await _generator.GenerateNarrativeAsync(element, patient.ResourceType, cancellationToken: cts.Token);
 
         // Assert
         // May either complete quickly before cancellation is observed, or throw
@@ -267,7 +360,7 @@ public class FhirNarrativeGeneratorTests
         var element = account.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, account.ResourceType, account.FhirVersion ?? FhirVersion.R4);
+        var narrative = await _generator.GenerateNarrativeAsync(element, account.ResourceType);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -314,7 +407,7 @@ public class FhirNarrativeGeneratorTests
         var element = claim.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, claim.ResourceType, claim.FhirVersion ?? FhirVersion.R4);
+        var narrative = await _generator.GenerateNarrativeAsync(element, claim.ResourceType);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
@@ -351,12 +444,307 @@ public class FhirNarrativeGeneratorTests
         var element = device.ToElement(_schema);
 
         // Act
-        var narrative = await _generator.GenerateNarrativeAsync(element, device.ResourceType, device.FhirVersion ?? FhirVersion.R4);
+        var narrative = await _generator.GenerateNarrativeAsync(element, device.ResourceType);
 
         // Assert
         narrative.Should().NotBeNullOrEmpty();
         narrative.Should().Contain("Device");  // Resource type should be displayed in badge
         narrative.Should().Contain("fhir-device");  // CSS class should be present
+    }
+
+    #endregion
+
+    #region Multi-Format Template Tests
+
+    [Fact]
+    public async Task GivenPatient_WhenGeneratingHtmlNarrative_ThenReturnsXhtml()
+    {
+        // Arrange
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "html-test",
+                "name": [{
+                    "use": "official",
+                    "family": "HtmlTest",
+                    "given": ["John"]
+                }],
+                "gender": "male",
+                "birthDate": "1990-05-15"
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType,
+            format: TemplateFormat.Html);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("<div"); // Should be XHTML
+        narrative.Should().Contain("HtmlTest"); // Should contain family name
+        narrative.Should().Contain("class="); // Should have CSS classes
+        narrative.Should().NotContain("<script"); // Should be sanitized
+    }
+
+    [Fact]
+    public async Task GivenPatient_WhenGeneratingMarkdownNarrative_ThenReturnsMarkdown()
+    {
+        // Arrange
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "md-test",
+                "name": [{
+                    "use": "official",
+                    "family": "MarkdownPatient",
+                    "given": ["Jane"]
+                }],
+                "gender": "female",
+                "birthDate": "1985-03-20",
+                "telecom": [{
+                    "system": "phone",
+                    "value": "555-1234",
+                    "use": "home"
+                }],
+                "address": [{
+                    "use": "home",
+                    "line": ["123 Main St"],
+                    "city": "Boston",
+                    "state": "MA",
+                    "postalCode": "02101"
+                }]
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType,
+            format: TemplateFormat.Markdown);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("#"); // Should contain Markdown headers
+        narrative.Should().Contain("MarkdownPatient"); // Should contain family name
+        narrative.Should().Contain("**"); // Should contain Markdown bold syntax
+        narrative.Should().NotContain("<div"); // Should NOT be HTML
+        narrative.Should().NotContain("class="); // Should NOT have CSS classes
+    }
+
+    [Fact]
+    public async Task GivenPatient_WhenGeneratingCompact_ThenReturnsSingleLineCondensedFormat()
+    {
+        // Arrange
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "vector-test",
+                "name": [{
+                    "use": "official",
+                    "family": "VectorPatient",
+                    "given": ["Alex"]
+                }],
+                "gender": "male",
+                "birthDate": "1975-08-10",
+                "address": [{
+                    "city": "Seattle",
+                    "state": "WA"
+                }],
+                "managingOrganization": {
+                    "display": "General Hospital"
+                }
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType,
+            format: TemplateFormat.Compact);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().NotStartWith("["); // Should NOT have resource type prefix
+        narrative.Should().Contain("VectorPatient"); // Should contain family name
+        narrative.Should().Contain("male"); // Should contain gender
+        narrative.Should().Contain("Seattle"); // Should contain city
+        narrative.Should().Contain("General Hospital"); // Should contain organization
+        // Compact should be dense, single-line format
+        narrative.Trim().Should().NotContain("\n\n"); // Should not have multiple blank lines
+        narrative.Should().NotContain("<div"); // Should NOT be HTML
+        narrative.Should().NotContain("#"); // Should NOT have Markdown headers
+    }
+
+    [Fact]
+    public async Task GivenPatient_WhenGeneratingMarkdownNarrative_ThenNotSanitized()
+    {
+        // Arrange - Markdown format should NOT have HTML sanitization applied
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "md-no-sanitize",
+                "name": [{
+                    "family": "NoSanitize"
+                }]
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType,
+            format: TemplateFormat.Markdown);
+
+        // Assert - Just verify it generates without error and contains content
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("NoSanitize");
+    }
+
+    [Fact]
+    public async Task GivenPatient_WhenGeneratingCompact_ThenNotSanitized()
+    {
+        // Arrange - Compact format should NOT have HTML sanitization applied
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "compact-no-sanitize",
+                "name": [{
+                    "family": "NoSanitizeCompact"
+                }]
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            patient.ResourceType,
+            format: TemplateFormat.Compact);
+
+        // Assert - Just verify it generates without error and contains content
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("NoSanitizeCompact");
+    }
+
+    [Fact]
+    public async Task GivenResourceWithoutSpecificTemplate_WhenGeneratingMarkdown_ThenUsesGenericFallback()
+    {
+        // Arrange - Account doesn't have a specific Markdown template
+        var json = """
+            {
+                "resourceType": "Account",
+                "id": "md-fallback",
+                "status": "active",
+                "name": "Test Account"
+            }
+            """;
+        var account = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        account.FhirVersion = FhirVersion.R4;
+        var element = account.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            account.ResourceType,
+            format: TemplateFormat.Markdown);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().Contain("Account"); // Should contain resource type
+        narrative.Should().Contain("#"); // Should be Markdown format
+    }
+
+    [Fact]
+    public async Task GivenResourceWithoutSpecificTemplate_WhenGeneratingCompact_ThenUsesGenericFallback()
+    {
+        // Arrange - Claim doesn't have a specific Compact template
+        var json = """
+            {
+                "resourceType": "Claim",
+                "id": "compact-fallback",
+                "status": "active"
+            }
+            """;
+        var claim = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        claim.FhirVersion = FhirVersion.R4;
+        var element = claim.ToElement(_schema);
+
+        // Act
+        var narrative = await _generator.GenerateNarrativeAsync(
+            element,
+            claim.ResourceType,
+            format: TemplateFormat.Compact);
+
+        // Assert
+        narrative.Should().NotBeNullOrEmpty();
+        narrative.Should().NotStartWith("["); // Should NOT have resource type prefix
+        narrative.Should().Contain("active"); // Should contain status
+    }
+
+    [Fact]
+    public async Task GivenPatientWithAllFields_WhenGeneratingAllFormats_ThenAllFormatsContainKeyData()
+    {
+        // Arrange - A comprehensive patient with many fields
+        var json = """
+            {
+                "resourceType": "Patient",
+                "id": "comprehensive",
+                "identifier": [{
+                    "type": {
+                        "coding": [{
+                            "code": "MR",
+                            "display": "Medical Record Number"
+                        }]
+                    },
+                    "value": "12345"
+                }],
+                "name": [{
+                    "use": "official",
+                    "family": "ComprehensivePatient",
+                    "given": ["Test"]
+                }],
+                "gender": "other",
+                "birthDate": "2000-01-01",
+                "address": [{
+                    "city": "TestCity",
+                    "state": "TS"
+                }]
+            }
+            """;
+        var patient = JsonSourceNodeFactory.Parse<ResourceJsonNode>(json)!;
+        patient.FhirVersion = FhirVersion.R4;
+        var element = patient.ToElement(_schema);
+
+        // Act
+        var htmlNarrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, format: TemplateFormat.Html);
+        var mdNarrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, format: TemplateFormat.Markdown);
+        var compactNarrative = await _generator.GenerateNarrativeAsync(element, patient.ResourceType, format: TemplateFormat.Compact);
+
+        // Assert - All formats should contain the patient name
+        htmlNarrative.Should().Contain("ComprehensivePatient");
+        mdNarrative.Should().Contain("ComprehensivePatient");
+        compactNarrative.Should().Contain("ComprehensivePatient");
+
+        // Each format should have distinct characteristics
+        htmlNarrative.Should().Contain("<"); // HTML tags
+        mdNarrative.Should().Contain("#"); // Markdown headers
+        compactNarrative.Should().NotStartWith("["); // Compact has no resource type prefix
     }
 
     #endregion

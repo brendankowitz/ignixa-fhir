@@ -1,0 +1,91 @@
+{{~ # Single-line compact template for DiagnosticReport ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/DiagnosticReport ~}}
+{{~ # Generates dense, token-efficient text for AI/ML embedding models ~}}
+{{~ # Format: "CODE (STATUS). Conclusion: TEXT. Results: N findings. Issued: DATE. Subject: NAME." ~}}
+{{~ # --- Extract code (report type) --- ~}}
+{{~ code_display = fhirpath resource "code.coding.first().display" ~}}
+{{~ code_text = fhirpath resource "code.text" ~}}
+{{~ code_code = fhirpath resource "code.coding.first().code" ~}}
+{{~ report_code = code_display ?? code_text ?? code_code ~}}
+{{~ # --- Extract status --- ~}}
+{{~ status = fhirpath resource "status" ~}}
+{{~ # --- Extract conclusion --- ~}}
+{{~ conclusion_text = fhirpath resource "conclusion" ~}}
+{{~ conclusion_str = "" ~}}
+{{~ if conclusion_text && conclusion_text != "" ~}}
+{{~ # Truncate if longer than 100 chars ~}}
+{{~ text_len = conclusion_text | string.size ~}}
+{{~ if text_len > 100 ~}}
+{{~ conclusion_str = conclusion_text | string.slice 0 97 ~}}
+{{~ conclusion_str = conclusion_str + "..." ~}}
+{{~ else ~}}
+{{~ conclusion_str = conclusion_text ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Extract conclusion codes --- ~}}
+{{~ conclusion_codes = "" ~}}
+{{~ if (fhir.exists resource "conclusionCode") ~}}
+{{~ cc_count = fhir.count resource "conclusionCode" ~}}
+{{~ for i in 0..(cc_count - 1) ~}}
+{{~ cc_display = fhirpath resource ("conclusionCode[" + i + "].coding.first().display") ~}}
+{{~ cc_text = fhirpath resource ("conclusionCode[" + i + "].text") ~}}
+{{~ cc_code = fhirpath resource ("conclusionCode[" + i + "].coding.first().code") ~}}
+{{~ cc = cc_display ?? cc_text ?? cc_code ~}}
+{{~ if i > 0 ~}}
+{{~ conclusion_codes = conclusion_codes + ", " + cc ~}}
+{{~ else ~}}
+{{~ conclusion_codes = cc ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Combine conclusion text and codes --- ~}}
+{{~ final_conclusion = "" ~}}
+{{~ if conclusion_str && conclusion_str != "" ~}}
+{{~ final_conclusion = conclusion_str ~}}
+{{~ end ~}}
+{{~ if conclusion_codes && conclusion_codes != "" ~}}
+{{~ if final_conclusion != "" ~}}
+{{~ final_conclusion = final_conclusion + " [" + conclusion_codes + "]" ~}}
+{{~ else ~}}
+{{~ final_conclusion = conclusion_codes ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ # --- Extract result count --- ~}}
+{{~ result_count = 0 ~}}
+{{~ if (fhir.exists resource "result") ~}}
+{{~ result_count = fhir.count resource "result" ~}}
+{{~ end ~}}
+{{~ # --- Extract category --- ~}}
+{{~ cat_display = fhirpath resource "category.first().coding.first().display" ~}}
+{{~ cat_code = fhirpath resource "category.first().coding.first().code" ~}}
+{{~ category = cat_display ?? cat_code ~}}
+{{~ # --- Extract issued date --- ~}}
+{{~ issued_dt = fhirpath resource "issued" ~}}
+{{~ # --- Extract effective date/time --- ~}}
+{{~ eff_dt = fhirpath resource "effectiveDateTime" ~}}
+{{~ eff_period_start = fhirpath resource "effectivePeriod.start" ~}}
+{{~ effective = eff_dt ?? eff_period_start ~}}
+{{~ # --- Extract subject --- ~}}
+{{~ subj_display = fhirpath resource "subject.display" ~}}
+{{~ subj_reference = fhirpath resource "subject.reference" ~}}
+{{~ subject = subj_display ?? subj_reference ~}}
+{{~ # --- Extract performer --- ~}}
+{{~ perf_display = fhirpath resource "performer.first().display" ~}}
+{{~ perf_reference = fhirpath resource "performer.first().reference" ~}}
+{{~ performer = perf_display ?? perf_reference ~}}
+{{~ # --- Extract results interpreter --- ~}}
+{{~ interp_display = fhirpath resource "resultsInterpreter.first().display" ~}}
+{{~ interp_reference = fhirpath resource "resultsInterpreter.first().reference" ~}}
+{{~ interpreter = interp_display ?? interp_reference ~}}
+{{~ # --- Extract media count --- ~}}
+{{~ media_count = 0 ~}}
+{{~ if (fhir.exists resource "media") ~}}
+{{~ media_count = fhir.count resource "media" ~}}
+{{~ end ~}}
+{{~ # --- Extract presented form count --- ~}}
+{{~ form_count = 0 ~}}
+{{~ if (fhir.exists resource "presentedForm") ~}}
+{{~ form_count = fhir.count resource "presentedForm" ~}}
+{{~ end ~}}
+{{~ # --- Build output --- ~}}
+{{ report_code }}{{~ if status && status != "" ~}} ({{ status }}){{~ end ~}}.{{~ if final_conclusion && final_conclusion != "" ~}} Conclusion: {{ final_conclusion }}.{{~ end ~}}{{~ if result_count > 0 ~}} Results: {{ result_count }} finding{{~ if result_count != 1 ~}}s{{~ end ~}}.{{~ end ~}}{{~ if media_count > 0 ~}} Media: {{ media_count }} item{{~ if media_count != 1 ~}}s{{~ end ~}}.{{~ end ~}}{{~ if form_count > 0 ~}} Attachments: {{ form_count }}.{{~ end ~}}{{~ if category && category != "" ~}} [{{ category }}].{{~ end ~}}{{~ if effective && effective != "" ~}} Effective: {{ effective }}.{{~ end ~}}{{~ if issued_dt && issued_dt != "" ~}} Issued: {{ issued_dt }}.{{~ end ~}}{{~ if performer && performer != "" ~}} Performer: {{ performer }}.{{~ end ~}}{{~ if interpreter && interpreter != "" ~}} Interpreter: {{ interpreter }}.{{~ end ~}}{{~ if subject && subject != "" ~}} Subject: {{ subject }}.{{~ end ~}}

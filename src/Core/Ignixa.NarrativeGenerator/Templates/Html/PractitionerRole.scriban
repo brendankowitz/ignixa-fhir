@@ -1,0 +1,117 @@
+﻿{{~ # Auto-generated Scriban narrative template for PractitionerRole ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/PractitionerRole ~}}
+
+<div class="fhir-narrative fhir-practitionerrole" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "PractitionerRole.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"PractitionerRole.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Code" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "code" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("code[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("code[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "active") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Active" }}</dt>
+    {{~ bool_value = fhir.path resource "active" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "period") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Period" }}</dt>
+    {{~ period_start = fhir.path resource "period.start" ~}}
+    {{~ period_end = fhir.path resource "period.end" ~}}
+    <dd>
+      {{~ if period_start && period_start != "" ~}}{{ fhir.format_date period_start }}{{~ end ~}}
+      {{~ if (period_start && period_start != "") && (period_end && period_end != "") ~}} - {{~ end ~}}
+      {{~ if period_end && period_end != "" ~}}{{ fhir.format_date period_end }}{{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "practitioner") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Practitioner" }}</dt>
+    {{~ ref_display = fhir.path resource "practitioner.display" ~}}
+    {{~ ref_reference = fhir.path resource "practitioner.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "organization") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Organization" }}</dt>
+    {{~ ref_display = fhir.path resource "organization.display" ~}}
+    {{~ ref_reference = fhir.path resource "organization.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "display") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Display" }}</dt>
+    <dd>{{ fhir.path resource "display" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "specialty") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Specialty" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "specialty" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("specialty[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("specialty[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "location") ~}}
+    <dt>{{ l10n.t "PractitionerRole.Location" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "location" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("location[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("location[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

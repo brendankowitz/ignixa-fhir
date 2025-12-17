@@ -1,0 +1,128 @@
+﻿{{~ # Auto-generated Scriban narrative template for Immunization ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/Immunization ~}}
+
+<div class="fhir-narrative fhir-immunization" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "Immunization.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"Immunization.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "Immunization.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "Immunization.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Immunization.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    <dt>{{ l10n.t "Immunization.Patient" }}</dt>
+    {{~ ref_display = fhir.path resource "patient.display" ~}}
+    {{~ ref_reference = fhir.path resource "patient.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "Immunization.Encounter" }}</dt>
+    {{~ ref_display = fhir.path resource "encounter.display" ~}}
+    {{~ ref_reference = fhir.path resource "encounter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "performer") ~}}
+    <dt>{{ l10n.t "Immunization.Performer" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "performer" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("performer[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "Immunization.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "Immunization.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("note[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "basedOn") ~}}
+    <dt>{{ l10n.t "Immunization.BasedOn" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "basedOn" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("basedOn[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("basedOn[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "Immunization.VaccineCode" }}</dt>
+    {{~ cc_display = fhir.path resource "vaccineCode.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "vaccineCode.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    <dt>{{ l10n.t "Immunization.Occurrence" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "occurrence[x]") }}</dd>
+    {{~ if (fhir.exists resource "primarySource") ~}}
+    <dt>{{ l10n.t "Immunization.PrimarySource" }}</dt>
+    {{~ bool_value = fhir.path resource "primarySource" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "isSubpotent") ~}}
+    <dt>{{ l10n.t "Immunization.IsSubpotent" }}</dt>
+    {{~ bool_value = fhir.path resource "isSubpotent" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-notes"id" }}">
+    <h4id" }}">{{ l10n.t "Immunization.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+</div>

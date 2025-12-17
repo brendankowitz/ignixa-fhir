@@ -1,0 +1,239 @@
+﻿{{~ # Auto-generated Scriban narrative template for CapabilityStatement ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/CapabilityStatement ~}}
+
+<div class="fhir-narrative fhir-capabilitystatement" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "CapabilityStatement.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"CapabilityStatement.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "name") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Name" }}</dt>
+    <dd>{{ fhir.path resource "name" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "url") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Url" }}</dt>
+    <dd>{{ fhir.path resource "url" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "versionAlgorithm[x]") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.VersionAlgorithm" }}</dt>
+    <dd>{{ fhir.path resource "versionAlgorithm[x]" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "title") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Title" }}</dt>
+    <dd>{{ fhir.path resource "title" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "experimental") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Experimental" }}</dt>
+    {{~ bool_value = fhir.path resource "experimental" ~}}
+    <dd>
+      {{~ if bool_value == "true" ~}}
+        {{ l10n.t "Common.Yes" }}
+      {{~ else ~}}
+        {{ l10n.t "Common.No" }}
+      {{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "publisher") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Publisher" }}</dt>
+    <dd>{{ fhir.path resource "publisher" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "contact") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Contact" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "contact" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("contact[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "useContext") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.UseContext" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "useContext" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("useContext[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "jurisdiction") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Jurisdiction" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "jurisdiction" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("jurisdiction[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("jurisdiction[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Kind" }}</dt>
+    <dd>{{ fhir.path resource "kind" }}</dd>
+    {{~ if (fhir.exists resource "instantiates") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Instantiates" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "instantiates" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("instantiates[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "imports") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Imports" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "imports" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("imports[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "software") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Software" }}</dt>
+    <dd>{{ fhir.path resource "software" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "implementation") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Implementation" }}</dt>
+    <dd>{{ fhir.path resource "implementation" }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "CapabilityStatement.FhirVersion" }}</dt>
+    <dd>{{ fhir.path resource "fhirVersion" }}</dd>
+    <dt>{{ l10n.t "CapabilityStatement.Format" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "format" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("format[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ if (fhir.exists resource "patchFormat") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.PatchFormat" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "patchFormat" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("patchFormat[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "acceptLanguage") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.AcceptLanguage" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "acceptLanguage" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("acceptLanguage[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "implementationGuide") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.ImplementationGuide" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "implementationGuide" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("implementationGuide[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "rest") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Rest" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "rest" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("rest[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "messaging") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Messaging" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "messaging" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("messaging[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "document") ~}}
+    <dt>{{ l10n.t "CapabilityStatement.Document" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "document" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("document[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+  </dl>
+
+</div>

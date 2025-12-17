@@ -1,0 +1,104 @@
+{{~ # Generic Markdown Narrative Template (Fallback) ~}}
+{{~ # Generates human-readable Markdown for any FHIR resource ~}}
+{{~ # Works with all FHIR versions (STU3, R4, R4B, R5, R6) ~}}
+
+{{~ # Extract common resource fields ~}}
+{{~ res_type = resourceType ~}}
+{{~ res_id = fhirpath resource "id" ~}}
+{{~ meta_last_updated = fhirpath resource "meta.lastUpdated" ~}}
+{{~ meta_version_id = fhirpath resource "meta.versionId" ~}}
+
+{{~ # Try to extract a human-readable display value using common patterns ~}}
+{{~ display_title = fhirpath resource "title" ~}}
+{{~ display_name = fhirpath resource "name" ~}}
+{{~ display_code = fhirpath resource "code.coding.first().display" ~}}
+{{~ display_code_text = fhirpath resource "code.text" ~}}
+{{~ display_description = fhirpath resource "description" ~}}
+
+{{~ # Select best display value - use conditionals instead of ?? operator ~}}
+{{~ display_val = "" ~}}
+{{~ if display_title && display_title != "" ~}}
+{{~ display_val = display_title ~}}
+{{~ else if display_name && display_name != "" ~}}
+{{~ display_val = display_name ~}}
+{{~ else if display_code && display_code != "" ~}}
+{{~ display_val = display_code ~}}
+{{~ else if display_code_text && display_code_text != "" ~}}
+{{~ display_val = display_code_text ~}}
+{{~ else if display_description && display_description != "" ~}}
+{{~ display_val = display_description ~}}
+{{~ end ~}}
+
+# {{ display_val != "" ? display_val : res_type }}
+
+**Resource Type**: {{ res_type }}
+
+## Metadata
+
+{{~ if res_id ~}}
+- **Resource ID**: `{{ res_id }}`
+{{~ end ~}}
+{{~ if meta_version_id ~}}
+- **Version**: `{{ meta_version_id }}`
+{{~ end ~}}
+{{~ if meta_last_updated ~}}
+- **Last Updated**: {{ format_datetime meta_last_updated }}
+{{~ end ~}}
+
+{{~ # Get structure elements for dynamic rendering ~}}
+{{~ elements = get_structure_elements resourceType fhirVersion ~}}
+
+{{~ if elements && (elements | array.size) > 0 ~}}
+## Resource Details
+
+{{~ for element in elements ~}}
+{{~ if (exists resource element.path) ~}}
+{{~ if element.is_primitive ~}}
+{{~ elem_value = fhirpath resource element.path ~}}
+- **{{ element.name }}**: {{ format_by_type elem_value element.type }}
+{{~ else if element.is_codeable_concept ~}}
+- **{{ element.name }}**: {{ display (fhirpath resource element.path) }}
+{{~ else if element.is_reference ~}}
+- **{{ element.name }}**: {{ display_reference (fhirpath resource element.path) }}
+{{~ else if element.is_quantity ~}}
+- **{{ element.name }}**: {{ display_quantity (fhirpath resource element.path) }}
+{{~ else ~}}
+- **{{ element.name }}**: {{ fhirpath resource element.path }}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # Identifiers Section ~}}
+{{~ identifiers_list = fhirpath resource "identifier" ~}}
+{{~ if identifiers_list ~}}
+## Identifiers
+
+{{~ for ident in identifiers_list ~}}
+{{~ id_val = fhirpath ident "value" ~}}
+{{~ id_sys = fhirpath ident "system" ~}}
+{{~ id_type_disp = fhirpath ident "type.coding.first().display" ~}}
+{{~ id_use_val = fhirpath ident "use" ~}}
+- {{~ if id_type_disp ~}}**{{ id_type_disp }}**: {{~ end ~}}`{{ id_val }}`{{~ if id_sys ~}} ({{ id_sys }}){{~ end ~}}{{~ if id_use_val ~}} [{{ id_use_val }}]{{~ end ~}}
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ # Notes Section ~}}
+{{~ notes_list = fhirpath resource "note" ~}}
+{{~ if notes_list ~}}
+## Notes
+
+{{~ for note_item in notes_list ~}}
+{{~ note_txt = fhirpath note_item "text" ~}}
+{{~ note_tm = fhirpath note_item "time" ~}}
+{{~ note_auth = fhirpath note_item "authorReference.display" ~}}
+{{~ if note_txt ~}}
+> {{ note_txt }}
+{{~ if note_auth || note_tm ~}}
+>
+> *{{~ if note_auth ~}}{{ note_auth }}{{~ end ~}}{{~ if note_auth && note_tm ~}} - {{~ end ~}}{{~ if note_tm ~}}{{ format_datetime note_tm }}{{~ end ~}}*
+{{~ end ~}}
+{{~ end ~}}
+
+{{~ end ~}}
+{{~ end ~}}

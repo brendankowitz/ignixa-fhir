@@ -1,0 +1,180 @@
+﻿{{~ # Auto-generated Scriban narrative template for DocumentReference ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/DocumentReference ~}}
+
+<div class="fhir-narrative fhir-documentreference" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "DocumentReference.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"DocumentReference.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "DocumentReference.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "DocumentReference.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DocumentReference.Status" }}</dt>
+    <dd>{{ fhir.path resource "status" }}</dd>
+    {{~ if (fhir.exists resource "subject") ~}}
+    <dt>{{ l10n.t "DocumentReference.Subject" }}</dt>
+    {{~ ref_display = fhir.path resource "subject.display" ~}}
+    {{~ ref_reference = fhir.path resource "subject.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "author") ~}}
+    <dt>{{ l10n.t "DocumentReference.Author" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "author" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("author[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("author[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "date") ~}}
+    <dt>{{ l10n.t "DocumentReference.Date" }}</dt>
+    <dd>{{ fhir.format_datetime (fhir.path resource "date") }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "DocumentReference.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "category" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "bodySite") ~}}
+    <dt>{{ l10n.t "DocumentReference.BodySite" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "bodySite" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("bodySite[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "DocumentReference.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "description") ~}}
+    <dt>{{ l10n.t "DocumentReference.Description" }}</dt>
+    <dd>{{ fhir.path resource "description" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "version") ~}}
+    <dt>{{ l10n.t "DocumentReference.Version" }}</dt>
+    <dd>{{ fhir.path resource "version" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "docStatus") ~}}
+    <dt>{{ l10n.t "DocumentReference.DocStatus" }}</dt>
+    <dd>{{ fhir.path resource "docStatus" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "modality") ~}}
+    <dt>{{ l10n.t "DocumentReference.Modality" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "modality" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("modality[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("modality[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "DocumentReference.Type" }}</dt>
+    {{~ cc_display = fhir.path resource "type.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "type.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "context") ~}}
+    <dt>{{ l10n.t "DocumentReference.Context" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "context" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ ref_display = fhir.path resource ("context[" + i + "].display") ~}}
+      {{~ ref_reference = fhir.path resource ("context[" + i + "].reference") ~}}
+        <li>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "period") ~}}
+    <dt>{{ l10n.t "DocumentReference.Period" }}</dt>
+    {{~ period_start = fhir.path resource "period.start" ~}}
+    {{~ period_end = fhir.path resource "period.end" ~}}
+    <dd>
+      {{~ if period_start && period_start != "" ~}}{{ fhir.format_date period_start }}{{~ end ~}}
+      {{~ if (period_start && period_start != "") && (period_end && period_end != "") ~}} - {{~ end ~}}
+      {{~ if period_end && period_end != "" ~}}{{ fhir.format_date period_end }}{{~ end ~}}
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "relatesTo") ~}}
+    <dt>{{ l10n.t "DocumentReference.RelatesTo" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "relatesTo" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("relatesTo[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "securityLabel") ~}}
+    <dt>{{ l10n.t "DocumentReference.SecurityLabel" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "securityLabel" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ cc_display = fhir.path resource ("securityLabel[" + i + "].coding.first().display") ~}}
+      {{~ cc_code = fhir.path resource ("securityLabel[" + i + "].coding.first().code") ~}}
+        <li>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "DocumentReference.Content" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "content" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("content[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+  </dl>
+
+</div>

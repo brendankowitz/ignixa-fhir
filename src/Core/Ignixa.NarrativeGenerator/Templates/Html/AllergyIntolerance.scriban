@@ -1,0 +1,119 @@
+﻿{{~ # Auto-generated Scriban narrative template for AllergyIntolerance ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/AllergyIntolerance ~}}
+
+<div class="fhir-narrative fhir-allergyintolerance" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  <div class="fhir-header">
+    <h3 class="fhir-resource-type">{{ l10n.t "AllergyIntolerance.Title" }}</h3>
+    {{~ if (fhir.exists resource "id") ~}}
+    <span class="fhir-id"AllergyIntolerance.Id" }}">{{ fhir.path resource "id" }}</span>
+    {{~ end ~}}
+  </div>
+
+  <dl class="fhir-details">
+    {{~ if (fhir.exists resource "id") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Id" }}</dt>
+    <dd>{{ fhir.path resource "id" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "identifier") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Identifier" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+      {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      {{~ id_type = fhir.path resource ("identifier[" + i + "].type.coding.first().display") ~}}
+        <li>
+          {{~ if id_type && id_type != "" ~}}<span class="identifier-type">{{ id_type }}:</span> {{~ end ~}}
+          <span class="identifier-value">{{ id_value }}</span>
+          {{~ if id_system && id_system != "" ~}} <span class="identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "code") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Code" }}</dt>
+    {{~ cc_display = fhir.path resource "code.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "code.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Patient" }}</dt>
+    {{~ ref_display = fhir.path resource "patient.display" ~}}
+    {{~ ref_reference = fhir.path resource "patient.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ if (fhir.exists resource "encounter") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Encounter" }}</dt>
+    {{~ ref_display = fhir.path resource "encounter.display" ~}}
+    {{~ ref_reference = fhir.path resource "encounter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "clinicalStatus") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.ClinicalStatus" }}</dt>
+    {{~ cc_display = fhir.path resource "clinicalStatus.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "clinicalStatus.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "verificationStatus") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.VerificationStatus" }}</dt>
+    {{~ cc_display = fhir.path resource "verificationStatus.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "verificationStatus.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "category") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Category" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "category" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("category[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "text") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Text" }}</dt>
+    <dd>{{ fhir.path resource "text" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "note") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Note" }}</dt>
+    <dd>
+      <ul class="fhir-list">
+      {{~ item_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(item_count - 1) ~}}
+      {{~ item_value = fhir.path resource ("note[" + i + "]") ~}}
+        <li>{{ item_value }}</li>
+      {{~ end ~}}
+      </ul>
+    </dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "type") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Type" }}</dt>
+    {{~ cc_display = fhir.path resource "type.coding.first().display" ~}}
+    {{~ cc_code = fhir.path resource "type.coding.first().code" ~}}
+    <dd>{{ (cc_display && cc_display != "") ? cc_display : cc_code }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "criticality") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Criticality" }}</dt>
+    <dd>{{ fhir.path resource "criticality" }}</dd>
+    {{~ end ~}}
+    {{~ if (fhir.exists resource "asserter") ~}}
+    <dt>{{ l10n.t "AllergyIntolerance.Asserter" }}</dt>
+    {{~ ref_display = fhir.path resource "asserter.display" ~}}
+    {{~ ref_reference = fhir.path resource "asserter.reference" ~}}
+    <dd>{{ (ref_display && ref_display != "") ? ref_display : ref_reference }}</dd>
+    {{~ end ~}}
+  </dl>
+
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-notes"id" }}">
+    <h4id" }}">{{ l10n.t "AllergyIntolerance.Notes" }}</h4>
+    <ul>
+    {{~ for note in (fhir.path resource "note") ~}}
+      <li>{{ fhir.path note "text" }}</li>
+    {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+</div>

@@ -1,0 +1,324 @@
+{{~ # Enhanced Scriban narrative template for DiagnosticReport ~}}
+{{~ # FHIR StructureDefinition: http://hl7.org/fhir/StructureDefinition/DiagnosticReport ~}}
+{{~ # FHIR-compliant XHTML (HTML 4.0 chapters 7-11, 15) ~}}
+
+<div class="fhir-narrative fhir-diagnosticreport" lang="{{ l10n.lang }}" dir="{{ l10n.is_rtl ? "rtl" : "ltr" }}">
+  {{~ # --- Header Section --- ~}}
+  <div class="fhir-header">
+    {{~ code_display = fhir.path resource "code.coding.first().display" ~}}
+    {{~ code_text = fhir.path resource "code.text" ~}}
+    {{~ code_code = fhir.path resource "code.coding.first().code" ~}}
+    {{~ report_title = code_display ?? code_text ?? code_code ~}}
+    <h3 class="fhir-resource-title">
+      {{~ if report_title && report_title != "" ~}}
+      {{ report_title }}
+      <span class="fhir-resource-type-badge">({{ l10n.t "DiagnosticReport.Title" }})</span>
+      {{~ else ~}}
+      {{ l10n.t "DiagnosticReport.Title" }}
+      {{~ end ~}}
+    </h3>
+    {{~ # Status Badge ~}}
+    {{~ status = fhir.path resource "status" ~}}
+    <span class="fhir-status-badge fhir-status-{{ status }}" title="{{ l10n.t "DiagnosticReport.Status" }}">
+      {{ l10n.t ("DiagnosticReport.Status." + status) }}
+    </span>
+  </div>
+
+  {{~ # --- Conclusion Section (Most Important) --- ~}}
+  {{~ if (fhir.exists resource "conclusion") || (fhir.exists resource "conclusionCode") ~}}
+  <div class="fhir-section fhir-conclusion fhir-primary">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Conclusion" }}</h4>
+    <div class="fhir-conclusion-content">
+      {{~ if (fhir.exists resource "conclusion") ~}}
+      <p class="fhir-conclusion-text">{{ fhir.path resource "conclusion" }}</p>
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "conclusionCode") ~}}
+      {{~ cc_count = fhir.count resource "conclusionCode" ~}}
+      <div class="fhir-conclusion-codes">
+        {{~ for i in 0..(cc_count - 1) ~}}
+          {{~ cc_display = fhir.path resource ("conclusionCode[" + i + "].coding.first().display") ~}}
+          {{~ cc_text = fhir.path resource ("conclusionCode[" + i + "].text") ~}}
+          {{~ cc_code = fhir.path resource ("conclusionCode[" + i + "].coding.first().code") ~}}
+          <span class="fhir-conclusion-code">{{ cc_display ?? cc_text ?? cc_code }}</span>
+          {{~ if i < (cc_count - 1) ~}}, {{~ end ~}}
+        {{~ end ~}}
+      </div>
+      {{~ end ~}}
+    </div>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Results Section --- ~}}
+  {{~ if (fhir.exists resource "result") ~}}
+  <div class="fhir-section fhir-results">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Results" }}</h4>
+    <ul class="fhir-results-list">
+      {{~ result_count = fhir.count resource "result" ~}}
+      {{~ for i in 0..(result_count - 1) ~}}
+        {{~ res_display = fhir.path resource ("result[" + i + "].display") ~}}
+        {{~ res_reference = fhir.path resource ("result[" + i + "].reference") ~}}
+        <li>{{ res_display ?? res_reference }}</li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Report Details Section --- ~}}
+  <div class="fhir-section fhir-report-details">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Details" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Category ~}}
+      {{~ if (fhir.exists resource "category") ~}}
+      {{~ cat_count = fhir.count resource "category" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Category" }}</dt>
+        <dd>
+          {{~ for i in 0..(cat_count - 1) ~}}
+            {{~ cat_display = fhir.path resource ("category[" + i + "].coding.first().display") ~}}
+            {{~ cat_code = fhir.path resource ("category[" + i + "].coding.first().code") ~}}
+            <span class="fhir-category-tag">{{ cat_display ?? cat_code }}</span>
+            {{~ if i < (cat_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Code ~}}
+      {{~ if (fhir.exists resource "code") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Code" }}</dt>
+        <dd>
+          {{ report_title }}
+          {{~ if code_code && code_code != "" ~}}
+          <code class="fhir-code">({{ code_code }})</code>
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Effective Date/Time ~}}
+      {{~ if (fhir.exists resource "effectiveDateTime") ~}}
+      {{~ eff_dt = fhir.path resource "effectiveDateTime" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Effective" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ eff_dt }}">{{ fhir.format_datetime eff_dt }}</span></dd>
+      </div>
+      {{~ else if (fhir.exists resource "effectivePeriod") ~}}
+      {{~ eff_start = fhir.path resource "effectivePeriod.start" ~}}
+      {{~ eff_end = fhir.path resource "effectivePeriod.end" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Effective" }}</dt>
+        <dd>
+          {{~ if eff_start ~}}<span class="fhir-datetime" title="{{ eff_start }}">{{ fhir.format_datetime eff_start }}</span>{{~ end ~}}
+          {{~ if eff_start && eff_end ~}} - {{~ end ~}}
+          {{~ if eff_end ~}}<span class="fhir-datetime" title="{{ eff_end }}">{{ fhir.format_datetime eff_end }}</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Issued ~}}
+      {{~ if (fhir.exists resource "issued") ~}}
+      {{~ issued_dt = fhir.path resource "issued" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Issued" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ issued_dt }}">{{ fhir.format_datetime issued_dt }}</span></dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+
+  {{~ # --- Subject and Context Section --- ~}}
+  {{~ has_context = (fhir.exists resource "subject") || (fhir.exists resource "encounter") || (fhir.exists resource "performer") || (fhir.exists resource "resultsInterpreter") ~}}
+  {{~ if has_context ~}}
+  <div class="fhir-section fhir-context">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Context" }}</h4>
+    <dl class="fhir-details">
+      {{~ # Subject ~}}
+      {{~ if (fhir.exists resource "subject") ~}}
+      {{~ subj_display = fhir.path resource "subject.display" ~}}
+      {{~ subj_reference = fhir.path resource "subject.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Subject" }}</dt>
+        <dd>{{ subj_display ?? subj_reference }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Encounter ~}}
+      {{~ if (fhir.exists resource "encounter") ~}}
+      {{~ enc_display = fhir.path resource "encounter.display" ~}}
+      {{~ enc_reference = fhir.path resource "encounter.reference" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Encounter" }}</dt>
+        <dd>{{ enc_display ?? enc_reference }}</dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Performer ~}}
+      {{~ if (fhir.exists resource "performer") ~}}
+      {{~ perf_count = fhir.count resource "performer" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Performer" }}</dt>
+        <dd>
+          {{~ for i in 0..(perf_count - 1) ~}}
+            {{~ perf_display = fhir.path resource ("performer[" + i + "].display") ~}}
+            {{~ perf_reference = fhir.path resource ("performer[" + i + "].reference") ~}}
+            {{ perf_display ?? perf_reference }}{{~ if i < (perf_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ # Results Interpreter ~}}
+      {{~ if (fhir.exists resource "resultsInterpreter") ~}}
+      {{~ interp_count = fhir.count resource "resultsInterpreter" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.ResultsInterpreter" }}</dt>
+        <dd>
+          {{~ for i in 0..(interp_count - 1) ~}}
+            {{~ interp_display = fhir.path resource ("resultsInterpreter[" + i + "].display") ~}}
+            {{~ interp_reference = fhir.path resource ("resultsInterpreter[" + i + "].reference") ~}}
+            {{ interp_display ?? interp_reference }}{{~ if i < (interp_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Specimens Section --- ~}}
+  {{~ if (fhir.exists resource "specimen") ~}}
+  <div class="fhir-section fhir-specimens">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Specimens" }}</h4>
+    <ul class="fhir-specimen-list">
+      {{~ specimen_count = fhir.count resource "specimen" ~}}
+      {{~ for i in 0..(specimen_count - 1) ~}}
+        {{~ spec_display = fhir.path resource ("specimen[" + i + "].display") ~}}
+        {{~ spec_reference = fhir.path resource ("specimen[" + i + "].reference") ~}}
+        <li>{{ spec_display ?? spec_reference }}</li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Media Section --- ~}}
+  {{~ if (fhir.exists resource "media") ~}}
+  <div class="fhir-section fhir-media">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Media" }}</h4>
+    <ul class="fhir-media-list">
+      {{~ media_count = fhir.count resource "media" ~}}
+      {{~ for i in 0..(media_count - 1) ~}}
+        {{~ media_comment = fhir.path resource ("media[" + i + "].comment") ~}}
+        {{~ media_link_display = fhir.path resource ("media[" + i + "].link.display") ~}}
+        {{~ media_link_ref = fhir.path resource ("media[" + i + "].link.reference") ~}}
+        <li>
+          {{~ if media_comment && media_comment != "" ~}}<span class="fhir-media-comment">{{ media_comment }}: </span>{{~ end ~}}
+          {{ media_link_display ?? media_link_ref }}
+        </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Presented Form Section --- ~}}
+  {{~ if (fhir.exists resource "presentedForm") ~}}
+  <div class="fhir-section fhir-presented-form">
+    <h4>{{ l10n.t "DiagnosticReport.Section.PresentedForm" }}</h4>
+    <ul class="fhir-attachment-list">
+      {{~ form_count = fhir.count resource "presentedForm" ~}}
+      {{~ for i in 0..(form_count - 1) ~}}
+        {{~ form_title = fhir.path resource ("presentedForm[" + i + "].title") ~}}
+        {{~ form_content_type = fhir.path resource ("presentedForm[" + i + "].contentType") ~}}
+        {{~ form_url = fhir.path resource ("presentedForm[" + i + "].url") ~}}
+        <li>
+          {{~ if form_title && form_title != "" ~}}
+          {{ form_title }}
+          {{~ else ~}}
+          {{ l10n.t "DiagnosticReport.Attachment" }}
+          {{~ end ~}}
+          {{~ if form_content_type && form_content_type != "" ~}}
+          <span class="fhir-content-type">({{ form_content_type }})</span>
+          {{~ end ~}}
+        </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Notes Section --- ~}}
+  {{~ if (fhir.exists resource "note") ~}}
+  <div class="fhir-section fhir-notes">
+    <h4>{{ l10n.t "DiagnosticReport.Section.Notes" }}</h4>
+    <ul class="fhir-notes-list">
+      {{~ note_count = fhir.count resource "note" ~}}
+      {{~ for i in 0..(note_count - 1) ~}}
+        {{~ note_text = fhir.path resource ("note[" + i + "].text") ~}}
+        {{~ note_time = fhir.path resource ("note[" + i + "].time") ~}}
+        {{~ note_author = fhir.path resource ("note[" + i + "].authorReference.display") ~}}
+        <li>
+          <p>{{ note_text }}</p>
+          {{~ if note_author || note_time ~}}
+          <p class="fhir-note-metadata">
+            {{~ if note_author ~}}<span class="fhir-note-author">{{ note_author }}</span>{{~ end ~}}
+            {{~ if note_time ~}}
+              {{~ if note_author ~}} - {{~ end ~}}
+              <span class="fhir-datetime" title="{{ note_time }}">{{ fhir.format_datetime note_time }}</span>
+            {{~ end ~}}
+          </p>
+          {{~ end ~}}
+        </li>
+      {{~ end ~}}
+    </ul>
+  </div>
+  {{~ end ~}}
+
+  {{~ # --- Technical Details --- ~}}
+  {{~ if (fhir.exists resource "id") ~}}
+  <div class="fhir-technical-details">
+    <h5>{{ l10n.t "Common.TechnicalDetails" }}</h5>
+    <dl class="fhir-details">
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.ResourceId" }}</dt>
+        <dd><code>{{ fhir.path resource "id" }}</code></dd>
+      </div>
+      {{~ # Identifiers ~}}
+      {{~ if (fhir.exists resource "identifier") ~}}
+      {{~ id_count = fhir.count resource "identifier" ~}}
+      {{~ for i in 0..(id_count - 1) ~}}
+        {{~ id_value = fhir.path resource ("identifier[" + i + "].value") ~}}
+        {{~ id_system = fhir.path resource ("identifier[" + i + "].system") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.Identifier" }}</dt>
+        <dd>
+          <code>{{ id_value }}</code>
+          {{~ if id_system && id_system != "" ~}} <span class="fhir-identifier-system">({{ id_system }})</span>{{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ end ~}}
+      {{~ # Based On ~}}
+      {{~ if (fhir.exists resource "basedOn") ~}}
+      {{~ based_count = fhir.count resource "basedOn" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "DiagnosticReport.BasedOn" }}</dt>
+        <dd>
+          {{~ for i in 0..(based_count - 1) ~}}
+            {{~ bo_display = fhir.path resource ("basedOn[" + i + "].display") ~}}
+            {{~ bo_reference = fhir.path resource ("basedOn[" + i + "].reference") ~}}
+            {{ bo_display ?? bo_reference }}{{~ if i < (based_count - 1) ~}}, {{~ end ~}}
+          {{~ end ~}}
+        </dd>
+      </div>
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "meta.versionId") ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.VersionId" }}</dt>
+        <dd><code>{{ fhir.path resource "meta.versionId" }}</code></dd>
+      </div>
+      {{~ end ~}}
+      {{~ if (fhir.exists resource "meta.lastUpdated") ~}}
+      {{~ last_updated = fhir.path resource "meta.lastUpdated" ~}}
+      <div class="fhir-field">
+        <dt>{{ l10n.t "Common.LastUpdated" }}</dt>
+        <dd><span class="fhir-datetime" title="{{ last_updated }}">{{ fhir.format_datetime last_updated }}</span></dd>
+      </div>
+      {{~ end ~}}
+    </dl>
+  </div>
+  {{~ end ~}}
+
+</div>
