@@ -8,6 +8,7 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Operations.Features.MemberMatch;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Application.Operations.Features.Validate;
@@ -97,6 +98,14 @@ public static class OperationEndpoints
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
 
+        // POST /Patient/$member-match - Member match operation (tenant-explicit)
+        tenantGroup.MapPost("/Patient/$member-match", HandleMemberMatch)
+            .WithName("MemberMatch")
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status422UnprocessableEntity, KnownContentTypes.ApplicationFhirJson);
+
         return endpoints;
     }
 
@@ -148,6 +157,14 @@ public static class OperationEndpoints
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson);
+
+        // POST /Patient/$member-match - Member match operation (agnostic route)
+        endpoints.MapPost("/Patient/$member-match", HandleMemberMatchAgnostic)
+            .WithName("MemberMatchAgnostic")
+            .Accepts<object>(KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status400BadRequest, KnownContentTypes.ApplicationFhirJson)
+            .Produces<object>(StatusCodes.Status422UnprocessableEntity, KnownContentTypes.ApplicationFhirJson);
 
         return endpoints;
     }
@@ -686,5 +703,116 @@ public static class OperationEndpoints
         }
 
         return await HandleTransformInstance(context, tenantId, id, mediator, memoryStreamManager, cancellationToken);
+    }
+
+    // ==================== $member-match Operation Handlers ====================
+
+    /// <summary>
+    /// Handles POST /tenant/{tenantId}/Patient/$member-match (tenant-explicit).
+    /// </summary>
+    private static async Task<IResult> HandleMemberMatch(
+        HttpContext context,
+        int tenantId,
+        [FromServices] IMediator mediator,
+        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+        CancellationToken cancellationToken)
+    {
+        // Parse Parameters from request body
+        ParametersJsonNode? parameters;
+        try
+        {
+            await using var memoryStream = memoryStreamManager.GetStream("member-match-request");
+            await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+            memoryStream.Position = 0;
+            parameters = await JsonSourceNodeFactory.ParseAsync<ParametersJsonNode>(memoryStream, cancellationToken);
+        }
+        catch
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Invalid,
+                "Request body must be a valid FHIR Parameters resource"));
+        }
+
+        if (parameters == null)
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Required,
+                "Request body must contain a FHIR Parameters resource"));
+        }
+
+        // Extract parameters per HRex specification
+        var memberPatient = parameters.GetParameterResource<ResourceJsonNode>("MemberPatient");
+        var coverageToMatch = parameters.GetParameterResource<ResourceJsonNode>("CoverageToMatch");
+        var coverageToLink = parameters.GetParameterResource<ResourceJsonNode>("CoverageToLink");
+        var consent = parameters.GetParameterResource<ResourceJsonNode>("Consent");
+
+        // Validate required parameters
+        if (memberPatient == null)
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Required,
+                "Required parameter 'MemberPatient' is missing"));
+        }
+
+        if (coverageToMatch == null)
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Required,
+                "Required parameter 'CoverageToMatch' is missing"));
+        }
+
+        // Create command
+        var command = new MemberMatchCommand(
+            MemberPatient: memberPatient,
+            CoverageToMatch: coverageToMatch,
+            CoverageToLink: coverageToLink,
+            Consent: consent);
+
+        // Execute via mediator
+        var result = await mediator.SendAsync(command, cancellationToken);
+
+        if (result.Success)
+        {
+            // Build and return successful response
+            var responseParameters = MemberMatchHandler.BuildResponseParameters(result);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(responseParameters.ToJsonString());
+            return FhirResults.Ok(bytes);
+        }
+
+        // Build error response
+        var errorOutcome = MemberMatchHandler.BuildErrorOperationOutcome(result);
+        var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorOutcome.ToJsonString());
+
+        // Return appropriate HTTP status based on error type
+        return result.ErrorCode switch
+        {
+            "no-match" or "multiple-matches" => Results.UnprocessableEntity(errorOutcome),
+            _ => Results.BadRequest(errorOutcome)
+        };
+    }
+
+    /// <summary>
+    /// Handles POST /Patient/$member-match (tenant-agnostic, single-tenant only).
+    /// </summary>
+    private static async Task<IResult> HandleMemberMatchAgnostic(
+        HttpContext context,
+        [FromServices] IMediator mediator,
+        [FromServices] RecyclableMemoryStreamManager memoryStreamManager,
+        CancellationToken cancellationToken)
+    {
+        // For agnostic route, determine tenant from context
+        if (!context.Items.TryGetValue("TenantId", out var tenantIdObj) || tenantIdObj is not int tenantId)
+        {
+            return Results.BadRequest(CreateOperationOutcome(
+                OperationOutcomeJsonNode.IssueSeverity.Error,
+                OperationOutcomeJsonNode.IssueType.Required,
+                "TenantId not found. In multi-tenant mode, use /tenant/{tenantId}/Patient/$member-match"));
+        }
+
+        return await HandleMemberMatch(context, tenantId, mediator, memoryStreamManager, cancellationToken);
     }
 }

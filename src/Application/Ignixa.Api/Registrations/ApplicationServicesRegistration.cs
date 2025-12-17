@@ -227,6 +227,15 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<ConceptMapResolverService>()
             .AsSelf()
             .InstancePerLifetimeScope();
+
+        // $member-match
+        builder.RegisterType<Ignixa.Application.Operations.Features.MemberMatch.MemberMatchHandler>()
+            .As<IRequestHandler<Ignixa.Application.Operations.Features.MemberMatch.MemberMatchCommand, Ignixa.Application.Operations.Features.MemberMatch.MemberMatchResult>>()
+            .InstancePerDependency();
+
+        builder.RegisterType<Ignixa.Application.Operations.Features.MemberMatch.DefaultMemberMatchStrategy>()
+            .As<Ignixa.Application.Operations.Features.MemberMatch.IMemberMatchStrategy>()
+            .InstancePerDependency();
     }
 
     private static void RegisterPatchServices(ContainerBuilder builder)
