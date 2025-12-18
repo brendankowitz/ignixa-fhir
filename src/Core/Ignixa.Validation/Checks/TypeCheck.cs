@@ -4,6 +4,8 @@
 // </copyright>
 
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Ignixa.Abstractions;
 using Ignixa.Validation.Abstractions;
@@ -68,6 +70,22 @@ public class TypeCheck : IValidationCheck
 
         var text = fieldNode.Value?.ToString();
         var location = fieldNode.Location;
+
+        // Check JSON type before value validation
+        // Access the underlying JsonNode to check the original JSON type (before deserialization coercion)
+        var jsonNode = fieldNode.Meta<JsonNode>();
+        if (jsonNode is not null)
+        {
+            var jsonKind = jsonNode.GetValueKind();
+            if (!IsValidJsonType(jsonKind, _expectedType))
+            {
+                return ValidationResult.Failure(
+                    ValidationIssue.InvariantFailure(
+                        "type-1",
+                        $"JSON type mismatch: expected {GetExpectedJsonTypeDescription(_expectedType)} for FHIR type '{_expectedType}', but got {jsonKind}",
+                        location));
+            }
+        }
 
         if (string.IsNullOrEmpty(text))
         {
@@ -166,5 +184,64 @@ public class TypeCheck : IValidationCheck
     private static bool IsValidUuid(string text)
     {
         return Guid.TryParse(text, out _);
+    }
+
+    /// <summary>
+    /// Validates that the JSON type matches the expected FHIR type.
+    /// Prevents System.Text.Json from silently coercing types during deserialization.
+    /// </summary>
+    /// <param name="jsonKind">The actual JSON value kind from the source.</param>
+    /// <param name="fhirType">The expected FHIR type.</param>
+    /// <returns>True if the JSON type is compatible with the FHIR type, false otherwise.</returns>
+    private static bool IsValidJsonType(JsonValueKind jsonKind, string fhirType)
+    {
+        return fhirType switch
+        {
+            // String-based FHIR types require JSON String
+            "string" or "code" or "id" or "markdown" or "uri" or "url" or "canonical" or "oid" or "uuid"
+                => jsonKind == JsonValueKind.String,
+
+            // Date/time types are represented as JSON strings in FHIR
+            "date" or "dateTime" or "instant" or "time"
+                => jsonKind == JsonValueKind.String,
+
+            // base64Binary is a string in JSON
+            "base64Binary"
+                => jsonKind == JsonValueKind.String,
+
+            // Numeric types require JSON Number
+            "integer" or "unsignedInt" or "positiveInt" or "decimal"
+                => jsonKind == JsonValueKind.Number,
+
+            // Boolean requires JSON True or False
+            "boolean"
+                => jsonKind is JsonValueKind.True or JsonValueKind.False,
+
+            // Complex types are objects (but we don't validate those here - they have no Value)
+            // Arrays are validated by cardinality checks
+            // Unknown types pass through (permissive for extensibility)
+            _ => true
+        };
+    }
+
+    /// <summary>
+    /// Gets a human-readable description of the expected JSON type for error messages.
+    /// </summary>
+    private static string GetExpectedJsonTypeDescription(string fhirType)
+    {
+        return fhirType switch
+        {
+            "string" or "code" or "id" or "markdown" or "uri" or "url" or "canonical" or "oid" or "uuid"
+                or "date" or "dateTime" or "instant" or "time" or "base64Binary"
+                => "String",
+
+            "integer" or "unsignedInt" or "positiveInt" or "decimal"
+                => "Number",
+
+            "boolean"
+                => "True or False",
+
+            _ => "compatible type"
+        };
     }
 }

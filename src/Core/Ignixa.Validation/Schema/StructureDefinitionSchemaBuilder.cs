@@ -190,7 +190,7 @@ public class StructureDefinitionSchemaBuilder
         }
 
         // Extract nested complex type checks (BackboneElement, complex datatypes)
-        var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema);
+        var nestedTypeChecks = ExtractNestedTypeChecks(elements, typeDefinition, schema, terminologyService);
         specChecks.AddRange(nestedTypeChecks);
 
         // Extract unknown property check (only first-level elements)
@@ -314,11 +314,13 @@ public class StructureDefinitionSchemaBuilder
     /// <param name="elements">The element definitions to extract nested types from.</param>
     /// <param name="typeDefinition">The parent type definition (for building nested type names).</param>
     /// <param name="schema">The schema for resolving nested types.</param>
+    /// <param name="terminologyService">Optional terminology service for binding validation in nested types.</param>
     /// <returns>A collection of NestedComplexTypeCheck instances.</returns>
     private static IEnumerable<IValidationCheck> ExtractNestedTypeChecks(
         IReadOnlyList<IType> elements,
         IType typeDefinition,
-        ISchema schema)
+        ISchema schema,
+        ITerminologyService? terminologyService)
     {
         var checks = new List<IValidationCheck>();
 
@@ -371,7 +373,7 @@ public class StructureDefinitionSchemaBuilder
 
             // Build the nested schema
             var nestedBuilder = new StructureDefinitionSchemaBuilder();
-            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition, schema);
+            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition, schema, terminologyService);
 
             // Create the nested type check
             var check = new NestedComplexTypeCheck(element.Info.Name, element.IsCollection, nestedSchema);

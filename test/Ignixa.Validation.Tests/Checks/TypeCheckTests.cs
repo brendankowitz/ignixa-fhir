@@ -9,6 +9,7 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Validation;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Tests.TestHelpers;
+using Shouldly;
 using Xunit;
 
 namespace Ignixa.Validation.Tests.Checks;
@@ -289,4 +290,164 @@ public class TypeCheckTests
         Assert.Single(result.Issues);
         Assert.Contains("canonical", result.Issues[0].Message);
     }
+
+    #region JSON Type Mismatch Tests
+
+    [Fact]
+    public void GivenIntegerValueForStringField_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - Integer 2 where string expected
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"name\":[{\"family\":2}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Message.ShouldContain("type");
+    }
+
+    [Fact]
+    public void GivenBooleanValueForStringField_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - Boolean where string expected
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"name\":[{\"family\":false}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Message.ShouldContain("type");
+    }
+
+    [Fact]
+    public void GivenNumberValueForBooleanField_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - Number where boolean expected
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"active\":1}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("active", "boolean");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Message.ShouldContain("type");
+    }
+
+    [Fact]
+    public void GivenObjectValueForStringField_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - Object where string expected
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"name\":[{\"family\":{\"nested\":\"value\"}}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+        result.Issues[0].Message.ShouldContain("type");
+    }
+
+    [Fact]
+    public void GivenStringValueForIntegerField_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - String where integer expected
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"multipleBirthInteger\":\"two\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("multipleBirthInteger", "integer");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void GivenStringValueForBooleanField_WhenValidating_ThenReturnsError()
+    {
+        // Arrange - String where boolean expected
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"active\":\"yes\"}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("active", "boolean");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void GivenValidStringValue_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - Valid string value
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var nameElement = element.Children("name")[0];
+        var check = new TypeCheck("family", "string");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(nameElement, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenValidIntegerValue_WhenValidating_ThenReturnsSuccess()
+    {
+        // Arrange - Valid integer value
+        var json = JsonNode.Parse("{\"resourceType\":\"Patient\",\"multipleBirthInteger\":3}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new TypeCheck("multipleBirthInteger", "integer");
+        var settings = new ValidationSettings();
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    #endregion
 }
