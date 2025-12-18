@@ -130,6 +130,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Operations", "Operations", 
 		docs\rest\SqlOnFhir.http = docs\rest\SqlOnFhir.http
 		docs\rest\Terminology.http = docs\rest\Terminology.http
 		docs\rest\TransformOperation.http = docs\rest\TransformOperation.http
+		docs\rest\Operations-MemberMatch.http = docs\rest\Operations-MemberMatch.http
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Extensions.FirelySdk5", "src\Core\Extensions\Ignixa.Extensions.FirelySdk5\Ignixa.Extensions.FirelySdk5.csproj", "{FE11D059-0FCB-497B-8C92-3A27B9083174}"
