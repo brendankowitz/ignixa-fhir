@@ -63,31 +63,49 @@ public sealed class ConditionOnsetState : ScenarioState
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
 
-        // Set clinical status
-        node["clinicalStatus"] = new JsonObject
+        // Set clinical status (version-aware)
+        if (faker.SchemaProvider.IsStu3())
         {
-            ["coding"] = new JsonArray
+            // STU3: simple code string
+            node["clinicalStatus"] = ClinicalStatus;
+        }
+        else
+        {
+            // R4+: CodeableConcept
+            node["clinicalStatus"] = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["system"] = "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                    ["code"] = ClinicalStatus
+                    new JsonObject
+                    {
+                        ["system"] = "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                        ["code"] = ClinicalStatus
+                    }
                 }
-            }
-        };
+            };
+        }
 
-        // Set verification status
-        node["verificationStatus"] = new JsonObject
+        // Set verification status (version-aware)
+        if (faker.SchemaProvider.IsStu3())
         {
-            ["coding"] = new JsonArray
+            // STU3: simple code string
+            node["verificationStatus"] = VerificationStatus;
+        }
+        else
+        {
+            // R4+: CodeableConcept
+            node["verificationStatus"] = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["system"] = "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-                    ["code"] = VerificationStatus
+                    new JsonObject
+                    {
+                        ["system"] = "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                        ["code"] = VerificationStatus
+                    }
                 }
-            }
-        };
+            };
+        }
 
         // Set category
         node["category"] = new JsonArray

@@ -85,18 +85,27 @@ public sealed class ConditionEndState : ScenarioState
                 $"Cannot end condition. No condition found with attribute '{AttributeName}' or code '{ConditionCode?.Code}'.");
         }
 
-        // Update clinical status
-        condition.MutableNode["clinicalStatus"] = new JsonObject
+        // Update clinical status (version-aware)
+        if (faker.SchemaProvider.IsStu3())
         {
-            ["coding"] = new JsonArray
+            // STU3: simple code string
+            condition.MutableNode["clinicalStatus"] = ClinicalStatus;
+        }
+        else
+        {
+            // R4+: CodeableConcept
+            condition.MutableNode["clinicalStatus"] = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["system"] = "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                    ["code"] = ClinicalStatus
+                    new JsonObject
+                    {
+                        ["system"] = "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                        ["code"] = ClinicalStatus
+                    }
                 }
-            }
-        };
+            };
+        }
 
         // Set abatement date using version-appropriate field name (R4+ normative is "abatementDateTime")
         var abatementField = VersionFieldOverrides.GetFieldName(

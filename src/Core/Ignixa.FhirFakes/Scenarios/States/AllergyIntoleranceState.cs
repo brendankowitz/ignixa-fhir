@@ -100,35 +100,53 @@ public sealed class AllergyIntoleranceState : ScenarioState
         // Set required fields
         node["id"] = Guid.NewGuid().ToString();
 
-        // Set clinical status (required in R4+, optional in STU3)
-        // Always set it for completeness, but note the requirement difference
-        node["clinicalStatus"] = new JsonObject
+        // Set clinical status (version-aware)
+        // STU3: simple code string, R4+: CodeableConcept (required)
+        if (faker.SchemaProvider.IsStu3())
         {
-            ["coding"] = new JsonArray
+            // STU3: simple code string
+            node["clinicalStatus"] = ClinicalStatus;
+        }
+        else
+        {
+            // R4+: CodeableConcept
+            node["clinicalStatus"] = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["system"] = "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
-                    ["code"] = ClinicalStatus,
-                    ["display"] = MapClinicalStatusToDisplay(ClinicalStatus)
+                    new JsonObject
+                    {
+                        ["system"] = "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+                        ["code"] = ClinicalStatus,
+                        ["display"] = MapClinicalStatusToDisplay(ClinicalStatus)
+                    }
                 }
-            }
-        };
+            };
+        }
 
-        // Set verification status (required in R4+, optional in STU3)
-        // Always set it for completeness, but note the requirement difference
-        node["verificationStatus"] = new JsonObject
+        // Set verification status (version-aware)
+        // STU3: simple code string, R4+: CodeableConcept (required)
+        if (faker.SchemaProvider.IsStu3())
         {
-            ["coding"] = new JsonArray
+            // STU3: simple code string
+            node["verificationStatus"] = VerificationStatus;
+        }
+        else
+        {
+            // R4+: CodeableConcept
+            node["verificationStatus"] = new JsonObject
             {
-                new JsonObject
+                ["coding"] = new JsonArray
                 {
-                    ["system"] = "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
-                    ["code"] = VerificationStatus,
-                    ["display"] = MapVerificationStatusToDisplay(VerificationStatus)
+                    new JsonObject
+                    {
+                        ["system"] = "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+                        ["code"] = VerificationStatus,
+                        ["display"] = MapVerificationStatusToDisplay(VerificationStatus)
+                    }
                 }
-            }
-        };
+            };
+        }
 
         // Set type
         node["type"] = Type;

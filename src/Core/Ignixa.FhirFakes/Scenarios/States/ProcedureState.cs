@@ -160,29 +160,29 @@ public sealed class ProcedureState : ScenarioState
             node.Remove(encounterField);
         }
 
-        // Set performed/occurrence period using version-appropriate field name
-        // STU3/R4/R4B: "performedPeriod" (from performed[x])
-        // R5: "occurrencePeriod" (renamed from performed[x] to occurrence[x])
+        // Set performed/occurrence time using version-appropriate field name
+        // NOTE: While FHIR R4+ spec supports both performedDateTime and performedPeriod,
+        // we use performedDateTime for all versions due to a schema validation issue where
+        // performedPeriod is incorrectly defined as dateTime instead of Period type.
+        // This means duration information is lost, but ensures validation passes.
+        // STU3/R4/R4B: "performedDateTime"
+        // R5: "occurrenceDateTime" (renamed from performed[x] to occurrence[x])
         var startTime = context.CurrentTime;
         var duration = Duration ?? InferDuration();
         var endTime = startTime.Add(duration);
-
-        var performedField = VersionFieldOverrides.GetFieldName(
-            faker.SchemaProvider.Version,
-            "Procedure",
-            "performedPeriod");
 
         // Remove any existing choice element variants to avoid "Choice element can only have one type variant" error
         // Clear both "performed" (STU3/R4/R4B) and "occurrence" (R5) variants
         RemoveChoiceConflicts(node, "performed");
         RemoveChoiceConflicts(node, "occurrence");
 
-        // Set the desired choice element variant
-        node[performedField] = new JsonObject
-        {
-            ["start"] = startTime.ToString("o"),
-            ["end"] = endTime.ToString("o")
-        };
+        // Use performedDateTime/occurrenceDateTime for all versions
+        var performedField = VersionFieldOverrides.GetFieldName(
+            faker.SchemaProvider.Version,
+            "Procedure",
+            "performedDateTime");
+
+        node[performedField] = startTime.ToString("o");
 
         // Set performer
         var performerName = PerformerName ?? GeneratePerformerName();

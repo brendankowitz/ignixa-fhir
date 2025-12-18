@@ -18,7 +18,7 @@ namespace Ignixa.FhirFakes.Tests;
 /// <summary>
 /// Tests FHIR version compatibility for custom state implementations.
 /// Verifies that DiagnosticReport, Immunization, AllergyIntolerance, and Procedure states
-/// work correctly across R4, R4B, R5, and STU3.
+/// work correctly across R4, R4B, R5, R6, and STU3.
 /// </summary>
 public class CrossVersionCompatibilityTests
 {
@@ -33,6 +33,7 @@ public class CrossVersionCompatibilityTests
             new R4CoreSchemaProvider(),
             new R4BCoreSchemaProvider(),
             new R5CoreSchemaProvider(),
+            new R6CoreSchemaProvider(),
             new STU3CoreSchemaProvider()
         ];
     }
@@ -479,11 +480,11 @@ public class CrossVersionCompatibilityTests
     }
 
     [Fact]
-    public void GivenProcedureWithPerformedPeriod_WhenGeneratedAcrossAllVersions_ThenHasPerformedPeriod()
+    public void GivenProcedureWithPerformedDateTime_WhenGeneratedAcrossAllVersions_ThenHasPerformedDateTime()
     {
         foreach (var schema in _schemaProviders)
         {
-            _output.WriteLine($"Testing Procedure performed/occurrence period with {schema.Version}");
+            _output.WriteLine($"Testing Procedure performed/occurrence DateTime with {schema.Version}");
 
             // Act
             var scenario = new ScenarioBuilder(schema)
@@ -494,13 +495,14 @@ public class CrossVersionCompatibilityTests
 
             var procedure = scenario.Procedures[0];
 
-            // Assert - performed/occurrence period should exist (version-aware field name)
-            // STU3/R4/R4B: performedPeriod (from performed[x])
-            // R5: occurrencePeriod (renamed from performed[x] to occurrence[x])
-            var periodFieldName = schema.Version == FhirVersion.R5 ? "occurrencePeriod" : "performedPeriod";
-            procedure.MutableNode[periodFieldName].ShouldNotBeNull($"{periodFieldName} should exist in {schema.Version}");
-            var start = procedure.MutableNode[periodFieldName]?["start"]?.GetValue<string>();
-            start.ShouldNotBeNullOrEmpty($"{periodFieldName}.start should be set in {schema.Version}");
+            // Assert - performed/occurrence dateTime should exist (version-aware field name)
+            // NOTE: We use DateTime instead of Period due to schema validation issues
+            // STU3/R4/R4B: performedDateTime (from performed[x])
+            // R5+/R6: occurrenceDateTime (renamed from performed[x] to occurrence[x])
+            var dateTimeFieldName = schema.Version >= FhirVersion.R5 ? "occurrenceDateTime" : "performedDateTime";
+            procedure.MutableNode[dateTimeFieldName].ShouldNotBeNull($"{dateTimeFieldName} should exist in {schema.Version}");
+            var performedDateTime = procedure.MutableNode[dateTimeFieldName]?.GetValue<string>();
+            performedDateTime.ShouldNotBeNullOrEmpty($"{dateTimeFieldName} should be set in {schema.Version}");
         }
     }
 
@@ -636,9 +638,9 @@ public class CrossVersionCompatibilityTests
             code.ShouldNotBeNull($"code should exist in {schema.Version}");
 
             JsonNode? coding;
-            if (schema.Version == FhirVersion.R5)
+            if (schema.Version >= FhirVersion.R5)
             {
-                // R5: CodeableReference with concept part
+                // R5+/R6: CodeableReference with concept part
                 coding = code?["concept"]?["coding"]?[0];
             }
             else
