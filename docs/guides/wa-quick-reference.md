@@ -234,7 +234,7 @@ Focus on Reliability and Operational Excellence.
 
 ## 📚 Resources
 
-- **Full Guide:** `.claude/WELL_ARCHITECTED_AGENT_GUIDE.md`
+- **Full Guide:** `docs/guides/well-architected-agent-guide.md`
 - **Agent Config:** `.claude/agents/well-architected-agent.md`
 - **Azure WAF Docs:** https://learn.microsoft.com/en-us/azure/well-architected/
 - **Project Standards:** `CLAUDE.md`

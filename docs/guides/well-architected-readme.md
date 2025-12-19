@@ -45,9 +45,9 @@ Quick-access commands for common review scenarios:
 
 | Document | Purpose |
 |----------|---------|
-| `WELL_ARCHITECTED_AGENT_GUIDE.md` | Comprehensive guide with examples and best practices |
-| `WA_QUICK_REFERENCE.md` | Quick reference card for daily use |
-| `WELL_ARCHITECTED_README.md` | This overview document |
+| `docs/guides/well-architected-agent-guide.md` | Comprehensive guide with examples and best practices |
+| `docs/guides/wa-quick-reference.md` | Quick reference card for daily use |
+| `docs/guides/well-architected-readme.md` | This overview document |
 
 ---
 
@@ -430,8 +430,8 @@ Use adr-analyzer to verify final implementation matches ADR-2530
 
 ### Agent Files
 - `.claude/agents/well-architected-agent.md` - Agent configuration
-- `.claude/WELL_ARCHITECTED_AGENT_GUIDE.md` - Comprehensive guide
-- `.claude/WA_QUICK_REFERENCE.md` - Quick reference card
+- `docs/guides/well-architected-agent-guide.md` - Comprehensive guide
+- `docs/guides/wa-quick-reference.md` - Quick reference card
 
 ---
 
