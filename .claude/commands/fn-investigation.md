@@ -6,7 +6,7 @@ Add an investigation exploring one approach within a feature area.
 
 ## Instructions
 
-1. **Verify feature exists**: Check `docs/features/{feature-name}/_feature.md` exists
+1. **Verify feature exists**: Check `docs/features/{feature-name}/readme.md` exists
 
 2. **Create investigation file** at `docs/features/{feature-name}/investigations/{topic}.md`:
 
@@ -48,7 +48,7 @@ Add an investigation exploring one approach within a feature area.
 
 4. **Generate alternatives** (quint-style): If this is the first investigation for a feature, briefly note 2-3 other approaches worth investigating. These become future `/fn-investigation` candidates.
 
-5. **Update `_feature.md`**: Add row to Investigations table with status "In Progress"
+5. **Update `readme.md`**: Add row to Investigations table with status "In Progress"
 
 ## Naming Convention
 

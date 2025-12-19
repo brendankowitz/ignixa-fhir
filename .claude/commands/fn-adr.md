@@ -43,7 +43,7 @@ Synthesize viable investigations into a concise proposed ADR.
 
 5. **Keep it concise**: No code snippets, no implementation checklists, no phase tracking. Just the decision and rationale.
 
-6. **Update `_feature.md`**:
+6. **Update `readme.md`**:
    - Change status to "Decided"
    - Add link to ADR in Decision section
    - Mark synthesized investigations as "Merged"

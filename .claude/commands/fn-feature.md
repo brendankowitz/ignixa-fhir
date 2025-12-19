@@ -10,7 +10,7 @@ Initialize a new feature area for exploration and decision-making.
    - `docs/features/{feature-name}/`
    - `docs/features/{feature-name}/investigations/`
 
-2. **Create `_feature.md`** with this template:
+2. **Create `readme.md`** with this template:
 
 ```markdown
 # Feature: {Name}

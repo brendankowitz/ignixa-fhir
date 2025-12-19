@@ -25,7 +25,7 @@ Move an implemented ADR from feature folder to `docs/adr/` as accepted documenta
    - Verify it follows naming convention: `adr-{YYMM}-{topic}.md`
 
 6. **Update feature status**:
-   - Change `_feature.md` status to "Complete"
+   - Change `readme.md` status to "Complete"
    - Update Decision section with link to final ADR location
 
 7. **Output**: Confirm the ADR was accepted and show final location

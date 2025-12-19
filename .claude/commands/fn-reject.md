@@ -20,7 +20,7 @@ Mark an investigation as rejected with documented rationale.
    - Spec non-compliance: "Violates FHIR R4 Section X.Y.Z"
    - Superseded: "Approach B solves this more elegantly"
 
-4. **Update `_feature.md`**: Change investigation status in table to "Rejected"
+4. **Update `readme.md`**: Change investigation status in table to "Rejected"
 
 5. **Output**: Summarize what was rejected and why. Note remaining viable investigations.
 
