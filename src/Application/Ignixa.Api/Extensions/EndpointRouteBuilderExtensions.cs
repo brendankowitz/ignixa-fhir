@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Api.Endpoints;
+using Ignixa.Application.Experimental.Infrastructure;
 
 namespace Ignixa.Api.Extensions;
 
@@ -45,9 +46,6 @@ public static class EndpointRouteBuilderExtensions
         // FHIR operation endpoints ($validate, etc.)
         app.MapOperationEndpoints();
 
-        // Terminology endpoints ($expand, $translate, $subsumes)
-        app.MapTerminologyEndpoints();
-
         // PATCH endpoints (direct and conditional)
         app.MapPatchEndpoints();
 
@@ -60,12 +58,9 @@ public static class EndpointRouteBuilderExtensions
         // SMART on FHIR discovery endpoints (/.well-known/smart-configuration)
         app.MapSmartDiscoveryEndpoints();
 
-        // MCP endpoints (conditional)
-        var mcpEnabled = configuration.GetValue<bool>("Mcp:Enabled", true);
-        if (mcpEnabled)
-        {
-            app.MapMcpEndpoints();
-        }
+        // Experimental endpoints (MCP, Transform, Terminology)
+        // Controlled by Experimental:Enabled and per-feature configuration
+        app.MapExperimentalEndpoints(configuration);
 
         return app;
     }
